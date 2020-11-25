@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.10.5],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.10.9],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -69,9 +69,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=105
+JANUS_VERSION=109
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.10.5"
+JANUS_VERSION_STRING="0.10.9"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -522,6 +522,13 @@ PKG_CHECK_MODULES([MHD],
 AC_SUBST([MHD_CFLAGS])
 AC_SUBST([MHD_LIBS])
 AM_CONDITIONAL([ENABLE_REST], [test "x$enable_rest" = "xyes"])
+AM_COND_IF([ENABLE_REST],
+           [
+             AC_CHECK_TYPES([enum MHD_Result],
+                            [],
+                            [],
+                            [#include <microhttpd.h>])
+           ])
 
 AC_CHECK_LIB([websockets],
 			 [lws_create_vhost],

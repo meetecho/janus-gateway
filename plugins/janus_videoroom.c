@@ -54,7 +54,7 @@ room-<unique room ID>: {
 	is_private = true|false (private rooms don't appear when you do a 'list' request, default=false)
 	secret = <optional password needed for manipulating (e.g. destroying) the room>
 	pin = <optional password needed for joining the room>
-	require_pvtid = true|false (whether subscriptions are required to provide a valid private_id 
+	require_pvtid = true|false (whether subscriptions are required to provide a valid private_id
 				 to associate with a publisher, default=false)
 	publishers = <max number of concurrent senders> (e.g., 6 for a video
 				 conference or 1 for a webinar, default=3)
@@ -3923,6 +3923,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 				json_object_set_new(info, "publisher_id", string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
 				json_object_set_new(info, "media", json_string("audio"));
+				json_object_set_new(info, "codec", json_string(janus_audiocodec_name(publisher->acodec)));
 				json_object_set_new(info, "stream_id", json_integer(audio_handle));
 				json_object_set_new(info, "host", json_string(host));
 				json_object_set_new(info, "port", json_integer(audio_port));
@@ -3944,6 +3945,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 					json_object_set_new(info, "publisher_id", string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
 					json_object_set_new(info, "media", json_string("video"));
+					json_object_set_new(info, "codec", json_string(janus_videocodec_name(publisher->vcodec)));
 					if(video_handle[1] > 0 || video_handle[2] > 0)
 						json_object_set_new(info, "video_substream", json_integer(0));
 					json_object_set_new(info, "stream_id", json_integer(video_handle[0]));
@@ -3962,6 +3964,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 					json_object_set_new(info, "publisher_id", string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
 					json_object_set_new(info, "media", json_string("video"));
+					json_object_set_new(info, "codec", json_string(janus_videocodec_name(publisher->vcodec)));
 					json_object_set_new(info, "video_substream", json_integer(1));
 					json_object_set_new(info, "stream_id", json_integer(video_handle[1]));
 					json_object_set_new(info, "host", json_string(host));
@@ -3979,6 +3982,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 					json_object_set_new(info, "publisher_id", string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
 					json_object_set_new(info, "media", json_string("video"));
+					json_object_set_new(info, "codec", json_string(janus_videocodec_name(publisher->vcodec)));
 					json_object_set_new(info, "video_substream", json_integer(2));
 					json_object_set_new(info, "stream_id", json_integer(video_handle[2]));
 					json_object_set_new(info, "host", json_string(host));
@@ -4842,6 +4846,8 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 				json_object_set_new(info, "event", json_string("published"));
 				json_object_set_new(info, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
 				json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+				json_object_set_new(info, "audio_codec", json_string(janus_audiocodec_name(participant->acodec)));
+				json_object_set_new(info, "video_codec", json_string(janus_videocodec_name(participant->vcodec)));
 				gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 			}
 			janus_refcount_decrease(&participant->ref);
@@ -4927,7 +4933,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 						json_object_set_new(info, "videoroom", json_string(participant->talking ? "talking" : "stopped-talking"));
 						json_object_set_new(info, "room", string_ids ? json_string(videoroom->room_id_str) : json_integer(videoroom->room_id));
 						json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
-						json_object_set_new(event, "audio-level-dBov-avg", json_real(audio_dBov_avg));
+						json_object_set_new(info, "audio-level-dBov-avg", json_real(audio_dBov_avg));
 						gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 					}
 				}
@@ -4951,13 +4957,13 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 				/* We may not know the SSRC yet, try the rid RTP extension */
 				char sdes_item[16];
 				if(janus_rtp_header_extension_parse_rid(buf, len, participant->rid_extmap_id, sdes_item, sizeof(sdes_item)) == 0) {
-					if(participant->rid[2] != NULL && !strcmp(participant->rid[2], sdes_item)) {
+					if(participant->rid[0] != NULL && !strcmp(participant->rid[0], sdes_item)) {
 						participant->ssrc[0] = ssrc;
 						sc = 0;
 					} else if(participant->rid[1] != NULL && !strcmp(participant->rid[1], sdes_item)) {
 						participant->ssrc[1] = ssrc;
 						sc = 1;
-					} else if(participant->rid[0] != NULL && !strcmp(participant->rid[0], sdes_item)) {
+					} else if(participant->rid[2] != NULL && !strcmp(participant->rid[2], sdes_item)) {
 						participant->ssrc[2] = ssrc;
 						sc = 2;
 					}
@@ -7597,6 +7603,13 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&subscriber->sim_context,
 				(char *)packet->data, packet->length, packet->ssrc, NULL, subscriber->feed->vcodec, &subscriber->context);
+			if(!relay) {
+				/* Did a lot of time pass before we could relay a packet? */
+				gint64 now = janus_get_monotonic_time();
+				if((now - subscriber->sim_context.last_relayed) >= G_USEC_PER_SEC) {
+					g_atomic_int_set(&subscriber->sim_context.need_pli, 1);
+				}
+			}
 			if(subscriber->sim_context.need_pli && subscriber->feed && subscriber->feed->session &&
 					subscriber->feed->session->handle) {
 				/* Send a PLI */

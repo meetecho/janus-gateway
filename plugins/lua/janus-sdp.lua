@@ -344,6 +344,7 @@ function JANUSSDP.generateAnswer(offer, options)
 		end
 	end
 	if options.data == nil then options.data = true end
+	if options.disableTwcc == nil then options.disableTwcc = false end
 	-- Let's prepare the answer
 	local answer = {}
 	-- Iterate on all lines
@@ -424,6 +425,17 @@ function JANUSSDP.generateAnswer(offer, options)
 					if medium == "audio" and tonumber(n()) == audioPt then
 						answer[#answer+1] = a
 					elseif medium == "video" and tonumber(n()) == videoPt then
+						answer[#answer+1] = a
+					end
+				elseif a.name == "extmap" then
+					-- We do negotiate some RTP extensions
+					if a.value:find("urn:ietf:params:rtp-hdrext:sdes:mid", 1, true) then
+						answer[#answer+1] = a
+					elseif a.value:find("urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id", 1, true) then
+						answer[#answer+1] = a
+					elseif a.value:find("urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id", 1, true) then
+						answer[#answer+1] = a
+					elseif options.disableTwcc ~= true and a.value:find("draft-holmer-rmcat-transport-wide-cc-extensions-01", 1, true) then
 						answer[#answer+1] = a
 					end
 				end

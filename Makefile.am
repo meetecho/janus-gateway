@@ -208,7 +208,7 @@ version.c: FORCE | $(dir_target)
 	echo "$(build_date)" | awk 'BEGIN {} {print "const char *janus_build_git_time = \""$$0"\";"} END {} ' >> version.c
 	echo "$(JANUS_VERSION)" | awk 'BEGIN {} {print "int janus_version = "$$0";"} END {} ' >> version.c
 	echo "$(JANUS_VERSION_STRING)" | awk 'BEGIN {} {print "const char *janus_version_string = \""$$0"\";"} END {} ' >> version.c
-	pkg-config --modversion nice | awk 'BEGIN {} {print "const char *libnice_version_string = \""$$0"\";"} END {} ' >> version.c
+	PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" pkg-config --modversion nice | awk 'BEGIN {} {print "const char *libnice_version_string = \""$$0"\";"} END {} ' >> version.c
 
 $(dir_present):
 	`which git` rev-parse HEAD | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
@@ -417,7 +417,7 @@ plugins_libadd = \
 if ENABLE_PLUGIN_AUDIOBRIDGE
 plugin_LTLIBRARIES += plugins/libjanus_audiobridge.la
 plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c
-plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags) $(OPUS_CFLAGS) $(OGG_CFLAGS)
+plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags) $(OPUS_CFLAGS) $(OGG_CFLAGS) $(LIBSRTP_CFLAGS)
 plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags) $(OPUS_LDFLAGS) $(OPUS_LIBS) $(OGG_LDFLAGS) $(OGG_LIBS)
 plugins_libjanus_audiobridge_la_LIBADD = $(plugins_libadd) $(OPUS_LIBADD) $(OGG_LIBADD)
 conf_DATA += conf/janus.plugin.audiobridge.jcfg.sample
@@ -454,7 +454,7 @@ endif
 if ENABLE_PLUGIN_SIP
 plugin_LTLIBRARIES += plugins/libjanus_sip.la
 plugins_libjanus_sip_la_SOURCES = plugins/janus_sip.c
-plugins_libjanus_sip_la_CFLAGS = $(plugins_cflags) $(SOFIA_CFLAGS)
+plugins_libjanus_sip_la_CFLAGS = $(plugins_cflags) $(SOFIA_CFLAGS) $(LIBSRTP_CFLAGS)
 plugins_libjanus_sip_la_LDFLAGS = $(plugins_ldflags) $(SOFIA_LDFLAGS) $(SOFIA_LIBS)
 plugins_libjanus_sip_la_LIBADD = $(plugins_libadd) $(SOFIA_LIBADD)
 conf_DATA += conf/janus.plugin.sip.jcfg.sample
@@ -464,7 +464,7 @@ endif
 if ENABLE_PLUGIN_NOSIP
 plugin_LTLIBRARIES += plugins/libjanus_nosip.la
 plugins_libjanus_nosip_la_SOURCES = plugins/janus_nosip.c
-plugins_libjanus_nosip_la_CFLAGS = $(plugins_cflags)
+plugins_libjanus_nosip_la_CFLAGS = $(plugins_cflags) $(LIBSRTP_CFLAGS)
 plugins_libjanus_nosip_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_nosip_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.nosip.jcfg.sample
@@ -474,7 +474,7 @@ endif
 if ENABLE_PLUGIN_STREAMING
 plugin_LTLIBRARIES += plugins/libjanus_streaming.la
 plugins_libjanus_streaming_la_SOURCES = plugins/janus_streaming.c
-plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags) $(LIBCURL_CFLAGS) $(OGG_CFLAGS)
+plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags) $(LIBCURL_CFLAGS) $(OGG_CFLAGS) $(LIBSRTP_CFLAGS)
 plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags) $(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) $(OGG_LDFLAGS) $(OGG_LIBS)
 plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd) $(LIBCURL_LIBADD) $(OGG_LIBADD)
 conf_DATA += conf/janus.plugin.streaming.jcfg.sample
@@ -502,7 +502,7 @@ endif
 if ENABLE_PLUGIN_VIDEOROOM
 plugin_LTLIBRARIES += plugins/libjanus_videoroom.la
 plugins_libjanus_videoroom_la_SOURCES = plugins/janus_videoroom.c
-plugins_libjanus_videoroom_la_CFLAGS = $(plugins_cflags)
+plugins_libjanus_videoroom_la_CFLAGS = $(plugins_cflags) $(LIBSRTP_CFLAGS)
 plugins_libjanus_videoroom_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_videoroom_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.videoroom.jcfg.sample

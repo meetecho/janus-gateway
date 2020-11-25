@@ -933,12 +933,11 @@ void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, int *fra
 	if(r && json_array_size(r) > 0) {
 		JANUS_LOG(LOG_VERB, "  -- Simulcasting is rid based\n");
 		size_t i = 0;
-		for(i=0; i<json_array_size(r); i++) {
-			if(i == 3)
-				break;
-			json_t *rid = json_array_get(r, i);
+		int count = json_array_size(r);
+		for(i=count; i > 0; i--) {
+			json_t *rid = json_array_get(r, i-1);
 			if(rid && json_is_string(rid) && rids)
-				rids[i] = g_strdup(json_string_value(rid));
+				rids[count-i] = g_strdup(json_string_value(rid));
 		}
 		json_t *rid_ext = json_object_get(simulcast, "rid-ext");
 		if(rid_ext_id != NULL)
@@ -980,7 +979,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		char sdes_item[16];
 		if(janus_rtp_header_extension_parse_rid(buf, len, context->rid_ext_id, sdes_item, sizeof(sdes_item)) != 0)
 			return FALSE;
-		if(rids[2] != NULL && !strcmp(rids[2], sdes_item)) {
+		if(rids[0] != NULL && !strcmp(rids[0], sdes_item)) {
 			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
 			*(ssrcs) = ssrc;
 			substream = 0;
@@ -988,7 +987,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
 			*(ssrcs+1) = ssrc;
 			substream = 1;
-		} else if(rids[0] != NULL && !strcmp(rids[0], sdes_item)) {
+		} else if(rids[2] != NULL && !strcmp(rids[2], sdes_item)) {
 			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
 			*(ssrcs+2) = ssrc;
 			substream = 2;

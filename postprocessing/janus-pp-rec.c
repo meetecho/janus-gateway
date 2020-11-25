@@ -151,11 +151,11 @@ static int janus_pp_rtp_header_extension_parse_video_orientation(char *buf, int 
 
 typedef struct janus_pp_rtp_skew_context {
 	guint32 ssrc, rate;
-	guint32 reference_time, start_time, evaluating_start_time;
-	guint32 start_ts, last_ts, prev_ts, target_ts;
+	guint64 reference_time, start_time, evaluating_start_time;
+	guint64 start_ts, last_ts, prev_ts, target_ts;
 	guint16 last_seq, prev_seq;
-	gint32 prev_delay, active_delay;
-	guint32 ts_offset;
+	gint64 prev_delay, active_delay;
+	guint64 ts_offset;
 	gint16 seq_offset;
 } janus_pp_rtp_skew_context;
 static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_rtp_skew_context *context);
@@ -632,6 +632,7 @@ int main(int argc, char *argv[])
 	times_resetted = 0;
 	post_reset_pkts = 0;
 	uint64_t max32 = UINT32_MAX;
+	uint16_t rtp_header_len, rtp_read_n;
 	/* Start loop */
 	while(working && offset < fsize) {
 		/* Read frame header */
@@ -679,6 +680,10 @@ int main(int argc, char *argv[])
 			/* Things are simpler for data, no reordering is needed: start by the data time */
 			gint64 when = 0;
 			bytes = fread(&when, sizeof(gint64), 1, file);
+			if(bytes < (int)sizeof(gint64)) {
+				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
+				break;
+			}
 			when = ntohll(when);
 			offset += sizeof(gint64);
 			len -= sizeof(gint64);
@@ -709,13 +714,38 @@ int main(int argc, char *argv[])
 			continue;
 		}
 		/* Only read RTP header */
-		bytes = fread(prebuffer, sizeof(char), len > 24 ? 24: len, file);
+		rtp_header_len = 12;
+		bytes = fread(prebuffer, sizeof(char), rtp_header_len, file);
+		if(bytes < rtp_header_len) {
+			JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n", bytes, rtp_header_len);
+			break;
+		}
 		janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)prebuffer;
 		JANUS_LOG(LOG_VERB, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
 				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+		/* Check if we can get rid of the packet if we're expecting
+		 * static or specific payload types and they don't match */
+		if((g711 && rtp->type != 0 && rtp->type != 8) || (g722 && rtp->type != 9)) {
+			JANUS_LOG(LOG_WARN, "Dropping packet with unexpected payload type: %d\n", rtp->type);
+			/* Skip data */
+			offset += len;
+			count++;
+			continue;
+		}
 		if(rtp->csrccount) {
 			JANUS_LOG(LOG_VERB, "  -- -- Skipping CSRC list\n");
 			skip += rtp->csrccount*4;
+		}
+		if(rtp->csrccount || rtp->extension) {
+			rtp_read_n = (rtp->csrccount + rtp->extension)*4;
+			bytes = fread(prebuffer+rtp_header_len, sizeof(char), rtp_read_n, file);
+			if(bytes < rtp_read_n) {
+				JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n",
+					rtp_header_len+bytes, rtp_header_len+rtp_read_n);
+				break;
+			} else {
+				rtp_header_len += rtp_read_n;
+			}
 		}
 		audiolevel = -1;
 		rotation = -1;
@@ -723,7 +753,16 @@ int main(int argc, char *argv[])
 			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12+skip);
 			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=0x%"PRIX16", length=%"SCNu16")\n",
 				ntohs(ext->type), ntohs(ext->length));
-			skip += 4 + ntohs(ext->length)*4;
+			rtp_read_n = ntohs(ext->length)*4;
+			skip += 4 + rtp_read_n;
+			bytes = fread(prebuffer+rtp_header_len, sizeof(char), rtp_read_n, file);
+			if(bytes < rtp_read_n) {
+				JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n",
+					rtp_header_len+bytes, rtp_header_len+rtp_read_n);
+				break;
+			} else {
+				rtp_header_len += rtp_read_n;
+			}
 			if(audio_level_extmap_id > 0)
 				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, len, audio_level_extmap_id, &audiolevel);
 			if(video_orient_extmap_id > 0) {
@@ -1159,18 +1198,18 @@ static int janus_pp_rtp_header_extension_find(char *buf, int len, int id,
 				uint8_t extid = 0, idlen;
 				int i = 0;
 				while(i < extlen) {
-					extid = buf[hlen+i] >> 4;
+					extid = (uint8_t)buf[hlen+i] >> 4;
 					if(extid == reserved) {
 						break;
 					} else if(extid == padding) {
 						i++;
 						continue;
 					}
-					idlen = (buf[hlen+i] & 0xF)+1;
+					idlen = ((uint8_t)buf[hlen+i] & 0xF)+1;
 					if(extid == id) {
 						/* Found! */
 						if(byte)
-							*byte = buf[hlen+i+1];
+							*byte = (uint8_t)buf[hlen+i+1];
 						if(word)
 							*word = ntohl(*(uint32_t *)(buf+hlen+i));
 						if(ref)
@@ -1228,8 +1267,8 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 	context->prev_ts = context->last_ts;
 	context->last_ts = pkt->ts;
 
-	guint32 pts = pkt->p_ts;
-	guint32 akhz = context->rate / 1000;
+	guint64 pts = pkt->p_ts;
+	guint64 akhz = context->rate / 1000;
 
 	/* Do not execute skew analysis in the first seconds */
 	if (pts - context->reference_time < SKEW_DETECTION_WAIT_TIME_SECS / 2 * 1000) {
@@ -1240,12 +1279,12 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 			context->start_time = 1;
 		context->evaluating_start_time = context->start_time;
 		context->start_ts = context->last_ts;
-		JANUS_LOG(LOG_INFO, "audio skew SSRC=%"SCNu32" evaluation phase start, start_time=%"SCNu32" start_ts=%"SCNu32"\n", context->ssrc, context->start_time, context->start_ts);
+		JANUS_LOG(LOG_INFO, "audio skew SSRC=%"SCNu32" evaluation phase start, start_time=%"SCNu64" start_ts=%"SCNu64"\n", context->ssrc, context->start_time, context->start_ts);
 	}
 
 	/* Skew analysis */
 	/* Are we waiting for a target timestamp? (a negative skew has been evaluated in a previous iteration) */
-	if (context->target_ts > 0 && (gint32)(context->target_ts - context->last_ts) > 0) {
+	if (context->target_ts > 0 && (gint64)(context->target_ts - context->last_ts) > 0) {
 		context->seq_offset--;
 		exit_status = -1;
 	} else {
@@ -1253,23 +1292,23 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 		/* Do not execute analysis for out of order packets or multi-packets frame */
 		if (context->last_seq == context->prev_seq + 1 && context->last_ts != context->prev_ts) {
 			/* Evaluate the local RTP timestamp according to the local clock */
-			guint32 expected_ts = ((pts - context->start_time) * akhz) + context->start_ts;
+			guint64 expected_ts = ((pts - context->start_time) * akhz) + context->start_ts;
 			/* Evaluate current delay */
-			gint32 delay_now = context->last_ts - expected_ts;
+			gint64 delay_now = context->last_ts - expected_ts;
 			/* Exponentially weighted moving average estimation */
-			gint32 delay_estimate = (63 * context->prev_delay + delay_now) / 64;
+			gint64 delay_estimate = (63 * context->prev_delay + delay_now) / 64;
 			/* Save previous delay for the next iteration*/
 			context->prev_delay = delay_estimate;
 			/* Evaluate the distance between active delay and current delay estimate */
-			gint32 offset = context->active_delay - delay_estimate;
-			JANUS_LOG(LOG_HUGE, "audio skew SSRC=%"SCNu32" status RECVD_TS=%"SCNu32" EXPTD_TS=%"SCNu32" AVG_OFFSET=%"SCNi32" TS_OFFSET=%"SCNi32" SEQ_OFFSET=%"SCNi16"\n", context->ssrc, context->last_ts, expected_ts, offset, context->ts_offset, context->seq_offset);
-			gint32 skew_th = audioskew_th * akhz;
+			gint64 offset = context->active_delay - delay_estimate;
+			JANUS_LOG(LOG_HUGE, "audio skew SSRC=%"SCNu32" status RECVD_TS=%"SCNu64" EXPTD_TS=%"SCNu64" AVG_OFFSET=%"SCNi64" TS_OFFSET=%"SCNi64" SEQ_OFFSET=%"SCNi16"\n", context->ssrc, context->last_ts, expected_ts, offset, context->ts_offset, context->seq_offset);
+			gint64 skew_th = audioskew_th * akhz;
 
 			/* Evaluation phase */
 			if (context->evaluating_start_time) {
 				/* Check if the offset has surpassed half the threshold during the evaluating phase */
 				if (pts - context->evaluating_start_time <= SKEW_DETECTION_WAIT_TIME_SECS / 2 * 1000) {
-					if (abs(offset) <= skew_th/2) {
+					if (llabs(offset) <= skew_th/2) {
 						JANUS_LOG(LOG_HUGE, "audio skew SSRC=%"SCNu32" evaluation phase continue\n", context->ssrc);
 					} else {
 						JANUS_LOG(LOG_VERB, "audio skew SSRC=%"SCNu32" evaluation phase reset\n", context->ssrc);
@@ -1280,7 +1319,7 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 						context->start_ts = context->last_ts;
 					}
 				} else {
-					JANUS_LOG(LOG_INFO, "audio skew SSRC=%"SCNu32" evaluation phase stop, start_time=%"SCNu32" start_ts=%"SCNu32"\n", context->ssrc, context->start_time, context->start_ts);
+					JANUS_LOG(LOG_INFO, "audio skew SSRC=%"SCNu32" evaluation phase stop, start_time=%"SCNu64" start_ts=%"SCNu64"\n", context->ssrc, context->start_time, context->start_ts);
 					context->evaluating_start_time = 0;
 				}
 				return 0;
@@ -1294,7 +1333,7 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 				/* Adjust ts offset */
 				context->ts_offset += skew_th;
 				/* Calculate last ts increase */
-				guint32 ts_incr = context->last_ts - context->prev_ts;
+				guint64 ts_incr = context->last_ts - context->prev_ts;
 				/* Evaluate sequence number jump */
 				guint16 jump = (skew_th + ts_incr - 1) / ts_incr;
 				/* Adjust seq num offset */
@@ -1319,13 +1358,11 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 
 	/* Skew compensation */
 	/* Fix header timestamp considering the active offset */
-	guint32 fixed_rtp_ts = context->last_ts + context->ts_offset;
+	guint64 fixed_rtp_ts = context->last_ts + context->ts_offset;
 	pkt->ts = fixed_rtp_ts;
-	pkt->header->timestamp = htonl(fixed_rtp_ts);
 	/* Fix header sequence number considering the total offset */
 	guint16 fixed_rtp_seq = context->last_seq + context->seq_offset;
 	pkt->seq = fixed_rtp_seq;
-	pkt->header->seq_number = htons(fixed_rtp_seq);
 
 	return exit_status;
 }

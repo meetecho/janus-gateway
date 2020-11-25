@@ -102,6 +102,8 @@ static amqp_channel_t rmq_channel = 0;
 static amqp_bytes_t rmq_exchange;
 static amqp_bytes_t rmq_route_key;
 
+static janus_mutex mutex;
+
 static char *rmqhost = NULL;
 static const char *vhost = NULL, *username = NULL, *password = NULL;
 static const char *ssl_cacert_file = NULL;
@@ -282,6 +284,8 @@ int janus_rabbitmqevh_init(const char *config_path) {
 		goto error;
 	}
 
+	janus_mutex_init(&mutex);
+
 	/* Initialize the events queue */
 	events = g_async_queue_new_full((GDestroyNotify) janus_rabbitmqevh_event_free);
 	g_atomic_int_set(&initialized, 1);
@@ -425,6 +429,10 @@ void janus_rabbitmqevh_destroy(void) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
 	}
+	if(in_thread != NULL) {
+		g_thread_join(in_thread);
+		in_thread = NULL;
+	}
 
 	g_async_queue_unref(events);
 	events = NULL;
@@ -453,6 +461,7 @@ void janus_rabbitmqevh_destroy(void) {
 	if(ssl_key_file)
 		g_free((char *)ssl_key_file);
 
+	janus_mutex_destroy(&mutex);
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_RABBITMQEVH_NAME);
@@ -601,10 +610,12 @@ static void *jns_rmqevh_hdlr(void *data) {
 			props._flags |= AMQP_BASIC_CONTENT_TYPE_FLAG;
 			props.content_type = amqp_cstring_bytes("application/json");
 			amqp_bytes_t message = amqp_cstring_bytes(event_text);
+			janus_mutex_lock(&mutex);
 			int status = amqp_basic_publish(rmq_conn, rmq_channel, rmq_exchange, rmq_route_key, 0, 0, &props, message);
 			if(status != AMQP_STATUS_OK) {
 				JANUS_LOG(LOG_ERR, "RabbitMQEventHandler: Error publishing... %d, %s\n", status, amqp_error_string2(status));
 			}
+			janus_mutex_unlock(&mutex);
 			free(event_text);
 			event_text = NULL;
 		}
@@ -621,19 +632,26 @@ static void *jns_rmqevh_hdlr(void *data) {
 /* Thread to handle heartbeats */
 static void *jns_rmqevh_hrtbt(void *data) {
 	JANUS_LOG(LOG_VERB, "Monitoring RabbitMQ HeartBeat\n");
+	int waiting_usec = (heartbeat/2) * 1000000;
 	struct timeval timeout;
-	timeout.tv_sec = heartbeat/2;
-	timeout.tv_usec = 20000;
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 0;
 	amqp_frame_t frame;
 
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
+		janus_mutex_lock(&mutex);
 		amqp_maybe_release_buffers(rmq_conn);
 		/* Wait for a frame */
 		int res = amqp_simple_wait_frame_noblock(rmq_conn, &frame, &timeout);
+		janus_mutex_unlock(&mutex);
 		if(res != AMQP_STATUS_OK) {
 			/* No data */
-			if(res == AMQP_STATUS_TIMEOUT || res == AMQP_STATUS_SSL_ERROR)
+			if(res == AMQP_STATUS_TIMEOUT || res == AMQP_STATUS_SSL_ERROR) {
+				/* Wait half of heartbeat before test again*/
+				g_usleep(waiting_usec);
 				continue;
+			}
+
 			JANUS_LOG(LOG_VERB, "Error on amqp_simple_wait_frame_noblock: %d (%s)\n", res, amqp_error_string2(res));
 
 			if(rmq_conn && rmq_channel) {
@@ -641,11 +659,18 @@ static void *jns_rmqevh_hrtbt(void *data) {
 				amqp_connection_close(rmq_conn, AMQP_REPLY_SUCCESS);
 				amqp_destroy_connection(rmq_conn);
 			}
-			JANUS_LOG(LOG_VERB, "Trying to reconnect with RabbitMQ Server\n");
-			int result = janus_rabbitmqevh_connect();
-			if(result < 0) {
-				g_usleep(5000000);
+			if(!g_atomic_int_get(&stopping)) {
+				JANUS_LOG(LOG_VERB, "Trying to reconnect with RabbitMQ Server\n");
+				int result = janus_rabbitmqevh_connect();
+				if(result < 0) {
+					g_usleep(5000000);
+				} else {
+					g_usleep(waiting_usec);
+				}
 			}
+		} else {
+			/* Wait half of heartbeat before test again*/
+			g_usleep(waiting_usec);
 		}
 	}
 

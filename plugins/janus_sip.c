@@ -110,6 +110,7 @@
 	"force_udp" : <true|false; if true, forces UDP for the SIP messaging; optional>,
 	"force_tcp" : <true|false; if true, forces TCP for the SIP messaging; optional>,
 	"sips" : <true|false; if true, configures a SIPS URI too when registering; optional>,
+	"rfc2543_cancel" : <true|false; if true, configures sip client to CANCEL pending INVITEs without having received a provisional response first; optional>,
 	"username" : "<SIP URI to register; mandatory>",
 	"secret" : "<password to use to register; optional>",
 	"ha1_secret" : "<prehashed password to use to register; optional>",
@@ -699,6 +700,7 @@ static struct janus_json_parameter register_parameters[] = {
 	{"force_udp", JANUS_JSON_BOOL, 0},
 	{"force_tcp", JANUS_JSON_BOOL, 0},
 	{"sips", JANUS_JSON_BOOL, 0},
+	{"rfc2543_cancel", JANUS_JSON_BOOL, 0},
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JSON_STRING, 0},
 	{"ha1_secret", JSON_STRING, 0},
@@ -898,6 +900,7 @@ typedef struct janus_sip_account {
 	gboolean force_udp;
 	gboolean force_tcp;
 	gboolean sips;
+	gboolean rfc2543_cancel;
 	char *username;
 	char *display_name;		/* Used for outgoing calls in the From header */
 	char *authuser;			/**< username to use for authentication */
@@ -1476,7 +1479,7 @@ static void janus_sip_random_string(int length, char *buffer) {
 		int l = (int)(sizeof(charset)-1);
 		int i=0;
 		for(i=0; i<length; i++) {
-			int key = rand() % l;
+			int key = janus_random_uint32() % l;
 			buffer[i] = charset[key];
 		}
 		buffer[length-1] = '\0';
@@ -1855,6 +1858,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	/* Setup sofia */
 	su_init();
 	if(notify_events && callback->events_is_enabled()) {
+		JANUS_LOG(LOG_WARN, "sofia-sip logs are going to be redirected and they will not be shown in the process output\n");
 		/* Enable the transport logging, as we want to have access to the SIP messages */
 		setenv("TPORT_LOG", "1", 1);
 		su_log_redirect(NULL, janus_sip_sofia_logger, NULL);
@@ -1971,6 +1975,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.force_udp = FALSE;
 	session->account.force_tcp = FALSE;
 	session->account.sips = TRUE;
+	session->account.rfc2543_cancel = FALSE;
 	session->account.username = NULL;
 	session->account.display_name = NULL;
 	session->account.user_agent = NULL;
@@ -2725,6 +2730,11 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Conflicting elements: force_udp and force_tcp cannot both be true");
 				goto error;
 			}
+			gboolean rfc2543_cancel = FALSE;
+			json_t *do_rfc2543_cancel = json_object_get(root, "rfc2543_cancel");
+			if(do_rfc2543_cancel != NULL) {
+				rfc2543_cancel = json_is_true(do_rfc2543_cancel);
+			}
 
 			/* Parse addresses */
 			json_t *proxy = json_object_get(root, "proxy");
@@ -2882,6 +2892,7 @@ static void *janus_sip_handler(void *data) {
 				session->account.force_udp = FALSE;
 				session->account.force_tcp = FALSE;
 				session->account.sips = TRUE;
+				session->account.rfc2543_cancel = FALSE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
 				session->account.username = NULL;
@@ -2913,6 +2924,7 @@ static void *janus_sip_handler(void *data) {
 			session->account.force_udp = force_udp;
 			session->account.force_tcp = force_tcp;
 			session->account.sips = sips;
+			session->account.rfc2543_cancel = rfc2543_cancel;
 			session->account.username = g_strdup(user_id);
 			session->account.authuser = g_strdup(authuser_text ? authuser_text : user_id);
 			session->account.secret = secret_text ? g_strdup(secret_text) : NULL;
@@ -3104,7 +3116,6 @@ static void *janus_sip_handler(void *data) {
 			if(nh == NULL) {
 				/* We don't, create one now */
 				if(!session->helper) {
-					janus_mutex_lock(&session->stack->smutex);
 					if(session->stack->s_nua == NULL) {
 						janus_mutex_unlock(&session->stack->smutex);
 						JANUS_LOG(LOG_ERR, "NUA destroyed while subscribing?\n");
@@ -3113,7 +3124,6 @@ static void *janus_sip_handler(void *data) {
 						goto error;
 					}
 					nh = nua_handle(session->stack->s_nua, session, TAG_END());
-					janus_mutex_unlock(&session->stack->smutex);
 				} else {
 					/* This is a helper, we need to use the master's SIP stack */
 					if(session->master == NULL || session->master->stack == NULL) {
@@ -3836,6 +3846,16 @@ static void *janus_sip_handler(void *data) {
 				error_code = JANUS_SIP_ERROR_IO_ERROR;
 				g_snprintf(error_cause, 512, "Error manipulating SDP");
 				goto error;
+			}
+			if(!offer) {
+				if(session->media.audio_pt_name == NULL && session->media.audio_pt > -1) {
+					session->media.audio_pt_name = janus_get_codec_from_pt(sdp, session->media.audio_pt);
+					JANUS_LOG(LOG_VERB, "Detected audio codec: %d (%s)\n", session->media.audio_pt, session->media.audio_pt_name);
+				}
+				if(session->media.video_pt_name == NULL && session->media.video_pt > -1) {
+					session->media.video_pt_name = janus_get_codec_from_pt(sdp, session->media.video_pt);
+					JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
+				}
 			}
 			/* Take note of the new SDP */
 			janus_sdp_destroy(session->sdp);
@@ -5072,8 +5092,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, notify, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(notify);
-			/* Send a 200 back */
-			nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
 			break;
 		}
 		case nua_i_options:
@@ -5471,11 +5489,19 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(status == 401) {
 					/* Get scheme/realm from 401 error */
 					sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
+					if(www_auth == NULL) {
+						/* No WWW-Authenticate header, give up */
+						goto auth_failed;
+					}
 					scheme = www_auth->au_scheme;
 					realm = msg_params_find(www_auth->au_params, "realm=");
 				} else {
 					/* Get scheme/realm from 407 error, proxy-auth */
 					sip_proxy_authenticate_t const* proxy_auth = sip->sip_proxy_authenticate;
+					if(proxy_auth == NULL) {
+						/* No Proxy-Authenticate header, give up */
+						goto auth_failed;
+					}
 					scheme = proxy_auth->au_scheme;
 					realm = msg_params_find(proxy_auth->au_params, "realm=");
 				}
@@ -5509,6 +5535,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					NUTAG_AUTH(auth),
 					TAG_END());
 			} else if(status >= 400) {
+auth_failed:
 				/* Authentication failed? */
 				session->account.registration_status = janus_sip_registration_status_failed;
 				/* Cleanup registration values */
@@ -5522,6 +5549,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->account.force_udp = FALSE;
 				session->account.force_tcp = FALSE;
 				session->account.sips = TRUE;
+				session->account.rfc2543_cancel = FALSE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
 				session->account.username = NULL;
@@ -6564,6 +6592,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_APPL_METHOD("REFER"),			/* We'll respond to incoming REFER messages ourselves */
 				SIPTAG_SUPPORTED_STR("replaces"),	/* Advertise that we support the Replaces header */
 				SIPTAG_SUPPORTED(NULL),
+				NTATAG_CANCEL_2543(session->account.rfc2543_cancel),
 				TAG_NULL());
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */

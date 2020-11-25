@@ -128,7 +128,7 @@ gboolean janus_ice_is_full_trickle_enabled(void);
 /*! \brief Method to check whether mDNS resolution is enabled or not
  * @returns true if mDNS resolution is enabled, false otherwise */
 gboolean janus_ice_is_mdns_enabled(void);
-/*! \brief Method to check whether IPv6 candidates are enabled/supported or not (still WIP)
+/*! \brief Method to check whether IPv6 candidates are enabled/supported or not
  * @returns true if IPv6 candidates are enabled/supported, false otherwise */
 gboolean janus_ice_is_ipv6_enabled(void);
 /*! \brief Method to modify the min NACK value (i.e., the minimum time window of packets per handle to store for retransmissions)
@@ -137,6 +137,16 @@ void janus_set_min_nack_queue(uint16_t mnq);
 /*! \brief Method to get the current min NACK value (i.e., the minimum time window of packets per handle to store for retransmissions)
  * @returns The current min NACK value */
 uint16_t janus_get_min_nack_queue(void);
+/*! \brief Method to enable/disable the NACK optimizations on outgoing keyframes: when
+ * enabled, the NACK buffer for a PeerConnection is cleaned any time Janus sends a
+ * keyframe, as any missing packet won't be needed since the keyframe will allow the
+ * media recipient to still restore a complete image anyway. Since this optimization
+ * seems to cause some issues in some edge cases, it's disabled by default.
+ * @param[in] optimize Whether the opzimization should be enabled or disabled */
+void janus_set_nack_optimizations_enabled(gboolean optimize);
+/*! \brief Method to check whether NACK optimizations on outgoing keyframes are enabled or not
+ * @returns optimize if optimizations are enabled, false otherwise */
+gboolean janus_is_nack_optimizations_enabled(void);
 /*! \brief Method to modify the no-media event timer (i.e., the number of seconds where no media arrives before Janus notifies this)
  * @param[in] timer The new timer value, in seconds */
 void janus_set_no_media_timer(uint timer);
@@ -382,6 +392,8 @@ struct janus_ice_stream {
 	guint32 video_ssrc_peer_rtx[3], video_ssrc_peer_rtx_new[3], video_ssrc_peer_rtx_orig[3];
 	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
 	char *rid[3];
+	/*! \brief Whether the order of the rids in the SDP will be h-m-l (TRUE) or l-m-h (FALSE) */
+	gboolean rids_hml;
 	/*! \brief Whether we should use the legacy simulcast syntax (a=simulcast:recv rid=..) or the proper one (a=simulcast:recv ..) */
 	gboolean legacy_rid;
 	/*! \brief RTP switching context(s) in case of renegotiations (audio+video and/or simulcast) */

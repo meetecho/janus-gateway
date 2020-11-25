@@ -53,6 +53,8 @@ var textroom = null;
 var opaqueId = "textroomtest-"+Janus.randomString(12);
 
 var myroom = 1234;	// Demo room
+if(getQueryStringValue("room") !== "")
+	myroom = parseInt(getQueryStringValue("room"));
 var myusername = null;
 var myid = null;
 var participants = {}
@@ -407,4 +409,12 @@ function randomString(len, charSet) {
     	randomString += charSet.substring(randomPoz,randomPoz+1);
     }
     return randomString;
+}
+
+// Helper to parse query string
+function getQueryStringValue(name) {
+	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+		results = regex.exec(location.search);
+	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }

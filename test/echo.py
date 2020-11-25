@@ -173,6 +173,7 @@ async def run(pc, player, session, bitrate=512000, record=False):
     @pc.on('track')
     def on_track(track):
         logger.info(f'Track {track.kind} received')
+
         @track.on('ended')
         def on_ended():
             print(f'Track {track.kind} ended')
@@ -198,6 +199,35 @@ async def run(pc, player, session, bitrate=512000, record=False):
 
     # attach to echotest plugin
     plugin = await session.attach('janus.plugin.echotest')
+
+    # create data-channel
+    channel = pc.createDataChannel('JanusDataChannel')
+    logger.info(f'DataChannel ({channel.label}) created')
+    dc_probe_message = 'echo-ping'
+    dc_open = False
+    dc_probe_received = False
+
+    @channel.on('open')
+    def on_open():
+        nonlocal dc_open
+        dc_open = True
+        logger.info(f'DataChannel ({channel.label}) open')
+        logger.info(
+            f'DataChannel ({channel.label}) sending: {dc_probe_message}')
+        channel.send(dc_probe_message)
+
+    @channel.on('close')
+    def on_close():
+        nonlocal dc_open
+        dc_open = False
+        logger.info(f'DataChannel ({channel.label}) closed')
+
+    @channel.on('message')
+    def on_message(message):
+        logger.info(f'DataChannel ({channel.label}) received: {message}')
+        if dc_probe_message in message:
+            nonlocal dc_probe_received
+            dc_probe_received = True
 
     # send offer
     await pc.setLocalDescription(await pc.createOffer())
@@ -246,6 +276,9 @@ async def run(pc, player, session, bitrate=512000, record=False):
     # Janus echoed the sent packets
     assert rtp['audio']['out'] >= rtp['audio']['in'] > 0
     assert rtp['video']['out'] >= rtp['video']['in'] > 0
+    # DataChannels worked
+    assert dc_open
+    assert dc_probe_received
 
     logger.info('Ending the test now')
 

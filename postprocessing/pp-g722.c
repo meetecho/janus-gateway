@@ -194,6 +194,7 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/8000);
 		/* Decode and save to wav */
 		AVPacket avpacket;
+		av_init_packet(&avpacket);
 		avpacket.data = (uint8_t *)buffer;
 		avpacket.size = bytes;
 		int err = 0;
