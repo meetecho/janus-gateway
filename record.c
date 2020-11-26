@@ -115,7 +115,7 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 	rc->file = NULL;
 	rc->codec = g_strdup(codec);
 	rc->fmtp = fmtp ? g_strdup(fmtp) : NULL;
-	rc->extmaps = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+	rc->extmaps = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, g_free);
 	rc->created = janus_get_real_time();
 	const char *rec_dir = NULL;
 	const char *rec_file = NULL;
@@ -307,10 +307,13 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		if(recorder->extmaps) {
 			json_t *ext_json = json_object();
 			GHashTableIter iter;
-			char *ext_id, *ext_info;
+			uint32_t *ext_id;
+			char ext_id_str[3], *ext_info;
 			g_hash_table_iter_init(&iter, recorder->extmaps);
-			while(g_hash_table_iter_next(&iter, (gpointer *)&ext_id, (gpointer *)&ext_info))
-				json_object_set_new(ext_json, ext_id, json_string(ext_info));
+			while(g_hash_table_iter_next(&iter, (gpointer *)&ext_id, (gpointer *)&ext_info)) {
+				snprintf(ext_id_str, 3, "%u", *ext_id);
+				json_object_set_new(ext_json, ext_id_str, json_string(ext_info));
+			}
 			json_object_set(info, "x", ext_json);
 		}
 		gchar *info_text = json_dumps(info, JSON_PRESERVE_ORDER);

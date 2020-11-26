@@ -73,6 +73,15 @@ guint64 janus_random_uint64(void);
  * @returns A random UUID string, which must be deallocated with \c g_free */
 char *janus_random_uuid(void);
 
+/*! \brief Helper to generate an allocated copy of a uint32_t number
+ * @note While apparently silly, this is needed in order to make sure uint32_t values
+ * used as keys in GHashTable operations are not lost: using temporary uint32_t numbers
+ * in a g_hash_table_insert, for instance, will cause the key to contain garbage as
+ * soon as the temporary variable is lost, and all opererations on the key to fail
+ * @param num The uint32_t number to duplicate
+ * @returns A pointer to a uint32_t number, if successful, NULL otherwise */
+uint32_t *janus_uint32_dup(uint32_t num);
+
 /*! \brief Helper to generate an allocated copy of a guint64 number
  * @note While apparently silly, this is needed in order to make sure guint64 values
  * used as keys in GHashTable operations are not lost: using temporary guint64 numbers

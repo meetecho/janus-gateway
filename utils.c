@@ -129,6 +129,12 @@ char *janus_random_uuid(void) {
 #endif
 }
 
+uint32_t *janus_uint32_dup(uint32_t num) {
+	uint32_t *numdup = g_malloc(sizeof(uint32_t));
+	*numdup = num;
+	return numdup;
+}
+
 guint64 *janus_uint64_dup(guint64 num) {
 	guint64 *numdup = g_malloc(sizeof(guint64));
 	*numdup = num;
