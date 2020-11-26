@@ -3703,6 +3703,7 @@ static void *janus_sip_handler(void *data) {
 				SOATAG_USER_SDP_STR(sdp),
 				SOATAG_RTP_SELECT(SOA_RTP_SELECT_COMMON),
 				NUTAG_AUTOANSWER(0),
+				NUTAG_AUTOACK(FALSE),
 				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				TAG_END());
 			g_free(sdp);
