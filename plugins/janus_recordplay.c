@@ -526,7 +526,6 @@ static void janus_recordplay_regenerate_extmaps(janus_sdp_mline *media, GHashTab
 			JANUS_LOG(LOG_WARN, "Extmap has null fields\n");
 			continue;
 		}
-		JANUS_LOG(LOG_INFO, " > %d:%s\n", *ext_id, ext_info);
 		g_hash_table_insert(id2info, ext_id, ext_info);
 		g_hash_table_insert(info2id, ext_info, ext_id);
 	}
