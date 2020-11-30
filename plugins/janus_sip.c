@@ -4129,10 +4129,15 @@ static void *janus_sip_handler(void *data) {
 						m->direction = session->media.pre_hold_video_dir;
 					}
 				}
+				/* Check if the INVITE needs to be enriched with custom headers */
+				char custom_headers[2048];
+				janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
+				
 				/* Send the re-INVITE */
 				char *sdp = janus_sdp_write(session->sdp);
 				nua_invite(session->stack->s_nh_i,
 					SOATAG_USER_SDP_STR(sdp),
+					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 					TAG_END());
 				g_free(sdp);
 			}
