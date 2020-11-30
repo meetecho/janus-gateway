@@ -490,7 +490,8 @@ function newRemoteFeed(id, display) {
 				if($('#screenvideo').length === 0) {
 					// No remote video yet
 					$('#screencapture').append('<video class="rounded centered" id="waitingvideo" width="100%" height="100%" />');
-					$('#screencapture').append('<video class="rounded centered hide" id="screenvideo" width="100%" height="100%" autoplay playsinline/>');
+					$('#screencapture').append('<video class="rounded centered hide" id="screenvideo" width="100%" height="100%" playsinline/>');
+					$('#screenvideo').get(0).volume = 0;
 					// Show the video, hide the spinner and show the resolution when we get a playing event
 					$("#screenvideo").bind("playing", function () {
 						$('#waitingvideo').remove();
@@ -501,6 +502,8 @@ function newRemoteFeed(id, display) {
 					});
 				}
 				Janus.attachMediaStream($('#screenvideo').get(0), stream);
+				$("#screenvideo").get(0).play();
+				$("#screenvideo").get(0).volume = 1;
 			},
 			oncleanup: function() {
 				Janus.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
