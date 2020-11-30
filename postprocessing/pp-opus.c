@@ -59,7 +59,12 @@ int janus_pp_opus_create(char *destination, gboolean enable_opus_fec, char *meta
 	/* Write stream headers */
 	ogg_packet *op = op_opushead();
 	ogg_stream_packetin(stream, op);
+#ifdef HAVE_LIBOPUS
 	use_fec = enable_opus_fec;
+#else
+	if(enable_opus_fec)
+		JANUS_LOG(LOG_WARN, "libopus not found, opus fec will not be used\n");
+#endif
 	op_free(op);
 	op = op_opustags(metadata);
 	ogg_stream_packetin(stream, op);
@@ -77,6 +82,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	uint64_t pos = 0, nextPos = 0;
 	uint8_t *buffer = g_malloc0(1500);
 
+#ifdef HAVE_LIBOPUS
 	int error = 0;
 	OpusDecoder *decoder = NULL;
 	OpusEncoder *encoder = NULL;
@@ -87,6 +93,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		pcm_data = g_malloc0(BUFFER_SAMPLES*sizeof(opus_int16));
 		out_buffer = g_malloc0(OPUS_SAMPLES*sizeof(opus_int16));
 	}
+#endif
 
 	while(*working && tmp != NULL) {
 		/* Discontinuity detected */
@@ -116,7 +123,9 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				}
 				ogg_flush();
 				g_free(op);
-			} else {
+			}
+#ifdef HAVE_LIBOPUS
+			else {
 				/* Using FEC, try to recover missing packets */
 				len = 0;
 				uint16_t gap_count = (tmp->ts - tmp->prev->ts)/48/20 - 1;
@@ -157,6 +166,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					ogg_flush();
 				}
 			}
+#endif
 		}
 		if(tmp->drop) {
 			/* We marked this packet as one to drop, before */
@@ -189,6 +199,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			last_seq = tmp->seq;
 			steps++;
 		}
+#ifdef HAVE_LIBOPUS
 		if(use_fec) {
 			memset(pcm_data, 0, BUFFER_SAMPLES*2);
 			int decoded_samples = opus_decode(decoder, buffer, bytes, pcm_data, BUFFER_SAMPLES, 0);
@@ -197,6 +208,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				continue;
 			}
 		}
+#endif
 		ogg_packet *op = op_from_pkt((const unsigned char *)buffer, bytes);
 		pos = (tmp->ts - list->ts) / 48 / 20 + 1;
 		JANUS_LOG(LOG_VERB, "pos: %06"SCNu64", writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",

@@ -13,7 +13,9 @@
 #define JANUS_PP_OPUS
 
 #include <stdio.h>
+#ifdef HAVE_LIBOPUS
 #include <opus/opus.h>
+#endif
 
 #include "pp-rtp.h"
 

@@ -770,6 +770,7 @@ AC_SUBST([SOFIA_LIBS])
 PKG_CHECK_MODULES([OPUS],
                   [opus],
                   [
+                    AC_DEFINE(HAVE_LIBOPUS)
                     AS_IF([test "x$enable_plugin_audiobridge" = "xmaybe"],
                           [enable_plugin_audiobridge=yes])
                   ],
