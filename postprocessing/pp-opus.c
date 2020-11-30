@@ -137,7 +137,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		decoder = opus_decoder_create(sampling_rate, channels, &error);
 		encoder = opus_encoder_create(sampling_rate, channels, OPUS_APPLICATION_VOIP, &error);
 		max_frame_size = (sampling_rate*120/1000);
-		JANUS_LOG(LOG_INFO, "Detcted opus stream parameters (channels=%d, sampling=%d)\n", channels, sampling_rate);
+		JANUS_LOG(LOG_INFO, "Detected opus stream parameters (channels=%d, sampling=%d)\n", channels, sampling_rate);
 		buflen = max_frame_size*channels*sizeof(opus_int16);
 		pcm_data = g_malloc0(buflen);
 		out_buffer = g_malloc0(1500);
