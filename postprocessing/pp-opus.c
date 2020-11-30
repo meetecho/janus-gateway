@@ -146,8 +146,8 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 #endif
 
 	while(*working && tmp != NULL) {
-		/* Discontinuity detected */
 		if(tmp->prev != NULL && ((tmp->ts - tmp->prev->ts)/48/20 > 1)) {
+			/* Discontinuity detected */
 			JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
 				tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000);
 
@@ -273,10 +273,12 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		tmp = tmp->next;
 	}
 
+#ifdef HAVE_LIBOPUS
 	g_free(encoder);
 	g_free(decoder);
 	g_free(pcm_data);
 	g_free(out_buffer);
+#endif
 	g_free(buffer);
 	return 0;
 }
