@@ -26,9 +26,6 @@
 #include "../debug.h"
 #include "../version.h"
 
-#define	OPUS_SAMPLES	960
-#define	BUFFER_SAMPLES	OPUS_SAMPLES*6
-
 /* OGG/Opus helpers */
 FILE *ogg_file = NULL;
 ogg_stream_state *stream = NULL;
@@ -87,11 +84,64 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	OpusDecoder *decoder = NULL;
 	OpusEncoder *encoder = NULL;
 	opus_int16 *pcm_data = NULL, *out_buffer = NULL;
+	int max_frame_size = 120;
+	int channels = 1;
+	int sampling_rate = 8000;
+	gsize buflen;
 	if(use_fec) {
-		decoder = opus_decoder_create(48000, 1, &error);
-		encoder = opus_encoder_create(48000, 1, OPUS_APPLICATION_VOIP, &error);
-		pcm_data = g_malloc0(BUFFER_SAMPLES*sizeof(opus_int16));
-		out_buffer = g_malloc0(OPUS_SAMPLES*sizeof(opus_int16));
+		/* Check content paramters (mono/stereo, bandwidth) */
+		while(*working && tmp != NULL) {
+			len = 0;
+			/* RTP payload */
+			offset = tmp->offset+12+tmp->skip;
+			fseek(file, offset, SEEK_SET);
+			len = tmp->len-12-tmp->skip;
+			if(len < 1) {
+				tmp = tmp->next;
+				continue;
+			}
+			bytes = fread(buffer, sizeof(char), len, file);
+			if(bytes != len) {
+				JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+				tmp = tmp->next;
+				continue;
+			}
+			if(channels < 2)
+				channels = opus_packet_get_nb_channels(buffer);
+			if(sampling_rate < 48000) {
+				int bw = opus_packet_get_bandwidth(buffer);
+				switch(bw) {
+					case OPUS_BANDWIDTH_NARROWBAND:
+						bw = 4000;
+						break;
+					case OPUS_BANDWIDTH_MEDIUMBAND:
+						bw = 6000;
+						break;
+					case OPUS_BANDWIDTH_WIDEBAND:
+						bw = 8000;
+						break;
+					case OPUS_BANDWIDTH_SUPERWIDEBAND:
+						bw = 12000;
+						break;
+					case OPUS_BANDWIDTH_FULLBAND:
+						bw = 24000;
+						break;
+					default:
+						bw = 0;
+				}
+				if(sampling_rate < 2*bw)
+					sampling_rate = 2*bw;
+			}
+			tmp = tmp->next;
+		}
+		decoder = opus_decoder_create(sampling_rate, channels, &error);
+		encoder = opus_encoder_create(sampling_rate, channels, OPUS_APPLICATION_VOIP, &error);
+		max_frame_size = (sampling_rate*120/1000);
+		JANUS_LOG(LOG_INFO, "Detcted opus stream parameters (channels=%d, sampling=%d)\n", channels, sampling_rate);
+		buflen = max_frame_size*channels*sizeof(opus_int16);
+		pcm_data = g_malloc0(buflen);
+		out_buffer = g_malloc0(1500);
+		tmp = list;
 	}
 #endif
 
@@ -147,19 +197,21 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				JANUS_LOG(LOG_WARN, "[FEC] pos: %06"SCNu64", recovering packets (count=%d)\n", pos, gap_count);
 				for(uint16_t i=1; i<=gap_count ; i++) {
 					pos = (tmp->prev->ts - list->ts) / 48 / 20 + i + 1;
-					memset(pcm_data, 0, BUFFER_SAMPLES*2);
-					memset(out_buffer, 0, OPUS_SAMPLES*2);
+					memset(pcm_data, 0, buflen);
+					memset(out_buffer, 0, 1500);
+					int32_t samples = 0;
+					opus_decoder_ctl(decoder, OPUS_GET_LAST_PACKET_DURATION(&samples));
 					/* Attempt to decode with in-band FEC from next packet */
-					int decoded_samples = opus_decode(decoder, i == gap_count ? buffer : NULL, bytes, pcm_data, BUFFER_SAMPLES, 1);
+					int decoded_samples = opus_decode(decoder, i == gap_count ? buffer : NULL, bytes, pcm_data, samples, 1);
 					if(decoded_samples < 0) {
 						JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", decoded_samples, opus_strerror(decoded_samples));
 						continue;
 					}
-					int encoded_bytes = opus_encode(encoder, pcm_data, OPUS_SAMPLES, (unsigned char *)out_buffer, 1500-12);
+					int encoded_bytes = opus_encode(encoder, pcm_data, samples, (unsigned char *)out_buffer, 1500-12);
 					ogg_packet *op = op_from_pkt((const unsigned char *)out_buffer, encoded_bytes);
 					JANUS_LOG(LOG_VERB, "pos: %06"SCNu64", writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
-							pos, encoded_bytes, 0, tmp->prev->seq+i, (uint16_t)1, tmp->prev->ts+(i*OPUS_SAMPLES), ((tmp->prev->ts+(i*OPUS_SAMPLES))-list->ts)/48000);
-					op->granulepos = OPUS_SAMPLES*(pos); /* FIXME: get this from the toc byte */
+							pos, encoded_bytes, 0, tmp->prev->seq+i, (uint16_t)1, tmp->prev->ts+(i*960), ((tmp->prev->ts+(i*960))-list->ts)/48000);
+					op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
 					ogg_stream_packetin(stream, op);
 					g_free(op);
 					ogg_write();
@@ -201,8 +253,8 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		}
 #ifdef HAVE_LIBOPUS
 		if(use_fec) {
-			memset(pcm_data, 0, BUFFER_SAMPLES*2);
-			int decoded_samples = opus_decode(decoder, buffer, bytes, pcm_data, BUFFER_SAMPLES, 0);
+			memset(pcm_data, 0, buflen);
+			int decoded_samples = opus_decode(decoder, buffer, bytes, pcm_data, max_frame_size, 0);
 			if(decoded_samples < 0) {
 				JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", decoded_samples, opus_strerror(decoded_samples));
 				continue;
