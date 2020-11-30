@@ -166,19 +166,39 @@ $(document).ready(function() {
 											if(role === "publisher") {
 												// This is our session, publish our stream
 												Janus.debug("Negotiating WebRTC stream for our screen (capture " + capture + ")");
-												screentest.createOffer(
-													{
-														media: { video: capture, audioSend: true, videoRecv: false},	// Screen sharing Publishers are sendonly
-														success: function(jsep) {
-															Janus.debug("Got publisher SDP!", jsep);
-															var publish = { request: "configure", audio: true, video: true };
-															screentest.send({ message: publish, jsep: jsep });
-														},
-														error: function(error) {
-															Janus.error("WebRTC error:", error);
-															bootbox.alert("WebRTC error... " + error.message);
-														}
+												// Safari expects a user gesture to share the screen: see issue #2455
+												if(Janus.webRTCAdapter.browserDetails.browser === "safari") {
+													bootbox.alert("Safari requires a user gesture before the screen can be shared: close this dialog to do that. See issue #2455 for more details", function() {
+														screentest.createOffer(
+															{
+																media: { video: capture, audioSend: true, videoRecv: false},	// Screen sharing Publishers are sendonly
+																success: function(jsep) {
+																	Janus.debug("Got publisher SDP!", jsep);
+																	var publish = { request: "configure", audio: true, video: true };
+																	screentest.send({ message: publish, jsep: jsep });
+																},
+																error: function(error) {
+																	Janus.error("WebRTC error:", error);
+																	bootbox.alert("WebRTC error... " + error.message);
+																}
+															});
 													});
+												} else {
+													// Other browsers should be fine, we try to call getDisplayMedia directly
+													screentest.createOffer(
+														{
+															media: { video: capture, audioSend: true, videoRecv: false},	// Screen sharing Publishers are sendonly
+															success: function(jsep) {
+																Janus.debug("Got publisher SDP!", jsep);
+																var publish = { request: "configure", audio: true, video: true };
+																screentest.send({ message: publish, jsep: jsep });
+															},
+															error: function(error) {
+																Janus.error("WebRTC error:", error);
+																bootbox.alert("WebRTC error... " + error.message);
+															}
+														});
+												}
 											} else {
 												// We're just watching a session, any feed to attach to?
 												if(msg["publishers"]) {
