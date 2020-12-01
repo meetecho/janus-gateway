@@ -6440,6 +6440,7 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 	}
 	if(mtype == JANUS_STREAMING_MEDIA_VIDEO) {
 		if(simulcast) {
+			/*
 			if(port2 > 0) {
 				fd[1] = janus_streaming_create_fd(port2, mcast ? inet_addr(mcast) : INADDR_ANY, iface,
 					NULL, 0, "Video", "video", name, FALSE);
@@ -6468,6 +6469,35 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 				}
 				port3 = janus_streaming_get_fd_port(fd[2]);
 			}
+			*/
+			
+			fd[1] = janus_streaming_create_fd(port2, mcast ? inet_addr(mcast) : INADDR_ANY, iface,
+                                NULL, 0, "Video", "video", name, FALSE);
+                        if(fd[1] < 0) {
+                                JANUS_LOG(LOG_ERR, "[%s] Can't bind to port %d for video (2nd port)...\n", name, port2);
+                                if(fd[0] > -1)
+                                	close(fd[0]);
+                                if(rtcp_fd > -1)
+                                	close(rtcp_fd);
+                                return NULL;
+                        }
+                        port2 = janus_streaming_get_fd_port(fd[1]);
+
+
+                        fd[2] = janus_streaming_create_fd(port3, mcast ? inet_addr(mcast) : INADDR_ANY, iface,
+                                NULL, 0, "Video", "video", name, FALSE);
+                        if(fd[2] < 0) {
+                        	JANUS_LOG(LOG_ERR, "[%s] Can't bind to port %d for video (3rd port)...\n", name, port3);
+                                if(fd[0] > -1)
+                                	close(fd[0]);
+                                if(rtcp_fd > -1)
+                                	close(rtcp_fd);
+                                if(fd[1] > -1)
+                                	close(fd[1]);
+                                return NULL;
+                        }
+                        port3 = janus_streaming_get_fd_port(fd[2]);
+
 		}
 	}
 	/* Create the stream */
