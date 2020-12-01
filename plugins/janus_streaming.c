@@ -6439,35 +6439,32 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 		rtcpport = janus_streaming_get_fd_port(rtcp_fd);
 	}
 	if(mtype == JANUS_STREAMING_MEDIA_VIDEO) {
-		if(simulcast) {
-			
+		if(simulcast) {			
 			fd[1] = janus_streaming_create_fd(port2, mcast ? inet_addr(mcast) : INADDR_ANY, iface,
-                                NULL, 0, "Video", "video", name, FALSE);
-                        if(fd[1] < 0) {
-                                JANUS_LOG(LOG_ERR, "[%s] Can't bind to port %d for video (2nd port)...\n", name, port2);
-                                if(fd[0] > -1)
-                                	close(fd[0]);
-                                if(rtcp_fd > -1)
-                                	close(rtcp_fd);
-                                return NULL;
-                        }
-                        port2 = janus_streaming_get_fd_port(fd[1]);
+					NULL, 0, "Video", "video", name, FALSE);
+			if(fd[1] < 0) {
+				JANUS_LOG(LOG_ERR, "[%s] Can't bind to port %d for video (2nd port)...\n", name, port2);
+				if(fd[0] > -1)
+					close(fd[0]);
+				if(rtcp_fd > -1)
+					close(rtcp_fd);
+				return NULL;
+			}
+			port2 = janus_streaming_get_fd_port(fd[1]);
 
-
-                        fd[2] = janus_streaming_create_fd(port3, mcast ? inet_addr(mcast) : INADDR_ANY, iface,
-                                NULL, 0, "Video", "video", name, FALSE);
-                        if(fd[2] < 0) {
-                        	JANUS_LOG(LOG_ERR, "[%s] Can't bind to port %d for video (3rd port)...\n", name, port3);
-                                if(fd[0] > -1)
-                                	close(fd[0]);
-                                if(rtcp_fd > -1)
-                                	close(rtcp_fd);
-                                if(fd[1] > -1)
-                                	close(fd[1]);
-                                return NULL;
-                        }
-                        port3 = janus_streaming_get_fd_port(fd[2]);
-
+			fd[2] = janus_streaming_create_fd(port3, mcast ? inet_addr(mcast) : INADDR_ANY, iface,
+					NULL, 0, "Video", "video", name, FALSE);
+			if(fd[2] < 0) {
+				JANUS_LOG(LOG_ERR, "[%s] Can't bind to port %d for video (3rd port)...\n", name, port3);
+				if(fd[0] > -1)
+					close(fd[0]);
+				if(rtcp_fd > -1)
+					close(rtcp_fd);
+				if(fd[1] > -1)
+					close(fd[1]);
+				return NULL;
+			}
+			port3 = janus_streaming_get_fd_port(fd[2]);
 		}
 	}
 	/* Create the stream */
@@ -8981,10 +8978,10 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				gboolean relay = janus_rtp_simulcasting_context_process_rtp(&s->sim_context,
 					(char *)packet->data, packet->length, packet->ssrc, NULL, packet->codec, &s->context);
 				if(s->sim_context.need_pli) {
-                                        /* Schedule a PLI */
-                                        JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
-                                        g_atomic_int_set(&stream->need_pli, 1);
-                                }
+					/* Schedule a PLI */
+					JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
+					g_atomic_int_set(&stream->need_pli, 1);
+				}
 
 				if(!relay) {
 					/* Did a lot of time pass before we could relay a packet? */
