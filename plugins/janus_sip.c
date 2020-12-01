@@ -354,7 +354,8 @@
 \verbatim
 {
 	"request" : "decline",
-	"code" : <SIP code to be sent, if not set, 486 is used; optional>"
+	"code" : <SIP code to be sent, if not set, 486 is used; optional>",
+ 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP request; optional>"
 }
 \endverbatim
  *
@@ -742,6 +743,7 @@ static struct janus_json_parameter accept_parameters[] = {
 };
 static struct janus_json_parameter decline_parameters[] = {
 	{"code", JANUS_JSON_INTEGER, 0},
+	{"headers", JSON_OBJECT, 0},
 	{"refer_id", JANUS_JSON_INTEGER, 0}
 };
 static struct janus_json_parameter transfer_parameters[] = {
@@ -3973,7 +3975,12 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_WARN, "Invalid SIP response code specified, using 486 to decline call\n");
 				response_code = 486;
 			}
-			nua_respond(session->stack->s_nh_i, response_code, sip_status_phrase(response_code), TAG_END());
+			/* Check if the response needs to be enriched with custom headers */
+			char custom_headers[2048];
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
+			nua_respond(session->stack->s_nh_i, response_code, sip_status_phrase(response_code),
+				    TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
+				    TAG_END());
 			janus_mutex_lock(&session->mutex);
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
