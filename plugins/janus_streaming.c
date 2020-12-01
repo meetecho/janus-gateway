@@ -6451,7 +6451,6 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 				return NULL;
 			}
 			port2 = janus_streaming_get_fd_port(fd[1]);
-
 			fd[2] = janus_streaming_create_fd(port3, mcast ? inet_addr(mcast) : INADDR_ANY, iface,
 				NULL, 0, "Video", "video", name, FALSE);
 			if(fd[2] < 0) {
