@@ -59,6 +59,8 @@ For mp4 files write the MOOV atom at the head of the file  (default=off)
 .TP
 .BR \-S ", " \-\-audioskew=milliseconds
 Time threshold to trigger an audio skew compensation, disabled if 0 (default=0)
+.BR \-C ", " \-\-silence-distance=count
+RTP packets distance used to detect RTP silence suppression, disabled if 0 (default=100)
 .SH EXAMPLES
 \fBjanus-pp-rec \-\-header rec1234.mjr\fR \- Parse the recordings header (shows metadata info)
 .TP

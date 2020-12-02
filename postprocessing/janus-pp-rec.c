@@ -73,6 +73,8 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
                                   of the file  (default=off)
   -S, --audioskew=milliseconds  Time threshold to trigger an audio skew
                                   compensation, disabled if 0 (default=0)
+  -C, --silence-distance=count  RTP packets distance used to detect RTP silence
+								  suppression, disabled if 0 (default=100)
 \endverbatim
  *
  * \note This utility does not do any form of transcoding. It just
@@ -132,6 +134,8 @@ static int ignore_first_packets = 0;
 #define DEFAULT_AUDIO_SKEW_TH 0
 static int audioskew_th = DEFAULT_AUDIO_SKEW_TH;
 
+#define DEFAULT_SILENCE_DISTANCE 100
+static int silence_distance = DEFAULT_SILENCE_DISTANCE;
 
 /* Signal handler */
 static void janus_pp_handle_signal(int signum) {
@@ -223,6 +227,11 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			audioskew_th = val;
 	}
+	if(args_info.silence_distance_given || (g_getenv("JANUS_PPREC_SILENCE_DISTANCE") != NULL)) {
+		int val = args_info.silence_distance_given ? args_info.silence_distance_arg : atoi(g_getenv("JANUS_PPREC_SILENCE_DISTANCE"));
+		if(val >= 0)
+			silence_distance = val;
+	}
 
 	/* Evaluate arguments to find source and target */
 	char *source = NULL, *destination = NULL, *setting = NULL;
@@ -244,7 +253,8 @@ int main(int argc, char *argv[])
 				(strcmp(setting, "-v")) && (strcmp(setting, "--videoorient-ext")) &&
 				(strcmp(setting, "-d")) && (strcmp(setting, "--debug-level")) &&
 				(strcmp(setting, "-f")) && (strcmp(setting, "--format")) &&
-				(strcmp(setting, "-S")) && (strcmp(setting, "--audioskew"))
+				(strcmp(setting, "-S")) && (strcmp(setting, "--audioskew")) &&
+				(strcmp(setting, "-C")) && (strcmp(setting, "--silence-distance"))
 		)) {
 			if(source == NULL)
 				source = argv[i];
@@ -274,6 +284,8 @@ int main(int argc, char *argv[])
 			JANUS_LOG(LOG_INFO, "Audio level extension ID: %d\n", audio_level_extmap_id);
 		if(video_orient_extmap_id > 0)
 			JANUS_LOG(LOG_INFO, "Video orientation extension ID: %d\n", video_orient_extmap_id);
+		if(silence_distance > 0)
+			JANUS_LOG(LOG_INFO, "RTP silence suppression distance: %d\n", silence_distance);
 		JANUS_LOG(LOG_INFO, "\n");
 		if(source != NULL)
 			JANUS_LOG(LOG_INFO, "Source file: %s\n", source);
@@ -808,7 +820,7 @@ int main(int argc, char *argv[])
 			if(!video && !data && rtp->markerbit == 1) {
 				/* Try to detect RTP silence suppression */
 				int32_t seq_distance = abs((int16_t)(p->seq - highest_seq));
-				if(seq_distance < 100) {
+				if(seq_distance < silence_distance) {
 					/* Consider 20 ms audio packets */
 					int32_t inter_rtp_ts = (p->pt != 0 && p->pt != 8 && p->pt != 9) ? 960 : 160;
 					int32_t expected_rtp_distance = inter_rtp_ts * seq_distance;
