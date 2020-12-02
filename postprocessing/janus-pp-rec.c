@@ -616,6 +616,7 @@ int main(int argc, char *argv[])
 	}
 	/* Now let's parse the frames and order them */
 	uint32_t pkt_ts = 0, highest_rtp_ts = 0;
+	uint16_t highest_seq = 0;
 	/* Start from 1 to take into account late packets */
 	int times_resetted = 1;
 	uint64_t max32 = UINT32_MAX;
@@ -801,8 +802,29 @@ int main(int argc, char *argv[])
 			/* Simple enough... */
 			started = TRUE;
 			highest_rtp_ts = rtp_ts;
+			highest_seq = p->seq;
 			p->ts = (times_resetted*max32)+rtp_ts;
 		} else {
+			if(!video && !data && rtp->markerbit == 1) {
+				/* Try to detect RTP silence suppression */
+				int32_t seq_distance = abs((int16_t)(p->seq - highest_seq));
+				if(seq_distance < 100) {
+					/* Consider 20 ms audio packets */
+					int32_t inter_rtp_ts = (p->pt != 0 && p->pt != 8 && p->pt != 9) ? 960 : 160;
+					int32_t expected_rtp_distance = inter_rtp_ts * seq_distance;
+					int32_t rtp_distance = abs((int32_t)(rtp_ts - highest_rtp_ts));
+					if(rtp_distance > 10 * expected_rtp_distance) {
+						/* This is a close packet with not coherent RTP ts -> silence suppression */
+						JANUS_LOG(LOG_WARN, "Dropping audio RTP silence suppression (seq_distance=%d, rtp_distance=%d)\n", seq_distance, rtp_distance);
+						/* Skip data */
+						offset += len;
+						count++;
+						g_free(p);
+						continue;
+					}
+				}
+			}
+
 			/* Is the new timestamp smaller than the next one, and if so, is it a timestamp reset or simply out of order? */
 			gboolean pre_reset_pkt = FALSE;
 
@@ -814,6 +836,7 @@ int main(int argc, char *argv[])
 					times_resetted++;
 				}
 				highest_rtp_ts = rtp_ts;
+				highest_seq = p->seq;
 			}
 
 			/* Out-of-order packet */
