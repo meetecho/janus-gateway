@@ -147,7 +147,7 @@ $(document).ready(function() {
 												recordplay.createAnswer(
 													{
 														jsep: jsep,
-														media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
+														media: { audioSend: false, videoSend: false, data: true },	// We want recvonly audio/video
 														success: function(jsep) {
 															Janus.debug("Got SDP!", jsep);
 															var body = { request: "start" };
@@ -313,6 +313,20 @@ $(document).ready(function() {
 										$('#videobox .no-video-container').remove();
 										$('#thevideo').removeClass('hide').show();
 									}
+								},
+								ondataopen: function(data) {
+									Janus.log("The DataChannel is available!");
+									$('#waitingvideo').remove();
+									$('#videobox').append(
+										'<input class="form-control" type="text" id="datarecv" disabled></input>'
+									);
+									if(spinner)
+										spinner.stop();
+									spinner = null;
+								},
+								ondata: function(data) {
+									Janus.debug("We got data from the DataChannel!", data);
+									$('#datarecv').val(data);
 								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");

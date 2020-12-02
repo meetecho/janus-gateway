@@ -4000,7 +4000,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			}
 			if(data) {
 				const char *datafile = json_string_value(data);
-				drc = janus_recorder_create(NULL, "text", (char *)datafile);
+				drc = janus_recorder_create(NULL, source->textdata ? "text" : "bin", (char *)datafile);
 				if(drc == NULL) {
 					if(arc != NULL) {
 						janus_recorder_close(arc);
