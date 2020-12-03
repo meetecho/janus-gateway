@@ -319,9 +319,6 @@ $(document).ready(function() {
 									$('#videobox').append(
 										'<input class="form-control" type="text" id="datarecv" disabled></input>'
 									);
-									if(spinner)
-										spinner.stop();
-									spinner = null;
 								},
 								ondata: function(data) {
 									Janus.debug("We got data from the DataChannel!", data);
