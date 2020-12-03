@@ -701,7 +701,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			admin_ws_path = g_strdup("/admin");
 		}
 		/* Should we set the debug flag in libmicrohttpd? */
-		item = janus_config_get(config, config_general, janus_config_type_item, "http_lib_debug");
+		item = janus_config_get(config, config_general, janus_config_type_item, "mhd_debug");
 		if(item && item->value && janus_is_true(item->value))
 			mhd_debug_flag = MHD_USE_DEBUG;
 
