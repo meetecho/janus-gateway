@@ -261,7 +261,6 @@
 
 #include <dirent.h>
 #include <arpa/inet.h>
-#include <netinet/udp.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <jansson.h>
@@ -410,7 +409,7 @@ typedef struct janus_recordplay_recording {
 	char *vfmtp;				/* Video fmtp, if any */
 	int video_pt;				/* Payload types to use for audio when playing recordings */
 	char *drc_file;				/* Data file name */
-	gboolean textdata;			/* Data format is text */
+	gboolean textdata;			/* Whether data format is text */
 	char *offer;				/* The SDP offer that will be sent to watchers */
 	gboolean e2ee;				/* Whether media in the recording is encrypted, e.g., using Insertable Streams */
 	GList *viewers;				/* List of users watching this recording */
@@ -508,8 +507,6 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 /* To make things easier, we use static payload types for viewers (unless it's for G.711 or G.722) */
 #define AUDIO_PT		111
 #define VIDEO_PT		100
-
-#define UDPHDR_SIZE		8
 
 /* Helper method to check which codec was used in a specific recording (and if it's end-to-end encrypted) */
 static const char *janus_recordplay_parse_codec(const char *dir, const char *filename, char *fmtp, size_t fmtplen, gboolean *e2ee) {
@@ -637,7 +634,7 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 				const char *c = json_string_value(codec);
 				if (data) {
 					/* Found! */
-					c = !strcasecmp(c, "text")? "text" : "bin";
+					c = !strcasecmp(c, "text") ? "text" : "binary";
 					json_decref(info);
 					fclose(file);
 					return c;					
@@ -2199,8 +2196,10 @@ void janus_recordplay_update_recordings_list(void) {
 			char *ext = strstr(rec->drc_file, ".mjr");
 			if(ext != NULL)
 				*ext = '\0';
-			rec->textdata = !strcasecmp("text", janus_recordplay_parse_codec(recordings_path,
-				rec->drc_file, NULL, sizeof(NULL), NULL));
+			const char *textcodec = janus_recordplay_parse_codec(recordings_path,
+				rec->drc_file, NULL, sizeof(NULL), NULL);
+			if (textcodec)
+				rec->textdata = !strcasecmp("text", textcodec);
 		}
 		rec->audio_pt = AUDIO_PT;
 		if(rec->acodec != JANUS_AUDIOCODEC_NONE) {
@@ -2388,7 +2387,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				}
 				w_time = json_integer_value(created);
 				/* Summary */
-				JANUS_LOG(LOG_VERB, "This is %s recording:\n", video ? "a video" : audio ? "an audio" : "a data");
+				JANUS_LOG(LOG_VERB, "This is %s recording:\n", video ? "a video" : (audio ? "an audio" : "a data"));
 				JANUS_LOG(LOG_VERB, "  -- Codec:   %s\n", c);
 				JANUS_LOG(LOG_VERB, "  -- Created: %"SCNi64"\n", c_time);
 				JANUS_LOG(LOG_VERB, "  -- Written: %"SCNi64"\n", w_time);
@@ -2558,6 +2557,8 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 	return list;
 }
 
+#define ntohll(x) ((1==ntohl(1)) ? (x) : ((gint64)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
+
 static void *janus_recordplay_playout_thread(void *sessiondata) {
 	janus_recordplay_session *session = (janus_recordplay_session *)sessiondata;
 	if(!session) {
@@ -2666,7 +2667,6 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 	if(audio_pt == 0 || audio_pt == 8 || audio_pt == 9)
 		akhz = 8;
 	int vkhz = 90;
-	int dhz = 1;
 
 	u_int64_t audio_start_ts = 0, video_start_ts = 0, data_start_ts = 0;
 
@@ -2822,10 +2822,24 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 			if(data == session->dframes) {
 				data_start_ts = data->ts;
 				/* First packet, send now */
-				/* Data recording stores raw UDP packets */
-				fseek(dfile, data->offset+UDPHDR_SIZE, SEEK_SET);
-				bytes = fread(buffer, sizeof(char), data->len-UDPHDR_SIZE, dfile);
-				if(bytes != data->len-UDPHDR_SIZE)
+				/* Data recording stores recording timestamp in first 8 bytes - it follows the frame ts monotonically.
+					invariant: when = data->ts + when(initial packet) */
+				gint64 when = 0;
+				int len = data->len;
+				int offset = data->offset;
+				fseek(dfile, data->offset, SEEK_SET);
+				bytes = fread(&when, sizeof(gint64), 1, dfile);
+				when = ntohll(when); // NOTE: not currently used - playback is interested in actual data packets.
+				offset += sizeof(gint64);
+				len -= sizeof(gint64);
+
+				/* Read data packet */
+				fseek(dfile, offset, SEEK_SET);
+				bytes = fread(buffer, sizeof(char), len, dfile);
+				JANUS_LOG(LOG_INFO, "Sending data packet at rtp_timestamp = %lu, timestamp = %lu, delta = %lu\n", (data->ts), when, when - data->ts);
+				fseek(dfile, offset, SEEK_SET);
+				bytes = fread(buffer, sizeof(char), len, dfile);
+				if(bytes != data->len)
 					JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, data->len);
 				/* Update payload type */
 				janus_plugin_data datapacket = {
@@ -2845,7 +2859,6 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 			} else {
 				/* What's the timestamp skip from the previous packet? */
 				ts_diff = data->ts - data->prev->ts;
-				ts_diff = (ts_diff)/dhz;
 				/* Check if it's time to send */
 				gettimeofday(&now, NULL);
 				d_s = now.tv_sec - dbefore.tv_sec;
@@ -2869,16 +2882,27 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 						dbefore.tv_sec += ts_diff/1000000;
 						dbefore.tv_usec -= ts_diff/1000000;
 					}
-					/* Send now */				
-					fseek(dfile, data->offset+UDPHDR_SIZE, SEEK_SET);
-					bytes = fread(buffer, sizeof(char), data->len-UDPHDR_SIZE, dfile);
-					if(bytes != data->len-UDPHDR_SIZE)
+					/* Send now */	
+					gint64 when = 0;
+					int len = data->len;
+					int offset = data->offset;
+					fseek(dfile, data->offset, SEEK_SET);
+					bytes = fread(&when, sizeof(gint64), 1, dfile);
+					when = ntohll(when);
+					offset += sizeof(gint64);
+					len -= sizeof(gint64);		
+
+					/* Read data packet */
+					fseek(dfile, offset, SEEK_SET);
+					bytes = fread(buffer, sizeof(char), len, dfile);
+					JANUS_LOG(LOG_VERB, "Sending data packet at timestamp = %lu, recorded timestamp = %lu\n", (data->ts), when);
+					if(bytes != len)
 						JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, data->len);
 					/* Update payload type */
 					janus_plugin_data datapacket = {
 						.label = NULL,
 						.protocol = NULL,
-						.binary = rec->textdata? FALSE : TRUE, 
+						.binary = rec->textdata ? FALSE : TRUE, 
 						.buffer = (char *)buffer,
 						.length = bytes
 					};
