@@ -2687,7 +2687,7 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 				int offset = data->offset;
 				fseek(dfile, data->offset, SEEK_SET);
 				bytes = fread(&when, sizeof(gint64), 1, dfile);
-				when = ntohll(when); // NOTE: not currently used - playback is interested in actual data packets.
+				when = ntohll(when); /* NOTE: not currently used - playback is interested in actual data packets. */
 				offset += sizeof(gint64);
 				len -= sizeof(gint64);
 
