@@ -635,6 +635,8 @@ int main(int argc, char *argv[])
 	int ignored = 0;
 	offset = 0;
 	gboolean started = FALSE;
+	/* DTX stuff */
+	gboolean dtx_on = FALSE;
 	/* Extensions, if any */
 	int audiolevel = 0, rotation = 0, last_rotation = -1, rotated = -1;
 	uint16_t rtp_header_len, rtp_read_n;
@@ -818,22 +820,30 @@ int main(int argc, char *argv[])
 			p->ts = (times_resetted*max32)+rtp_ts;
 		} else {
 			if(!video && !data && rtp->markerbit == 1) {
-				/* Try to detect RTP silence suppression */
-				int32_t seq_distance = abs((int16_t)(p->seq - highest_seq));
-				if(seq_distance < silence_distance) {
-					/* Consider 20 ms audio packets */
-					int32_t inter_rtp_ts = (p->pt != 0 && p->pt != 8 && p->pt != 9) ? 960 : 160;
-					int32_t expected_rtp_distance = inter_rtp_ts * seq_distance;
-					int32_t rtp_distance = abs((int32_t)(rtp_ts - highest_rtp_ts));
-					if(rtp_distance > 10 * expected_rtp_distance) {
-						/* This is a close packet with not coherent RTP ts -> silence suppression */
-						JANUS_LOG(LOG_WARN, "Dropping audio RTP silence suppression (seq_distance=%d, rtp_distance=%d)\n", seq_distance, rtp_distance);
-						/* Skip data */
-						offset += len;
-						count++;
-						g_free(p);
-						continue;
+				if(!dtx_on) {
+					/* Try to detect RTP silence suppression */
+					int32_t seq_distance = abs((int16_t)(p->seq - highest_seq));
+					if(seq_distance < silence_distance) {
+						/* Consider 20 ms audio packets */
+						int32_t inter_rtp_ts = opus ? 960 : 160;
+						int32_t expected_rtp_distance = inter_rtp_ts * seq_distance;
+						int32_t rtp_distance = abs((int32_t)(rtp_ts - highest_rtp_ts));
+						if(rtp_distance > 10 * expected_rtp_distance) {
+							/* Entering DTX mode (RTP will stop) */
+							dtx_on = TRUE;
+							/* This is a close packet with not coherent RTP ts -> silence suppression */
+							JANUS_LOG(LOG_WARN, "Dropping audio RTP silence suppression (seq_distance=%d, rtp_distance=%d)\n", seq_distance, rtp_distance);
+							/* Skip data */
+							offset += len;
+							count++;
+							g_free(p);
+							continue;
+						}
 					}
+				} else {
+					/* Leaving DTX mode (RTP started flowing again) */
+					dtx_on = FALSE;
+					JANUS_LOG(LOG_WARN, "Leaving RTP silence suppression (seq=%"SCNu16", rtp_ts=%"SCNu32")\n", ntohs(rtp->seq_number), rtp_ts);
 				}
 			}
 
