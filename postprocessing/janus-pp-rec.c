@@ -819,8 +819,12 @@ int main(int argc, char *argv[])
 			highest_seq = p->seq;
 			p->ts = (times_resetted*max32)+rtp_ts;
 		} else {
-			if(!video && !data && rtp->markerbit == 1) {
-				if(!dtx_on) {
+			if(!video && !data) {
+				if(dtx_on) {
+					/* Leaving DTX mode (RTP started flowing again) */
+					dtx_on = FALSE;
+					JANUS_LOG(LOG_WARN, "Leaving RTP silence suppression (seq=%"SCNu16", rtp_ts=%"SCNu32")\n", ntohs(rtp->seq_number), rtp_ts);
+				} else if(rtp->markerbit == 1) {
 					/* Try to detect RTP silence suppression */
 					int32_t seq_distance = abs((int16_t)(p->seq - highest_seq));
 					if(seq_distance < silence_distance) {
@@ -840,10 +844,6 @@ int main(int argc, char *argv[])
 							continue;
 						}
 					}
-				} else {
-					/* Leaving DTX mode (RTP started flowing again) */
-					dtx_on = FALSE;
-					JANUS_LOG(LOG_WARN, "Leaving RTP silence suppression (seq=%"SCNu16", rtp_ts=%"SCNu32")\n", ntohs(rtp->seq_number), rtp_ts);
 				}
 			}
 
