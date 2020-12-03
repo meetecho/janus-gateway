@@ -632,9 +632,9 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 					return NULL;
 				}
 				const char *c = json_string_value(codec);
-				if (data) {
+				if(data) {
 					/* Found! */
-					c = !strcasecmp(c, "text") ? "text" : "binary";
+					c = "text";
 					json_decref(info);
 					fclose(file);
 					return c;					
@@ -729,6 +729,7 @@ static void janus_recordplay_message_free(janus_recordplay_message *msg) {
 #define JANUS_RECORDPLAY_ERROR_RECORDING_EXISTS		420
 #define JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR		499
 
+#define ntohll(x) ((1==ntohl(1)) ? (x) : ((gint64)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
 
 /* Plugin implementation */
 int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
@@ -2198,7 +2199,7 @@ void janus_recordplay_update_recordings_list(void) {
 				*ext = '\0';
 			const char *textcodec = janus_recordplay_parse_codec(recordings_path,
 				rec->drc_file, NULL, sizeof(NULL), NULL);
-			if (textcodec)
+			if(textcodec)
 				rec->textdata = !strcasecmp("text", textcodec);
 		}
 		rec->audio_pt = AUDIO_PT;
@@ -2272,6 +2273,8 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 	long offset = 0;
 	uint16_t len = 0, count = 0;
 	uint32_t first_ts = 0, last_ts = 0, reset = 0;	/* To handle whether there's a timestamp reset in the recording */
+	int video = 0, audio = 0, data = 0;
+	gint64 c_time = 0, w_time = 0;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	/* Let's look for timestamp resets first */
@@ -2346,13 +2349,12 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 					return NULL;
 				}
 				const char *t = json_string_value(type);
-				int video = 0, audio = 0;
-				gint64 c_time = 0, w_time = 0;
 				if(!strcasecmp(t, "v")) {
 					video = 1;
 				} else if(!strcasecmp(t, "a")) {
 					audio = 1;
 				} else if(!strcasecmp(t, "d")) {
+					data = 1;
 				} else {
 					JANUS_LOG(LOG_WARN, "Unsupported recording type '%s' in info header...\n", t);
 					json_decref(info);
@@ -2399,25 +2401,27 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 			return NULL;
 		}
 		/* Only read RTP header */
-		bytes = fread(prebuffer, sizeof(char), 16, file);
-		janus_rtp_header *rtp = (janus_rtp_header *)prebuffer;
-		if(last_ts == 0) {
-			first_ts = ntohl(rtp->timestamp);
-			if(first_ts > 1000*1000)	/* Just used to check whether a packet is pre- or post-reset */
-				first_ts -= 1000*1000;
-		} else {
-			if(ntohl(rtp->timestamp) < last_ts) {
-				/* The new timestamp is smaller than the next one, is it a timestamp reset or simply out of order? */
-				if(last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000) {
+		if(audio || video) {
+			bytes = fread(prebuffer, sizeof(char), 16, file);
+			janus_rtp_header *rtp = (janus_rtp_header *)prebuffer;
+			if(last_ts == 0) {
+				first_ts = ntohl(rtp->timestamp);
+				if(first_ts > 1000*1000)	/* Just used to check whether a packet is pre- or post-reset */
+					first_ts -= 1000*1000;
+			} else {
+				if(ntohl(rtp->timestamp) < last_ts) {
+					/* The new timestamp is smaller than the next one, is it a timestamp reset or simply out of order? */
+					if(last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000) {
+						reset = ntohl(rtp->timestamp);
+						JANUS_LOG(LOG_VERB, "Timestamp reset: %"SCNu32"\n", reset);
+					}
+				} else if(ntohl(rtp->timestamp) < reset) {
+					JANUS_LOG(LOG_VERB, "Updating timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
 					reset = ntohl(rtp->timestamp);
-					JANUS_LOG(LOG_VERB, "Timestamp reset: %"SCNu32"\n", reset);
 				}
-			} else if(ntohl(rtp->timestamp) < reset) {
-				JANUS_LOG(LOG_VERB, "Updating timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
-				reset = ntohl(rtp->timestamp);
 			}
+			last_ts = ntohl(rtp->timestamp);
 		}
-		last_ts = ntohl(rtp->timestamp);
 		/* Skip data for now */
 		offset += len;
 	}
@@ -2438,6 +2442,37 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 		if(prebuffer[1] == 'J' || len < 12) {
 			/* Not RTP, skip */
 			JANUS_LOG(LOG_HUGE, "  -- Not RTP, skipping\n");
+			offset += len;
+			continue;
+		}
+
+		if(data) {
+			/* Things are simpler for data, no reordering is needed: start by the data time */
+			gint64 when = 0;
+			bytes = fread(&when, sizeof(gint64), 1, file);
+			if(bytes < 1) {
+				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
+				break;
+			}
+			when = ntohll(when);
+			offset += sizeof(gint64);
+			len -= sizeof(gint64);
+			/* Generate frame packet and insert in the ordered list */
+			janus_recordplay_frame_packet *p = g_malloc(sizeof(janus_recordplay_frame_packet));
+			p->seq = 0;
+			/* We "abuse" the timestamp field for the timing info */
+			p->ts = when-c_time;
+			p->len = len;
+			p->offset = offset;
+			p->next = NULL;
+			p->prev = last;
+			if(list == NULL) {
+				list = p;
+			} else {
+				last->next = p;
+			}
+			last = p;
+			/* Done */
 			offset += len;
 			continue;
 		}
@@ -2556,8 +2591,6 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 	fclose(file);
 	return list;
 }
-
-#define ntohll(x) ((1==ntohl(1)) ? (x) : ((gint64)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
 
 static void *janus_recordplay_playout_thread(void *sessiondata) {
 	janus_recordplay_session *session = (janus_recordplay_session *)sessiondata;
@@ -2822,23 +2855,9 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 			if(data == session->dframes) {
 				data_start_ts = data->ts;
 				/* First packet, send now */
-				/* Data recording stores recording timestamp in first 8 bytes - it follows the frame ts monotonically.
-					invariant: when = data->ts + when(initial packet) */
-				gint64 when = 0;
-				int len = data->len;
-				int offset = data->offset;
-				fseek(dfile, data->offset, SEEK_SET);
-				bytes = fread(&when, sizeof(gint64), 1, dfile);
-				when = ntohll(when); // NOTE: not currently used - playback is interested in actual data packets.
-				offset += sizeof(gint64);
-				len -= sizeof(gint64);
-
 				/* Read data packet */
-				fseek(dfile, offset, SEEK_SET);
-				bytes = fread(buffer, sizeof(char), len, dfile);
-				JANUS_LOG(LOG_INFO, "Sending data packet at rtp_timestamp = %lu, timestamp = %lu, delta = %lu\n", (data->ts), when, when - data->ts);
-				fseek(dfile, offset, SEEK_SET);
-				bytes = fread(buffer, sizeof(char), len, dfile);
+				fseek(dfile, data->offset, SEEK_SET);
+				bytes = fread(buffer, sizeof(char), data->len, dfile);
 				if(bytes != data->len)
 					JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, data->len);
 				/* Update payload type */
@@ -2882,21 +2901,10 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 						dbefore.tv_sec += ts_diff/1000000;
 						dbefore.tv_usec -= ts_diff/1000000;
 					}
-					/* Send now */	
-					gint64 when = 0;
-					int len = data->len;
-					int offset = data->offset;
-					fseek(dfile, data->offset, SEEK_SET);
-					bytes = fread(&when, sizeof(gint64), 1, dfile);
-					when = ntohll(when);
-					offset += sizeof(gint64);
-					len -= sizeof(gint64);		
-
 					/* Read data packet */
-					fseek(dfile, offset, SEEK_SET);
-					bytes = fread(buffer, sizeof(char), len, dfile);
-					JANUS_LOG(LOG_VERB, "Sending data packet at timestamp = %lu, recorded timestamp = %lu\n", (data->ts), when);
-					if(bytes != len)
+					fseek(dfile, data->offset, SEEK_SET);
+					bytes = fread(buffer, sizeof(char), data->len, dfile);
+					if(bytes != data->len)
 						JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, data->len);
 					/* Update payload type */
 					janus_plugin_data datapacket = {
