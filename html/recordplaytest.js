@@ -316,7 +316,6 @@ $(document).ready(function() {
 								},
 								ondataopen: function(data) {
 									Janus.log("The DataChannel is available!");
-									$('#waitingvideo').remove();
 									$('#videobox').append(
 										'<input class="form-control" type="text" id="datarecv" disabled></input>'
 									);
