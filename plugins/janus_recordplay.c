@@ -1853,6 +1853,59 @@ recdone:
 			session->recorder = FALSE;
 			rec->viewers = g_list_append(rec->viewers, session);
 			e2ee = rec->e2ee;
+
+			json_t *timestamp = json_object_get(root, "start_at"); 
+			if (timestamp) {
+				/* Got a seek request, validate and extract timestamp to seek */
+				guint64 ts = json_integer_value(timestamp);
+
+				/* Find correct frame for audio, video, data */
+				janus_recordplay_frame_packet *audio = session->aframes, *video = session->vframes, *data = session->dframes;
+
+				int audio_pt = session->recording->audio_pt;
+				int akhz = 48;
+				if(audio_pt == 0 || audio_pt == 8 || audio_pt == 9)
+					akhz = 8;
+				int vkhz = 90;
+
+				if (audio) {
+					u_int64_t audio_start_ts = audio->ts;
+					while (audio 
+						&& audio->next 
+						&& ((audio->next->ts - audio_start_ts)*1000/akhz < ts))
+						audio = audio->next;
+				}
+				if (video) {
+					u_int64_t video_start_ts = video->ts;
+					while (video 
+						&& video->next 
+						&& ((video->next->ts - video_start_ts)*1000/vkhz < ts))
+						video = video->next;
+				}
+				if (data) {
+					u_int64_t data_start_ts = data->ts;
+					while (data 
+						&& data->next 
+						&& ((data->next->ts - data_start_ts) < ts))
+						data = data->next;
+				}
+
+				if (!audio && !video) {
+					JANUS_LOG(LOG_ERR, "Seek location not found, can't seek\n");
+					error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Seek location not found, can't seek");
+					goto error;	
+				}
+
+				/* Found seek location */
+				janus_recordplay_seek_request *seek_request = g_malloc(sizeof(janus_recordplay_frame_packet));
+				seek_request->audioseekframe = audio;
+				seek_request->videoseekframe = video;
+				seek_request->dataseekpacket = data;
+				if (!session->seek_requests)
+					session->seek_requests = g_async_queue_new();
+				g_async_queue_push(session->seek_requests, seek_request);
+			}
 			/* Send this viewer the prepared offer  */
 			sdp = g_strdup(rec->offer);
 playdone:
@@ -1897,7 +1950,6 @@ playdone:
 			if(audio_pt == 0 || audio_pt == 8 || audio_pt == 9)
 				akhz = 8;
 			int vkhz = 90;
-			int dhz = 1;
 
 			if (audio) {
 				u_int64_t audio_start_ts = audio->ts;
@@ -1917,7 +1969,7 @@ playdone:
 				u_int64_t data_start_ts = data->ts;
 				while (data 
 					&& data->next 
-					&& ((data->next->ts - data_start_ts)/dhz < ts))
+					&& ((data->next->ts - data_start_ts) < ts))
 					data = data->next;
 			}
 
@@ -2701,8 +2753,6 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 		akhz = 8;
 	int vkhz = 90;
 
-	u_int64_t audio_start_ts = 0, video_start_ts = 0, data_start_ts = 0;
-
 	while(!g_atomic_int_get(&session->destroyed) && session->active
 			&& !g_atomic_int_get(&rec->destroyed) && (audio || video)) {
 		if(!asent && !vsent && !dsent) {
@@ -2724,7 +2774,6 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 		}
 		if(audio) {
 			if(audio == session->aframes) {
-				audio_start_ts = audio->ts;
 				/* First packet, send now */
 				fseek(afile, audio->offset, SEEK_SET);
 				bytes = fread(buffer, sizeof(char), audio->len, afile);
@@ -2786,7 +2835,6 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 		if(video) {
 			if(video == session->vframes) {
 				/* First packets: there may be many of them with the same timestamp, send them all */
-				video_start_ts = video->ts;
 				uint64_t ts = video->ts;
 				while(video && video->ts == ts) {
 					fseek(vfile, video->offset, SEEK_SET);
@@ -2853,7 +2901,6 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 		}
 		if(data) {
 			if(data == session->dframes) {
-				data_start_ts = data->ts;
 				/* First packet, send now */
 				/* Read data packet */
 				fseek(dfile, data->offset, SEEK_SET);
@@ -2892,7 +2939,6 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 				} else {
 					/* Update the reference time */
 					dbefore.tv_usec += ts_diff%1000000;
-					JANUS_LOG(LOG_INFO, "Sending data packet at timestamp = %lu\n", (data->ts - data_start_ts)/dhz);
 					if(dbefore.tv_usec > 1000000) {
 						dbefore.tv_sec++;
 						dbefore.tv_usec -= 1000000;
