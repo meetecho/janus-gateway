@@ -497,8 +497,6 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 #define AUDIO_PT		111
 #define VIDEO_PT		100
 
-#define DATATS_SIZE	8
-
 /* Helper method to check which codec was used in a specific recording (and if it's end-to-end encrypted) */
 static const char *janus_recordplay_parse_codec(const char *dir, const char *filename, char *fmtp, size_t fmtplen, gboolean *e2ee) {
 	if(dir == NULL || filename == NULL)
