@@ -47,7 +47,9 @@ if(window.location.protocol === 'http:')
 	server = "http://" + window.location.hostname + ":8088/janus";
 else
 	server = "https://" + window.location.hostname + ":8089/janus";
-
+if(window.location.protocol === 'file:')
+	server = "http://localhost:8088/janus";
+	
 var janus = null;
 var recordplay = null;
 var opaqueId = "recordplaytest-"+Janus.randomString(12);
