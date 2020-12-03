@@ -4643,7 +4643,7 @@ gint main(int argc, char *argv[])
 	char *turn_rest_api = NULL, *turn_rest_api_key = NULL;
 #ifdef HAVE_TURNRESTAPI
 	char *turn_rest_api_method = NULL;
-	uint turn_rest_api_timeout = 0;
+	uint turn_rest_api_timeout = 10;
 #endif
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
 	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE,
@@ -4762,8 +4762,7 @@ gint main(int argc, char *argv[])
 	if(item && item->value) {
 		int rst = atoi(item->value);
 		if(rst <= 0) { /* Don't allow user to set 0 seconds i.e., infinite wait */
-			JANUS_LOG(LOG_WARN, "Ignoring turn_rest_api_timeout as it's not a positive integer, using default (10 seconds)\n");
-			turn_rest_api_timeout = 10;
+			JANUS_LOG(LOG_WARN, "Ignoring turn_rest_api_timeout as it's not a positive integer, leaving at default (10 seconds)\n");
 		} else {
 			turn_rest_api_timeout = rst;
 		}

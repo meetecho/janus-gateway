@@ -31,7 +31,7 @@
 static const char *api_server = NULL;
 static const char *api_key = NULL;
 static gboolean api_http_get = FALSE;
-static uint api_timeout = 10;
+static uint api_timeout;
 static janus_mutex api_mutex = JANUS_MUTEX_INITIALIZER;
 
 
