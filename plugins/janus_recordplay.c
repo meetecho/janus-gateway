@@ -621,9 +621,9 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 					return NULL;
 				}
 				const char *c = json_string_value(codec);
-				if (data) {
+				if(data) {
 					/* Found! */
-					c = !strcasecmp(c, "text") ? "text" : "binary";
+					c = "text";
 					json_decref(info);
 					fclose(file);
 					return c;					
@@ -2071,7 +2071,7 @@ void janus_recordplay_update_recordings_list(void) {
 				*ext = '\0';
 			const char *textcodec = janus_recordplay_parse_codec(recordings_path,
 				rec->drc_file, NULL, sizeof(NULL), NULL);
-			if (textcodec)
+			if(textcodec)
 				rec->textdata = !strcasecmp("text", textcodec);
 		}
 		rec->audio_pt = AUDIO_PT;
@@ -2694,7 +2694,7 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 				/* Read data packet */
 				fseek(dfile, offset, SEEK_SET);
 				bytes = fread(buffer, sizeof(char), len, dfile);
-				JANUS_LOG(LOG_INFO, "Sending data packet at rtp_timestamp = %lu, timestamp = %lu, delta = %lu\n", (data->ts), when, when - data->ts);
+				JANUS_LOG(LOG_HUGE, "Sending data packet at rtp_timestamp = %lu, timestamp = %lu, delta = %lu\n", (data->ts), when, when - data->ts);
 				fseek(dfile, offset, SEEK_SET);
 				bytes = fread(buffer, sizeof(char), len, dfile);
 				if(bytes != data->len)
@@ -2752,7 +2752,7 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 					/* Read data packet */
 					fseek(dfile, offset, SEEK_SET);
 					bytes = fread(buffer, sizeof(char), len, dfile);
-					JANUS_LOG(LOG_VERB, "Sending data packet at timestamp = %lu, recorded timestamp = %lu\n", (data->ts), when);
+					JANUS_LOG(LOG_HUGE, "Sending data packet at timestamp = %lu, recorded timestamp = %lu\n", (data->ts), when);
 					if(bytes != len)
 						JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, data->len);
 					/* Update payload type */
