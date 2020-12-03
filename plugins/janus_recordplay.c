@@ -2432,6 +2432,8 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 	return list;
 }
 
+#define ntohll(x) ((1==ntohl(1)) ? (x) : ((gint64)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
+
 static void *janus_recordplay_playout_thread(void *sessiondata) {
 	janus_recordplay_session *session = (janus_recordplay_session *)sessiondata;
 	if(!session) {
@@ -2680,9 +2682,23 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 		if(data) {
 			if(data == session->dframes) {
 				/* First packet, send now */
-				/* Data recording stores raw UDP packets */
+				/* Data recording stores recording timestamp in first 8 bytes - it follows the frame ts monotonically.
+					invariant: when = data->ts + when(initial packet) */
+				gint64 when = 0;
+				int len = data->len;
+				int offset = data->offset;
 				fseek(dfile, data->offset, SEEK_SET);
-				bytes = fread(buffer, sizeof(char), data->len, dfile);
+				bytes = fread(&when, sizeof(gint64), 1, dfile);
+				when = ntohll(when); // NOTE: not currently used - playback is interested in actual data packets.
+				offset += sizeof(gint64);
+				len -= sizeof(gint64);
+
+				/* Read data packet */
+				fseek(dfile, offset, SEEK_SET);
+				bytes = fread(buffer, sizeof(char), len, dfile);
+				JANUS_LOG(LOG_INFO, "Sending data packet at rtp_timestamp = %lu, timestamp = %lu, delta = %lu\n", (data->ts), when, when - data->ts);
+				fseek(dfile, offset, SEEK_SET);
+				bytes = fread(buffer, sizeof(char), len, dfile);
 				if(bytes != data->len)
 					JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, data->len);
 				/* Update payload type */
@@ -2690,7 +2706,7 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 					.label = NULL,
 					.protocol = NULL,
 					.binary = rec->textdata? FALSE : TRUE, 
-					.buffer = (char *)buffer + DATATS_SIZE,
+					.buffer = (char *)buffer,
 					.length = bytes
 				};
 				gateway->relay_data(session->handle, &datapacket);
@@ -2725,17 +2741,28 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 						dbefore.tv_sec += ts_diff/1000000;
 						dbefore.tv_usec -= ts_diff/1000000;
 					}
-					/* Send now */				
+					/* Send now */	
+					gint64 when = 0;
+					int len = data->len;
+					int offset = data->offset;
 					fseek(dfile, data->offset, SEEK_SET);
-					bytes = fread(buffer, sizeof(char), data->len, dfile);
-					if(bytes != data->len)
+					bytes = fread(&when, sizeof(gint64), 1, dfile);
+					when = ntohll(when);
+					offset += sizeof(gint64);
+					len -= sizeof(gint64);		
+
+					/* Read data packet */
+					fseek(dfile, offset, SEEK_SET);
+					bytes = fread(buffer, sizeof(char), len, dfile);
+					JANUS_LOG(LOG_VERB, "Sending data packet at timestamp = %lu, recorded timestamp = %lu\n", (data->ts), when);
+					if(bytes != len)
 						JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, data->len);
 					/* Update payload type */
 					janus_plugin_data datapacket = {
 						.label = NULL,
 						.protocol = NULL,
 						.binary = rec->textdata ? FALSE : TRUE, 
-						.buffer = (char *)buffer + DATATS_SIZE,
+						.buffer = (char *)buffer,
 						.length = bytes
 					};
 					gateway->relay_data(session->handle, &datapacket);
