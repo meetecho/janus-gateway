@@ -117,6 +117,7 @@ static janus_transport_callbacks *gateway = NULL;
 static gboolean http_janus_api_enabled = FALSE;
 static gboolean http_admin_api_enabled = FALSE;
 static gboolean notify_events = TRUE;
+static enum MHD_FLAG mhd_debug_flag = MHD_NO_FLAG;
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
@@ -495,7 +496,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 			JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			daemon = MHD_start_daemon(
-				MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK,
+				MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK | mhd_debug_flag,
 				port,
 				admin ? &janus_http_admin_client_connect : &janus_http_client_connect,
 				NULL,
@@ -510,7 +511,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				ip ? "IP" : "interface", ip ? ip : interface,
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			daemon = MHD_start_daemon(
-				MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0),
+				MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0) | mhd_debug_flag,
 				port,
 				admin ? &janus_http_admin_client_connect : &janus_http_client_connect,
 				NULL,
@@ -532,7 +533,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 			JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			daemon = MHD_start_daemon(
-				MHD_USE_SSL | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK,
+				MHD_USE_SSL | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK | mhd_debug_flag,
 				port,
 				admin ? &janus_http_admin_client_connect : &janus_http_client_connect,
 				NULL,
@@ -551,7 +552,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				ip ? "IP" : "interface", ip ? ip : interface,
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			daemon = MHD_start_daemon(
-				MHD_USE_SSL | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0),
+				MHD_USE_SSL | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0) | mhd_debug_flag,
 				port,
 				admin ? &janus_http_admin_client_connect : &janus_http_client_connect,
 				NULL,
@@ -699,6 +700,10 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		} else {
 			admin_ws_path = g_strdup("/admin");
 		}
+		/* Should we set the debug flag in libmicrohttpd? */
+		item = janus_config_get(config, config_general, janus_config_type_item, "http_lib_debug");
+		if(item && item->value && janus_is_true(item->value))
+			mhd_debug_flag = MHD_USE_DEBUG;
 
 		/* Any ACL for either the Janus or Admin API? */
 		item = janus_config_get(config, config_general, janus_config_type_item, "acl");
