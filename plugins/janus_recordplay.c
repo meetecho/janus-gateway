@@ -2711,8 +2711,33 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 			}
 		}
 		if(data) {
-			if(data == session->dframes) {
-				/* First packet, send now */
+			u_int64_t prev_ts = 0; /* All timestamps for data are indexed to 0, since when parsing ts = when - c_time */
+			if(data->prev) 
+				prev_ts = data->prev->ts;
+			ts_diff = data->ts - prev_ts;
+
+			/* Check if it's time to send */
+			gettimeofday(&now, NULL);
+			d_s = now.tv_sec - dbefore.tv_sec;
+			d_us = now.tv_usec - dbefore.tv_usec;
+			if(d_us < 0) {
+				d_us += 1000000;
+				--d_s;
+			}
+			passed = d_s*1000000 + d_us;
+			if(passed < (ts_diff-5000)) {
+				dsent = FALSE;
+			} else {
+				/* Update the reference time */
+				dbefore.tv_usec += ts_diff%1000000;
+				if(dbefore.tv_usec > 1000000) {
+					dbefore.tv_sec++;
+					dbefore.tv_usec -= 1000000;
+				}
+				if(ts_diff/1000000 > 0) {
+					dbefore.tv_sec += ts_diff/1000000;
+					dbefore.tv_usec -= ts_diff/1000000;
+				}
 				/* Read data packet */
 				fseek(dfile, data->offset, SEEK_SET);
 				bytes = fread(buffer, sizeof(char), data->len, dfile);
@@ -2722,59 +2747,13 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 				janus_plugin_data datapacket = {
 					.label = NULL,
 					.protocol = NULL,
-					.binary = rec->textdata? FALSE : TRUE, 
+					.binary = rec->textdata ? FALSE : TRUE, 
 					.buffer = (char *)buffer,
 					.length = bytes
 				};
 				gateway->relay_data(session->handle, &datapacket);
-				
-				gettimeofday(&now, NULL);
-				dbefore.tv_sec = now.tv_sec;
-				dbefore.tv_usec = now.tv_usec;
 				dsent = TRUE;
 				data = data->next;
-			} else {
-				/* What's the timestamp skip from the previous packet? */
-				ts_diff = data->ts - data->prev->ts;
-				/* Check if it's time to send */
-				gettimeofday(&now, NULL);
-				d_s = now.tv_sec - dbefore.tv_sec;
-				d_us = now.tv_usec - dbefore.tv_usec;
-				if(d_us < 0) {
-					d_us += 1000000;
-					--d_s;
-				}
-				passed = d_s*1000000 + d_us;
-				if(passed < (ts_diff-5000)) {
-					dsent = FALSE;
-				} else {
-					/* Update the reference time */
-					dbefore.tv_usec += ts_diff%1000000;
-					if(dbefore.tv_usec > 1000000) {
-						dbefore.tv_sec++;
-						dbefore.tv_usec -= 1000000;
-					}
-					if(ts_diff/1000000 > 0) {
-						dbefore.tv_sec += ts_diff/1000000;
-						dbefore.tv_usec -= ts_diff/1000000;
-					}
-					/* Read data packet */
-					fseek(dfile, data->offset, SEEK_SET);
-					bytes = fread(buffer, sizeof(char), data->len, dfile);
-					if(bytes != data->len)
-						JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, data->len);
-					/* Update payload type */
-					janus_plugin_data datapacket = {
-						.label = NULL,
-						.protocol = NULL,
-						.binary = rec->textdata ? FALSE : TRUE, 
-						.buffer = (char *)buffer,
-						.length = bytes
-					};
-					gateway->relay_data(session->handle, &datapacket);
-					dsent = TRUE;
-					data = data->next;
-				}
 			}
 		}
 	}
