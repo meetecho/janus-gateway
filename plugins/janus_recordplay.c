@@ -2762,12 +2762,22 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 		asent = FALSE;
 		vsent = FALSE;
 		dsent = FALSE;
-		if (session->seek_requests) {
+		if(session->seek_requests) {
 			janus_recordplay_seek_request *seek_request = 
 				g_async_queue_try_pop(session->seek_requests);
-			if (seek_request) {
-				audio = seek_request->audioseekframe;
-				video = seek_request->videoseekframe;
+			if(seek_request) {
+				if(seek_request->audioseekframe) {
+					session->context.a_seq_reset = TRUE;
+					session->context.a_base_ts_prev += (audio->ts - session->context.a_base_ts);
+					session->context.a_base_ts = seek_request->audioseekframe->ts;
+					audio = seek_request->audioseekframe;
+				}
+				if(seek_request->videoseekframe) {
+					session->context.v_seq_reset = TRUE;
+					session->context.v_base_ts_prev += (video->ts - session->context.v_base_ts);
+					session->context.v_base_ts = seek_request->videoseekframe->ts;
+					video = seek_request->videoseekframe;
+				}
 				data = seek_request->dataseekpacket;
 				g_free(seek_request);
 			}
@@ -2782,6 +2792,7 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 				/* Update payload type */
 				janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 				rtp->type = audio_pt;
+				janus_rtp_header_update(rtp, &session->context, FALSE, 0);
 				janus_plugin_rtp prtp = { .video = FALSE, .buffer = (char *)buffer, .length = bytes };
 				janus_plugin_rtp_extensions_reset(&prtp.extensions);
 				gateway->relay_rtp(session->handle, &prtp);
@@ -2824,6 +2835,7 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 					/* Update payload type */
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = audio_pt;
+					janus_rtp_header_update(rtp, &session->context, FALSE, 0);
 					janus_plugin_rtp prtp = { .video = FALSE, .buffer = (char *)buffer, .length = bytes };
 					janus_plugin_rtp_extensions_reset(&prtp.extensions);
 					gateway->relay_rtp(session->handle, &prtp);
@@ -2844,6 +2856,7 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 					/* Update payload type */
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = video_pt;
+					janus_rtp_header_update(rtp, &session->context, TRUE, 0);
 					janus_plugin_rtp prtp = { .video = TRUE, .buffer = (char *)buffer, .length = bytes };
 					janus_plugin_rtp_extensions_reset(&prtp.extensions);
 					gateway->relay_rtp(session->handle, &prtp);
@@ -2890,6 +2903,7 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 						/* Update payload type */
 						janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 						rtp->type = video_pt;
+						janus_rtp_header_update(rtp, &session->context, TRUE, 0);
 						janus_plugin_rtp prtp = { .video = TRUE, .buffer = (char *)buffer, .length = bytes };
 						janus_plugin_rtp_extensions_reset(&prtp.extensions);
 						gateway->relay_rtp(session->handle, &prtp);
