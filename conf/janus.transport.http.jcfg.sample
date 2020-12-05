@@ -5,7 +5,7 @@
 # all the web servers will try and bind on both IPv4 and IPv6: if you
 # want to only bind to IPv4 addresses (e.g., because your system does not
 # support IPv6), you should set the web server 'ip' property to '0.0.0.0'.
-# To see debug logs from the HTTP server library, set 'http_lib_debug'.
+# To see debug logs from the HTTP server library, set 'mhd_debug'.
 general: {
 	#events = true					# Whether to notify event handlers about transport events (default=true)
 	json = "indented"				# Whether the JSON messages should be indented (default),
