@@ -97,8 +97,8 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 			|| !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")
 			|| !strcasecmp(codec, "g722")) {
 		type = JANUS_RECORDER_AUDIO;
-	} else if(!strcasecmp(codec, "text")) {
-		/* FIXME We only handle text on data channels, so that's the only thing we can save too */
+	} else if(!strcasecmp(codec, "text") || !strcasecmp(codec, "binary")) {
+		/* Data channels may be text or binary, so that's what we can save too */
 		type = JANUS_RECORDER_DATA;
 	} else {
 		/* We don't recognize the codec: while we might go on anyway, we'd rather fail instead */

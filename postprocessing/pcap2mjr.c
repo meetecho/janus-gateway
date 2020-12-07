@@ -104,7 +104,7 @@ int main(int argc, char *argv[])
 			|| !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")
 			|| !strcasecmp(codec, "g722")) {
 		video = FALSE;
-	} else if(!strcasecmp(codec, "text")) {
+	} else if(!strcasecmp(codec, "text") || !strcasecmp(codec, "binary")) {
 		/* We only do processing for RTP */
 		JANUS_LOG(LOG_ERR, "Data channels not supported by this tool\n");
 		cmdline_parser_free(&args_info);
