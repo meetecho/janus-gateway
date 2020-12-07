@@ -2650,6 +2650,46 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 	return list;
 }
 
+static janus_recordplay_frame_packet *janus_recordplay_find_next_keyframe(janus_videocodec codec, FILE *vfile, janus_recordplay_frame_packet *frame, u_int64_t *keyframe_offset) {
+	*keyframe_offset = 0;
+	janus_recordplay_frame_packet *video = frame;
+	gboolean (*is_keyframe)(const char *buffer, int len);
+	if(codec == JANUS_VIDEOCODEC_VP8)
+		is_keyframe = &janus_vp8_is_keyframe;
+	else if(codec == JANUS_VIDEOCODEC_VP9)
+		is_keyframe = &janus_vp9_is_keyframe;
+	else if(codec == JANUS_VIDEOCODEC_H264)
+		is_keyframe = &janus_h264_is_keyframe;
+	else if(codec == JANUS_VIDEOCODEC_AV1)
+		is_keyframe = &janus_av1_is_keyframe;
+	else if(codec == JANUS_VIDEOCODEC_H265)
+		is_keyframe = &janus_h265_is_keyframe;
+	else 
+		/* Don't know how to identify keyframe */
+		return frame;
+	
+	char *buffer = g_malloc0(1500);
+	while(video) {
+		fseek(vfile, video->offset, SEEK_SET);
+		int bytes = fread(buffer, sizeof(char), video->len, vfile);
+		if(bytes != video->len)
+			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, video->len);
+		janus_plugin_rtp packet = { .video = TRUE, .buffer = (char *)buffer, .length = bytes };
+		int plen = 0;
+		char *payload = janus_rtp_payload(packet.buffer, packet.length, &plen);
+		if((*is_keyframe)(payload, plen))
+			break;
+		*keyframe_offset += video->ts - frame->ts;
+		video = video->next;
+	}
+
+	free(buffer);
+	if(video)
+		return video;
+	else
+		return frame;
+}
+
 static void *janus_recordplay_playout_thread(void *sessiondata) {
 	janus_recordplay_session *session = (janus_recordplay_session *)sessiondata;
 	if(!session) {
@@ -2772,19 +2812,31 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 			janus_recordplay_seek_request *seek_request = 
 				g_async_queue_try_pop(session->seek_requests);
 			if(seek_request) {
-				if(seek_request->audioseekframe) {
-					session->context.a_seq_reset = TRUE;
-					session->context.a_base_ts_prev += (audio->ts - session->context.a_base_ts);
-					session->context.a_base_ts = seek_request->audioseekframe->ts;
-					audio = seek_request->audioseekframe;
-				}
+				u_int64_t key_frame_offset = 0;
 				if(seek_request->videoseekframe) {
+					seek_request->videoseekframe = janus_recordplay_find_next_keyframe(rec->vcodec, vfile, seek_request->videoseekframe, &key_frame_offset);
 					session->context.v_seq_reset = TRUE;
 					session->context.v_base_ts_prev += (video->ts - session->context.v_base_ts);
 					session->context.v_base_ts = seek_request->videoseekframe->ts;
 					video = seek_request->videoseekframe;
 				}
-				data = seek_request->dataseekpacket;
+				if(seek_request->audioseekframe) {
+					u_int64_t audioseek_ts = seek_request->audioseekframe->ts;
+					while(seek_request->audioseekframe
+						&& (key_frame_offset > (seek_request->audioseekframe->ts - audioseek_ts)))
+						seek_request->audioseekframe = seek_request->audioseekframe->next;
+					session->context.a_seq_reset = TRUE;
+					session->context.a_base_ts_prev += (audio->ts - session->context.a_base_ts);
+					session->context.a_base_ts = seek_request->audioseekframe->ts;
+					audio = seek_request->audioseekframe;
+				}
+				if(seek_request->dataseekpacket) {
+					u_int64_t dataseek_ts = seek_request->dataseekpacket->ts;
+					while(seek_request->dataseekpacket
+						&& (key_frame_offset > (seek_request->dataseekpacket->ts - dataseek_ts)))
+						seek_request->dataseekpacket = seek_request->dataseekpacket->next;
+					data = seek_request->dataseekpacket;
+				}
 				g_free(seek_request);
 			}
 		}
