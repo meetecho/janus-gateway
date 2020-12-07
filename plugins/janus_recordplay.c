@@ -490,6 +490,7 @@ static void janus_recordplay_recording_free(const janus_refcount *recording_ref)
 	g_free(recording->date);
 	g_free(recording->arc_file);
 	g_free(recording->vrc_file);
+	g_free(recording->drc_file);
 	g_free(recording->afmtp);
 	g_free(recording->vfmtp);
 	g_free(recording->offer);
@@ -2252,7 +2253,7 @@ void janus_recordplay_update_recordings_list(void) {
 			const char *textcodec = janus_recordplay_parse_codec(recordings_path,
 				rec->drc_file, NULL, sizeof(NULL), NULL);
 			if(textcodec)
-				rec->textdata = !strcasecmp("text", textcodec);
+				rec->textdata = TRUE; /* Binary recordings not supported yet */
 		}
 		rec->audio_pt = AUDIO_PT;
 		if(rec->acodec != JANUS_AUDIOCODEC_NONE) {
@@ -2980,12 +2981,23 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 	}
 	session->vframes = NULL;
 
+	data = session->dframes;
+	while(data) {
+		tmp = data->next;
+		g_free(data);
+		data = tmp;
+	}
+	session->dframes = NULL;
+
 	if(afile)
 		fclose(afile);
 	afile = NULL;
 	if(vfile)
 		fclose(vfile);
 	vfile = NULL;
+	if(dfile)
+		fclose(dfile);
+	dfile = NULL;
 
 	/* Remove from the list of viewers */
 	janus_mutex_lock(&rec->mutex);
