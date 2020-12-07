@@ -54,8 +54,6 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
   -H, --header                  Only parse .mjr header  (default=off)
   -p, --parse                   Only parse and re-order packets  (default=off)
   -m, --metadata=metadata       Save this metadata string in the target file
-  -r, --postreset-trigger=count Number of packets needed to detect a timestamp
-                                  reset (default=200)
   -i, --ignore-first=count      Number of first packets to ignore when
                                   processing, e.g., in case they're cause of
                                   issues (default=0)
@@ -75,6 +73,8 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
                                   of the file  (default=off)
   -S, --audioskew=milliseconds  Time threshold to trigger an audio skew
                                   compensation, disabled if 0 (default=0)
+  -C, --silence-distance=count  RTP packets distance used to detect RTP silence
+								  suppression, disabled if 0 (default=100)
 \endverbatim
  *
  * \note This utility does not do any form of transcoding. It just
@@ -128,14 +128,14 @@ static janus_pp_frame_packet *list = NULL, *last = NULL;
 static char *metadata = NULL;
 static int working = 0;
 
-#define DEFAULT_POST_RESET_TRIGGER	200
-static int post_reset_trigger = DEFAULT_POST_RESET_TRIGGER;
 static int ignore_first_packets = 0;
 
 #define SKEW_DETECTION_WAIT_TIME_SECS 10
 #define DEFAULT_AUDIO_SKEW_TH 0
 static int audioskew_th = DEFAULT_AUDIO_SKEW_TH;
 
+#define DEFAULT_SILENCE_DISTANCE 100
+static int silence_distance = DEFAULT_SILENCE_DISTANCE;
 
 /* Signal handler */
 static void janus_pp_handle_signal(int signum) {
@@ -193,15 +193,17 @@ int main(int argc, char *argv[])
 	if(args_info.metadata_given || (g_getenv("JANUS_PPREC_METADATA") != NULL)) {
 		metadata = g_strdup(args_info.metadata_given ? args_info.metadata_arg : g_getenv("JANUS_PPREC_METADATA"));
 	}
-	if(args_info.postreset_trigger_given || (g_getenv("JANUS_PPREC_POSTRESETTRIGGER") != NULL)) {
-		int val = args_info.postreset_trigger_given ? args_info.postreset_trigger_arg : atoi(g_getenv("JANUS_PPREC_POSTRESETTRIGGER"));
-		if(val >= 0)
-			post_reset_trigger = val;
-	}
 	if(args_info.ignore_first_given || (g_getenv("JANUS_PPREC_IGNOREFIRST") != NULL)) {
 		int val = args_info.ignore_first_given ? args_info.ignore_first_arg : atoi(g_getenv("JANUS_PPREC_IGNOREFIRST"));
 		if(val >= 0)
 			ignore_first_packets = val;
+	}
+
+	int match_pt = -1;
+	if(args_info.payload_type_given) {
+		int val = args_info.payload_type_arg;
+		if(val >= 0 && val <= 127)
+			match_pt = val;
 	}
 
 	if(args_info.audiolevel_ext_given || (g_getenv("JANUS_PPREC_AUDIOLEVELEXT") != NULL)) {
@@ -225,6 +227,11 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			audioskew_th = val;
 	}
+	if(args_info.silence_distance_given || (g_getenv("JANUS_PPREC_SILENCE_DISTANCE") != NULL)) {
+		int val = args_info.silence_distance_given ? args_info.silence_distance_arg : atoi(g_getenv("JANUS_PPREC_SILENCE_DISTANCE"));
+		if(val >= 0)
+			silence_distance = val;
+	}
 
 	/* Evaluate arguments to find source and target */
 	char *source = NULL, *destination = NULL, *setting = NULL;
@@ -240,13 +247,14 @@ int main(int argc, char *argv[])
 		}
 		if(setting == NULL || (
 				(strcmp(setting, "-m")) && (strcmp(setting, "--metadata")) &&
-				(strcmp(setting, "-r")) && (strcmp(setting, "--postreset-trigger")) &&
 				(strcmp(setting, "-i")) && (strcmp(setting, "--ignore-first")) &&
+				(strcmp(setting, "-P")) && (strcmp(setting, "--payload-type")) &&
 				(strcmp(setting, "-a")) && (strcmp(setting, "--audiolevel-ext")) &&
 				(strcmp(setting, "-v")) && (strcmp(setting, "--videoorient-ext")) &&
 				(strcmp(setting, "-d")) && (strcmp(setting, "--debug-level")) &&
 				(strcmp(setting, "-f")) && (strcmp(setting, "--format")) &&
-				(strcmp(setting, "-S")) && (strcmp(setting, "--audioskew"))
+				(strcmp(setting, "-S")) && (strcmp(setting, "--audioskew")) &&
+				(strcmp(setting, "-C")) && (strcmp(setting, "--silence-distance"))
 		)) {
 			if(source == NULL)
 				source = argv[i];
@@ -268,8 +276,6 @@ int main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Logging level: %d\n", janus_log_level);
 		if(metadata)
 			JANUS_LOG(LOG_INFO, "Metadata: %s\n", metadata);
-		if(post_reset_trigger != DEFAULT_POST_RESET_TRIGGER)
-			JANUS_LOG(LOG_INFO, "Post reset trigger: %d\n", post_reset_trigger);
 		if(audioskew_th != DEFAULT_AUDIO_SKEW_TH)
 			JANUS_LOG(LOG_INFO, "Audio skew threshold: %d\n", audioskew_th);
 		if(ignore_first_packets > 0)
@@ -278,6 +284,8 @@ int main(int argc, char *argv[])
 			JANUS_LOG(LOG_INFO, "Audio level extension ID: %d\n", audio_level_extmap_id);
 		if(video_orient_extmap_id > 0)
 			JANUS_LOG(LOG_INFO, "Video orientation extension ID: %d\n", video_orient_extmap_id);
+		if(silence_distance > 0)
+			JANUS_LOG(LOG_INFO, "RTP silence suppression distance: %d\n", silence_distance);
 		JANUS_LOG(LOG_INFO, "\n");
 		if(source != NULL)
 			JANUS_LOG(LOG_INFO, "Source file: %s\n", source);
@@ -619,19 +627,18 @@ int main(int argc, char *argv[])
 		exit(0);
 	}
 	/* Now let's parse the frames and order them */
-	uint32_t pkt_ts = 0, last_ts = 0, reset = 0;
-	int times_resetted = 0;
-	int post_reset_pkts = 0;
+	uint32_t pkt_ts = 0, highest_rtp_ts = 0;
+	uint16_t highest_seq = 0;
+	/* Start from 1 to take into account late packets */
+	int times_resetted = 1;
+	uint64_t max32 = UINT32_MAX;
 	int ignored = 0;
 	offset = 0;
+	gboolean started = FALSE;
+	/* DTX stuff */
+	gboolean dtx_on = FALSE;
 	/* Extensions, if any */
 	int audiolevel = 0, rotation = 0, last_rotation = -1, rotated = -1;
-	/* Timestamp reset related stuff */
-	last_ts = 0;
-	reset = 0;
-	times_resetted = 0;
-	post_reset_pkts = 0;
-	uint64_t max32 = UINT32_MAX;
 	uint16_t rtp_header_len, rtp_read_n;
 	/* Start loop */
 	while(working && offset < fsize) {
@@ -679,7 +686,7 @@ int main(int argc, char *argv[])
 		if(data) {
 			/* Things are simpler for data, no reordering is needed: start by the data time */
 			gint64 when = 0;
-			bytes = fread(&when, sizeof(gint64), 1, file);
+			bytes = fread(&when, 1, sizeof(gint64), file);
 			if(bytes < (int)sizeof(gint64)) {
 				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
 				break;
@@ -726,7 +733,16 @@ int main(int argc, char *argv[])
 		/* Check if we can get rid of the packet if we're expecting
 		 * static or specific payload types and they don't match */
 		if((g711 && rtp->type != 0 && rtp->type != 8) || (g722 && rtp->type != 9)) {
-			JANUS_LOG(LOG_WARN, "Dropping packet with unexpected payload type: %d\n", rtp->type);
+			JANUS_LOG(LOG_WARN, "Dropping packet with unexpected payload type: %d != %s\n",
+				rtp->type, g711 ? "0/8" : "9");
+			/* Skip data */
+			offset += len;
+			count++;
+			continue;
+		}
+		if(match_pt != -1 && rtp->type != match_pt) {
+			JANUS_LOG(LOG_WARN, "Dropping packet with non-matching payload type: %d != %d\n",
+				rtp->type, match_pt);
 			/* Skip data */
 			offset += len;
 			count++;
@@ -792,45 +808,74 @@ int main(int argc, char *argv[])
 		p->p_ts = pkt_ts;
 		p->seq = ntohs(rtp->seq_number);
 		p->pt = rtp->type;
-		/* Due to resets, we need to mess a bit with the original timestamps */
-		if(last_ts == 0) {
-			/* Simple enough... */
-			p->ts = ntohl(rtp->timestamp);
-		} else {
-			/* Is the new timestamp smaller than the next one, and if so, is it a timestamp reset or simply out of order? */
-			gboolean late_pkt = FALSE;
-			if(ntohl(rtp->timestamp) < last_ts && (last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000)) {
-				if(post_reset_pkts > post_reset_trigger) {
-					reset = ntohl(rtp->timestamp);
-					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
-					times_resetted++;
-					post_reset_pkts = 0;
-				}
-			} else if(ntohl(rtp->timestamp) > reset && ntohl(rtp->timestamp) > last_ts &&
-					(ntohl(rtp->timestamp)-last_ts > 2*1000*1000*1000)) {
-				if(post_reset_pkts < post_reset_trigger) {
-					JANUS_LOG(LOG_WARN, "Late pre-reset packet after a timestamp reset: %"SCNu32"\n", ntohl(rtp->timestamp));
-					late_pkt = TRUE;
-					times_resetted--;
-				}
-			} else if(ntohl(rtp->timestamp) < reset) {
-				if(post_reset_pkts < post_reset_trigger) {
-					JANUS_LOG(LOG_WARN, "Updating latest timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
-					reset = ntohl(rtp->timestamp);
-				} else {
-					reset = ntohl(rtp->timestamp);
-					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
-					times_resetted++;
-					post_reset_pkts = 0;
-				}
-			}
-			/* Take into account the number of resets when setting the internal, 64-bit, timestamp */
-			p->ts = (times_resetted*max32)+ntohl(rtp->timestamp);
-			if(late_pkt)
-				times_resetted++;
-		}
 		p->len = len;
 		p->drop = 0;
+		uint32_t rtp_ts = ntohl(rtp->timestamp);
+		/* Due to resets, we need to mess a bit with the original timestamps */
+		if(!started) {
+			/* Simple enough... */
+			started = TRUE;
+			highest_rtp_ts = rtp_ts;
+			highest_seq = p->seq;
+			p->ts = (times_resetted*max32)+rtp_ts;
+		} else {
+			if(!video && !data) {
+				if(dtx_on) {
+					/* Leaving DTX mode (RTP started flowing again) */
+					dtx_on = FALSE;
+					JANUS_LOG(LOG_WARN, "Leaving RTP silence suppression (seq=%"SCNu16", rtp_ts=%"SCNu32")\n", ntohs(rtp->seq_number), rtp_ts);
+				} else if(rtp->markerbit == 1) {
+					/* Try to detect RTP silence suppression */
+					int32_t seq_distance = abs((int16_t)(p->seq - highest_seq));
+					if(seq_distance < silence_distance) {
+						/* Consider 20 ms audio packets */
+						int32_t inter_rtp_ts = opus ? 960 : 160;
+						int32_t expected_rtp_distance = inter_rtp_ts * seq_distance;
+						int32_t rtp_distance = abs((int32_t)(rtp_ts - highest_rtp_ts));
+						if(rtp_distance > 10 * expected_rtp_distance) {
+							/* Entering DTX mode (RTP will stop) */
+							dtx_on = TRUE;
+							/* This is a close packet with not coherent RTP ts -> silence suppression */
+							JANUS_LOG(LOG_WARN, "Dropping audio RTP silence suppression (seq_distance=%d, rtp_distance=%d)\n", seq_distance, rtp_distance);
+							/* Skip data */
+							offset += len;
+							count++;
+							g_free(p);
+							continue;
+						}
+					}
+				}
+			}
+
+			/* Is the new timestamp smaller than the next one, and if so, is it a timestamp reset or simply out of order? */
+			gboolean pre_reset_pkt = FALSE;
+
+			/* In-order packet */
+			if((int32_t)(rtp_ts-highest_rtp_ts) > 0) {
+				if(rtp_ts < highest_rtp_ts) {
+					/* Received TS is lower than highest --> reset */
+					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", rtp_ts);
+					times_resetted++;
+				}
+				highest_rtp_ts = rtp_ts;
+				highest_seq = p->seq;
+			}
+
+			/* Out-of-order packet */
+			if((int32_t)(rtp_ts-highest_rtp_ts) < 0) {
+				if(rtp_ts > highest_rtp_ts) {
+					/* Received TS is higher than highest --> late pre-reset packet */
+					JANUS_LOG(LOG_WARN, "Late pre-reset packet: %"SCNu32"\n", rtp_ts);
+					pre_reset_pkt = TRUE;
+				}
+			}
+
+			/* Take into account the number of resets when setting the internal, 64-bit, timestamp */
+			if(!pre_reset_pkt)
+				p->ts = (times_resetted*max32)+rtp_ts;
+			else
+				p->ts = ((times_resetted-1)*max32)+rtp_ts;
+		}
 		if(rtp->padding) {
 			/* There's padding data, let's check the last byte to see how much data we should skip */
 			fseek(file, offset + len - 1, SEEK_SET);
@@ -850,8 +895,6 @@ int main(int argc, char *argv[])
 			p->drop = 1;
 			JANUS_LOG(LOG_VERB, "  -- Only RTP header, marking packet as dropped\n");
 		}
-		last_ts = ntohl(rtp->timestamp);
-		post_reset_pkts++;
 		/* Fill in the rest of the details */
 		p->offset = offset;
 		p->skip = skip;

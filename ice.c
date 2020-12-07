@@ -1125,7 +1125,7 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 	return 0;
 }
 
-int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method) {
+int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method, uint api_timeout) {
 #ifndef HAVE_TURNRESTAPI
 	JANUS_LOG(LOG_ERR, "Janus has been built with no libcurl support, TURN REST API unavailable\n");
 	return -1;
@@ -1135,7 +1135,7 @@ int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_me
 		JANUS_LOG(LOG_ERR, "Invalid TURN REST API backend: not an HTTP address\n");
 		return -1;
 	}
-	janus_turnrest_set_backend(api_server, api_key, api_method);
+	janus_turnrest_set_backend(api_server, api_key, api_method, api_timeout);
 	JANUS_LOG(LOG_INFO, "TURN REST API backend: %s\n", api_server ? api_server : "(disabled)");
 #endif
 	return 0;
@@ -2829,6 +2829,25 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* No audio has been negotiated, definitely video */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is video (no audio has been negotiated)\n", handle->handle_id);
 					video = 1;
+					/* Check the remote SSRC, compare it to what we have: in case
+						* we're simulcasting, let's compare to the other SSRCs too */
+					guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, buflen);
+					if(rtcp_ssrc == 0) {
+						/* No SSRC, maybe an empty RR? */
+						return;
+					}
+					if(stream->video_ssrc_peer[0] && rtcp_ssrc == stream->video_ssrc_peer[0]) {
+						vindex = 0;
+					} else if(stream->video_ssrc_peer[1] && rtcp_ssrc == stream->video_ssrc_peer[1]) {
+						vindex = 1;
+					} else if(stream->video_ssrc_peer[2] && rtcp_ssrc == stream->video_ssrc_peer[2]) {
+						vindex = 2;
+					} else {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Dropping RTCP packet with unknown SSRC (%"SCNu32")\n", handle->handle_id, rtcp_ssrc);
+						return;
+					}
+					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is %s (remote SSRC: video=%"SCNu32" #%d, got %"SCNu32")\n",
+						handle->handle_id, video ? "video" : "audio", stream->video_ssrc_peer[vindex], vindex, rtcp_ssrc);
 				} else if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 					/* No video has been negotiated, definitely audio */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is audio (no video has been negotiated)\n", handle->handle_id);
