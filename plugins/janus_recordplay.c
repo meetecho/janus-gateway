@@ -918,7 +918,7 @@ void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error) 
 		*error = -2;
 		return;
 	}
-	if (session->seek_requests) {
+	if(session->seek_requests) {
 		janus_recordplay_seek_request *seek_request;
 		while((seek_request = 
 			g_async_queue_try_pop(session->seek_requests))) {
@@ -1455,7 +1455,7 @@ static janus_recordplay_seek_request *janus_recordplay_generate_seek_request(jan
 	if(audio) {
 		u_int64_t audio_start_ts = audio->ts;
 		while(audio) { 
-			if (audio->next && (((audio->next->ts - audio_start_ts)*1000/akhz) >= ts))
+			if(audio->next && (((audio->next->ts - audio_start_ts)*1000/akhz) >= ts))
 				break;
 			audio = audio->next;
 		}
@@ -1908,7 +1908,7 @@ recdone:
 			e2ee = rec->e2ee;
 
 			json_t *timestamp = json_object_get(root, "start_at"); 
-			if (timestamp) {
+			if(timestamp) {
 				/* Got a seek request, validate and extract timestamp to seek */
 				guint64 ts = json_integer_value(timestamp);
 
