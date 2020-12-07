@@ -687,7 +687,7 @@ int main(int argc, char *argv[])
 			/* Things are simpler for data, no reordering is needed: start by the data time */
 			gint64 when = 0;
 			bytes = fread(&when, 1, sizeof(gint64), file);
-			if(bytes < sizeof(gint64)) {
+			if(bytes < (int)sizeof(gint64)) {
 				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
 				break;
 			}
