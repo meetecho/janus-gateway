@@ -92,6 +92,7 @@ jobs:
         repository: sctplab/usrsctp
         ref: master
     - name: setup usrsctp from sources
+      if: ${{ matrix.datachannels == 'yes' }}
       run: |
         ./bootstrap
         ./configure --prefix=/usr --disable-static --disable-debug --disable-programs --disable-inet --disable-inet6
