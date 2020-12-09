@@ -42,7 +42,7 @@
  * 		audio = videoroom-audio.mjr
  * 		video = videoroom-video.mjr
  *
- * Data channel recordings are suppoered via a \c data attribute as well.
+ * Data channel recordings are supported via a \c data attribute as well.
  *
  * \section recplayapi Record&Play API
  *
