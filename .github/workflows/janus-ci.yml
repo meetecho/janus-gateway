@@ -75,52 +75,57 @@ jobs:
         meson setup -Dprefix=/usr -Dlibdir=lib -Dc_args="$LNICE_CFLAGS" -Ddebug=false -Doptimization=0 -Dexamples=disabled -Dgtk_doc=disabled -Dgupnp=disabled -Dgstreamer=disabled -Dtests=disabled build
         ninja -C build
         sudo ninja -C build install
-    - name: setup libsrtp from sources
+    - name: checkout libsrtp source
       uses: actions/checkout@v2
-        with:
-          repository: cisco/libsrtp
-          ref: v2.3.0
+      with:
+        repository: cisco/libsrtp
+        ref: v2.3.0
+    - name: setup libsrtp from sources
       run: |
         ./configure --prefix=/usr --enable-openssl
         make -j$(nproc) shared_library
         sudo make install
-    - name: setup usrsctp from sources
+    - name: checkout usrsctp source
       if: ${{ matrix.datachannels == 'yes' }} 
       uses: actions/checkout@v2
-        with:
-          repository: sctplab/usrsctp
-          ref: master
+      with:
+        repository: sctplab/usrsctp
+        ref: master
+    - name: setup usrsctp from sources
       run: |
         ./bootstrap
         ./configure --prefix=/usr --disable-static --disable-debug --disable-programs --disable-inet --disable-inet6
         make -j$(nproc)
         sudo make install
-    - name: setup lws from sources
+    - name: checkout lws source
       uses: actions/checkout@v2
-        with:
-          repository: warmcat/libwebsockets
-          ref: v4.1-stable
+      with:
+        repository: warmcat/libwebsockets
+        ref: v4.1-stable
+    - name: setup lws from sources
       run: |
         mkdir -p build
         pushd build
         cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DLWS_WITH_STATIC=OFF -DLWS_WITHOUT_CLIENT=ON -DLWS_WITHOUT_TESTAPPS=ON -DLWS_WITHOUT_TEST_SERVER=ON -DLWS_WITH_HTTP2=OFF ..
         make -j$(nproc)
         sudo make install
-    - name: setup rabbitmq-c from sources
+    - name: checkout rabbitmq-c source
       uses: actions/checkout@v2
-        with:
-          repository: alanxz/rabbitmq-c
-          ref: v0.10.0
+      with:
+        repository: alanxz/rabbitmq-c
+        ref: v0.10.0
+    - name: setup rabbitmq-c from sources
       run: |
         mkdir build
         pushd build
         cmake -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_TOOLS=OFF ..
         sudo cmake --build . --target install -- -j$(nproc)
-    - name: setup paho-mqtt from sources
+    - name: checkout paho-mqtt source
       uses: actions/checkout@v2
-        with:
-          repository: eclipse/paho.mqtt.c
-          ref: v1.3.1
+      with:
+        repository: eclipse/paho.mqtt.c
+        ref: v1.3.1
+    - name: setup paho-mqtt from sources
       run: |
         cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_SAMPLES=FALSE -DPAHO_BUILD_DOCUMENTATION=FALSE
         make -j$(nproc)
