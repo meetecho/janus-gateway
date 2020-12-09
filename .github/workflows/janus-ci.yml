@@ -60,12 +60,12 @@ jobs:
     - name: install libcurl from apt
       if: ${{ matrix.libcurl == 'yes' }}
       run: sudo apt-get -y install libcurl4-openssl-dev
-    - name: python3 setup
+    - name: setup python
       uses: actions/setup-python@v2
       with:
         python-version: '3.x'
         architecture: 'x64'
-    - name: python3 packages
+    - name: install python packages
       run: pip3 install wheel meson
     - name: setup libnice from sources
       run: |
@@ -75,55 +75,58 @@ jobs:
         meson setup -Dprefix=/usr -Dlibdir=lib -Dc_args="$LNICE_CFLAGS" -Ddebug=false -Doptimization=0 -Dexamples=disabled -Dgtk_doc=disabled -Dgupnp=disabled -Dgstreamer=disabled -Dtests=disabled build
         ninja -C build
         sudo ninja -C build install
-        popd
     - name: setup libsrtp from sources
+      uses: actions/checkout@v2
+        with:
+          repository: cisco/libsrtp
+          ref: v2.3.0
       run: |
-        git clone --depth 1 --quiet -b v2.3.0 https://github.com/cisco/libsrtp.git libsrtp
-        pushd libsrtp
         ./configure --prefix=/usr --enable-openssl
         make -j$(nproc) shared_library
         sudo make install
-        popd
     - name: setup usrsctp from sources
       if: ${{ matrix.datachannels == 'yes' }} 
+      uses: actions/checkout@v2
+        with:
+          repository: sctplab/usrsctp
+          ref: master
       run: |
-        git clone --depth 1 --quiet -b master https://github.com/sctplab/usrsctp usrsctp
-        pushd usrsctp
         ./bootstrap
         ./configure --prefix=/usr --disable-static --disable-debug --disable-programs --disable-inet --disable-inet6
         make -j$(nproc)
         sudo make install
-        popd
     - name: setup lws from sources
+      uses: actions/checkout@v2
+        with:
+          repository: warmcat/libwebsockets
+          ref: v4.1-stable
       run: |
-        git clone --depth 1 --quiet -b v4.1-stable https://github.com/warmcat/libwebsockets.git libwebsockets
-        pushd libwebsockets
         mkdir -p build
         pushd build
         cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DLWS_WITH_STATIC=OFF -DLWS_WITHOUT_CLIENT=ON -DLWS_WITHOUT_TESTAPPS=ON -DLWS_WITHOUT_TEST_SERVER=ON -DLWS_WITH_HTTP2=OFF ..
         make -j$(nproc)
         sudo make install
-        popd
-        popd
     - name: setup rabbitmq-c from sources
+      uses: actions/checkout@v2
+        with:
+          repository: alanxz/rabbitmq-c
+          ref: v0.10.0
       run: |
-        git clone --depth 1 --quiet -b v0.10.0 https://github.com/alanxz/rabbitmq-c rabbitmq-c
-        pushd rabbitmq-c
         mkdir build
         pushd build
         cmake -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_TOOLS=OFF ..
         sudo cmake --build . --target install -- -j$(nproc)
-        popd
-        popd
     - name: setup paho-mqtt from sources
+      uses: actions/checkout@v2
+        with:
+          repository: eclipse/paho.mqtt.c
+          ref: v1.3.1
       run: |
-        git clone --depth 1 --quiet -b v1.3.1 https://github.com/eclipse/paho.mqtt.c.git paho.mqtt.c
-        pushd paho.mqtt.c
         cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_SAMPLES=FALSE -DPAHO_BUILD_DOCUMENTATION=FALSE
         make -j$(nproc)
         sudo make install
-        popd
-    - uses: actions/checkout@v2
+    - name: checkout janus source
+      uses: actions/checkout@v2
     - name: build janus from sources
       env:
         JANUS_CONFIG_COMMON: "--disable-docs --enable-post-processing --enable-plugin-lua --enable-plugin-duktape --enable-json-logger"
