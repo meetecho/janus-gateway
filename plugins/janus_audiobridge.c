@@ -39,7 +39,9 @@ room-<unique room ID>: {
 	audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 	default_prebuffering = number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)
 	record = true|false (whether this room should be recorded, default=false)
-	record_file =	/path/to/recording.wav (where to save the recording)
+	record_file = /path/to/recording.wav (where to save the recording)
+	allow_rtp_participants = true|false (whether participants should be allowed to join
+		via plain RTP as well, rather than just WebRTC, default=true)
 
 		[The following lines are only needed if you want the mixed audio
 		to be automatically forwarded via plain RTP to an external component
@@ -131,6 +133,7 @@ room-<unique room ID>: {
 	"default_prebuffering" : <number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)>,
 	"record" : <true|false, whether to record the room or not, default=false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
+	"allow_rtp_participants" : <true|false, whether participants should be allowed to join via plain RTP as well, default=true>
 }
 \endverbatim
  *
@@ -987,6 +990,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"sampling", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},	/* We keep this to be backwards compatible */
 	{"record", JANUS_JSON_BOOL, 0},
 	{"record_file", JSON_STRING, 0},
+	{"allow_rtp_participants", JANUS_JSON_BOOL, 0},
 	{"permanent", JANUS_JSON_BOOL, 0},
 	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
 	{"audiolevel_event", JANUS_JSON_BOOL, 0},
@@ -1126,6 +1130,7 @@ typedef struct janus_audiobridge_room {
 	gchar *record_file;			/* Path of the recording file */
 	FILE *recording;			/* File to record the room into */
 	gint64 record_lastupdate;	/* Time when we last updated the wav header */
+	gboolean allow_plainrtp;	/* Whether plain RTP participants are allowed*/
 	gboolean destroy;			/* Value to flag the room for destruction */
 	GHashTable *participants;	/* Map of participants */
 	GHashTable *anncs;			/* Map of announcements */
@@ -1327,7 +1332,6 @@ typedef struct janus_audiobridge_plainrtp_media {
 	int pipefd[2];
 	GThread *thread;
 } janus_audiobridge_plainrtp_media;
-static void janus_audiobridge_plainrtp_media_reset(janus_audiobridge_plainrtp_media *media);
 static void janus_audiobridge_plainrtp_media_cleanup(janus_audiobridge_plainrtp_media *media);
 static int janus_audiobridge_plainrtp_allocate_port(janus_audiobridge_plainrtp_media *media);
 static void *janus_audiobridge_plainrtp_relay_thread(void *data);
@@ -2202,6 +2206,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
 			janus_config_item *record = janus_config_get(config, cat, janus_config_type_item, "record");
 			janus_config_item *recfile = janus_config_get(config, cat, janus_config_type_item, "record_file");
+			janus_config_item *allowrtp = janus_config_get(config, cat, janus_config_type_item, "allow_rtp_participants");
 			if(sampling == NULL || sampling->value == NULL) {
 				JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, missing mandatory information...\n");
 				cl = cl->next;
@@ -2309,6 +2314,9 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			if(recfile && recfile->value)
 				audiobridge->record_file = g_strdup(recfile->value);
 			audiobridge->recording = NULL;
+			audiobridge->allow_plainrtp = TRUE;
+			if(allowrtp && allowrtp->value)
+				audiobridge->allow_plainrtp = janus_is_true(allowrtp->value);
 			audiobridge->destroy = 0;
 			audiobridge->participants = g_hash_table_new_full(
 				string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
@@ -2643,6 +2651,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_t *default_prebuffering = json_object_get(root, "default_prebuffering");
 		json_t *record = json_object_get(root, "record");
 		json_t *recfile = json_object_get(root, "record_file");
+		json_t *allowrtp = json_object_get(root, "allow_rtp_participants");
 		json_t *permanent = json_object_get(root, "permanent");
 		if(allowed) {
 			/* Make sure the "allowed" array only contains strings */
@@ -2789,6 +2798,9 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		if(recfile)
 			audiobridge->record_file = g_strdup(json_string_value(recfile));
 		audiobridge->recording = NULL;
+		audiobridge->allow_plainrtp = TRUE;
+		if(allowrtp && json_is_true(allowrtp))
+			audiobridge->allow_plainrtp = TRUE;
 		audiobridge->destroy = 0;
 		audiobridge->participants = g_hash_table_new_full(
 			string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
@@ -5346,6 +5358,15 @@ static void *janus_audiobridge_handler(void *data) {
 			janus_refcount_increase(&audiobridge->ref);
 			janus_mutex_lock(&audiobridge->mutex);
 			janus_mutex_unlock(&rooms_mutex);
+			if(rtp != NULL && !audiobridge->allow_plainrtp) {
+				/* Plain RTP participants are not allowed in this room */
+				janus_mutex_unlock(&audiobridge->mutex);
+				janus_refcount_decrease(&audiobridge->ref);
+				error_code = JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED;
+				JANUS_LOG(LOG_ERR, "Plain RTP participants not allowed in this room\n");
+				g_snprintf(error_cause, 512, "Plain RTP participants not allowed in this room");
+				goto error;
+			}
 			/* A pin may be required for this action */
 			JANUS_CHECK_SECRET(audiobridge->room_pin, root, "pin", error_code, error_cause,
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
@@ -5574,7 +5595,7 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			participant->reset = FALSE;
 			/* If this is a plain RTP participant, create the socket */
-			janus_audiobridge_plainrtp_media_reset(&participant->plainrtp_media);
+			janus_audiobridge_plainrtp_media_cleanup(&participant->plainrtp_media);
 			if(rtp != NULL) {
 				const char *ip = json_string_value(json_object_get(rtp, "ip"));
 				uint16_t port = json_integer_value(json_object_get(rtp, "port"));
@@ -7272,17 +7293,12 @@ static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data
 }
 
 /* Plain RTP stuff */
-static void janus_audiobridge_plainrtp_media_reset(janus_audiobridge_plainrtp_media *media) {
+static void janus_audiobridge_plainrtp_media_cleanup(janus_audiobridge_plainrtp_media *media) {
 	if(media == NULL)
 		return;
-	g_free(media->remote_audio_ip);
-	media->remote_audio_ip = NULL;
 	media->ready = FALSE;
 	media->audio_pt = -1;
 	media->audio_send = FALSE;
-	janus_rtp_switching_context_reset(&media->context);
-}
-static void janus_audiobridge_plainrtp_media_cleanup(janus_audiobridge_plainrtp_media *media) {
 	if(media->audio_rtp_fd > 0)
 		close(media->audio_rtp_fd);
 	media->audio_rtp_fd = -1;
@@ -7298,7 +7314,6 @@ static void janus_audiobridge_plainrtp_media_cleanup(janus_audiobridge_plainrtp_
 	if(media->pipefd[1] > 0)
 		close(media->pipefd[1]);
 	media->pipefd[1] = -1;
-	janus_audiobridge_plainrtp_media_reset(media);
 }
 static int janus_audiobridge_plainrtp_allocate_port(janus_audiobridge_plainrtp_media *media) {
 	/* Read global slider */
