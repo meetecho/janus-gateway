@@ -1,0 +1,135 @@
+name: janus-ci
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+        datachannels: ["yes", "no"]
+        libcurl: ["yes", "no"]
+        include:
+          - datachannel: "yes"
+            libcurl: "yes"
+            janus_config_opts: ""
+          - datachannels: "yes"
+            libcurl: "no"
+            janus_config_opts: "--disable-turn-rest-api --disable-sample-event-handler"
+          - datachannels: "no"
+            libcurl: "yes"
+            janus_config_opts: "--disable-data-channels"
+        exclude:
+          - datachannels: "no"
+            libcurl: "no"
+    env:
+        CC: ${{ matrix.compiler }}
+    steps:
+    - name: install janus apt dependencies
+      run: >
+        sudo apt-get update && sudo apt-get -y install
+        autoconf
+        cmake
+        gengetopt
+        gtk-doc-tools
+        libavcodec-dev
+        libavformat-dev
+        libavutil-dev
+        libcollection-dev
+        libconfig-dev
+        libevent-dev
+        libglib2.0-dev
+        libgnutls28-dev
+        libini-config-dev
+        liblua5.3-dev
+        libjansson-dev
+        libmicrohttpd-dev
+        libmount-dev
+        libnanomsg-dev
+        libogg-dev
+        libopus-dev
+        libsofia-sip-ua-dev
+        libssl-dev
+        libvorbis-dev
+        ninja-build
+        openssl
+    - name: install libcurl from apt
+      if: ${{ matrix.libcurl == 'yes' }}
+      run: sudo apt-get -y install libcurl4-openssl-dev
+    - name: python3 setup
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+        architecture: 'x64'
+    - name: python3 packages
+      run: pip3 install wheel meson
+    - name: setup libnice from sources
+      run: |
+        git clone --depth 1 --quiet -b master https://gitlab.freedesktop.org/libnice/libnice.git libnice
+        pushd libnice
+        if [ $CC = clang ]; then LNICE_CFLAGS="-Wno-cast-align"; fi; 
+        meson setup -Dprefix=/usr -Dlibdir=lib -Dc_args="$LNICE_CFLAGS" -Ddebug=false -Doptimization=0 -Dexamples=disabled -Dgtk_doc=disabled -Dgupnp=disabled -Dgstreamer=disabled -Dtests=disabled build
+        ninja -C build
+        sudo ninja -C build install
+        popd
+    - name: setup libsrtp from sources
+      run: |
+        git clone --depth 1 --quiet -b v2.3.0 https://github.com/cisco/libsrtp.git libsrtp
+        pushd libsrtp
+        ./configure --prefix=/usr --enable-openssl
+        make -j$(nproc) shared_library
+        sudo make install
+        popd
+    - name: setup usrsctp from sources
+      if: ${{ matrix.datachannels == 'yes' }} 
+      run: |
+        git clone --depth 1 --quiet -b master https://github.com/sctplab/usrsctp usrsctp
+        pushd usrsctp
+        ./bootstrap
+        ./configure --prefix=/usr --disable-static --disable-debug --disable-programs --disable-inet --disable-inet6
+        make -j$(nproc)
+        sudo make install
+        popd
+    - name: setup lws from sources
+      run: |
+        git clone --depth 1 --quiet -b v4.1-stable https://github.com/warmcat/libwebsockets.git libwebsockets
+        pushd libwebsockets
+        mkdir -p build
+        pushd build
+        cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DLWS_WITH_STATIC=OFF -DLWS_WITHOUT_CLIENT=ON -DLWS_WITHOUT_TESTAPPS=ON -DLWS_WITHOUT_TEST_SERVER=ON -DLWS_WITH_HTTP2=OFF ..
+        make -j$(nproc)
+        sudo make install
+        popd
+        popd
+    - name: setup rabbitmq-c from sources
+      run: |
+        git clone --depth 1 --quiet -b v0.10.0 https://github.com/alanxz/rabbitmq-c rabbitmq-c
+        pushd rabbitmq-c
+        mkdir build
+        pushd build
+        cmake -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_TOOLS=OFF ..
+        sudo cmake --build . --target install -- -j$(nproc)
+        popd
+        popd
+    - name: setup paho-mqtt from sources
+      run: |
+        git clone --depth 1 --quiet -b v1.3.1 https://github.com/eclipse/paho.mqtt.c.git paho.mqtt.c
+        pushd paho.mqtt.c
+        cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_SAMPLES=FALSE -DPAHO_BUILD_DOCUMENTATION=FALSE
+        make -j$(nproc)
+        sudo make install
+        popd
+    - uses: actions/checkout@v2
+    - name: build janus from sources
+      env:
+        JANUS_CONFIG_COMMON: "--disable-docs --enable-post-processing --enable-plugin-lua --enable-plugin-duktape --enable-json-logger"
+        JANUS_CONFIG_OPTS: ${{ matrix.janus_config_opts }}
+      run: |
+        ./autogen.sh
+        ./configure $JANUS_CONFIG_COMMON $JANUS_CONFIG_OPTS
+         make -j$(nproc)
+         make check-fuzzers
