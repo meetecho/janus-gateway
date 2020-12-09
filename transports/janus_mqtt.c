@@ -377,7 +377,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 		ctx->ssl_enabled = TRUE;
 
-		janus_config_item *cacertfile = janus_config_get(config, config_general, janus_config_type_item, "cacertfile");		
+		janus_config_item *cacertfile = janus_config_get(config, config_general, janus_config_type_item, "cacertfile");
 		if(!cacertfile || !cacertfile->value) {
 			JANUS_LOG(LOG_WARN, "No CA certificate for MQTT integration, using OpenSSL defaults\n");
 		}
