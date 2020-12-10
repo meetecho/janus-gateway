@@ -1897,10 +1897,16 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 	char *jsep_text = jsep ? json_dumps(jsep, JSON_INDENT(0) | JSON_PRESERVE_ORDER) : NULL;
 	if(jsep != NULL) {
 		json_t *simulcast = json_object_get(jsep, "simulcast");
-		if(simulcast != NULL) {
-			janus_rtp_simulcasting_prepare(simulcast,
-				&session->rid_extmap_id, NULL,
-				session->ssrc, session->rid);
+		if(simulcast && json_array_size(simulcast) > 0) {
+			size_t i = 0;
+			for(i=0; i<json_array_size(simulcast); i++) {
+				json_t *s = json_array_get(simulcast, i);
+				janus_rtp_simulcasting_prepare(s,
+					&session->rid_extmap_id, NULL,
+					session->ssrc, session->rid);
+				/* FIXME We're stopping at the first item, there may be more */
+				break;
+			}
 		}
 		const char *sdp_type = json_string_value(json_object_get(jsep, "type"));
 		if(sdp_type && !strcasecmp(sdp_type, "answer")) {
