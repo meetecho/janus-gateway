@@ -7317,7 +7317,7 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_unlock(&participant->rec_mutex);
 				/* Generate an SDP string we can offer subscribers later on */
 				char *offer_sdp = janus_sdp_write(offer);
-				if(!sdp_update) {
+				if(!sdp_update || (participant->ssrc[0] == 0 && participant->rid[0] == NULL)) {
 					/* Is simulcasting involved */
 					if(msg_simulcast && (participant->vcodec == JANUS_VIDEOCODEC_VP8 ||
 							participant->vcodec == JANUS_VIDEOCODEC_H264)) {
