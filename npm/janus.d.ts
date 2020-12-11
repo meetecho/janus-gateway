@@ -1,9 +1,17 @@
 declare namespace JanusJS {
 	interface Dependencies {
 		adapter: any;
+		WebSocket: (server: string, protocol: string) => WebSocket;
+		isArray: (array: any) => array is Array<any>;
+		extension: () => boolean;
+		httpAPICall: (url: string, options: any) => void;
+    }
+    
+    interface DependenciesResult {
+		adapter: any;
 		newWebSocket: (server: string, protocol: string) => WebSocket;
 		isArray: (array: any) => array is Array<any>;
-		checkJanusExtension: () => boolean;
+		extension: () => boolean;
 		httpAPICall: (url: string, options: any) => void;
 	}
 
@@ -20,7 +28,7 @@ declare namespace JanusJS {
 	interface InitOptions {
 		debug?: boolean | 'all' | DebugLevel[];
 		callback?: Function;
-		dependencies?: Dependencies;
+		dependencies?: DependenciesResult;
 	}
 
 	interface ConstructorOptions {
@@ -128,8 +136,8 @@ declare namespace JanusJS {
 	}
 
 	class Janus {
-		static useDefaultDependencies(deps: Partial<Dependencies>): Dependencies;
-		static useOldDependencies(deps: Partial<Dependencies>): Dependencies;
+		static useDefaultDependencies(deps: Partial<Dependencies>): DependenciesResult;
+		static useOldDependencies(deps: Partial<Dependencies>): DependenciesResult;
 		static init(options: InitOptions): void;
 		static isWebrtcSupported(): boolean;
 		static debug(...args: any[]): void;
