@@ -937,13 +937,15 @@ void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error) 
 		*error = -2;
 		return;
 	}
-	if(session->seek_requests) {
+	GAsyncQueue *seek_requests = session->seek_requests;
+	session->seek_requests = NULL;
+	if(seek_requests) {
 		janus_recordplay_seek_request *seek_request;
 		while((seek_request = 
-			g_async_queue_try_pop(session->seek_requests))) {
+			g_async_queue_try_pop(seek_requests))) {
 				g_free(seek_request);
 		}
-		g_free(session->seek_requests);
+		g_async_queue_unref(seek_requests);
 	}
 	JANUS_LOG(LOG_VERB, "Removing Record&Play session...\n");
 	janus_recordplay_hangup_media_internal(handle);
@@ -1520,7 +1522,7 @@ static janus_recordplay_seek_request *janus_recordplay_generate_seek_request(jan
 	}
 
 	/* Found seek location */
-	janus_recordplay_seek_request *seek_request = g_malloc(sizeof(janus_recordplay_frame_packet));
+	janus_recordplay_seek_request *seek_request = g_malloc(sizeof(janus_recordplay_seek_request));
 	seek_request->audioseekframe = audio;
 	seek_request->videoseekframe = video;
 	seek_request->dataseekpacket = data;
