@@ -111,8 +111,8 @@ janus_transport *create(void) {
 }
 
 /* MHD uses this value as default */
-static const unsigned int default_connection_limit = FD_SETSIZE - 4;
-static unsigned int connection_limit = default_connection_limit;
+#define DEFAULT_CONNECTION_LIMIT (FD_SETSIZE-4)
+static unsigned int connection_limit = DEFAULT_CONNECTION_LIMIT;
 
 /* Useful stuff */
 static gint initialized = 0, stopping = 0;
@@ -711,7 +711,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		item = janus_config_get(config, config_general, janus_config_type_item, "mhd_connection_limit");
 		if(item && item->value && janus_string_to_uint32(item->value, &connection_limit) < 0) {
 			JANUS_LOG(LOG_ERR, "Invalid mhd_connection_limit (%s), falling back to default\n", item->value);
-			connection_limit = default_connection_limit;
+			connection_limit = DEFAULT_CONNECTION_LIMIT;
 		}
 		/* Should we set the debug flag in libmicrohttpd? */
 		item = janus_config_get(config, config_general, janus_config_type_item, "mhd_debug");
