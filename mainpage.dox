@@ -3490,6 +3490,12 @@ ldd janus | grep asan
  * 		<td>Javascript (node and browser side) API for Janus WebRTC Gateway, Using MQTT</td>
  * </tr>
  * <tr>
+ * 		<td>JavaScript/Angular</td>
+ * 		<td><a href="https://github.com/kevin29a">Kevin Thompson</a></td>
+ * 		<td><a href="https://kevin29a.github.io/angular-janus">janus-angular</a></td>
+ * 		<td>Angular Component for implementing a videoroom</td>
+ * </tr>
+ * <tr>
  * 		<td>ruby</td>
  * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
  * 		<td><a href="https://github.com/cargomedia/janus-gateway-ruby">janus-gateway-ruby</a></td>
@@ -3907,7 +3913,8 @@ ldd janus | grep asan
  *    - Presentation on RTP forwarders at <a href="https://fosdem.org/2020/schedule/event/janus/">FOSDEM 2020</a>;
  *    - Presentation on using Janus for Virtual Events at <a href="https://www.youtube.com/watch?v=oSZw90guaUw">CommCon 2020</a>;
  *    - Workshop on Janus (lesson/tutorial) at <a href="https://www.youtube.com/watch?v=Ga_7lukslxw">ClueCon 2020</a>;
- *    - Presentation on E2EE (end-to-end encryption) and Insertable Streams at <a href="https://youtu.be/SmN8-6ZFuOo?t=2004">ClueCon 2020</a>. \n\n
+ *    - Presentation on E2EE (end-to-end encryption) and Insertable Streams at <a href="https://youtu.be/SmN8-6ZFuOo?t=2004">ClueCon 2020</a>;
+ *    - Presentation on SFUs and MCUs at <a href="https://www.youtube.com/watch?v=0ldgX_0w5QU">IIT RTC 2020</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
  *    and presentations from <a href="https://januscon.it/2019">JanusCon</a>,
  *    the Janus conference we hosted here in Napoli.

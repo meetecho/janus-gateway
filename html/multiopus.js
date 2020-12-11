@@ -71,7 +71,7 @@ var localStream = null;
 $(document).ready(function() {
 	// Preload the video
 	$('#videoleft').append(
-		'<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="true" loop>' +
+		'<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay playsinline muted="true" loop>' +
 		'	<source src="surround/ChID-BLITS-EBU.mp4" type="video/mp4">' +
 		'</video>'
 	);
@@ -256,7 +256,7 @@ $(document).ready(function() {
 											}
 										});
 										// No remote video yet
-										$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
+										$('#videoright').append('<video class="rounded centered" id="waitingvideo" width="100%" height="100%" />');
 										if(spinner == null) {
 											var target = document.getElementById('videoright');
 											spinner = new Spinner({top:100}).spin(target);
@@ -286,7 +286,7 @@ $(document).ready(function() {
 									if($('#peervideo').length === 0) {
 										addButtons = true;
 										$('#videos').removeClass('hide').show();
-										$('#videoright').append('<video class="rounded centered hide" id="peervideo" width=320 height=240 autoplay playsinline/>');
+										$('#videoright').append('<video class="rounded centered hide" id="peervideo" width="100%" height="100%" autoplay playsinline/>');
 										// Show the video, hide the spinner and show the resolution when we get a playing event
 										$("#peervideo").bind("playing", function () {
 											$('#waitingvideo').remove();

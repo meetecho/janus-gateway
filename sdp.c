@@ -439,12 +439,12 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse rid attribute...\n", handle->handle_id);
 				} else {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsed rid: %s\n", handle->handle_id, rid);
-					if(stream->rid[rids_hml ? 0 : 2] == NULL) {
-						stream->rid[rids_hml ? 0 : 2] = g_strdup(rid);
+					if(stream->rid[rids_hml ? 2 : 0] == NULL) {
+						stream->rid[rids_hml ? 2 : 0] = g_strdup(rid);
 					} else if(stream->rid[1] == NULL) {
 						stream->rid[1] = g_strdup(rid);
-					} else if(stream->rid[rids_hml ? 2 : 0] == NULL) {
-						stream->rid[rids_hml ? 2 : 0] = g_strdup(rid);
+					} else if(stream->rid[rids_hml ? 0 : 2] == NULL) {
+						stream->rid[rids_hml ? 0 : 2] = g_strdup(rid);
 					} else {
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Too many RTP Stream IDs, ignoring '%s'...\n", handle->handle_id, rid);
 					}
@@ -454,6 +454,16 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 				stream->legacy_rid = strstr(a->value, "rid=") ? TRUE : FALSE;
 			}
 			tempA = tempA->next;
+		}
+		/* If rid is involved, check how many of them we have (it may be less than 3) */
+		if(stream->rid[0] == NULL && stream->rid[2] != NULL) {
+			stream->rid[0] = stream->rid[1];
+			stream->rid[1] = stream->rid[2];
+			stream->rid[2] = NULL;
+		}
+		if(stream->rid[0] == NULL && stream->rid[1] != NULL) {
+			stream->rid[0] = stream->rid[1];
+			stream->rid[1] = NULL;
 		}
 		/* Let's start figuring out the SSRCs, and any grouping that may be there */
 		stream->audio_ssrc_peer_new = 0;
@@ -750,6 +760,7 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 			GResolver *resolver = g_resolver_get_default();
 			g_resolver_lookup_by_name_async(resolver, rip, NULL,
 				(GAsyncReadyCallback)janus_sdp_mdns_resolved, mc);
+			g_object_unref(resolver);
 			return 0;
 		}
 		/* Add remote candidate */
@@ -1507,7 +1518,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			char rids[50];
 			rids[0] = '\0';
 			int i=0, index=0;
-			for(i=0; i<3; i++) {
+			for(i=2; i>=0; i--) {
 				index = (stream->rids_hml ? i : (2-i));
 				if(stream->rid[index] == NULL)
 					continue;

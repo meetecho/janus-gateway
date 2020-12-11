@@ -404,6 +404,8 @@ typedef struct janus_recordplay_recording {
 	janus_videocodec vcodec;	/* Codec used for video, if available */
 	char *vfmtp;				/* Video fmtp, if any */
 	int video_pt;				/* Payload types to use for audio when playing recordings */
+	char *drc_file;				/* Data file name */
+	gboolean textdata;			/* Whether data format is text */
 	char *offer;				/* The SDP offer that will be sent to watchers */
 	gboolean e2ee;				/* Whether media in the recording is encrypted, e.g., using Insertable Streams */
 	GList *viewers;				/* List of users watching this recording */
@@ -429,6 +431,8 @@ typedef struct janus_recordplay_session {
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	janus_recordplay_frame_packet *aframes;	/* Audio frames (for playout) */
 	janus_recordplay_frame_packet *vframes;	/* Video frames (for playout) */
+	janus_recordplay_frame_packet *dframes;	/* Data packets (for playout) */
+	gboolean textdata;		/* Whether data format is text */
 	guint video_remb_startup;
 	gint64 video_remb_last;
 	guint32 video_bitrate;
@@ -475,6 +479,7 @@ static void janus_recordplay_recording_free(const janus_refcount *recording_ref)
 	g_free(recording->date);
 	g_free(recording->arc_file);
 	g_free(recording->vrc_file);
+	g_free(recording->drc_file);
 	g_free(recording->afmtp);
 	g_free(recording->vfmtp);
 	g_free(recording->offer);
@@ -587,11 +592,13 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 					return NULL;
 				}
 				const char *t = json_string_value(type);
-				gboolean video = FALSE;
+				gboolean video = FALSE, data = FALSE;
 				if(!strcasecmp(t, "v")) {
 					video = TRUE;
 				} else if(!strcasecmp(t, "a")) {
 					video = FALSE;
+				} else if(!strcasecmp(t, "d")) {
+					data = TRUE;
 				} else {
 					JANUS_LOG(LOG_WARN, "Unsupported recording type '%s' in info header...\n", t);
 					json_decref(info);
@@ -615,6 +622,13 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 					return NULL;
 				}
 				const char *c = json_string_value(codec);
+				if(data) {
+					/* Found! */
+					c = "text";
+					json_decref(info);
+					fclose(file);
+					return c;					
+				}
 				const char *mcodec = janus_sdp_match_preferred_codec(video ? JANUS_SDP_VIDEO : JANUS_SDP_AUDIO, (char *)c);
 				if(mcodec != NULL) {
 					/* Found! */
@@ -643,7 +657,8 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 		return -1;
 	/* Prepare an SDP offer we'll send to playout viewers */
 	gboolean offer_audio = (rec->arc_file != NULL && rec->acodec != JANUS_AUDIOCODEC_NONE),
-		offer_video = (rec->vrc_file != NULL && rec->vcodec != JANUS_VIDEOCODEC_NONE);
+		offer_video = (rec->vrc_file != NULL && rec->vcodec != JANUS_VIDEOCODEC_NONE),
+		offer_data = rec->drc_file != NULL;
 	char s_name[100];
 	g_snprintf(s_name, sizeof(s_name), "Recording %"SCNu64, rec->id);
 	janus_sdp *offer = janus_sdp_generate_offer(
@@ -660,7 +675,7 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 		JANUS_SDP_OA_VIDEO_PT, rec->video_pt,
 		JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
 		JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
-		JANUS_SDP_OA_DATA, FALSE,
+		JANUS_SDP_OA_DATA, offer_data,
 		JANUS_SDP_OA_DONE);
 	g_free(rec->offer);
 	rec->offer = janus_sdp_write(offer);
@@ -704,6 +719,7 @@ static void janus_recordplay_message_free(janus_recordplay_message *msg) {
 #define JANUS_RECORDPLAY_ERROR_RECORDING_EXISTS		420
 #define JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR		499
 
+#define ntohll(x) ((1==ntohl(1)) ? (x) : ((gint64)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
 
 /* Plugin implementation */
 int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
@@ -1801,6 +1817,13 @@ recdone:
 					warning = "Broken video file, playing audio only";
 				}
 			}
+			if(rec->drc_file) {
+				session->dframes = janus_recordplay_get_frames(recordings_path, rec->drc_file);
+				if(session->dframes == NULL) {
+					JANUS_LOG(LOG_WARN, "Error opening data recording, trying to go on anyway\n");
+					warning = "Broken data file, playing audio/video only";
+				}
+			}
 			if(session->aframes == NULL && session->vframes == NULL) {
 				error_code = JANUS_RECORDPLAY_ERROR_INVALID_RECORDING;
 				g_snprintf(error_cause, 512, "Error opening recording files");
@@ -1827,6 +1850,7 @@ playdone:
 				json_object_set_new(info, "id", json_integer(id_value));
 				json_object_set_new(info, "audio", session->aframes ? json_true() : json_false());
 				json_object_set_new(info, "video", session->vframes ? json_true() : json_false());
+				json_object_set_new(info, "data", session->dframes ? json_true() : json_false());
 				gateway->notify_event(&janus_recordplay_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "start")) {
@@ -1994,6 +2018,7 @@ void janus_recordplay_update_recordings_list(void) {
 		janus_config_item *date = janus_config_get(nfo, cat, janus_config_type_item, "date");
 		janus_config_item *audio = janus_config_get(nfo, cat, janus_config_type_item, "audio");
 		janus_config_item *video = janus_config_get(nfo, cat, janus_config_type_item, "video");
+		janus_config_item *data = janus_config_get(nfo, cat, janus_config_type_item, "data");
 		if(!name || !name->value || strlen(name->value) == 0 || !date || !date->value || strlen(date->value) == 0) {
 			JANUS_LOG(LOG_WARN, "Invalid info for recording %"SCNu64", skipping...\n", id);
 			g_list_free(cl);
@@ -2040,6 +2065,16 @@ void janus_recordplay_update_recordings_list(void) {
 				rec->vfmtp = g_strdup(fmtp);
 			if(e2ee)
 				rec->e2ee = TRUE;
+		}
+		if(data && data->value) {
+			rec->drc_file = g_strdup(data->value);
+			char *ext = strstr(rec->drc_file, ".mjr");
+			if(ext != NULL)
+				*ext = '\0';
+			const char *textcodec = janus_recordplay_parse_codec(recordings_path,
+				rec->drc_file, NULL, sizeof(NULL), NULL);
+			if(textcodec)
+				rec->textdata = TRUE; /* Binary recordings not supported yet */
 		}
 		rec->audio_pt = AUDIO_PT;
 		if(rec->acodec != JANUS_AUDIOCODEC_NONE) {
@@ -2112,6 +2147,8 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 	long offset = 0;
 	uint16_t len = 0, count = 0;
 	uint32_t first_ts = 0, last_ts = 0, reset = 0;	/* To handle whether there's a timestamp reset in the recording */
+	int video = 0, audio = 0, data = 0;
+	gint64 c_time = 0, w_time = 0;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	/* Let's look for timestamp resets first */
@@ -2186,12 +2223,12 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 					return NULL;
 				}
 				const char *t = json_string_value(type);
-				int video = 0;
-				gint64 c_time = 0, w_time = 0;
 				if(!strcasecmp(t, "v")) {
 					video = 1;
 				} else if(!strcasecmp(t, "a")) {
-					video = 0;
+					audio = 1;
+				} else if(!strcasecmp(t, "d")) {
+					data = 1;
 				} else {
 					JANUS_LOG(LOG_WARN, "Unsupported recording type '%s' in info header...\n", t);
 					json_decref(info);
@@ -2226,7 +2263,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				}
 				w_time = json_integer_value(created);
 				/* Summary */
-				JANUS_LOG(LOG_VERB, "This is %s recording:\n", video ? "a video" : "an audio");
+				JANUS_LOG(LOG_VERB, "This is %s recording:\n", video ? "a video" : (audio ? "an audio" : "a data"));
 				JANUS_LOG(LOG_VERB, "  -- Codec:   %s\n", c);
 				JANUS_LOG(LOG_VERB, "  -- Created: %"SCNi64"\n", c_time);
 				JANUS_LOG(LOG_VERB, "  -- Written: %"SCNi64"\n", w_time);
@@ -2238,25 +2275,27 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 			return NULL;
 		}
 		/* Only read RTP header */
-		bytes = fread(prebuffer, sizeof(char), 16, file);
-		janus_rtp_header *rtp = (janus_rtp_header *)prebuffer;
-		if(last_ts == 0) {
-			first_ts = ntohl(rtp->timestamp);
-			if(first_ts > 1000*1000)	/* Just used to check whether a packet is pre- or post-reset */
-				first_ts -= 1000*1000;
-		} else {
-			if(ntohl(rtp->timestamp) < last_ts) {
-				/* The new timestamp is smaller than the next one, is it a timestamp reset or simply out of order? */
-				if(last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000) {
+		if(audio || video) {
+			bytes = fread(prebuffer, sizeof(char), 16, file);
+			janus_rtp_header *rtp = (janus_rtp_header *)prebuffer;
+			if(last_ts == 0) {
+				first_ts = ntohl(rtp->timestamp);
+				if(first_ts > 1000*1000)	/* Just used to check whether a packet is pre- or post-reset */
+					first_ts -= 1000*1000;
+			} else {
+				if(ntohl(rtp->timestamp) < last_ts) {
+					/* The new timestamp is smaller than the next one, is it a timestamp reset or simply out of order? */
+					if(last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000) {
+						reset = ntohl(rtp->timestamp);
+						JANUS_LOG(LOG_VERB, "Timestamp reset: %"SCNu32"\n", reset);
+					}
+				} else if(ntohl(rtp->timestamp) < reset) {
+					JANUS_LOG(LOG_VERB, "Updating timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
 					reset = ntohl(rtp->timestamp);
-					JANUS_LOG(LOG_VERB, "Timestamp reset: %"SCNu32"\n", reset);
 				}
-			} else if(ntohl(rtp->timestamp) < reset) {
-				JANUS_LOG(LOG_VERB, "Updating timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
-				reset = ntohl(rtp->timestamp);
 			}
+			last_ts = ntohl(rtp->timestamp);
 		}
-		last_ts = ntohl(rtp->timestamp);
 		/* Skip data for now */
 		offset += len;
 	}
@@ -2277,6 +2316,37 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 		if(prebuffer[1] == 'J' || len < 12) {
 			/* Not RTP, skip */
 			JANUS_LOG(LOG_HUGE, "  -- Not RTP, skipping\n");
+			offset += len;
+			continue;
+		}
+
+		if(data) {
+			/* Things are simpler for data, no reordering is needed: start by the data time */
+			gint64 when = 0;
+			bytes = fread(&when, 1, sizeof(gint64), file);
+			if(bytes < (int)sizeof(gint64)) {
+				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
+				break;
+			}
+			when = ntohll(when);
+			offset += sizeof(gint64);
+			len -= sizeof(gint64);
+			/* Generate frame packet and insert in the ordered list */
+			janus_recordplay_frame_packet *p = g_malloc(sizeof(janus_recordplay_frame_packet));
+			p->seq = 0;
+			/* We "abuse" the timestamp field for the timing info */
+			p->ts = when-c_time;
+			p->len = len;
+			p->offset = offset;
+			p->next = NULL;
+			p->prev = last;
+			if(list == NULL) {
+				list = p;
+			} else {
+				last->next = p;
+			}
+			last = p;
+			/* Done */
 			offset += len;
 			continue;
 		}
@@ -2396,8 +2466,8 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 	return list;
 }
 
-static void *janus_recordplay_playout_thread(void *data) {
-	janus_recordplay_session *session = (janus_recordplay_session *)data;
+static void *janus_recordplay_playout_thread(void *sessiondata) {
+	janus_recordplay_session *session = (janus_recordplay_session *)sessiondata;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "Invalid session, can't start playout thread...\n");
 		g_thread_unref(g_thread_self());
@@ -2427,7 +2497,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 	}
 	JANUS_LOG(LOG_INFO, "Joining playout thread\n");
 	/* Open the files */
-	FILE *afile = NULL, *vfile = NULL;
+	FILE *afile = NULL, *vfile = NULL, *dfile = NULL;
 	if(session->aframes) {
 		char source[1024];
 		if(strstr(rec->arc_file, ".mjr"))
@@ -2462,15 +2532,37 @@ static void *janus_recordplay_playout_thread(void *data) {
 		}
 	}
 
+	if(session->dframes) {
+		char source[1024];
+		if(strstr(rec->drc_file, ".mjr"))
+			g_snprintf(source, 1024, "%s/%s", recordings_path, rec->drc_file);
+		else
+			g_snprintf(source, 1024, "%s/%s.mjr", recordings_path, rec->drc_file);
+		dfile = fopen(source, "rb");
+		if(dfile == NULL) {
+			janus_refcount_decrease(&rec->ref);
+			janus_refcount_decrease(&session->ref);
+			JANUS_LOG(LOG_ERR, "Could not open data file %s, can't start playout thread...\n", source);
+			if(afile)
+				fclose(afile);
+			afile = NULL;
+			if(vfile)
+				fclose(vfile);
+			vfile = NULL;
+			g_thread_unref(g_thread_self());
+			return NULL;
+		}
+	}
 	/* Timer */
-	gboolean asent = FALSE, vsent = FALSE;
-	struct timeval now, abefore, vbefore;
+	gboolean asent = FALSE, vsent = FALSE, dsent = FALSE;
+	struct timeval now, abefore, vbefore, dbefore;
 	time_t d_s, d_us;
 	gettimeofday(&now, NULL);
 	gettimeofday(&abefore, NULL);
 	gettimeofday(&vbefore, NULL);
+	gettimeofday(&dbefore, NULL);
 
-	janus_recordplay_frame_packet *audio = session->aframes, *video = session->vframes;
+	janus_recordplay_frame_packet *audio = session->aframes, *video = session->vframes, *data = session->dframes;
 	char *buffer = g_malloc0(1500);
 	int bytes = 0;
 	int64_t ts_diff = 0, passed = 0;
@@ -2485,12 +2577,13 @@ static void *janus_recordplay_playout_thread(void *data) {
 
 	while(!g_atomic_int_get(&session->destroyed) && session->active
 			&& !g_atomic_int_get(&rec->destroyed) && (audio || video)) {
-		if(!asent && !vsent) {
+		if(!asent && !vsent && !dsent) {
 			/* We skipped the last round, so sleep a bit (5ms) */
 			g_usleep(5000);
 		}
 		asent = FALSE;
 		vsent = FALSE;
+		dsent = FALSE;
 		if(audio) {
 			if(audio == session->aframes) {
 				/* First packet, send now */
@@ -2618,6 +2711,52 @@ static void *janus_recordplay_playout_thread(void *data) {
 				}
 			}
 		}
+		if(data) {
+			u_int64_t prev_ts = 0; /* All timestamps for data are indexed to 0, since when parsing ts = when - c_time */
+			if(data->prev) 
+				prev_ts = data->prev->ts;
+			ts_diff = data->ts - prev_ts;
+
+			/* Check if it's time to send */
+			gettimeofday(&now, NULL);
+			d_s = now.tv_sec - dbefore.tv_sec;
+			d_us = now.tv_usec - dbefore.tv_usec;
+			if(d_us < 0) {
+				d_us += 1000000;
+				--d_s;
+			}
+			passed = d_s*1000000 + d_us;
+			if(passed < (ts_diff-5000)) {
+				dsent = FALSE;
+			} else {
+				/* Update the reference time */
+				dbefore.tv_usec += ts_diff%1000000;
+				if(dbefore.tv_usec > 1000000) {
+					dbefore.tv_sec++;
+					dbefore.tv_usec -= 1000000;
+				}
+				if(ts_diff/1000000 > 0) {
+					dbefore.tv_sec += ts_diff/1000000;
+					dbefore.tv_usec -= ts_diff/1000000;
+				}
+				/* Read data packet */
+				fseek(dfile, data->offset, SEEK_SET);
+				bytes = fread(buffer, sizeof(char), data->len, dfile);
+				if(bytes != data->len)
+					JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, data->len);
+				/* Update payload type */
+				janus_plugin_data datapacket = {
+					.label = NULL,
+					.protocol = NULL,
+					.binary = rec->textdata ? FALSE : TRUE, 
+					.buffer = (char *)buffer,
+					.length = bytes
+				};
+				gateway->relay_data(session->handle, &datapacket);
+				dsent = TRUE;
+				data = data->next;
+			}
+		}
 	}
 
 	g_free(buffer);
@@ -2639,12 +2778,23 @@ static void *janus_recordplay_playout_thread(void *data) {
 	}
 	session->vframes = NULL;
 
+	data = session->dframes;
+	while(data) {
+		tmp = data->next;
+		g_free(data);
+		data = tmp;
+	}
+	session->dframes = NULL;
+
 	if(afile)
 		fclose(afile);
 	afile = NULL;
 	if(vfile)
 		fclose(vfile);
 	vfile = NULL;
+	if(dfile)
+		fclose(dfile);
+	dfile = NULL;
 
 	/* Remove from the list of viewers */
 	janus_mutex_lock(&rec->mutex);

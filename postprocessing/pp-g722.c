@@ -138,18 +138,17 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	uint8_t *buffer = g_malloc0(1500);
 	int16_t samples[1500];
 	memset(samples, 0, sizeof(samples));
+	uint num_samples = 320;
 	while(*working && tmp != NULL) {
-		if(tmp->prev != NULL && (tmp->seq - tmp->prev->seq > 1)) {
+		if(tmp->prev != NULL && ((tmp->ts - tmp->prev->ts)/8/20 > 1)) {
 			JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
-				tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000);
-			/* FIXME Write the silence packet N times to fill in the gaps */
+				tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/8000);
+			int silence_count = (tmp->ts - tmp->prev->ts)/8/20 - 1;
 			int i=0;
-			for(i=0; i<(tmp->seq-tmp->prev->seq-1); i++) {
-				/* FIXME We should actually also look at the timestamp differences */
+			for(i=0; i<silence_count; i++) {
 				JANUS_LOG(LOG_WARN, "[FILL] Writing silence (seq=%d, index=%d)\n",
 					tmp->prev->seq+i+1, i+1);
 				/* Add silence */
-				uint num_samples = 320;
 				memset(samples, 0, num_samples*2);
 				if(wav_file != NULL) {
 					if(fwrite(samples, sizeof(uint16_t), num_samples, wav_file) != num_samples) {
@@ -161,7 +160,7 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		}
 		if(tmp->drop) {
 			/* We marked this packet as one to drop, before */
-			JANUS_LOG(LOG_WARN, "Dropping previously marked audio packet (time ~%"SCNu64"s)\n", (tmp->ts-list->ts)/48000);
+			JANUS_LOG(LOG_WARN, "Dropping previously marked audio packet (time ~%"SCNu64"s)\n", (tmp->ts-list->ts)/8000);
 			tmp = tmp->next;
 			continue;
 		}
@@ -194,6 +193,7 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/8000);
 		/* Decode and save to wav */
 		AVPacket avpacket;
+		av_init_packet(&avpacket);
 		avpacket.data = (uint8_t *)buffer;
 		avpacket.size = bytes;
 		int err = 0;

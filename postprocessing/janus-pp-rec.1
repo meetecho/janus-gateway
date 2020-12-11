@@ -30,11 +30,11 @@ Only parse and re-order packets  (default=off)
 .BR \-m ", " \-\-metadata=metadata
 Save this metadata string in the target file
 .TP
-.BR \-r ", " \-\-postreset-trigger=count
-Number of packets needed to detect a timestamp reset (default=200)
-.TP
 .BR \-i ", " \-\-ignore-first=count
 Number of first packets to ignore when processing, e.g., in case they're cause of issues (default=0)
+.TP
+.BR \-P ", " \-\-payload-type=pt
+Ignore all RTP packets that don't match the specified payload type (default=none)
 .TP
 .BR \-a ", " \-\-audiolevel-ext=id
 ID of the audio-levels RTP extension (default=none)
@@ -59,6 +59,8 @@ For mp4 files write the MOOV atom at the head of the file  (default=off)
 .TP
 .BR \-S ", " \-\-audioskew=milliseconds
 Time threshold to trigger an audio skew compensation, disabled if 0 (default=0)
+.BR \-C ", " \-\-silence-distance=count
+RTP packets distance used to detect RTP silence suppression, disabled if 0 (default=100)
 .SH EXAMPLES
 \fBjanus-pp-rec \-\-header rec1234.mjr\fR \- Parse the recordings header (shows metadata info)
 .TP

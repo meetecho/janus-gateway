@@ -191,6 +191,26 @@ function dataReady(id)
 	-- to throttle outgoing data and not send too much at a time.
 end
 
+function substreamChanged(id, substream)
+	-- If simulcast is used, this callback is invoked when the substream
+	-- we're sending to this session changes: 0=low, 1=medium, 2=high
+	logger.print("Substream changed for session " .. id .. ": " .. substream);
+	-- Let's send an event so that the user is aware
+	local event = { echotest = "event", videocodec = "vp8", substream = substream }
+	local jsonevent = json.encode(event)
+	pushEvent(id, nil, jsonevent, nil)
+end
+
+function temporalLayerChanged(id, temporal)
+	-- If simulcast is used, this callback is invoked when the temporal
+	-- layer we're sending to this session changes: 0=lowfps, 1=maxfps
+	logger.print("Temporal layer changed for session " .. id .. ": " .. temporal);
+	-- Let's send an event so that the user is aware
+	local event = { echotest = "event", videocodec = "vp8", temporal = temporal }
+	local jsonevent = json.encode(event)
+	pushEvent(id, nil, jsonevent, nil)
+end
+
 function resumeScheduler()
 	-- This is the function responsible for resuming coroutines associated
 	-- with whatever is relevant to the Lua script, e.g., for this script,
@@ -238,6 +258,17 @@ function processRequest(id, msg)
 	end
 	if msg["bitrate"] ~= nil then
 		setBitrate(id, msg["bitrate"])
+	end
+	if msg["substream"] ~= nil then
+		setSubstream(id, msg["substream"])
+		sendPli(id)
+	end
+	if msg["temporal"] ~= nil then
+		setTemporalLayer(id, msg["temporal"])
+		sendPli(id)
+	end
+	if msg["keyframe"] ~= nil then
+		sendPli(id)
 	end
 	if msg["record"] == true then
 		local fnbase = msg["filename"]

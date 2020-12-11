@@ -594,7 +594,7 @@ room-<unique room ID>: {
  * participants, if any;
  * -# you send a \c configure request attached to an audio-only JSEP offer
  * to start configuring your participation in the room (e.g., join unmuted
- * or muted), and wait for a \c configured event, which will be attached
+ * or muted), and wait for the related \c event, which will be attached
  * to a JSEP answer by the plugin to complete the setup of the WebRTC
  * PeerConnection;
  * -# you send other \c configure requests (without any JSEP-related
@@ -2436,6 +2436,7 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
 		json_object_set_new(info, "active", g_atomic_int_get(&participant->active) ? json_true() : json_false());
 		json_object_set_new(info, "pre-buffering", participant->prebuffering ? json_true() : json_false());
+		json_object_set_new(info, "prebuffer-count", json_integer(participant->prebuffer_count));
 		if(participant->inbuf) {
 			janus_mutex_lock(&participant->qmutex);
 			json_object_set_new(info, "queue-in", json_integer(g_list_length(participant->inbuf)));
@@ -5562,6 +5563,9 @@ static void *janus_audiobridge_handler(void *data) {
 							g_free(pkt->data);
 							g_free(pkt);
 						}
+					} else {
+						/* Reset the prebuffering state */
+						participant->prebuffering = TRUE;
 					}
 					participant->prebuffer_count = prebuffer_count;
 					janus_mutex_unlock(&participant->qmutex);
@@ -6291,6 +6295,14 @@ static void *janus_audiobridge_handler(void *data) {
 					janus_audiobridge_message_free(msg);
 				msg = NULL;
 				continue;
+			}
+			if(participant == NULL || participant->room == NULL) {
+				JANUS_LOG(LOG_ERR, "Can't handle SDP (not in a room)\n");
+				error_code = JANUS_AUDIOBRIDGE_ERROR_NOT_JOINED;
+				g_snprintf(error_cause, 512, "Can't handle SDP (not in a room)");
+				if(sdp)
+					janus_sdp_destroy(sdp);
+				goto error;
 			}
 			/* We use a custom session name in the SDP */
 			char s_name[100];

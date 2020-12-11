@@ -663,6 +663,7 @@ static void *janus_sampleevh_handler(void *data) {
 							   }
 							}
 						*/
+						break;
 					case JANUS_EVENT_TYPE_EXTERNAL:
 						/* This is an external event, not originated by Janus itself
 						 * or any of its plugins, but from an ad-hoc Admin API request

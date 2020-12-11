@@ -206,6 +206,17 @@ media: {
 	#twcc_period = 100
 	#dtls_timeout = 500
 
+	# Janus can do some optimizations on the NACK queue, specifically when
+	# keyframes are involved. Namely, you can configure Janus so that any
+	# time a keyframe is sent to a user, the NACK buffer for that connection
+	# is emptied. This allows Janus to ignore NACK requests for packets
+	# sent shortly before the keyframe was sent, since it can be assumed
+	# that the keyframe will restore a complete working image for the user
+	# anyway (which is the main reason why video retransmissions are typically
+	# required). While this optimization is known to work fine in most cases,
+	# it can backfire in some edge cases, and so is disabled by default.
+	#nack_optimizations = true
+
 	# If you need DSCP packet marking and prioritization, you can configure
 	# the 'dscp' property to a specific values, and Janus will try to
 	# set it on all outgoing packets using libnice. Normally, the specs
@@ -283,12 +294,15 @@ nat: {
 	# which is currently available in both rfc5766-turn-server and coturn.
 	# You enable this by specifying the address of your TURN REST API backend,
 	# the HTTP method to use (GET or POST) and, if required, the API key Janus
-	# must provide. Notice that the 'opaque_id' provided via Janus API will be
-	# used as the username for a specific PeerConnection by default; if that one
-	# is missing, the 'session_id' will be used as the username instead.
+	# must provide. The timeout can be configured in seconds, with a default of
+	# 10 seconds and a minimum of 1 second. Notice that the 'opaque_id' provided
+	# via Janus API will be used as the username for a specific PeerConnection
+	# by default; if that one is missing, the 'session_id' will be used as the
+	# username instead.
 	#turn_rest_api = "http://yourbackend.com/path/to/api"
 	#turn_rest_api_key = "anyapikeyyoumayhaveset"
 	#turn_rest_api_method = "GET"
+	#turn_rest_api_timeout = 10
 
 	# You can also choose which interfaces should be explicitly used by the
 	# gateway for the purpose of ICE candidates gathering, thus excluding

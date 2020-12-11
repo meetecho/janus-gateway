@@ -95,7 +95,7 @@ gboolean janus_ice_is_mdns_enabled(void) {
 	return janus_mdns_enabled;
 }
 
-/* IPv6 support (still mostly WIP) */
+/* IPv6 support */
 static gboolean janus_ipv6_enabled;
 gboolean janus_ice_is_ipv6_enabled(void) {
 	return janus_ipv6_enabled;
@@ -498,6 +498,14 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 #define DEFAULT_MAX_NACK_QUEUE	1000
 /* Maximum ignore count after retransmission (200ms) */
 #define MAX_NACK_IGNORE			200000
+
+static gboolean nack_optimizations = FALSE;
+void janus_set_nack_optimizations_enabled(gboolean optimize) {
+	nack_optimizations = optimize;
+}
+gboolean janus_is_nack_optimizations_enabled(void) {
+	return nack_optimizations;
+}
 
 static uint16_t min_nack_queue = DEFAULT_MIN_NACK_QUEUE;
 void janus_set_min_nack_queue(uint16_t mnq) {
@@ -1117,7 +1125,7 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 	return 0;
 }
 
-int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method) {
+int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method, uint api_timeout) {
 #ifndef HAVE_TURNRESTAPI
 	JANUS_LOG(LOG_ERR, "Janus has been built with no libcurl support, TURN REST API unavailable\n");
 	return -1;
@@ -1127,7 +1135,7 @@ int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_me
 		JANUS_LOG(LOG_ERR, "Invalid TURN REST API backend: not an HTTP address\n");
 		return -1;
 	}
-	janus_turnrest_set_backend(api_server, api_key, api_method);
+	janus_turnrest_set_backend(api_server, api_key, api_method, api_timeout);
 	JANUS_LOG(LOG_INFO, "TURN REST API backend: %s\n", api_server ? api_server : "(disabled)");
 #endif
 	return 0;
@@ -2055,25 +2063,32 @@ static void janus_ice_cb_new_local_candidate (NiceAgent *agent, NiceCandidate *c
 #endif
 	char buffer[200];
 	guint public_ip_index = 0;
+	gboolean ipv6 = (nice_address_ip_version(&candidate->addr) == 6);
+	gboolean same_family = (!ipv6 && janus_has_public_ipv4_ip()) || (ipv6 && janus_has_public_ipv6_ip());
 	do {
 		if(janus_ice_candidate_to_string(handle, candidate, buffer, sizeof(buffer), TRUE, FALSE, public_ip_index) == 0) {
 			/* Candidate encoded, send a "trickle" event to the browser (but only if it's not a 'prflx') */
 			if(candidate->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
 			} else {
-				janus_ice_notify_trickle(handle, buffer);
+				if(strlen(buffer) > 0)
+					janus_ice_notify_trickle(handle, buffer);
 				/* If nat-1-1 is enabled but we want to keep the private host, add another candidate */
-				if(nat_1_1_enabled && keep_private_host && public_ip_index == 0 &&
+				if(nat_1_1_enabled && public_ip_index == 0 && (keep_private_host || !same_family) &&
 						janus_ice_candidate_to_string(handle, candidate, buffer, sizeof(buffer), TRUE, TRUE, public_ip_index) == 0) {
 					if(candidate->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
-					} else {
+					} else if(strlen(buffer) > 0) {
 						janus_ice_notify_trickle(handle, buffer);
 					}
 				}
 			}
 		}
 		public_ip_index++;
+		if(!same_family) {
+			/* We don't have any nat-1-1 address of the same family as this candidate, we're done */
+			break;
+		}
 	} while (public_ip_index < janus_get_public_ip_count());
 
 #ifndef HAVE_LIBNICE_TCP
@@ -2166,9 +2181,9 @@ static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Address:    %s:%d\n", handle->handle_id, address, port);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Priority:   %d\n", handle->handle_id, candidate->priority);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Foundation: %s\n", handle->handle_id, candidate->foundation);
-	char buffer[100];
+	char buffer[200];
 	if(candidate->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
-		g_snprintf(buffer, 100,
+		g_snprintf(buffer, sizeof(buffer),
 			"%s %d %s %d %s %d typ prflx raddr %s rport %d\r\n",
 				candidate->foundation,
 				candidate->component_id,
@@ -2208,7 +2223,7 @@ static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported transport, skipping nonUDP/TCP prflx candidate...\n", handle->handle_id);
 			goto candidatedone;
 		} else {
-			g_snprintf(buffer, 100,
+			g_snprintf(buffer, sizeof(buffer),
 				"%s %d %s %d %s %d typ prflx raddr %s rport %d tcptype %s\r\n",
 					candidate->foundation,
 					candidate->component_id,
@@ -2311,7 +2326,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							} else {
 								if(janus_rtp_header_extension_parse_rid(buf, len, stream->rid_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
 									/* Try the RTP stream ID */
-									if(stream->rid[2] != NULL && !strcmp(stream->rid[2], sdes_item)) {
+									if(stream->rid[0] != NULL && !strcmp(stream->rid[0], sdes_item)) {
 										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s\n", handle->handle_id, sdes_item);
 										stream->video_ssrc_peer[0] = packet_ssrc;
 										vindex = 0;
@@ -2321,7 +2336,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 										stream->video_ssrc_peer[1] = packet_ssrc;
 										vindex = 1;
 										found = TRUE;
-									} else if(stream->rid[0] != NULL && !strcmp(stream->rid[0], sdes_item)) {
+									} else if(stream->rid[2] != NULL && !strcmp(stream->rid[2], sdes_item)) {
 										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #2: rid=%s\n", handle->handle_id, sdes_item);
 										stream->video_ssrc_peer[2] = packet_ssrc;
 										vindex = 2;
@@ -2332,7 +2347,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								} else if(stream->ridrtx_ext_id > 0 &&
 										janus_rtp_header_extension_parse_rid(buf, len, stream->ridrtx_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
 									/* Try the repaired RTP stream ID */
-									if(stream->rid[2] != NULL && !strcmp(stream->rid[2], sdes_item)) {
+									if(stream->rid[0] != NULL && !strcmp(stream->rid[0], sdes_item)) {
 										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s (rtx)\n", handle->handle_id, sdes_item);
 										stream->video_ssrc_peer_rtx[0] = packet_ssrc;
 										vindex = 0;
@@ -2344,7 +2359,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 										vindex = 1;
 										rtx = 1;
 										found = TRUE;
-									} else if(stream->rid[0] != NULL && !strcmp(stream->rid[0], sdes_item)) {
+									} else if(stream->rid[2] != NULL && !strcmp(stream->rid[2], sdes_item)) {
 										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #2: rid=%s (rtx)\n", handle->handle_id, sdes_item);
 										stream->video_ssrc_peer_rtx[2] = packet_ssrc;
 										vindex = 2;
@@ -2814,6 +2829,25 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* No audio has been negotiated, definitely video */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is video (no audio has been negotiated)\n", handle->handle_id);
 					video = 1;
+					/* Check the remote SSRC, compare it to what we have: in case
+						* we're simulcasting, let's compare to the other SSRCs too */
+					guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, buflen);
+					if(rtcp_ssrc == 0) {
+						/* No SSRC, maybe an empty RR? */
+						return;
+					}
+					if(stream->video_ssrc_peer[0] && rtcp_ssrc == stream->video_ssrc_peer[0]) {
+						vindex = 0;
+					} else if(stream->video_ssrc_peer[1] && rtcp_ssrc == stream->video_ssrc_peer[1]) {
+						vindex = 1;
+					} else if(stream->video_ssrc_peer[2] && rtcp_ssrc == stream->video_ssrc_peer[2]) {
+						vindex = 2;
+					} else {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Dropping RTCP packet with unknown SSRC (%"SCNu32")\n", handle->handle_id, rtcp_ssrc);
+						return;
+					}
+					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is %s (remote SSRC: video=%"SCNu32" #%d, got %"SCNu32")\n",
+						handle->handle_id, video ? "video" : "audio", stream->video_ssrc_peer[vindex], vindex, rtcp_ssrc);
 				} else if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 					/* No video has been negotiated, definitely audio */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is audio (no video has been negotiated)\n", handle->handle_id);
@@ -3044,9 +3078,16 @@ static int janus_ice_candidate_to_string(janus_ice_handle *handle, NiceCandidate
 	if(!component)
 		return -3;
 	char *host_ip = NULL;
+	gboolean ipv6 = (nice_address_ip_version(&c->addr) == 6);
 	if(nat_1_1_enabled && !force_private) {
 		/* A 1:1 NAT mapping was specified, either overwrite all the host addresses with the public IP, or add new candidates */
 		host_ip = janus_get_public_ip(public_ip_index);
+		gboolean host_ip_v6 = (strchr(host_ip, ':') != NULL);
+		if(host_ip_v6 != ipv6) {
+			/* nat-1-1 address and candidate are not the same address family, don't do anything */
+			buffer[0] = '\0';
+			return 0;
+		}
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Public IP specified and 1:1 NAT mapping enabled (%s), using that as host address in the candidates\n", handle->handle_id, host_ip);
 	}
 	/* Encode the candidate to a string */
@@ -3214,6 +3255,8 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 	gboolean log_candidates = (component->local_candidates == NULL);
 	for(i = candidates; i; i = i->next) {
 		NiceCandidate *c = (NiceCandidate *) i->data;
+		gboolean ipv6 = (nice_address_ip_version(&c->addr) == 6);
+		gboolean same_family = (!ipv6 && janus_has_public_ipv4_ip()) || (ipv6 && janus_has_public_ipv6_ip());
 		guint public_ip_index = 0;
 		do {
 			if(janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), log_candidates, FALSE, public_ip_index) == 0) {
@@ -3221,14 +3264,16 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 				if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
 				} else {
-					janus_sdp_attribute *a = janus_sdp_attribute_create("candidate", "%s", buffer);
-					mline->attributes = g_list_append(mline->attributes, a);
-					if(nat_1_1_enabled && keep_private_host && public_ip_index == 0 &&
+					if(strlen(buffer) > 0) {
+						janus_sdp_attribute *a = janus_sdp_attribute_create("candidate", "%s", buffer);
+						mline->attributes = g_list_append(mline->attributes, a);
+					}
+					if(nat_1_1_enabled && public_ip_index == 0 && (keep_private_host || !same_family) &&
 							janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), log_candidates, TRUE, public_ip_index) == 0) {
 						/* Candidate with private host encoded, add to the SDP (but only if it's not a 'prflx') */
 						if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
-						} else {
+						} else if(strlen(buffer) > 0) {
 							janus_sdp_attribute *a = janus_sdp_attribute_create("candidate", "%s", buffer);
 							mline->attributes = g_list_append(mline->attributes, a);
 						}
@@ -3236,6 +3281,10 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 				}
 			}
 			public_ip_index++;
+			if(!same_family) {
+				/* We don't have any nat-1-1 address of the same family as this candidate, we're done */
+				break;
+			}
 		} while (public_ip_index < janus_get_public_ip_count());
 		nice_candidate_free(c);
 	}
@@ -3449,7 +3498,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			family = ifa->ifa_addr->sa_family;
 			if(family != AF_INET && family != AF_INET6)
 				continue;
-			/* We only add IPv6 addresses if support for them has been explicitly enabled (still WIP, mostly) */
+			/* We only add IPv6 addresses if support for them has been explicitly enabled */
 			if(family == AF_INET6 && !janus_ipv6_enabled)
 				continue;
 			/* Check the interface name first, we can ignore that as well: enforce list would be checked later */
@@ -4358,8 +4407,9 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				if(g_atomic_int_get(&handle->dump_packets))
 					janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTP, FALSE, pkt->data, pkt->length,
 						"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
-				/* If this is video, check if this is a keyframe: if so, we empty our retransmit buffer for incoming NACKs */
-				if(video && stream->video_is_keyframe) {
+				/* If this is video and NACK optimizations are enabled, check if this is
+				 * a keyframe: if so, we empty our retransmit buffer for incoming NACKs */
+				if(video && nack_optimizations && stream->video_is_keyframe) {
 					int plen = 0;
 					char *payload = janus_rtp_payload(pkt->data, pkt->length, &plen);
 					if(stream->video_is_keyframe(payload, plen)) {

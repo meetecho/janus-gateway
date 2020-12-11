@@ -4957,13 +4957,13 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 				/* We may not know the SSRC yet, try the rid RTP extension */
 				char sdes_item[16];
 				if(janus_rtp_header_extension_parse_rid(buf, len, participant->rid_extmap_id, sdes_item, sizeof(sdes_item)) == 0) {
-					if(participant->rid[2] != NULL && !strcmp(participant->rid[2], sdes_item)) {
+					if(participant->rid[0] != NULL && !strcmp(participant->rid[0], sdes_item)) {
 						participant->ssrc[0] = ssrc;
 						sc = 0;
 					} else if(participant->rid[1] != NULL && !strcmp(participant->rid[1], sdes_item)) {
 						participant->ssrc[1] = ssrc;
 						sc = 1;
-					} else if(participant->rid[0] != NULL && !strcmp(participant->rid[0], sdes_item)) {
+					} else if(participant->rid[2] != NULL && !strcmp(participant->rid[2], sdes_item)) {
 						participant->ssrc[2] = ssrc;
 						sc = 2;
 					}
@@ -7317,7 +7317,7 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_unlock(&participant->rec_mutex);
 				/* Generate an SDP string we can offer subscribers later on */
 				char *offer_sdp = janus_sdp_write(offer);
-				if(!sdp_update) {
+				if(!sdp_update || (participant->ssrc[0] == 0 && participant->rid[0] == NULL)) {
 					/* Is simulcasting involved */
 					if(msg_simulcast && (participant->vcodec == JANUS_VIDEOCODEC_VP8 ||
 							participant->vcodec == JANUS_VIDEOCODEC_H264)) {
@@ -7603,6 +7603,13 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&subscriber->sim_context,
 				(char *)packet->data, packet->length, packet->ssrc, NULL, subscriber->feed->vcodec, &subscriber->context);
+			if(!relay) {
+				/* Did a lot of time pass before we could relay a packet? */
+				gint64 now = janus_get_monotonic_time();
+				if((now - subscriber->sim_context.last_relayed) >= G_USEC_PER_SEC) {
+					g_atomic_int_set(&subscriber->sim_context.need_pli, 1);
+				}
+			}
 			if(subscriber->sim_context.need_pli && subscriber->feed && subscriber->feed->session &&
 					subscriber->feed->session->handle) {
 				/* Send a PLI */

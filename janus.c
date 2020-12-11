@@ -136,6 +136,9 @@ static struct janus_json_parameter colors_parameters[] = {
 static struct janus_json_parameter mnq_parameters[] = {
 	{"min_nack_queue", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter nopt_parameters[] = {
+	{"nack_optimizations", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
+};
 static struct janus_json_parameter nmt_parameters[] = {
 	{"no_media_timer", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
@@ -198,6 +201,7 @@ gchar *janus_get_local_ip(void) {
 }
 static GHashTable *public_ips_table = NULL;
 static GList *public_ips = NULL;
+gboolean public_ips_ipv4 = FALSE, public_ips_ipv6 = FALSE;
 guint janus_get_public_ip_count(void) {
 	return public_ips_table ? g_hash_table_size(public_ips_table) : 0;
 }
@@ -223,7 +227,20 @@ void janus_add_public_ip(const gchar *ip) {
 		g_list_free(public_ips);
 		public_ips = g_hash_table_get_keys(public_ips_table);
 	}
+	/* Take note of whether we received at least one IPv4 and/or IPv6 address */
+	if(strchr(ip, ':')) {
+		public_ips_ipv6 = TRUE;
+	} else {
+		public_ips_ipv4 = TRUE;
+	}
 }
+gboolean janus_has_public_ipv4_ip(void) {
+	return public_ips_ipv4;
+}
+gboolean janus_has_public_ipv6_ip(void) {
+	return public_ips_ipv6;
+}
+
 static volatile gint stop = 0;
 static gint stop_signal = 0;
 gint janus_is_stopping(void) {
@@ -332,6 +349,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "mdns-enabled", janus_ice_is_mdns_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "min-nack-queue", json_integer(janus_get_min_nack_queue()));
+	json_object_set_new(info, "nack-optimizations", janus_is_nack_optimizations_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
 	if(janus_get_dscp() > 0)
 		json_object_set_new(info, "dscp", json_integer(janus_get_dscp()));
@@ -1576,11 +1594,11 @@ int janus_process_incoming_request(janus_request *request) {
 					/* If we have rids, pass those, otherwise pass the SSRCs */
 					if(handle->stream->rid[0]) {
 						json_t *rids = json_array();
-						json_array_append_new(rids, json_string(handle->stream->rid[0]));
-						if(handle->stream->rid[1])
-							json_array_append_new(rids, json_string(handle->stream->rid[1]));
 						if(handle->stream->rid[2])
 							json_array_append_new(rids, json_string(handle->stream->rid[2]));
+						if(handle->stream->rid[1])
+							json_array_append_new(rids, json_string(handle->stream->rid[1]));
+						json_array_append_new(rids, json_string(handle->stream->rid[0]));
 						json_object_set_new(simulcast, "rids", rids);
 						json_object_set_new(simulcast, "rid-ext", json_integer(handle->stream->rid_ext_id));
 					} else {
@@ -1964,6 +1982,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(status, "refcount_debug", refcount_debug ? json_true() : json_false());
 			json_object_set_new(status, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "min_nack_queue", json_integer(janus_get_min_nack_queue()));
+			json_object_set_new(status, "nack-optimizations", janus_is_nack_optimizations_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "no_media_timer", json_integer(janus_get_no_media_timer()));
 			json_object_set_new(status, "slowlink_threshold", json_integer(janus_get_slowlink_threshold()));
 			json_object_set_new(reply, "status", status);
@@ -2124,6 +2143,23 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "min_nack_queue", json_integer(janus_get_min_nack_queue()));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_nack_optimizations")) {
+			/* Enable/disable NACK optimizations */
+			JANUS_VALIDATE_JSON_OBJECT(root, nopt_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			gboolean optimize = json_is_true(json_object_get(root, "nack_optimizations"));
+			janus_set_nack_optimizations_enabled(optimize);
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", 0, transaction_text);
+			json_object_set_new(reply, "nack-optimizations", janus_is_nack_optimizations_enabled() ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -2922,11 +2958,11 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 	if(stream->rid[0] && stream->rid_ext_id > 0) {
 		json_t *sr = json_object();
 		json_t *rid = json_array();
-		json_array_append_new(rid, json_string(stream->rid[0]));
-		if(stream->rid[1])
-			json_array_append_new(rid, json_string(stream->rid[1]));
 		if(stream->rid[2])
 			json_array_append_new(rid, json_string(stream->rid[2]));
+		if(stream->rid[1])
+			json_array_append_new(rid, json_string(stream->rid[1]));
+		json_array_append_new(rid, json_string(stream->rid[0]));
 		json_object_set_new(sr, "rid", rid);
 		json_object_set_new(sr, "rid-ext-id", json_integer(stream->rid_ext_id));
 		if(stream->ridrtx_ext_id > 0)
@@ -4607,6 +4643,7 @@ gint main(int argc, char *argv[])
 	char *turn_rest_api = NULL, *turn_rest_api_key = NULL;
 #ifdef HAVE_TURNRESTAPI
 	char *turn_rest_api_method = NULL;
+	uint turn_rest_api_timeout = 10;
 #endif
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
 	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE,
@@ -4721,6 +4758,15 @@ gint main(int argc, char *argv[])
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_rest_api_method");
 	if(item && item->value)
 		turn_rest_api_method = (char *)item->value;
+	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_rest_api_timeout");
+	if(item && item->value) {
+		int rst = atoi(item->value);
+		if(rst <= 0) { /* Don't allow user to set 0 seconds i.e., infinite wait */
+			JANUS_LOG(LOG_WARN, "Ignoring turn_rest_api_timeout as it's not a positive integer, leaving at default (10 seconds)\n");
+		} else {
+			turn_rest_api_timeout = rst;
+		}
+	}
 #endif
 	/* Do we need a limited number of static event loops, or is it ok to have one per handle (the default)? */
 	item = janus_config_get(config, config_general, janus_config_type_item, "event_loops");
@@ -4749,7 +4795,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_WARN, "A TURN REST API backend specified in the settings, but libcurl support has not been built\n");
 	}
 #else
-	if(janus_ice_set_turn_rest_api(turn_rest_api, turn_rest_api_key, turn_rest_api_method) < 0) {
+	if(janus_ice_set_turn_rest_api(turn_rest_api, turn_rest_api_key, turn_rest_api_method, turn_rest_api_timeout) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid TURN REST API configuration: %s (%s, %s)\n", turn_rest_api, turn_rest_api_key, turn_rest_api_method);
 		exit(1);
 	}
@@ -4821,6 +4867,11 @@ gint main(int argc, char *argv[])
 		} else {
 			janus_set_min_nack_queue(mnq);
 		}
+	}
+	item = janus_config_get(config, config_media, janus_config_type_item, "nack_optimizations");
+	if(item && item->value) {
+		gboolean optimize = janus_is_true(item->value);
+		janus_set_nack_optimizations_enabled(optimize);
 	}
 	/* no-media timer */
 	item = janus_config_get(config, config_media, janus_config_type_item, "no_media_timer");

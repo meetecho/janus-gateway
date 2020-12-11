@@ -37,6 +37,21 @@ admin: {
 	#admin_ws_acl = "127.,192.168.0."	# Only allow requests coming from this comma separated list of addresses
 }
 
+# The HTTP servers created in Janus support CORS out of the box, but by
+# default they return a wildcard (*) in the 'Access-Control-Allow-Origin'
+# header. This works fine in most situations, except when we have to
+# respond to a credential request (withCredentials=true in the XHR). If
+# you need that, uncomment and set the 'allow_origin' below to specify
+# what must be returned in 'Access-Control-Allow-Origin'. More details:
+# https://developer.mozilla.org/en-US/docs/Web/HTTP/Access_control_CORS
+# In case you want to enforce the Origin validation, rather than leave
+# it to browsers, you can set 'enforce_cors' to 'true' to have Janus
+# return a '403 Forbidden' for all requests that don't comply.
+cors: {
+	#allow_origin = "http://foo.example"
+	#enforce_cors = true
+}
+
 # Certificate and key to use for any secure WebSocket server, if enabled (and passphrase if needed).
 # You can also disable insecure protocols and ciphers by configuring the
 # 'ciphers' property accordingly (no limitation by default).
