@@ -4139,7 +4139,7 @@ static void *janus_sip_handler(void *data) {
 				/* Check if the INVITE needs to be enriched with custom headers */
 				char custom_headers[2048];
 				janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
-				
+
 				/* Send the re-INVITE */
 				char *sdp = janus_sdp_write(session->sdp);
 				nua_invite(session->stack->s_nh_i,
@@ -6402,7 +6402,7 @@ static void *janus_sip_relay_thread(void *data) {
 					}
 					pollerrs = 0;
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
-					if(session->media.audio_ssrc_peer != ntohl(header->ssrc)) {
+					if(session->media.audio_ssrc_peer == 0) {
 						session->media.audio_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
 					}
@@ -6422,6 +6422,7 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					janus_rtp_header_update(header, &session->media.context, FALSE, 0);
 					/* Save the frame if we're recording */
+					header->ssrc = htonl(session->media.audio_ssrc_peer);
 					janus_recorder_save_frame(session->arc_peer, buffer, bytes);
 					/* Relay to application */
 					janus_plugin_rtp rtp = { .video = FALSE, .buffer = buffer, .length = bytes };
@@ -6472,7 +6473,7 @@ static void *janus_sip_relay_thread(void *data) {
 					}
 					pollerrs = 0;
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
-					if(session->media.video_ssrc_peer != ntohl(header->ssrc)) {
+					if(session->media.video_ssrc_peer == 0) {
 						session->media.video_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer video SSRC: %"SCNu32"\n", session->media.video_ssrc_peer);
 					}
@@ -6492,6 +6493,7 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					janus_rtp_header_update(header, &session->media.context, TRUE, 0);
 					/* Save the frame if we're recording */
+					header->ssrc = htonl(session->media.video_ssrc_peer);
 					janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
 					/* Relay to application */
 					janus_plugin_rtp rtp = { .video = TRUE, .buffer = buffer, .length = bytes };

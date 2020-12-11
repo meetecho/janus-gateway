@@ -76,7 +76,6 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		if(tmp->prev != NULL && ((tmp->ts - tmp->prev->ts)/48/20 > 1)) {
 			JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
 				tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000);
-			/* FIXME Write the silence packet N times to fill in the gaps */
 			ogg_packet *op = op_from_pkt((const unsigned char *)opus_silence, sizeof(opus_silence));
 			/* use ts differ to insert silence packet */
 			int silence_count = (tmp->ts - tmp->prev->ts)/48/20 - 1;

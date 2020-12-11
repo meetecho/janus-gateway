@@ -67,7 +67,9 @@ var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec
 var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
-
+var recordData = (getQueryStringValue("data") !== "" ? getQueryStringValue("data") : null);
+if(recordData !== "text" && recordData !== "binary")
+	recordData = null;
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -147,7 +149,7 @@ $(document).ready(function() {
 												recordplay.createAnswer(
 													{
 														jsep: jsep,
-														media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
+														media: { audioSend: false, videoSend: false, data: true },	// We want recvonly audio/video
 														success: function(jsep) {
 															Janus.debug("Got SDP!", jsep);
 															var body = { request: "start" };
@@ -314,6 +316,20 @@ $(document).ready(function() {
 										$('#thevideo').removeClass('hide').show();
 									}
 								},
+								ondataopen: function(data) {
+									Janus.log("The DataChannel is available!");
+									$('#datafield').parent().removeClass('hide');
+									if(playing === false) {
+										// We're recording, use this field to send data
+										$('#datafield').attr('placeholder', 'Write a message to record');
+										$('#datafield').removeAttr('disabled');
+									}
+								},
+								ondata: function(data) {
+									Janus.debug("We got data from the DataChannel!", data);
+									if(playing === true)
+										$('#datafield').val(data);
+								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									// FIXME Reset status
@@ -324,6 +340,8 @@ $(document).ready(function() {
 									$('#videobox').empty();
 									$("#videobox").parent().unblock();
 									$('#video').hide();
+									$('#datafield').attr('disabled', true).attr('placeholder', '').val('');
+									$('#datafield').parent().addClass('hide');
 									recording = false;
 									playing = false;
 									$('#record').removeAttr('disabled').click(startRecording);
@@ -349,15 +367,27 @@ $(document).ready(function() {
 	}});
 });
 
-function checkEnter(field, event) {
+function checkEnter(event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
-		if(field.id == 'name')
-			insertName();
+		sendData();
 		return false;
 	} else {
 		return true;
 	}
+}
+
+function sendData() {
+	var data = $('#datafield').val();
+	if(data === "") {
+		bootbox.alert('Insert a message to send on the DataChannel');
+		return;
+	}
+	recordplay.data({
+		text: data,
+		error: function(reason) { bootbox.alert(reason); },
+		success: function() { $('#datafield').val(''); },
+	});
 }
 
 function updateRecsList() {
@@ -426,7 +456,9 @@ function startRecording() {
 
 		recordplay.createOffer(
 			{
-				// By default, it's sendrecv for audio and video... no datachannels
+				// By default, it's sendrecv for audio and video... no datachannels,
+				// unless we've passed the query string argument to record those too
+				media: { data: (recordData != null) },
 				// If you want to test simulcasting (Chrome and Firefox only), then
 				// pass a ?simulcast=true when opening this demo page: it will turn
 				// the following 'simulcast' property to pass to janus.js to true
@@ -444,6 +476,9 @@ function startRecording() {
 					// profile as well (e.g., ?vprofile=2 for VP9, or ?vprofile=42e01f for H.264)
 					if(vprofile)
 						body["videoprofile"] = vprofile;
+					// If we're going to send binary data, let's tell the plugin
+					if(recordData === "binary")
+						body["textdata"] = false;
 					recordplay.send({ message: body, jsep: jsep });
 				},
 				error: function(error) {

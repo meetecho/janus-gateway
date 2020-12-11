@@ -2181,9 +2181,9 @@ static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Address:    %s:%d\n", handle->handle_id, address, port);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Priority:   %d\n", handle->handle_id, candidate->priority);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Foundation: %s\n", handle->handle_id, candidate->foundation);
-	char buffer[100];
+	char buffer[200];
 	if(candidate->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
-		g_snprintf(buffer, 100,
+		g_snprintf(buffer, sizeof(buffer),
 			"%s %d %s %d %s %d typ prflx raddr %s rport %d\r\n",
 				candidate->foundation,
 				candidate->component_id,
@@ -2223,7 +2223,7 @@ static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported transport, skipping nonUDP/TCP prflx candidate...\n", handle->handle_id);
 			goto candidatedone;
 		} else {
-			g_snprintf(buffer, 100,
+			g_snprintf(buffer, sizeof(buffer),
 				"%s %d %s %d %s %d typ prflx raddr %s rport %d tcptype %s\r\n",
 					candidate->foundation,
 					candidate->component_id,
@@ -2829,6 +2829,25 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* No audio has been negotiated, definitely video */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is video (no audio has been negotiated)\n", handle->handle_id);
 					video = 1;
+					/* Check the remote SSRC, compare it to what we have: in case
+						* we're simulcasting, let's compare to the other SSRCs too */
+					guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, buflen);
+					if(rtcp_ssrc == 0) {
+						/* No SSRC, maybe an empty RR? */
+						return;
+					}
+					if(stream->video_ssrc_peer[0] && rtcp_ssrc == stream->video_ssrc_peer[0]) {
+						vindex = 0;
+					} else if(stream->video_ssrc_peer[1] && rtcp_ssrc == stream->video_ssrc_peer[1]) {
+						vindex = 1;
+					} else if(stream->video_ssrc_peer[2] && rtcp_ssrc == stream->video_ssrc_peer[2]) {
+						vindex = 2;
+					} else {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Dropping RTCP packet with unknown SSRC (%"SCNu32")\n", handle->handle_id, rtcp_ssrc);
+						return;
+					}
+					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is %s (remote SSRC: video=%"SCNu32" #%d, got %"SCNu32")\n",
+						handle->handle_id, video ? "video" : "audio", stream->video_ssrc_peer[vindex], vindex, rtcp_ssrc);
 				} else if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 					/* No video has been negotiated, definitely audio */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is audio (no video has been negotiated)\n", handle->handle_id);
