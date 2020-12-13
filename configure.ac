@@ -395,6 +395,12 @@ AC_CHECK_LIB([nice],
              [AC_MSG_NOTICE([libnice version does not support TCP candidates])]
              )
 
+AC_CHECK_LIB([nice],
+             [nice_agent_close_async],
+             [AC_DEFINE(HAVE_CLOSE_ASYNC)],
+             [AC_MSG_NOTICE([libnice version does not have nice_agent_close_async])]
+             )
+
 AC_CHECK_LIB([dl],
              [dlopen],
              [JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -ldl"],
