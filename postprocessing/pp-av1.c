@@ -366,10 +366,10 @@ int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list) {
 				uint16_t width = 0, height = 0;
 				/* TODO Fix currently broken parsing of SH */
 				janus_pp_av1_parse_sh(payload+1, &width, &height);
-				if(width > max_width)
+				if(width*height > max_width*max_height) {
 					max_width = width;
-				if(height > max_height)
 					max_height = height;
+				}
 				JANUS_LOG(LOG_INFO, "  -- Detected new resolution: %"SCNu16"x%"SCNu16" (seq=%"SCNu16")\n", width, height, tmp->seq);
 			}
 			payload += obusize;
