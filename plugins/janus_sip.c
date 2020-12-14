@@ -4107,11 +4107,10 @@ static void *janus_sip_handler(void *data) {
 						session->media.pre_hold_audio_dir = m->direction;
 						/* Update the media direction */
 						if(media_direction_text != NULL && strlen(media_direction_text) > 0){
-							if(!strcasecmp(media_direction_text, "sendonly")){
-								m->direction = JANUS_SDP_SENDONLY;
-							} else if(!strcasecmp(media_direction_text, "inactive")){
+							if(!strcasecmp(media_direction_text, "inactive")){
 								m->direction = JANUS_SDP_INACTIVE;
 							} else {
+								m->direction = JANUS_SDP_SENDONLY;
 							}
 						} else {
 							switch(m->direction) {
@@ -4135,11 +4134,10 @@ static void *janus_sip_handler(void *data) {
 						session->media.pre_hold_video_dir = m->direction;
 						/* Update the media direction */
 						if(media_direction_text != NULL && strlen(media_direction_text) > 0){
-							if(!strcasecmp(media_direction_text, "sendonly")){
-								m->direction = JANUS_SDP_SENDONLY;
-							} else if(!strcasecmp(media_direction_text, "inactive")){
+							if(!strcasecmp(media_direction_text, "inactive")){
 								m->direction = JANUS_SDP_INACTIVE;
 							} else {
+								m->direction = JANUS_SDP_SENDONLY;
 							}
 						} else {
 							switch(m->direction) {
