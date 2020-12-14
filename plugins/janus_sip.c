@@ -4098,20 +4098,31 @@ static void *janus_sip_handler(void *data) {
 				/* To put the call on-hold, we need to set the direction to recvonly:
 				 * resuming it means resuming the direction we had before */
 				session->media.on_hold = hold;
+				json_t *media_direction = json_object_get(root, "media_direction");
+				const char *media_direction_text = json_string_value(media_direction);
 				janus_sdp_mline *m = janus_sdp_mline_find(session->sdp, JANUS_SDP_AUDIO);
 				if(m) {
 					if(hold) {
 						/* Take note of the original media direction */
 						session->media.pre_hold_audio_dir = m->direction;
 						/* Update the media direction */
-						switch(m->direction) {
-							case JANUS_SDP_DEFAULT:
-							case JANUS_SDP_SENDRECV:
+						if(media_direction_text){
+							if(!strcasecmp(media_direction_text, "sendonly")){
 								m->direction = JANUS_SDP_SENDONLY;
-								break;
-							default:
+							} else if(!strcasecmp(media_direction_text, "inactive")){
 								m->direction = JANUS_SDP_INACTIVE;
-								break;
+							} else {
+							}
+						} else {
+							switch(m->direction) {
+								case JANUS_SDP_DEFAULT:
+								case JANUS_SDP_SENDRECV:
+									m->direction = JANUS_SDP_SENDONLY;
+									break;
+								default:
+									m->direction = JANUS_SDP_INACTIVE;
+									break;
+							}						
 						}
 					} else {
 						m->direction = session->media.pre_hold_audio_dir;
@@ -4123,14 +4134,23 @@ static void *janus_sip_handler(void *data) {
 						/* Take note of the original media direction */
 						session->media.pre_hold_video_dir = m->direction;
 						/* Update the media direction */
-						switch(m->direction) {
-							case JANUS_SDP_DEFAULT:
-							case JANUS_SDP_SENDRECV:
+						if(media_direction_text){
+							if(!strcasecmp(media_direction_text, "sendonly")){
 								m->direction = JANUS_SDP_SENDONLY;
-								break;
-							default:
+							} else if(!strcasecmp(media_direction_text, "inactive")){
 								m->direction = JANUS_SDP_INACTIVE;
-								break;
+							} else {
+							}
+						} else {
+							switch(m->direction) {
+								case JANUS_SDP_DEFAULT:
+								case JANUS_SDP_SENDRECV:
+									m->direction = JANUS_SDP_SENDONLY;
+									break;
+								default:
+									m->direction = JANUS_SDP_INACTIVE;
+									break;
+							}
 						}
 					} else {
 						m->direction = session->media.pre_hold_video_dir;
