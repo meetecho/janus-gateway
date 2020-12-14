@@ -4106,7 +4106,7 @@ static void *janus_sip_handler(void *data) {
 						/* Take note of the original media direction */
 						session->media.pre_hold_audio_dir = m->direction;
 						/* Update the media direction */
-						if(media_direction_text){
+						if(strlen(media_direction_text) > 0){
 							if(!strcasecmp(media_direction_text, "sendonly")){
 								m->direction = JANUS_SDP_SENDONLY;
 							} else if(!strcasecmp(media_direction_text, "inactive")){
@@ -4134,7 +4134,7 @@ static void *janus_sip_handler(void *data) {
 						/* Take note of the original media direction */
 						session->media.pre_hold_video_dir = m->direction;
 						/* Update the media direction */
-						if(media_direction_text){
+						if(strlen(media_direction_text) > 0){
 							if(!strcasecmp(media_direction_text, "sendonly")){
 								m->direction = JANUS_SDP_SENDONLY;
 							} else if(!strcasecmp(media_direction_text, "inactive")){
