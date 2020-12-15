@@ -5657,7 +5657,7 @@ static void *janus_videoroom_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Configuring new participant\n");
 			/* Not configured yet, we need to do this now */
 			if(strcasecmp(request_text, "join") && strcasecmp(request_text, "joinandconfigure")) {
-				JANUS_LOG(LOG_ERR, "Invalid request on unconfigured participant\n");
+				JANUS_LOG(LOG_ERR, "Invalid request \"%s\" on unconfigured participant\n", request_text);
 				error_code = JANUS_VIDEOROOM_ERROR_JOIN_FIRST;
 				g_snprintf(error_cause, 512, "Invalid request on unconfigured participant");
 				goto error;
