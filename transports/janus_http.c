@@ -110,6 +110,9 @@ janus_transport *create(void) {
 	return &janus_http_transport;
 }
 
+/* MHD uses this value as default */
+#define DEFAULT_CONNECTION_LIMIT (FD_SETSIZE-4)
+static unsigned int connection_limit = DEFAULT_CONNECTION_LIMIT;
 
 /* Useful stuff */
 static gint initialized = 0, stopping = 0;
@@ -504,6 +507,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				path,
 				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
 				MHD_OPTION_CONNECTION_TIMEOUT, 120,
+				MHD_OPTION_CONNECTION_LIMIT, connection_limit,
 				MHD_OPTION_END);
 		} else {
 			/* Bind to the interface that was specified */
@@ -520,6 +524,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
 				MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
 				MHD_OPTION_CONNECTION_TIMEOUT, 120,
+				MHD_OPTION_CONNECTION_LIMIT, connection_limit,
 				MHD_OPTION_END);
 		}
 	} else {
@@ -545,6 +550,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 				MHD_OPTION_HTTPS_KEY_PASSWORD, password,
 				MHD_OPTION_CONNECTION_TIMEOUT, 120,
+				MHD_OPTION_CONNECTION_LIMIT, connection_limit,
 				MHD_OPTION_END);
 		} else {
 			/* Bind to the interface that was specified */
@@ -565,6 +571,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				MHD_OPTION_HTTPS_KEY_PASSWORD, password,
 				MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
 				MHD_OPTION_CONNECTION_TIMEOUT, 120,
+				MHD_OPTION_CONNECTION_LIMIT, connection_limit,
 				MHD_OPTION_END);
 		}
 	}
@@ -699,6 +706,12 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			}
 		} else {
 			admin_ws_path = g_strdup("/admin");
+		}
+		/* Check the open connections limit for mhd */
+		item = janus_config_get(config, config_general, janus_config_type_item, "mhd_connection_limit");
+		if(item && item->value && janus_string_to_uint32(item->value, &connection_limit) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid mhd_connection_limit (%s), falling back to default\n", item->value);
+			connection_limit = DEFAULT_CONNECTION_LIMIT;
 		}
 		/* Should we set the debug flag in libmicrohttpd? */
 		item = janus_config_get(config, config_general, janus_config_type_item, "mhd_debug");
