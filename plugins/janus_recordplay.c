@@ -1478,7 +1478,7 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 	g_atomic_int_set(&session->hangingup, 0);
 }
 
-static janus_recordplay_seek_request *janus_recordplay_generate_seek_request(janus_recordplay_session *session, int seek_timestamp) {
+static janus_recordplay_seek_request *janus_recordplay_generate_seek_request(janus_recordplay_session *session, uint64_t seek_timestamp) {
 	if(!session)
 		return NULL;
 	/* Find correct frame for audio, video, data */
