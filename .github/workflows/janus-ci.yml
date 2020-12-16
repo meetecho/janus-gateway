@@ -16,13 +16,16 @@ jobs:
         include:
           - datachannel: "yes"
             libcurl: "yes"
+            deps_from_src: "yes"
             janus_config_opts: ""
           - datachannels: "yes"
             libcurl: "no"
-            janus_config_opts: "--disable-turn-rest-api --disable-sample-event-handler"
+            deps_from_src: "no"
+            janus_config_opts: "--disable-aes-gcm --disable-turn-rest-api --disable-sample-event-handler"
           - datachannels: "no"
             libcurl: "yes"
-            janus_config_opts: "--disable-data-channels"
+            deps_from_src: "no"
+            janus_config_opts: "--disable-aes-gcm --disable-data-channels"
         exclude:
           - datachannels: "no"
             libcurl: "no"
@@ -52,22 +55,34 @@ jobs:
         libnanomsg-dev
         libogg-dev
         libopus-dev
+        librabbitmq-dev
         libsofia-sip-ua-dev
         libssl-dev
         libvorbis-dev
         ninja-build
         openssl
+    - name: setup additional dependencies from apt
+      if: ${{ matrix.deps_from_src == 'no' }}
+      run: >
+        sudo apt-get -y install
+        libnice-dev
+        libsrtp2-dev
+        libusrsctp-dev
+        libwebsockets-dev
     - name: install libcurl from apt
       if: ${{ matrix.libcurl == 'yes' }}
       run: sudo apt-get -y install libcurl4-openssl-dev
     - name: setup python
+      if: ${{ matrix.deps_from_src == 'yes' }}
       uses: actions/setup-python@v2
       with:
         python-version: '3.x'
         architecture: 'x64'
     - name: install python packages
+      if: ${{ matrix.deps_from_src == 'yes' }}
       run: pip3 install wheel meson
     - name: setup libnice from sources
+      if: ${{ matrix.deps_from_src == 'yes' }}
       run: |
         git clone --depth 1 --quiet -b master https://gitlab.freedesktop.org/libnice/libnice.git libnice
         pushd libnice
@@ -76,11 +91,13 @@ jobs:
         ninja -C build
         sudo ninja -C build install
     - name: checkout libsrtp source
+      if: ${{ matrix.deps_from_src == 'yes' }}
       uses: actions/checkout@v2
       with:
         repository: cisco/libsrtp
         ref: v2.3.0
     - name: setup libsrtp from sources
+      if: ${{ matrix.deps_from_src == 'yes' }}
       run: |
         ./configure --prefix=/usr --enable-openssl
         make -j$(nproc) shared_library
@@ -99,28 +116,19 @@ jobs:
         make -j$(nproc)
         sudo make install
     - name: checkout lws source
+      if: ${{ matrix.deps_from_src == 'yes' }}
       uses: actions/checkout@v2
       with:
         repository: warmcat/libwebsockets
         ref: v4.1-stable
     - name: setup lws from sources
+      if: ${{ matrix.deps_from_src == 'yes' }}
       run: |
         mkdir -p build
         pushd build
         cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DLWS_WITH_STATIC=OFF -DLWS_WITHOUT_CLIENT=ON -DLWS_WITHOUT_TESTAPPS=ON -DLWS_WITHOUT_TEST_SERVER=ON -DLWS_WITH_HTTP2=OFF ..
         make -j$(nproc)
         sudo make install
-    - name: checkout rabbitmq-c source
-      uses: actions/checkout@v2
-      with:
-        repository: alanxz/rabbitmq-c
-        ref: v0.10.0
-    - name: setup rabbitmq-c from sources
-      run: |
-        mkdir build
-        pushd build
-        cmake -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_TOOLS=OFF ..
-        sudo cmake --build . --target install -- -j$(nproc)
     - name: checkout paho-mqtt source
       uses: actions/checkout@v2
       with:
