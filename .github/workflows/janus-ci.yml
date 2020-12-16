@@ -34,7 +34,7 @@ jobs:
     steps:
     - name: install janus apt dependencies
       run: >
-        sudo apt-get update && sudo apt-get -y install
+        sudo apt-get update && sudo apt-get --no-install-recommends -y install
         autoconf
         cmake
         gengetopt
@@ -64,14 +64,14 @@ jobs:
     - name: setup additional dependencies from apt
       if: ${{ matrix.deps_from_src == 'no' }}
       run: >
-        sudo apt-get -y install
+        sudo apt-get --no-install-recommends -y install
         libnice-dev
         libsrtp2-dev
         libusrsctp-dev
         libwebsockets-dev
     - name: install libcurl from apt
       if: ${{ matrix.libcurl == 'yes' }}
-      run: sudo apt-get -y install libcurl4-openssl-dev
+      run: sudo apt-get --no-install-recommends -y install libcurl4-openssl-dev
     - name: setup python
       if: ${{ matrix.deps_from_src == 'yes' }}
       uses: actions/setup-python@v2
