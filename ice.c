@@ -2181,9 +2181,9 @@ static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Address:    %s:%d\n", handle->handle_id, address, port);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Priority:   %d\n", handle->handle_id, candidate->priority);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Foundation: %s\n", handle->handle_id, candidate->foundation);
-	char buffer[100];
+	char buffer[200];
 	if(candidate->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
-		g_snprintf(buffer, 100,
+		g_snprintf(buffer, sizeof(buffer),
 			"%s %d %s %d %s %d typ prflx raddr %s rport %d\r\n",
 				candidate->foundation,
 				candidate->component_id,
@@ -2223,7 +2223,7 @@ static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported transport, skipping nonUDP/TCP prflx candidate...\n", handle->handle_id);
 			goto candidatedone;
 		} else {
-			g_snprintf(buffer, 100,
+			g_snprintf(buffer, sizeof(buffer),
 				"%s %d %s %d %s %d typ prflx raddr %s rport %d tcptype %s\r\n",
 					candidate->foundation,
 					candidate->component_id,
