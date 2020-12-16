@@ -21,11 +21,11 @@ jobs:
           - datachannels: "yes"
             libcurl: "no"
             deps_from_src: "no"
-            janus_config_opts: "--disable-aes-gcm --disable-turn-rest-api --disable-sample-event-handler"
+            janus_config_opts: "--disable-aes-gcm -disable-mqtt --disable-mqtt-event-handler --disable-turn-rest-api --disable-sample-event-handler"
           - datachannels: "no"
             libcurl: "yes"
             deps_from_src: "no"
-            janus_config_opts: "--disable-aes-gcm --disable-data-channels"
+            janus_config_opts: "--disable-aes-gcm -disable-mqtt --disable-mqtt-event-handler --disable-data-channels"
         exclude:
           - datachannels: "no"
             libcurl: "no"
@@ -130,11 +130,13 @@ jobs:
         make -j$(nproc)
         sudo make install
     - name: checkout paho-mqtt source
+      if: ${{ matrix.deps_from_src == 'yes' }}
       uses: actions/checkout@v2
       with:
         repository: eclipse/paho.mqtt.c
         ref: v1.3.1
     - name: setup paho-mqtt from sources
+      if: ${{ matrix.deps_from_src == 'yes' }}
       run: |
         cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_SAMPLES=FALSE -DPAHO_BUILD_DOCUMENTATION=FALSE
         make -j$(nproc)
