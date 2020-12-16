@@ -103,13 +103,13 @@ jobs:
         make -j$(nproc) shared_library
         sudo make install
     - name: checkout usrsctp source
-      if: ${{ matrix.datachannels == 'yes' }} 
+      if: ${{ matrix.datachannels == 'yes' && matrix.deps_from_src == 'yes' }}
       uses: actions/checkout@v2
       with:
         repository: sctplab/usrsctp
         ref: master
     - name: setup usrsctp from sources
-      if: ${{ matrix.datachannels == 'yes' }}
+      if: ${{ matrix.datachannels == 'yes' && matrix.deps_from_src == 'yes' }}
       run: |
         ./bootstrap
         ./configure --prefix=/usr --disable-static --disable-debug --disable-programs --disable-inet --disable-inet6
