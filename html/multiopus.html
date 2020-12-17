@@ -47,6 +47,14 @@
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
+						<div class="alert alert-danger"><b>Note well!</b> This demo is known not to work
+						as expected, at the moment, due to two different bugs in Chrome with respect
+						to <code>captureStream</code>: the <a target="_blank" href="https://bugs.chromium.org/p/chromium/issues/detail?id=1156408">first bug</a>
+						causes media from a captured video not to be sent on a PeerConnection, which is what
+						we try to do in this demo; the <a target="_blank" href="https://bugs.chromium.org/p/chromium/issues/detail?id=1125304">second bug</a>
+						causes audio not to be sent if the source video element is muted, despite the
+						video itself containing an audio stream. Until both issues are fixed in Chrome,
+						this demo will basically do nothing, and so no point in trying it out.</div>
 						<p>This is a variant of the Echo Test demo meant to showcase the support
 						for multichannel Opus, and so surround audio: everything is exactly
 						the same in term of available controls, features, and the like, with
