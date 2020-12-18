@@ -5444,6 +5444,9 @@ static void *janus_audiobridge_handler(void *data) {
 					g_error_free(error);
 				}
 			}
+			/* If a PeerConnection exists, make sure to update the RTP headers */
+			if(g_atomic_int_get(&session->started) == 1)
+				participant->context.a_last_ssrc = 0;
 
 			/* Done */
 			session->participant = participant;
