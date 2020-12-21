@@ -4349,10 +4349,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			g_snprintf(error_cause, 512, "No such user %s in room %s", user_id_str, room_id_str);
 			goto prepare_response;
 		}
+		janus_refcount_increase(&participant->ref);
 		if(participant->kicked) {
 			/* Already kicked */
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
+			janus_refcount_decrease(&participant->ref);
 			response = json_object();
 			json_object_set_new(response, "videoroom", json_string("success"));
 			/* Done */
@@ -4403,6 +4405,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_object_set_new(response, "videoroom", json_string("success"));
 		/* Done */
 		janus_refcount_decrease(&videoroom->ref);
+		janus_refcount_decrease(&participant->ref);
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room, specifying whether they're publishers or just attendees */
