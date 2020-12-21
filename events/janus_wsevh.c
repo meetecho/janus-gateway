@@ -266,7 +266,7 @@ int janus_wsevh_init(const char *config_path) {
 		goto error;
 	}
 	if(strcasecmp(protocol, "ws") || !strlen(address)) {
-		JANUS_LOG(LOG_FATAL, "Invalid address (only ws:// and addresses are supported)\n");
+		JANUS_LOG(LOG_FATAL, "Invalid address (only ws:// addresses are supported)\n");
 		JANUS_LOG(LOG_FATAL, "  -- Protocol: %s\n", protocol);
 		JANUS_LOG(LOG_FATAL, "  -- Address:  %s\n", address);
 		JANUS_LOG(LOG_FATAL, "  -- Path:     %s\n", path);
