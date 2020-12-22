@@ -4959,6 +4959,11 @@ done:
 				goto error;
 			}
 			JANUS_LOG(LOG_VERB, "Starting the streaming\n");
+			if(g_atomic_int_get(&session->paused) == 1) {
+				/* We were paused: reset the sequence number in RTP packets */
+				session->context.a_seq_reset = TRUE;
+				session->context.v_seq_reset = TRUE;
+			}
 			g_atomic_int_set(&session->paused, 0);
 			result = json_object();
 			/* We wait for the setup_media event to start: on the other hand, it may have already arrived */

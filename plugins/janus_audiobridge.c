@@ -5018,7 +5018,7 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 			json_object_set_new(info, "id",
 				string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
 			json_object_set_new(info, "display", json_string(participant->display));
-			gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
+			gateway->notify_event(&janus_audiobridge_plugin, NULL, info);
 		}
 	}
 	/* Get rid of the recorders, if available */
@@ -5444,6 +5444,9 @@ static void *janus_audiobridge_handler(void *data) {
 					g_error_free(error);
 				}
 			}
+			/* If a PeerConnection exists, make sure to update the RTP headers */
+			if(g_atomic_int_get(&session->started) == 1)
+				participant->context.a_last_ssrc = 0;
 
 			/* Done */
 			session->participant = participant;
