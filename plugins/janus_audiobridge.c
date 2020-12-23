@@ -4189,7 +4189,6 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			goto prepare_response;
 		}
 		/* We're done, add the announcement to the room */
-		janus_refcount_increase(&p->ref);
 		g_hash_table_insert(audiobridge->anncs, g_strdup(p->user_id_str), p);
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
