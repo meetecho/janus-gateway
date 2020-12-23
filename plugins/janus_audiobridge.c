@@ -4189,7 +4189,6 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			goto prepare_response;
 		}
 		/* We're done, add the announcement to the room */
-		janus_refcount_increase(&p->ref);
 		g_hash_table_insert(audiobridge->anncs, g_strdup(p->user_id_str), p);
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
@@ -4370,9 +4369,11 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		char *file_id = (char *)json_string_value(id);
 		janus_audiobridge_participant *p = g_hash_table_lookup(audiobridge->anncs, file_id);
 		gboolean started = (p && p->annc && p->annc->started);
+		if(p)
+			janus_refcount_increase(&p->ref);
 		if(g_hash_table_remove(audiobridge->anncs, file_id) && started) {
 			/* Send a notification that this announcement is over */
-			JANUS_LOG(LOG_INFO, "[%s] Announcement stopped (%s)\n", audiobridge->room_id_str, p->user_id_str);
+			JANUS_LOG(LOG_INFO, "[%s] Announcement stopped (%s)\n", audiobridge->room_id_str, file_id);
 			json_t *event = json_object();
 			json_object_set_new(event, "audiobridge", json_string("announcement-stopped"));
 			json_object_set_new(event, "room",
@@ -4390,6 +4391,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				gateway->notify_event(&janus_audiobridge_plugin, NULL, info);
 			}
 		}
+		if(p)
+			janus_refcount_decrease(&p->ref);
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 
