@@ -60,6 +60,11 @@ clang*)
 		-Wno-cast-align \
 		-Wno-initializer-overrides"
 ;;
+cc*)
+	CFLAGS="$CFLAGS \
+		-Wno-cast-align \
+		-Wno-initializer-overrides"
+;;
 *)
 	# Specific gcc flags
 	CFLAGS="$CFLAGS \
@@ -68,7 +73,6 @@ clang*)
 		-Wunsafe-loop-optimizations \
 		-Wunused-but-set-variable"
 esac
-
 JANUS_VERSION=110
 AC_SUBST(JANUS_VERSION)
 JANUS_VERSION_STRING="0.10.10"
@@ -341,16 +345,29 @@ AC_ARG_ENABLE([systemd-sockets],
                               [Enable Systemd Unix Sockets management])],
               [],
               [enable_systemd_sockets=no])
-
-PKG_CHECK_MODULES([JANUS],
-                  [
-                    glib-2.0 >= $glib_version
+case "$host_os" in
+freebsd*)
+	PKGCHECKMODULES="glib-2.0 >= $glib_version
                     gio-2.0 >= $glib_version
                     libconfig
                     nice
                     jansson >= $jansson_version
-                    zlib
-                  ])
+                    zlib"
+;;
+*)
+	PKGCHECKMODULES="glib-2.0 >= $glib_version
+                    gio-2.0 >= $glib_version
+                    libconfig
+                    nice
+                    jansson >= $jansson_version
+                    libssl >= $ssl_version
+                    libcrypto
+                    zlib"
+
+esac
+PKG_CHECK_MODULES([JANUS],"$PKGCHECKMODULES")
+
+
 JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lm"
 AC_SUBST(JANUS_MANUAL_LIBS)
 
