@@ -82,6 +82,12 @@ darwin*)
 	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib -L/opt/local/lib -L/usr/local/libsrtp/lib"
 	AM_CONDITIONAL([DARWIN_OS], true)
 ;;
+freebsd*)
+	CFLAGS="$CFLAGS -I /usr/include/openssl -I/usr/local/lib/include/nice"
+	LDFLAGS="$LDFLAGS -Xlinker --export-dynamic"
+	LDFLAGS="$LDFLAGS -L/usr/lib/openssl -lcrypto -lssl -L/usr/local/lib -lnice"
+	AM_CONDITIONAL([DARWIN_OS], false)
+;;
 *)
 	LDFLAGS="$LDFLAGS -Wl,--export-dynamic"
 	AM_CONDITIONAL([DARWIN_OS], false)
@@ -343,8 +349,6 @@ PKG_CHECK_MODULES([JANUS],
                     libconfig
                     nice
                     jansson >= $jansson_version
-                    libssl >= $ssl_version
-                    libcrypto
                     zlib
                   ])
 JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lm"

@@ -5333,6 +5333,7 @@ gint main(int argc, char *argv[])
 		if (!transport) {
 			JANUS_LOG(LOG_ERR, "\tCouldn't load transport plugin '%s': %s\n", transportent->d_name, dlerror());
 		} else {
+			dlerror();//clear errors
 			create_t *create = (create_t*) dlsym(transport, "create");
 			const char *dlsym_error = dlerror();
 			if (dlsym_error) {

@@ -293,7 +293,7 @@ static const char *janus_websockets_reason_string(enum lws_callback_reasons reas
 #if (LWS_LIBRARY_VERSION_MAJOR >= 4)
 static lws_retry_bo_t pingpong = { 0 };
 #endif
-
+struct in_addr addr;
 /* Helper method to return the interface associated with a local IP address */
 static char *janus_websockets_get_interface_name(const char *ip) {
 	struct ifaddrs *addrs = NULL, *iap = NULL;
@@ -591,13 +591,6 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		/* Force single-thread server */
 		wscinfo.count_threads = 1;
 
-		/* Create the base context */
-		wsc = lws_create_context(&wscinfo);
-		if(wsc == NULL) {
-			JANUS_LOG(LOG_ERR, "Error creating libwebsockets context...\n");
-			janus_config_destroy(config);
-			return -1;	/* No point in keeping the plugin loaded */
-		}
 
 		/* Setup the Janus API WebSockets server(s) */
 		item = janus_config_get(config, config_general, janus_config_type_item, "ws");
@@ -618,12 +611,22 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			item = janus_config_get(config, config_general, janus_config_type_item, "ws_ip");
 			if(item && item->value) {
 				ip = (char *)item->value;
+				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr))>0) {
+				wscinfo.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
+				}
 				char *iface = janus_websockets_get_interface_name(ip);
 				if(iface == NULL) {
 					JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
 				}
-				ip = iface;
+				//ip = iface;
 			}
+		/* Create the base context */
+		wsc = lws_create_context(&wscinfo);
+		if(wsc == NULL) {
+			JANUS_LOG(LOG_ERR, "Error creating libwebsockets context...\n");
+			janus_config_destroy(config);
+			return -1;	/* No point in keeping the plugin loaded */
+		}
 			/* Prepare context */
 			struct lws_context_creation_info info;
 			memset(&info, 0, sizeof info);
@@ -656,19 +659,24 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
 				wsport = 8989;
 			}
+			int ipv4_only = 0;
 			char *interface = NULL;
 			item = janus_config_get(config, config_general, janus_config_type_item, "wss_interface");
 			if(item && item->value)
 				interface = (char *)item->value;
 			char *ip = NULL;
 			item = janus_config_get(config, config_general, janus_config_type_item, "wss_ip");
+
 			if(item && item->value) {
 				ip = (char *)item->value;
+				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr))>0) {	
+				ipv4_only = 1;
+				}
 				char *iface = janus_websockets_get_interface_name(ip);
 				if(iface == NULL) {
 					JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
 				}
-				ip = iface;
+				//ip = iface;
 			}
 			item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pem");
 			if(!item || !item->value) {
@@ -706,6 +714,9 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 #else
 				info.options = 0;
 #endif
+				if(ipv4_only) {
+				info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
+				}
 				/* Create the secure WebSocket context */
 				swss = lws_create_vhost(wsc, &info);
 				if(swss == NULL) {

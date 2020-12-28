@@ -207,6 +207,30 @@ If Doxygen and graphviz are available, the process can also build the documentat
 
 You can also selectively enable/disable other features (e.g., specific plugins you don't care about, or whether or not you want to build the recordings post-processor). Use the --help option when configuring for more info.
 
+### Building on FreeBSD
+	pkg install libsrtp2 \
+        libusrsctp \
+        jansson \
+        libnice \
+        libmicrohttpd \
+        libwebsockets \
+        curl \
+        opus \
+        sofia-sip \
+        libogg \
+        jansson \
+        libnice \
+        libconfig \
+        libtool \
+        gmake \
+        autoconf \
+        autoconf-wrapper \
+        glib
+
+	sh autogen.sh
+	./configure
+	gmake
+	gmake install
 
 ### Building on MacOS
 While most of the above instructions will work when compiling Janus on MacOS as well, there are a few aspects to highlight when doing that.
