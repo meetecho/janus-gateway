@@ -669,7 +669,6 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
 				wsport = 8989;
 			}
-			ipv4_only = 0;
 			char *interface = NULL;
 			item = janus_config_get(config, config_general, janus_config_type_item, "wss_interface");
 			if(item && item->value)
