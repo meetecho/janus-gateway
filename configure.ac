@@ -87,7 +87,7 @@ darwin*)
 	AM_CONDITIONAL([DARWIN_OS], true)
 ;;
 freebsd*)
-	CFLAGS="$CFLAGS -I /usr/include/openssl"
+	CFLAGS="$CFLAGS -I/usr/include/openssl"
 	LDFLAGS="$LDFLAGS -Xlinker --export-dynamic"
 	LDFLAGS="$LDFLAGS -L/usr/lib/openssl -lcrypto -lssl -L/usr/local/lib"
 	AM_CONDITIONAL([DARWIN_OS], false)

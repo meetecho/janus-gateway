@@ -592,6 +592,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 #endif
 		/* Force single-thread server */
 		wscinfo.count_threads = 1;
+
 		/* Create the base context */
 		wsc = lws_create_context(&wscinfo);
 		if(wsc == NULL) {
@@ -675,7 +676,6 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				interface = (char *)item->value;
 			char *ip = NULL;
 			item = janus_config_get(config, config_general, janus_config_type_item, "wss_ip");
-
 			if(item && item->value) {
 				ip = (char *)item->value;
 #ifdef __FreeBSD__
@@ -730,7 +730,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 #ifdef __FreeBSD__
 				if(ipv4_only) {
 					info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
-                    ipv4_only = 0;
+					ipv4_only = 0;
 				}
 #endif
 				/* Create the secure WebSocket context */
@@ -761,14 +761,13 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			char *ip = NULL;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws_ip");
 			if(item && item->value) {
-                ip = (char *)item->value;
+				ip = (char *)item->value;
 #ifdef __FreeBSD__
-                struct in_addr addr;
-                if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr))>0) {
-                    ipv4_only = 1;
-                }
+				struct in_addr addr;
+				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr))>0) {
+					ipv4_only = 1;
+				}
 #endif
-
 				char *iface = janus_websockets_get_interface_name(ip);
 				if(iface == NULL) {
 					JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
@@ -790,11 +789,10 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.options = 0;
 #ifdef __FreeBSD__
 			if (ipv4_only) {
-                info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
-                ipv4_only = 0;
-            }
+                            info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
+                            ipv4_only = 0;
+                        }
 #endif
-
 			/* Create the WebSocket context */
 			admin_wss = lws_create_vhost(wsc, &info);
 			if(admin_wss == NULL) {
@@ -821,12 +819,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			char *ip = NULL;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss_ip");
 			if(item && item->value) {
-			ip = (char *)item->value;
+				ip = (char *)item->value;
 #ifdef __FreeBSD__
 				struct in_addr addr;
-                if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr))>0) {
-                    ipv4_only = 1;
-                }
+				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr))>0) {
+					ipv4_only = 1;
+				}
 #endif
 				char *iface = janus_websockets_get_interface_name(ip);
 				if(iface == NULL) {
@@ -874,9 +872,9 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 #endif
 #ifdef __FreeBSD__
 				if (ipv4_only) {
-                    info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
-                    ipv4_only = 0;
-                }
+					info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
+					ipv4_only = 0;
+				}
 #endif
 				/* Create the secure WebSocket context */
 				admin_swss = lws_create_vhost(wsc, &info);
