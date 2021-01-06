@@ -385,6 +385,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 #ifndef LWS_WITH_IPV6
 	JANUS_LOG(LOG_WARN, "libwebsockets has been built without IPv6 support, will bind to IPv4 only\n");
 #endif
+
 #ifdef __FreeBSD__
 	int ipv4_only = 0;
 #endif
@@ -726,7 +727,6 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 #else
 				info.options = 0;
 #endif
-
 #ifdef __FreeBSD__
 				if(ipv4_only) {
 					info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
@@ -863,8 +863,6 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.ssl_cipher_list = ciphers;
 				info.gid = -1;
 				info.uid = -1;
-
-
 #if LWS_LIBRARY_VERSION_MAJOR >= 2
 				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
 #else

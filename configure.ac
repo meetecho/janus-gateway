@@ -73,6 +73,7 @@ cc*)
 		-Wunsafe-loop-optimizations \
 		-Wunused-but-set-variable"
 esac
+
 JANUS_VERSION=110
 AC_SUBST(JANUS_VERSION)
 JANUS_VERSION_STRING="0.10.10"
@@ -345,6 +346,7 @@ AC_ARG_ENABLE([systemd-sockets],
                               [Enable Systemd Unix Sockets management])],
               [],
               [enable_systemd_sockets=no])
+
 case "$host_os" in
 freebsd*)
 	PKGCHECKMODULES="glib-2.0 >= $glib_version
@@ -363,10 +365,8 @@ freebsd*)
                     libssl >= $ssl_version
                     libcrypto
                     zlib"
-
 esac
 PKG_CHECK_MODULES([JANUS],"$PKGCHECKMODULES")
-
 
 JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lm"
 AC_SUBST(JANUS_MANUAL_LIBS)
