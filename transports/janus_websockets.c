@@ -623,9 +623,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				ip = (char *)item->value;
 #ifdef __FreeBSD__
 				struct in_addr addr;
-				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr))>0) {
+				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr)) > 0)
 					ipv4_only = 1;
-				}
 #endif
 				char *iface = janus_websockets_get_interface_name(ip);
 				if(iface == NULL) {
@@ -681,9 +680,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				ip = (char *)item->value;
 #ifdef __FreeBSD__
 				struct in_addr addr;
-				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr))>0) {
+				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr)) > 0)
 					ipv4_only = 1;
-				}
 #endif
 				char *iface = janus_websockets_get_interface_name(ip);
 				if(iface == NULL) {
@@ -764,9 +762,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				ip = (char *)item->value;
 #ifdef __FreeBSD__
 				struct in_addr addr;
-				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr))>0) {
+				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr)) > 0)
 					ipv4_only = 1;
-				}
 #endif
 				char *iface = janus_websockets_get_interface_name(ip);
 				if(iface == NULL) {
@@ -822,9 +819,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				ip = (char *)item->value;
 #ifdef __FreeBSD__
 				struct in_addr addr;
-				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr))>0) {
+				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr)) > 0)
 					ipv4_only = 1;
-				}
 #endif
 				char *iface = janus_websockets_get_interface_name(ip);
 				if(iface == NULL) {
