@@ -379,6 +379,15 @@ static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx) {
 	options.keepAliveInterval = ctx->connect.keep_alive_interval;
 	options.maxInflight = ctx->connect.max_inflight;
 
+	MQTTAsync_SSLOptions ssl_opts = MQTTAsync_SSLOptions_initializer;
+	if(ctx->tls.enable) {
+		ssl_opts.trustStore = ctx->tls.cacert_file;
+		ssl_opts.keyStore = ctx->tls.cert_file;
+		ssl_opts.privateKey = ctx->tls.key_file;
+		ssl_opts.enableServerCertAuth = ctx->tls.verify_peer;
+		options.ssl = &ssl_opts;
+	}
+
 	MQTTAsync_willOptions willOptions = MQTTAsync_willOptions_initializer;
 	if(ctx->will.enabled) {
 		willOptions.topicName = ctx->will.topic;
