@@ -544,10 +544,14 @@ static int janus_mqttevh_client_publish_message(janus_mqttevh_context *ctx, cons
 	options.onFailure = janus_mqttevh_client_publish_message_failure;
 
 	rc = MQTTAsync_sendMessage(ctx->client, topic, &msg, &options);
-	if(rc == MQTTASYNC_SUCCESS) {
-		JANUS_LOG(LOG_HUGE, "MQTT EVH message sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
-	} else {
-		JANUS_LOG(LOG_WARN, "FAILURE: MQTT EVH message propably not sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
+	switch(rc) {
+		case MQTTASYNC_SUCCESS:
+			JANUS_LOG(LOG_HUGE, "MQTT EVH message sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
+			break;
+		case MQTTASYNC_OPERATION_INCOMPLETE:
+			break;
+		default:
+			JANUS_LOG(LOG_WARN, "FAILURE: MQTT EVH message propably not sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
 	}
 
 	return rc;
@@ -570,10 +574,14 @@ static int janus_mqttevh_client_publish_message5(janus_mqttevh_context *ctx, con
 	options.onFailure5 = janus_mqttevh_client_publish_message_failure5;
 
 	rc = MQTTAsync_sendMessage(ctx->client, topic, &msg, &options);
-	if(rc == MQTTASYNC_SUCCESS) {
-		JANUS_LOG(LOG_HUGE, "MQTT EVH message sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
-	} else {
-		JANUS_LOG(LOG_WARN, "FAILURE: MQTT EVH message propably not sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
+	switch(rc) {
+		case MQTTASYNC_SUCCESS:
+			JANUS_LOG(LOG_HUGE, "MQTT EVH message sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
+			break;
+		case MQTTASYNC_OPERATION_INCOMPLETE:
+			break;
+		default:
+			JANUS_LOG(LOG_WARN, "FAILURE: MQTT EVH message propably not sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
 	}
 
 	return rc;
@@ -613,7 +621,12 @@ static void janus_mqttevh_client_publish_message_failure5(void *context, MQTTAsy
 
 static void janus_mqttevh_client_publish_message_failure_impl(void *context, int rc) {
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
-	JANUS_LOG(LOG_ERR, "MQTT EVH client has failed publishing to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
+	switch(rc) {
+		case MQTTASYNC_OPERATION_INCOMPLETE:
+			break;
+		default:
+			JANUS_LOG(LOG_ERR, "MQTT EVH client has failed publishing to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
+	}
 }
 
 /* Destroy Janus MQTT event handler session context */
