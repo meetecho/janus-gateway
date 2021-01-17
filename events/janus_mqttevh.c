@@ -1005,6 +1005,7 @@ static int janus_mqttevh_init(const char *config_path) {
 
 	create_options.maxBufferedMessages = ctx->connect.max_buffered;
 
+	create_options.sendWhileDisconnected = TRUE;
 	res = MQTTAsync_createWithOptions(
 		&ctx->client,
 		ctx->connect.url,
