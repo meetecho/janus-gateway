@@ -11,6 +11,7 @@
 	},
 	"devDependencies": {
 		"rollup": "^0.50.0",
-		"rollup-plugin-replace": "^2.0.0"
+		"rollup-plugin-replace": "^2.0.0",
+		"webrtc-adapter": "^7.7.0"
 	}
 }

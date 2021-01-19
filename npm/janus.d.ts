@@ -1,6 +1,6 @@
 declare namespace JanusJS {
 	interface Dependencies {
-		adapter: any;
+		adapter: import("webrtc-adapter").IAdapter;
 		WebSocket: (server: string, protocol: string) => WebSocket;
 		isArray: (array: any) => array is Array<any>;
 		extension: () => boolean;
