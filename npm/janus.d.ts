@@ -1,6 +1,6 @@
 declare namespace JanusJS {
 	interface Dependencies {
-		adapter: import("webrtc-adapter").IAdapter;
+		adapter: import('webrtc-adapter').IAdapter;
 		WebSocket: (server: string, protocol: string) => WebSocket;
 		isArray: (array: any) => array is Array<any>;
 		extension: () => boolean;
@@ -16,17 +16,17 @@ declare namespace JanusJS {
 	}
 
 	enum DebugLevel {
-		Trace = "trace",
-		Debug = "debug",
-		Log = "log",
-		Warning = "warn",
-		Error = "error",
+		Trace = 'trace',
+		Debug = 'debug',
+		Log = 'log',
+		Warning = 'warn',
+		Error = 'error',
 	}
 
 	interface JSEP {}
 
 	interface InitOptions {
-		debug?: boolean | "all" | DebugLevel[];
+		debug?: boolean | 'all' | DebugLevel[];
 		callback?: Function;
 		dependencies?: DependenciesResult;
 	}
@@ -46,13 +46,13 @@ declare namespace JanusJS {
 	}
 
 	enum MessageType {
-		Recording = "recording",
-		Starting = "starting",
-		Started = "started",
-		Stopped = "stopped",
-		SlowLink = "slow_link",
-		Preparing = "preparing",
-		Refreshing = "refreshing",
+		Recording = 'recording',
+		Starting = 'starting',
+		Started = 'started',
+		Stopped = 'stopped',
+		SlowLink = 'slow_link',
+		Preparing = 'preparing',
+		Refreshing = 'refreshing',
 	}
 
 	interface Message {
@@ -71,9 +71,9 @@ declare namespace JanusJS {
 		error?: (error: any) => void;
 		consentDialog?: (on: boolean) => void;
 		webrtcState?: (isConnected: boolean) => void;
-		iceState?: (state: "connected" | "failed") => void;
+		iceState?: (state: 'connected' | 'failed') => void;
 		mediaState?: (
-			medium: "audio" | "video",
+			medium: 'audio' | 'video',
 			receiving: boolean,
 			mid?: number
 		) => void;
@@ -97,12 +97,12 @@ declare namespace JanusJS {
 			video?:
 				| boolean
 				| { deviceId: string }
-				| "lowres"
-				| "lowres-16:9"
-				| "stdres"
-				| "stdres-16:9"
-				| "hires"
-				| "hires-16:9";
+				| 'lowres'
+				| 'lowres-16:9'
+				| 'stdres'
+				| 'stdres-16:9'
+				| 'hires'
+				| 'hires-16:9';
 			data?: boolean;
 			failIfNoAudio?: boolean;
 			failIfNoVideo?: boolean;
