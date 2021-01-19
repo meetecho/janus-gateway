@@ -5,9 +5,9 @@ declare namespace JanusJS {
 		isArray: (array: any) => array is Array<any>;
 		extension: () => boolean;
 		httpAPICall: (url: string, options: any) => void;
-    }
-    
-    interface DependenciesResult {
+	}
+
+	interface DependenciesResult {
 		adapter: any;
 		newWebSocket: (server: string, protocol: string) => WebSocket;
 		isArray: (array: any) => array is Array<any>;
@@ -16,17 +16,17 @@ declare namespace JanusJS {
 	}
 
 	enum DebugLevel {
-		Trace = 'trace',
-		Debug = 'debug',
-		Log = 'log',
-		Warning = 'warn',
-		Error = 'error'
+		Trace = "trace",
+		Debug = "debug",
+		Log = "log",
+		Warning = "warn",
+		Error = "error",
 	}
 
 	interface JSEP {}
 
 	interface InitOptions {
-		debug?: boolean | 'all' | DebugLevel[];
+		debug?: boolean | "all" | DebugLevel[];
 		callback?: Function;
 		dependencies?: DependenciesResult;
 	}
@@ -46,13 +46,13 @@ declare namespace JanusJS {
 	}
 
 	enum MessageType {
-		Recording = 'recording',
-		Starting = 'starting',
-		Started = 'started',
-		Stopped = 'stopped',
-		SlowLink = 'slow_link',
-		Preparing = 'preparing',
-		Refreshing = 'refreshing'
+		Recording = "recording",
+		Starting = "starting",
+		Started = "started",
+		Stopped = "stopped",
+		SlowLink = "slow_link",
+		Preparing = "preparing",
+		Refreshing = "refreshing",
 	}
 
 	interface Message {
@@ -71,8 +71,12 @@ declare namespace JanusJS {
 		error?: (error: any) => void;
 		consentDialog?: (on: boolean) => void;
 		webrtcState?: (isConnected: boolean) => void;
-		iceState?: (state: 'connected' | 'failed') => void;
-		mediaState?: (medium: 'audio' | 'video', receiving: boolean, mid?: number) => void;
+		iceState?: (state: "connected" | "failed") => void;
+		mediaState?: (
+			medium: "audio" | "video",
+			receiving: boolean,
+			mid?: number
+		) => void;
 		slowLink?: (state: { uplink: boolean }) => void;
 		onmessage?: (message: Message, jsep?: JSEP) => void;
 		onlocalstream?: (stream: MediaStream) => void;
@@ -93,12 +97,12 @@ declare namespace JanusJS {
 			video?:
 				| boolean
 				| { deviceId: string }
-				| 'lowres'
-				| 'lowres-16:9'
-				| 'stdres'
-				| 'stdres-16:9'
-				| 'hires'
-				| 'hires-16:9';
+				| "lowres"
+				| "lowres-16:9"
+				| "stdres"
+				| "stdres-16:9"
+				| "hires"
+				| "hires-16:9";
 			data?: boolean;
 			failIfNoAudio?: boolean;
 			failIfNoVideo?: boolean;
@@ -127,6 +131,9 @@ declare namespace JanusJS {
 		handleRemoteJsep(params: { jsep: JSEP }): void;
 		dtmf(params: any): void;
 		data(params: any): void;
+		isAudioMuted(): boolean;
+		muteAudio(): void;
+		unmuteAudio(): void;
 		isVideoMuted(): boolean;
 		muteVideo(): void;
 		unmuteVideo(): void;
@@ -136,7 +143,9 @@ declare namespace JanusJS {
 	}
 
 	class Janus {
-		static useDefaultDependencies(deps: Partial<Dependencies>): DependenciesResult;
+		static useDefaultDependencies(
+			deps: Partial<Dependencies>
+		): DependenciesResult;
 		static useOldDependencies(deps: Partial<Dependencies>): DependenciesResult;
 		static init(options: InitOptions): void;
 		static isWebrtcSupported(): boolean;
@@ -145,8 +154,14 @@ declare namespace JanusJS {
 		static warn(...args: any[]): void;
 		static error(...args: any[]): void;
 		static randomString(length: number): string;
-		static attachMediaStream(element: HTMLMediaElement, stream: MediaStream): void;
-		static reattachMediaStream(to: HTMLMediaElement, from: HTMLMediaElement): void;
+		static attachMediaStream(
+			element: HTMLMediaElement,
+			stream: MediaStream
+		): void;
+		static reattachMediaStream(
+			to: HTMLMediaElement,
+			from: HTMLMediaElement
+		): void;
 
 		constructor(options: ConstructorOptions);
 
