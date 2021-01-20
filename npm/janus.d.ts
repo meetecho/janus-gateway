@@ -1,6 +1,6 @@
 declare namespace JanusJS {
 	interface Dependencies {
-		adapter: import('webrtc-adapter').IAdapter;
+		adapter: any;
 		WebSocket: (server: string, protocol: string) => WebSocket;
 		isArray: (array: any) => array is Array<any>;
 		extension: () => boolean;
@@ -20,7 +20,7 @@ declare namespace JanusJS {
 		Debug = 'debug',
 		Log = 'log',
 		Warning = 'warn',
-		Error = 'error',
+		Error = 'error'
 	}
 
 	interface JSEP {}
@@ -52,7 +52,7 @@ declare namespace JanusJS {
 		Stopped = 'stopped',
 		SlowLink = 'slow_link',
 		Preparing = 'preparing',
-		Refreshing = 'refreshing',
+		Refreshing = 'refreshing'
 	}
 
 	interface Message {
