@@ -129,12 +129,14 @@ static janus_mutex writable_mutex;
 
 static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len);
 static struct lws_protocols protocols[] = {
-	{ NULL, janus_wsevh_callback, sizeof(janus_wsevh_client), 0 },	/* Subprotocol will be configurable */
+	{ "janus-event-handlers", janus_wsevh_callback, sizeof(janus_wsevh_client), 0 },	/* Subprotocol will be configurable */
 	{ NULL, NULL, 0, 0 }
 };
 static const struct lws_extension exts[] = {
+#ifndef LWS_WITHOUT_EXTENSIONS
 	{ "permessage-deflate", lws_extension_callback_pm_deflate, "permessage-deflate; client_max_window_bits" },
 	{ "deflate-frame", lws_extension_callback_pm_deflate, "deflate_frame" },
+#endif
 	{ NULL, NULL, NULL }
 };
 
@@ -264,7 +266,7 @@ int janus_wsevh_init(const char *config_path) {
 		goto error;
 	}
 	if(strcasecmp(protocol, "ws") || !strlen(address)) {
-		JANUS_LOG(LOG_FATAL, "Invalid address (only ws:// and wss:// addresses are supported)\n");
+		JANUS_LOG(LOG_FATAL, "Invalid address (only ws:// addresses are supported)\n");
 		JANUS_LOG(LOG_FATAL, "  -- Protocol: %s\n", protocol);
 		JANUS_LOG(LOG_FATAL, "  -- Address:  %s\n", address);
 		JANUS_LOG(LOG_FATAL, "  -- Path:     %s\n", path);
@@ -593,11 +595,11 @@ static void *janus_wsevh_handler(void *data) {
 }
 
 static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
-	if(ws_client == NULL)
-		ws_client = (janus_wsevh_client *)user;
 	switch(reason) {
 		case LWS_CALLBACK_CLIENT_ESTABLISHED: {
 			/* Prepare the session */
+			if(ws_client == NULL)
+				ws_client = (janus_wsevh_client *)user;
 			ws_client->wsi = wsi;
 			ws_client->buffer = NULL;
 			ws_client->buflen = 0;

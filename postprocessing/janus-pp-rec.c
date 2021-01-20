@@ -1086,6 +1086,7 @@ int main(int argc, char *argv[])
 		context.start_ts = tmp->ts;
 		janus_pp_frame_packet *to_drop;
 		while(tmp) {
+			to_drop = NULL;
 			int ret = janus_pp_skew_compensate_audio(tmp, &context);
 			if(ret < 0) {
 				JANUS_LOG(LOG_WARN, "audio skew SSRC=%"SCNu32" dropping %d packets, source clock is too fast\n", ssrc, -ret);
@@ -1095,11 +1096,11 @@ int main(int argc, char *argv[])
 					tmp->prev->next = tmp->next;
 				if (tmp->next != NULL)
 					tmp->next->prev = tmp->prev;
-				g_free(to_drop);
 			} else if(ret > 0) {
 				JANUS_LOG(LOG_WARN, "audio skew SSRC=%"SCNu32" jumping %d RTP sequence numbers, source clock is too slow\n", ssrc, ret);
 			}
 			tmp = tmp->next;
+			g_free(to_drop);
 		}
 	}
 

@@ -994,9 +994,13 @@ int janus_process_incoming_request(janus_request *request) {
 	/* Ok, let's start with the ids */
 	guint64 session_id = 0, handle_id = 0;
 	json_t *s = json_object_get(root, "session_id");
+	if(json_is_null(s))
+		s = NULL;
 	if(s && json_is_integer(s))
 		session_id = json_integer_value(s);
 	json_t *h = json_object_get(root, "handle_id");
+	if(json_is_null(h))
+		h = NULL;
 	if(h && json_is_integer(h))
 		handle_id = json_integer_value(h);
 
@@ -1098,7 +1102,7 @@ int janus_process_incoming_request(janus_request *request) {
 	}
 	if(h && handle_id < 1) {
 		JANUS_LOG(LOG_ERR, "Invalid handle\n");
-		ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_SESSION_NOT_FOUND, NULL);
+		ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_HANDLE_NOT_FOUND, NULL);
 		goto jsondone;
 	}
 
