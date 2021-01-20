@@ -2532,7 +2532,7 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		if(g_atomic_int_get(&session->established))
 			nua_bye(session->stack->s_nh_i, TAG_END());
 		else
-			nua_respond(session->stack->s_nh_i, 486, sip_status_phrase(486), TAG_END());
+			nua_respond(session->stack->s_nh_i, 480, sip_status_phrase(480), TAG_END());
 
 		/* Notify the operation */
 		json_t *event = json_object();
