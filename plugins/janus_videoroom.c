@@ -342,9 +342,9 @@ room-<unique room ID>: {
 	"secret" : "<room secret, mandatory if configured>",
 	"room" : <unique numeric ID of the room>,
 	"id" : <unique numeric ID of the participant to moderate>,
-	"audio" : <true|false, depending on whether or not audio should be muted by the moderator>,
-	"video" : <true|false, depending on whether or not video should be muted by the moderator>,
-	"data" : <true|false, depending on whether or not data should be muted by the moderator>,
+	"mute_audio" : <true|false, depending on whether or not audio should be muted by the moderator>,
+	"mute_video" : <true|false, depending on whether or not video should be muted by the moderator>,
+	"mute_data" : <true|false, depending on whether or not data should be muted by the moderator>,
 }
 \endverbatim
  *
@@ -1323,9 +1323,9 @@ static struct janus_json_parameter kick_parameters[] = {
 };
 static struct janus_json_parameter moderate_parameters[] = {
 	{"secret", JSON_STRING, 0},
-	{"audio", JANUS_JSON_BOOL, 0},
-	{"video", JANUS_JSON_BOOL, 0},
-	{"data", JANUS_JSON_BOOL, 0}
+	{"mute_audio", JANUS_JSON_BOOL, 0},
+	{"mute_video", JANUS_JSON_BOOL, 0},
+	{"mute_data", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter join_parameters[] = {
 	{"ptype", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -4519,7 +4519,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		janus_refcount_increase(&participant->ref);
 		/* Check if there's any media delivery to change */
-		json_t *audio = json_object_get(root, "audio");
+		json_t *audio = json_object_get(root, "mute_audio");
 		if(audio != NULL) {
 			gboolean audio_muted = json_is_true(audio);
 			if(participant->session && g_atomic_int_get(&participant->session->started) &&
@@ -4537,7 +4537,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			}
 			participant->audio_muted = audio_muted;
 		}
-		json_t *video = json_object_get(root, "video");
+		json_t *video = json_object_get(root, "mute_video");
 		if(video != NULL) {
 			gboolean video_muted = json_is_true(video);
 			if(participant->session && g_atomic_int_get(&participant->session->started) &&
@@ -4555,7 +4555,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			}
 			participant->video_muted = video_muted;
 		}
-		json_t *data = json_object_get(root, "data");
+		json_t *data = json_object_get(root, "mute_data");
 		if(data != NULL) {
 			participant->data_muted = json_is_true(data);
 		}
