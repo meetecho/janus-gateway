@@ -1542,15 +1542,15 @@ static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connectio
 			token_authorized = TRUE;
 		} else {
 			if(gateway->is_api_secret_valid(&janus_http_transport, secret)) {
-				/* API secret is valid */
+				/* API secret is valid or disabled */
 				secret_authorized = TRUE;
 			}
 			if(gateway->is_auth_token_valid(&janus_http_transport, token)) {
-				/* Token is valid */
+				/* Token is valid or disabled */
 				token_authorized = TRUE;
 			}
-			/* We consider a request authorized if either the proper API secret or a valid token has been provided */
-			if(!secret_authorized && !token_authorized) {
+			/* We consider a request authorized if both the token and the API secret are either disabled or valid */
+			if(!secret_authorized || !token_authorized) {
 				response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 				janus_http_add_cors_headers(msg, response);
 				ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
