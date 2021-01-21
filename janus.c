@@ -1531,7 +1531,7 @@ int janus_process_incoming_request(janus_request *request) {
 						if(stream != NULL && stream->component != NULL
 								&& stream->component->dtls != NULL && stream->component->dtls->sctp == NULL) {
 							/* Create SCTP association as well */
-							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Creating datachannels...\n", handle->handle_id);
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating datachannels...\n", handle->handle_id);
 							janus_dtls_srtp_create_sctp(stream->component->dtls);
 						}
 					}
@@ -3790,7 +3790,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			if(stream != NULL && stream->component != NULL &&
 					stream->component->dtls != NULL && stream->component->dtls->sctp == NULL) {
 				/* Create SCTP association as well */
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Creating datachannels...\n", ice_handle->handle_id);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating datachannels...\n", ice_handle->handle_id);
 				janus_dtls_srtp_create_sctp(stream->component->dtls);
 			}
 		}
@@ -5016,7 +5016,7 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		enable_events = janus_is_true(item->value);
 	if(!enable_events) {
-		JANUS_LOG(LOG_WARN, "Event handlers support disabled\n");
+		JANUS_LOG(LOG_INFO, "Event handlers support disabled\n");
 	} else {
 		gchar **disabled_eventhandlers = NULL;
 		path = EVENTDIR;

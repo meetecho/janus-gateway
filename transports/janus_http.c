@@ -773,7 +773,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		/* Start with the Janus API web server now */
 		item = janus_config_get(config, config_general, janus_config_type_item, "http");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "HTTP webserver disabled\n");
+			JANUS_LOG(LOG_VERB, "HTTP webserver disabled\n");
 		} else {
 			uint16_t wsport = 8088;
 			item = janus_config_get(config, config_general, janus_config_type_item, "port");
@@ -818,7 +818,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 		item = janus_config_get(config, config_general, janus_config_type_item, "https");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "HTTPS webserver disabled\n");
+			JANUS_LOG(LOG_VERB, "HTTPS webserver disabled\n");
 		} else {
 			if(!server_key || !server_pem) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
@@ -849,7 +849,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		/* Admin/monitor time: start web server, if enabled */
 		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_http");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Admin/monitor HTTP webserver disabled\n");
+			JANUS_LOG(LOG_VERB, "Admin/monitor HTTP webserver disabled\n");
 		} else {
 			uint16_t wsport = 7088;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_port");
@@ -876,7 +876,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		/* Do we also have to provide an HTTPS one? */
 		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_https");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Admin/monitor HTTPS webserver disabled\n");
+			JANUS_LOG(LOG_VERB, "Admin/monitor HTTPS webserver disabled\n");
 		} else {
 			if(!server_key) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");

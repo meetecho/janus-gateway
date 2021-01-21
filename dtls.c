@@ -421,7 +421,7 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 #endif
 
 	if(!server_pem && !server_key) {
-		JANUS_LOG(LOG_WARN, "No cert/key specified, autogenerating some...\n");
+		JANUS_LOG(LOG_INFO, "No cert/key specified, autogenerating some...\n");
 		if(janus_dtls_generate_keys(&ssl_cert, &ssl_key, rsa_private_key) != 0) {
 			JANUS_LOG(LOG_FATAL, "Error generating DTLS key/certificate\n");
 			return -2;
