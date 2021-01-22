@@ -123,8 +123,8 @@ declare namespace JanusJS {
 	interface PluginHandle {
 		plugin: string;
 		id: number;
-		token?: string,
-		detached : boolean,
+		token?: string;
+		detached : boolean;
 		webrtcStuff: {
 			started: boolean,
 			myStream: MediaStream,
