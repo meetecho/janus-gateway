@@ -122,7 +122,7 @@ declare namespace JanusJS {
 
 	interface PluginHandle {
 		plugin: string;
-		id: number;
+		id: string;
 		token?: string;
 		detached : boolean;
 		webrtcStuff: {
@@ -130,10 +130,10 @@ declare namespace JanusJS {
 			myStream: MediaStream,
 			streamExternal: boolean,
 			remoteStream: MediaStream,
-			mySdp: string,
+			mySdp: any,
 			mediaConstraints: any,
 			pc: RTCPeerConnection,
-			dataChannel: Map<string,RTCDataChannel>,
+			dataChannel: Array<RTCDataChannel>,
 			dtmfSender: any,
 			trickle: boolean,
 			iceDone: boolean,
