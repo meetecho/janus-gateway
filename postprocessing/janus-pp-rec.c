@@ -112,6 +112,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
 #include "pp-g711.h"
 #include "pp-g722.h"
 #include "pp-srt.h"
+#include "pp-binary.h"
 
 #define htonll(x) ((1==htonl(1)) ? (x) : ((gint64)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
 #define ntohll(x) ((1==ntohl(1)) ? (x) : ((gint64)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
@@ -308,14 +309,6 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 		extension++;
-		if(strcasecmp(extension, "opus") && strcasecmp(extension, "wav") &&
-				strcasecmp(extension, "webm") && strcasecmp(extension, "mp4") &&
-				strcasecmp(extension, "srt")) {
-			/* Unsupported extension? */
-			JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
-			cmdline_parser_free(&args_info);
-			exit(1);
-		}
 	}
 
 	if (janus_faststart && strcasecmp(extension, "mp4")) {
@@ -345,7 +338,7 @@ int main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Pre-parsing file to generate ordered index...\n");
 	gboolean has_timestamps = FALSE;
 	gboolean parsed_header = FALSE;
-	gboolean video = FALSE, data = FALSE;
+	gboolean video = FALSE, data = FALSE, textdata = FALSE;
 	gboolean opus = FALSE, g711 = FALSE, g722 = FALSE,
 		vp8 = FALSE, vp9 = FALSE, h264 = FALSE, av1 = FALSE, h265 = FALSE;
 	gboolean e2ee = FALSE;
@@ -472,6 +465,7 @@ int main(int argc, char *argv[])
 				json_t *type = json_object_get(info, "t");
 				if(!type || !json_is_string(type)) {
 					JANUS_LOG(LOG_WARN, "Missing/invalid recording type in info header...\n");
+					json_decref(info);
 					cmdline_parser_free(&args_info);
 					exit(1);
 				}
@@ -487,6 +481,7 @@ int main(int argc, char *argv[])
 					data = TRUE;
 				} else {
 					JANUS_LOG(LOG_WARN, "Unsupported recording type '%s' in info header...\n", t);
+					json_decref(info);
 					cmdline_parser_free(&args_info);
 					exit(1);
 				}
@@ -503,6 +498,7 @@ int main(int argc, char *argv[])
 						vp8 = TRUE;
 						if(extension && strcasecmp(extension, "webm")) {
 							JANUS_LOG(LOG_ERR, "VP8 RTP packets can only be converted to a .webm file\n");
+							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
@@ -510,6 +506,7 @@ int main(int argc, char *argv[])
 						vp9 = TRUE;
 						if(extension && strcasecmp(extension, "webm")) {
 							JANUS_LOG(LOG_ERR, "VP9 RTP packets can only be converted to a .webm file\n");
+							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
@@ -517,6 +514,7 @@ int main(int argc, char *argv[])
 						h264 = TRUE;
 						if(extension && strcasecmp(extension, "mp4")) {
 							JANUS_LOG(LOG_ERR, "H.264 RTP packets can only be converted to a .mp4 file\n");
+							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
@@ -524,6 +522,7 @@ int main(int argc, char *argv[])
 						av1 = TRUE;
 						if(extension && strcasecmp(extension, "mp4")) {
 							JANUS_LOG(LOG_ERR, "AV1 RTP packets can only be converted to a .mp4 file\n");
+							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
@@ -531,11 +530,13 @@ int main(int argc, char *argv[])
 						h265 = TRUE;
 						if(extension && strcasecmp(extension, "mp4")) {
 							JANUS_LOG(LOG_ERR, "H.265 RTP packets can only be converted to a .mp4 file\n");
+							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else {
 						JANUS_LOG(LOG_WARN, "The post-processor only supports VP8, VP9 and H.264 video for now (was '%s')...\n", c);
+						json_decref(info);
 						cmdline_parser_free(&args_info);
 						exit(1);
 					}
@@ -544,17 +545,20 @@ int main(int argc, char *argv[])
 						opus = TRUE;
 						if(extension && strcasecmp(extension, "opus")) {
 							JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to an .opus file\n");
+							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "multiopus")) {
 						JANUS_LOG(LOG_ERR, "Surround Opus RTP packets are not supported, at the moment\n");
+						json_decref(info);
 						cmdline_parser_free(&args_info);
 						exit(1);
 					} else if(!strcasecmp(c, "g711") || !strcasecmp(c, "pcmu") || !strcasecmp(c, "pcma")) {
 						g711 = TRUE;
 						if(extension && strcasecmp(extension, "wav")) {
 							JANUS_LOG(LOG_ERR, "G.711 RTP packets can only be converted to a .wav file\n");
+							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
@@ -562,22 +566,27 @@ int main(int argc, char *argv[])
 						g722 = TRUE;
 						if(extension && strcasecmp(extension, "wav")) {
 							JANUS_LOG(LOG_ERR, "G.722 RTP packets can only be converted to a .wav file\n");
+							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else {
 						JANUS_LOG(LOG_WARN, "The post-processor only supports Opus, G.711 and G.722 audio for now (was '%s')...\n", c);
+						json_decref(info);
 						cmdline_parser_free(&args_info);
 						exit(1);
 					}
 				} else if(data) {
-					if(strcasecmp(c, "text")) {
-						JANUS_LOG(LOG_WARN, "The post-processor only supports text data for now (was '%s')...\n", c);
+					if(strcasecmp(c, "text") && strcasecmp(c, "binary")) {
+						JANUS_LOG(LOG_WARN, "The post-processor only supports text and binary data (was '%s')...\n", c);
+						json_decref(info);
 						cmdline_parser_free(&args_info);
 						exit(1);
 					}
-					if(extension && strcasecmp(extension, "srt")) {
-						JANUS_LOG(LOG_ERR, "Data channel packets can only be converted to a .srt file\n");
+					textdata = !strcasecmp(c, "text");
+					if(textdata && extension && strcasecmp(extension, "srt")) {
+						JANUS_LOG(LOG_ERR, "Text data channel packets can only be converted to a .srt file\n");
+						json_decref(info);
 						cmdline_parser_free(&args_info);
 						exit(1);
 					}
@@ -588,6 +597,7 @@ int main(int argc, char *argv[])
 				json_t *created = json_object_get(info, "s");
 				if(!created || !json_is_integer(created)) {
 					JANUS_LOG(LOG_WARN, "Missing recording created time in info header...\n");
+					json_decref(info);
 					cmdline_parser_free(&args_info);
 					exit(1);
 				}
@@ -596,6 +606,7 @@ int main(int argc, char *argv[])
 				json_t *written = json_object_get(info, "u");
 				if(!written || !json_is_integer(written)) {
 					JANUS_LOG(LOG_WARN, "Missing recording written time in info header...\n");
+					json_decref(info);
 					cmdline_parser_free(&args_info);
 					exit(1);
 				}
@@ -626,6 +637,17 @@ int main(int argc, char *argv[])
 		cmdline_parser_free(&args_info);
 		exit(0);
 	}
+
+	/* Now that we know what we're working with, check the extension */
+	if(strcasecmp(extension, "opus") && strcasecmp(extension, "wav") &&
+			strcasecmp(extension, "webm") && strcasecmp(extension, "mp4") &&
+			strcasecmp(extension, "srt") && (!data || (data && textdata))) {
+		/* Unsupported extension? */
+		JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
+		cmdline_parser_free(&args_info);
+		exit(1);
+	}
+
 	/* Now let's parse the frames and order them */
 	uint32_t pkt_ts = 0, highest_rtp_ts = 0;
 	uint16_t highest_seq = 0;
@@ -1064,6 +1086,7 @@ int main(int argc, char *argv[])
 		context.start_ts = tmp->ts;
 		janus_pp_frame_packet *to_drop;
 		while(tmp) {
+			to_drop = NULL;
 			int ret = janus_pp_skew_compensate_audio(tmp, &context);
 			if(ret < 0) {
 				JANUS_LOG(LOG_WARN, "audio skew SSRC=%"SCNu32" dropping %d packets, source clock is too fast\n", ssrc, -ret);
@@ -1073,11 +1096,11 @@ int main(int argc, char *argv[])
 					tmp->prev->next = tmp->next;
 				if (tmp->next != NULL)
 					tmp->next->prev = tmp->prev;
-				g_free(to_drop);
 			} else if(ret > 0) {
 				JANUS_LOG(LOG_WARN, "audio skew SSRC=%"SCNu32" jumping %d RTP sequence numbers, source clock is too slow\n", ssrc, ret);
 			}
 			tmp = tmp->next;
+			g_free(to_drop);
 		}
 	}
 
@@ -1102,10 +1125,18 @@ int main(int argc, char *argv[])
 			}
 		}
 	} else if(data) {
-		if(janus_pp_srt_create(destination, metadata) < 0) {
-			JANUS_LOG(LOG_ERR, "Error creating .srt file...\n");
-			cmdline_parser_free(&args_info);
-			exit(1);
+		if(textdata) {
+			if(janus_pp_srt_create(destination, metadata) < 0) {
+				JANUS_LOG(LOG_ERR, "Error creating .srt file...\n");
+				cmdline_parser_free(&args_info);
+				exit(1);
+			}
+		} else {
+			if(janus_pp_binary_create(destination, metadata) < 0) {
+				JANUS_LOG(LOG_ERR, "Error creating binary file...\n");
+				cmdline_parser_free(&args_info);
+				exit(1);
+			}
 		}
 	} else {
 		if(vp8 || vp9) {
@@ -1151,8 +1182,14 @@ int main(int argc, char *argv[])
 			}
 		}
 	} else if(data) {
-		if(janus_pp_srt_process(file, list, &working) < 0) {
-			JANUS_LOG(LOG_ERR, "Error processing text data frames...\n");
+		if(textdata) {
+			if(janus_pp_srt_process(file, list, &working) < 0) {
+				JANUS_LOG(LOG_ERR, "Error processing text data frames...\n");
+			}
+		} else {
+			if(janus_pp_binary_process(file, list, &working) < 0) {
+				JANUS_LOG(LOG_ERR, "Error processing text data frames...\n");
+			}
 		}
 	} else {
 		if(vp8 || vp9) {
@@ -1186,7 +1223,11 @@ int main(int argc, char *argv[])
 			janus_pp_h265_close();
 		}
 	} else if(data) {
-		janus_pp_srt_close();
+		if(textdata) {
+			janus_pp_srt_close();
+		} else {
+			janus_pp_binary_close();
+		}
 	} else {
 		if(opus) {
 			janus_pp_opus_close();

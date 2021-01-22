@@ -5,9 +5,9 @@ declare namespace JanusJS {
 		isArray: (array: any) => array is Array<any>;
 		extension: () => boolean;
 		httpAPICall: (url: string, options: any) => void;
-    }
-    
-    interface DependenciesResult {
+	}
+
+	interface DependenciesResult {
 		adapter: any;
 		newWebSocket: (server: string, protocol: string) => WebSocket;
 		isArray: (array: any) => array is Array<any>;
@@ -127,6 +127,9 @@ declare namespace JanusJS {
 		handleRemoteJsep(params: { jsep: JSEP }): void;
 		dtmf(params: any): void;
 		data(params: any): void;
+		isAudioMuted(): boolean;
+		muteAudio(): void;
+		unmuteAudio(): void;
 		isVideoMuted(): boolean;
 		muteVideo(): void;
 		unmuteVideo(): void;

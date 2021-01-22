@@ -995,9 +995,13 @@ int janus_process_incoming_request(janus_request *request) {
 	/* Ok, let's start with the ids */
 	guint64 session_id = 0, handle_id = 0;
 	json_t *s = json_object_get(root, "session_id");
+	if(json_is_null(s))
+		s = NULL;
 	if(s && json_is_integer(s))
 		session_id = json_integer_value(s);
 	json_t *h = json_object_get(root, "handle_id");
+	if(json_is_null(h))
+		h = NULL;
 	if(h && json_is_integer(h))
 		handle_id = json_integer_value(h);
 
@@ -1099,7 +1103,7 @@ int janus_process_incoming_request(janus_request *request) {
 	}
 	if(h && handle_id < 1) {
 		JANUS_LOG(LOG_ERR, "Invalid handle\n");
-		ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_SESSION_NOT_FOUND, NULL);
+		ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_HANDLE_NOT_FOUND, NULL);
 		goto jsondone;
 	}
 
@@ -1530,7 +1534,7 @@ int janus_process_incoming_request(janus_request *request) {
 						if(stream != NULL && stream->component != NULL
 								&& stream->component->dtls != NULL && stream->component->dtls->sctp == NULL) {
 							/* Create SCTP association as well */
-							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Creating datachannels...\n", handle->handle_id);
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating datachannels...\n", handle->handle_id);
 							janus_dtls_srtp_create_sctp(stream->component->dtls);
 						}
 					}
@@ -3789,7 +3793,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			if(stream != NULL && stream->component != NULL &&
 					stream->component->dtls != NULL && stream->component->dtls->sctp == NULL) {
 				/* Create SCTP association as well */
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Creating datachannels...\n", ice_handle->handle_id);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating datachannels...\n", ice_handle->handle_id);
 				janus_dtls_srtp_create_sctp(stream->component->dtls);
 			}
 		}
@@ -5022,7 +5026,7 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		enable_events = janus_is_true(item->value);
 	if(!enable_events) {
-		JANUS_LOG(LOG_WARN, "Event handlers support disabled\n");
+		JANUS_LOG(LOG_INFO, "Event handlers support disabled\n");
 	} else {
 		gchar **disabled_eventhandlers = NULL;
 		path = EVENTDIR;

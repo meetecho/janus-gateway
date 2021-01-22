@@ -15,7 +15,7 @@ general: {
 	json = "indented"		# Whether the JSON messages should be indented (default),
 							# plain (no indentation) or compact (no indentation and no spaces)
 
-	url = "tcp://localhost:1883"	# The URL of the MQTT server. Only tcp supported at this time.
+	url = "tcp://localhost:1883"	# The URL of the MQTT server. "tcp://" and "ssl://" protocols are supported.
 	#mqtt_version = "3.1.1"			# Protocol version. Available values: 3.1, 3.1.1 (default), 5.
 	client_id = "janus.example.com"	# Janus client id. You have to configure a unique ID (default: guest).
 	#keep_alive_interval = 20		# Keep connection for N seconds (default: 30)
@@ -30,6 +30,8 @@ general: {
 	#topic = "/janus/events"		# Base topic (default: /janus/events)
 	#addevent = true				# Whether we should add the event type to the base topic
 
+	#tls_enable = false				# Whether TLS support must be enabled
+
 	# Initial message sent to status topic
 	#connect_status = "{\"event\": \"connected\", \"eventhandler\": \"janus.eventhandler.mqttevh\"}"
 	# Message sent after disconnect or as LWT
@@ -43,7 +45,7 @@ general: {
 	#tls_verify_peer = true			# Whether peer verification must be enabled
 	#tls_verify_hostname = true		# Whether hostname verification must be enabled
 
-	# Certificates to use when SSL support is enabled, if needed
+	# Certificates to use when TLS support is enabled, if needed
 	#tls_cacert = "/path/to/cacert.pem"
 	#tls_client_cert = "/path/to/cert.pem"
 	#tls_client_key = "/path/to/key.pem"
