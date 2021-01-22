@@ -77,6 +77,8 @@ static void janus_recorder_free(const janus_refcount *recorder_ref) {
 	recorder->codec = NULL;
 	g_free(recorder->fmtp);
 	recorder->fmtp = NULL;
+	if(recorder->extensions != NULL)
+		g_hash_table_destroy(recorder->extensions);
 	g_free(recorder);
 }
 
@@ -253,10 +255,21 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 	return rc;
 }
 
+int janus_recorder_add_extmap(janus_recorder *recorder, int id, const char *extmap) {
+	if(!recorder || g_atomic_int_get(&recorder->header) || id < 1 || id > 15 || extmap == NULL)
+		return -1;
+	janus_mutex_lock_nodebug(&recorder->mutex);
+	if(recorder->extensions == NULL)
+		recorder->extensions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_free);
+	g_hash_table_insert(recorder->extensions, GINT_TO_POINTER(id), g_strdup(extmap));
+	janus_mutex_unlock_nodebug(&recorder->mutex);
+	return 0;
+}
+
 int janus_recorder_encrypted(janus_recorder *recorder) {
 	if(!recorder)
 		return -1;
-	if(!recorder->header) {
+	if(!g_atomic_int_get(&recorder->header)) {
 		recorder->encrypted = TRUE;
 		return 0;
 	}
@@ -295,6 +308,26 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		json_object_set_new(info, "c", json_string(recorder->codec));					/* Media codec */
 		if(recorder->fmtp)
 			json_object_set_new(info, "f", json_string(recorder->fmtp));				/* Codec-specific info */
+		if(recorder->extensions) {
+			/* Add the extmaps to the JSON object */
+			json_t *extmaps = NULL;
+			GHashTableIter iter;
+			gpointer key, value;
+			g_hash_table_iter_init(&iter, recorder->extensions);
+			while(g_hash_table_iter_next(&iter, &key, &value)) {
+				int id = GPOINTER_TO_INT(key);
+				char *extmap = (char *)value;
+				if(id > 0 && id < 16 && extmap != NULL) {
+					if(extmaps == NULL)
+						extmaps = json_object();
+					char id_str[3];
+					g_snprintf(id_str, sizeof(id_str), "%d", id);
+					json_object_set_new(extmaps, id_str, json_string(extmap));
+				}
+			}
+			if(extmaps != NULL)
+				json_object_set_new(info, "x", extmaps);
+		}
 		json_object_set_new(info, "s", json_integer(recorder->created));				/* Created time */
 		json_object_set_new(info, "u", json_integer(janus_get_real_time()));			/* First frame written time */
 		/* If media will be end-to-end encrypted, mark it in the recording header */
