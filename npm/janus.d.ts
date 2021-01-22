@@ -162,6 +162,7 @@ declare namespace JanusJS {
 	}
 
 	class Janus {
+		static webRTCAdapter: any;
 		static safariVp8: boolean;
 		static useDefaultDependencies(deps: Partial<Dependencies>): DependenciesResult;
 		static useOldDependencies(deps: Partial<Dependencies>): DependenciesResult;
