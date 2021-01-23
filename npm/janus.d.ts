@@ -116,9 +116,32 @@ declare namespace JanusJS {
 			[otherProps: string]: any;
 		};
 		jsep?: JSEP;
+		success?: Function;
+		error?: (error: any) => void;
 	}
 
 	interface PluginHandle {
+		plugin: string;
+		id: string;
+		token?: string;
+		detached : boolean;
+		webrtcStuff: {
+			started: boolean,
+			myStream: MediaStream,
+			streamExternal: boolean,
+			remoteStream: MediaStream,
+			mySdp: any,
+			mediaConstraints: any,
+			pc: RTCPeerConnection,
+			dataChannel: Array<RTCDataChannel>,
+			dtmfSender: any,
+			trickle: boolean,
+			iceDone: boolean,
+			volume: {
+				value: number,
+				timer: number
+			}
+		};
 		getId(): string;
 		getPlugin(): string;
 		send(message: PluginMessage): void;
@@ -139,6 +162,8 @@ declare namespace JanusJS {
 	}
 
 	class Janus {
+		static webRTCAdapter: any;
+		static safariVp8: boolean;
 		static useDefaultDependencies(deps: Partial<Dependencies>): DependenciesResult;
 		static useOldDependencies(deps: Partial<Dependencies>): DependenciesResult;
 		static init(options: InitOptions): void;
