@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.10.8],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.10.10],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -69,9 +69,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=108
+JANUS_VERSION=110
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.10.8"
+JANUS_VERSION_STRING="0.10.10"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -395,6 +395,12 @@ AC_CHECK_LIB([nice],
              [AC_MSG_NOTICE([libnice version does not support TCP candidates])]
              )
 
+AC_CHECK_LIB([nice],
+             [nice_agent_close_async],
+             [AC_DEFINE(HAVE_CLOSE_ASYNC)],
+             [AC_MSG_NOTICE([libnice version does not have nice_agent_close_async])]
+             )
+
 AC_CHECK_LIB([dl],
              [dlopen],
              [JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -ldl"],
@@ -522,6 +528,13 @@ PKG_CHECK_MODULES([MHD],
 AC_SUBST([MHD_CFLAGS])
 AC_SUBST([MHD_LIBS])
 AM_CONDITIONAL([ENABLE_REST], [test "x$enable_rest" = "xyes"])
+AM_COND_IF([ENABLE_REST],
+           [
+             AC_CHECK_TYPES([enum MHD_Result],
+                            [],
+                            [],
+                            [#include <microhttpd.h>])
+           ])
 
 AC_CHECK_LIB([websockets],
 			 [lws_create_vhost],

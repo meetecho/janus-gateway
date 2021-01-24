@@ -2399,13 +2399,14 @@ static void *janus_nosip_relay_thread(void *data) {
 					rtp_header *header = (rtp_header *)buffer;
 					if((video && session->media.video_ssrc_peer != ntohl(header->ssrc)) ||
 							(!video && session->media.audio_ssrc_peer != ntohl(header->ssrc))) {
-						if(video) {
+						if(video && session->media.video_ssrc_peer == 0) {
 							session->media.video_ssrc_peer = ntohl(header->ssrc);
-						} else {
+						} else if(!video && session->media.audio_ssrc_peer == 0) {
 							session->media.audio_ssrc_peer = ntohl(header->ssrc);
 						}
 						JANUS_LOG(LOG_VERB, "[NoSIP-%p] Got SIP peer %s SSRC: %"SCNu32"\n",
-							session, video ? "video" : "audio", session->media.audio_ssrc_peer);
+							session, video ? "video" : "audio",
+							video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer);
 					}
 					/* Is this SRTP? */
 					if(session->media.has_srtp_remote) {
@@ -2425,6 +2426,7 @@ static void *janus_nosip_relay_thread(void *data) {
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					janus_rtp_header_update(header, &session->media.context, video, 0);
 					/* Save the frame if we're recording */
+					header->ssrc = htonl(video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer);
 					janus_recorder_save_frame(video ? session->vrc_peer : session->arc_peer, buffer, bytes);
 					/* Relay to browser */
 					janus_plugin_rtp rtp = { .video = video, .buffer = buffer, .length = bytes };

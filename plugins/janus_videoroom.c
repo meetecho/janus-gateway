@@ -4349,10 +4349,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			g_snprintf(error_cause, 512, "No such user %s in room %s", user_id_str, room_id_str);
 			goto prepare_response;
 		}
+		janus_refcount_increase(&participant->ref);
 		if(participant->kicked) {
 			/* Already kicked */
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
+			janus_refcount_decrease(&participant->ref);
 			response = json_object();
 			json_object_set_new(response, "videoroom", json_string("success"));
 			/* Done */
@@ -4403,6 +4405,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_object_set_new(response, "videoroom", json_string("success"));
 		/* Done */
 		janus_refcount_decrease(&videoroom->ref);
+		janus_refcount_decrease(&participant->ref);
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room, specifying whether they're publishers or just attendees */
@@ -5657,7 +5660,7 @@ static void *janus_videoroom_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Configuring new participant\n");
 			/* Not configured yet, we need to do this now */
 			if(strcasecmp(request_text, "join") && strcasecmp(request_text, "joinandconfigure")) {
-				JANUS_LOG(LOG_ERR, "Invalid request on unconfigured participant\n");
+				JANUS_LOG(LOG_ERR, "Invalid request \"%s\" on unconfigured participant\n", request_text);
 				error_code = JANUS_VIDEOROOM_ERROR_JOIN_FIRST;
 				g_snprintf(error_cause, 512, "Invalid request on unconfigured participant");
 				goto error;
@@ -7317,7 +7320,7 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_unlock(&participant->rec_mutex);
 				/* Generate an SDP string we can offer subscribers later on */
 				char *offer_sdp = janus_sdp_write(offer);
-				if(!sdp_update) {
+				if(!sdp_update || (participant->ssrc[0] == 0 && participant->rid[0] == NULL)) {
 					/* Is simulcasting involved */
 					if(msg_simulcast && (participant->vcodec == JANUS_VIDEOCODEC_VP8 ||
 							participant->vcodec == JANUS_VIDEOCODEC_H264)) {
