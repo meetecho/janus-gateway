@@ -636,7 +636,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.ssl_private_key_password = NULL;
 			info.gid = -1;
 			info.uid = -1;
-			info.options = 0;
+			info.options = LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
 			/* Create the WebSocket context */
 			wss = lws_create_vhost(wsc, &info);
 			if(wss == NULL) {
@@ -702,9 +702,9 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.gid = -1;
 				info.uid = -1;
 #if LWS_LIBRARY_VERSION_MAJOR >= 2
-				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT | LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
 #else
-				info.options = 0;
+				info.options = LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
 #endif
 				/* Create the secure WebSocket context */
 				swss = lws_create_vhost(wsc, &info);
@@ -753,7 +753,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.ssl_private_key_password = NULL;
 			info.gid = -1;
 			info.uid = -1;
-			info.options = 0;
+			info.options = LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
 			/* Create the WebSocket context */
 			admin_wss = lws_create_vhost(wsc, &info);
 			if(admin_wss == NULL) {
@@ -819,9 +819,9 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.gid = -1;
 				info.uid = -1;
 #if LWS_LIBRARY_VERSION_MAJOR >= 2
-				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT | LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
 #else
-				info.options = 0;
+				info.options = LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
 #endif
 				/* Create the secure WebSocket context */
 				admin_swss = lws_create_vhost(wsc, &info);
