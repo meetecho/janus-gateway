@@ -636,7 +636,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.ssl_private_key_password = NULL;
 			info.gid = -1;
 			info.uid = -1;
-#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSIO_MAJOR > 3)
+#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
                         info.options = LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
 #else
                         info.options = 0;
@@ -705,7 +705,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.ssl_cipher_list = ciphers;
 				info.gid = -1;
 				info.uid = -1;
-#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSIO_MAJOR > 3)
+#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
 				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT | LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
 #elif LWS_LIBRARY_VERSION_MAJOR >= 2
 				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
@@ -759,7 +759,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.ssl_private_key_password = NULL;
 			info.gid = -1;
 			info.uid = -1;
-#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSIO_MAJOR > 3)
+#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
                         info.options = LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
 #else
                         info.options = 0;
@@ -828,7 +828,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.ssl_cipher_list = ciphers;
 				info.gid = -1;
 				info.uid = -1;
-#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSIO_MAJOR > 3)
+#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
                                 info.options =  LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT | LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
 #elif LWS_LIBRARY_VERSION_MAJOR >= 2
 				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
