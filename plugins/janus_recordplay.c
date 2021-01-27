@@ -411,6 +411,8 @@ typedef struct janus_recordplay_recording {
 	janus_videocodec vcodec;	/* Codec used for video, if available */
 	char *vfmtp;				/* Video fmtp, if any */
 	int video_pt;				/* Payload types to use for audio when playing recordings */
+	guint8 audiolevel_ext_id;	/* Audio level extmap ID */
+	guint8 videoorient_ext_id;	/* Video orientation extmap ID */
 	char *drc_file;				/* Data file name */
 	gboolean textdata;			/* Whether data format is text */
 	char *offer;				/* The SDP offer that will be sent to watchers */
@@ -507,7 +509,8 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 #define VIDEO_PT		100
 
 /* Helper method to check which codec was used in a specific recording (and if it's end-to-end encrypted) */
-static const char *janus_recordplay_parse_codec(const char *dir, const char *filename, char *fmtp, size_t fmtplen, gboolean *e2ee) {
+static const char *janus_recordplay_parse_codec(const char *dir, const char *filename, char *fmtp, size_t fmtplen,
+		uint8_t *audiolevel_ext_id, uint8_t *videoorient_ext_id, gboolean *e2ee) {
 	if(dir == NULL || filename == NULL)
 		return NULL;
 	if(e2ee)
@@ -629,6 +632,23 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 					fclose(file);
 					return NULL;
 				}
+				/* Any RTP extension we care about? */
+				json_t *exts = json_object_get(info, "x");
+				if(exts && !data) {
+					int extid = 0;
+					const char *key = NULL, *extmap = NULL;
+					json_t *value = NULL;
+					json_object_foreach(exts, key, value) {
+						if(key == NULL || value == NULL || !json_is_string(value))
+							continue;
+						extid = atoi(key);
+						extmap = json_string_value(value);
+						if(!video && !strcasecmp(extmap, JANUS_RTP_EXTMAP_AUDIO_LEVEL) && audiolevel_ext_id != NULL)
+							*audiolevel_ext_id = extid;
+						else if(video && !strcasecmp(extmap, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION) && videoorient_ext_id != NULL)
+							*videoorient_ext_id = extid;
+					}
+				}
 				const char *c = json_string_value(codec);
 				if(data) {
 					const char *dtype = NULL;
@@ -679,6 +699,9 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 		offer_data = (rec->drc_file != NULL);
 	char s_name[100];
 	g_snprintf(s_name, sizeof(s_name), "Recording %"SCNu64, rec->id);
+	guint8 mid_ext_id = 1;
+	while(mid_ext_id == rec->audiolevel_ext_id || mid_ext_id == rec->videoorient_ext_id)
+		mid_ext_id++;
 	janus_sdp *offer = janus_sdp_generate_offer(
 		s_name, "1.1.1.1",
 		JANUS_SDP_OA_AUDIO, offer_audio,
@@ -686,13 +709,15 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 		JANUS_SDP_OA_AUDIO_PT, rec->audio_pt,
 		JANUS_SDP_OA_AUDIO_FMTP, rec->afmtp,
 		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
-		JANUS_SDP_OA_AUDIO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
+		JANUS_SDP_OA_AUDIO_EXTENSION, JANUS_RTP_EXTMAP_MID, mid_ext_id,
+		JANUS_SDP_OA_AUDIO_EXTENSION, JANUS_RTP_EXTMAP_AUDIO_LEVEL, rec->audiolevel_ext_id,
 		JANUS_SDP_OA_VIDEO, offer_video,
 		JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(rec->vcodec),
 		JANUS_SDP_OA_VIDEO_FMTP, rec->vfmtp,
 		JANUS_SDP_OA_VIDEO_PT, rec->video_pt,
 		JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
-		JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
+		JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_MID, mid_ext_id,
+		JANUS_SDP_OA_AUDIO_EXTENSION, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION, rec->videoorient_ext_id,
 		JANUS_SDP_OA_DATA, offer_data,
 		JANUS_SDP_OA_DONE);
 	g_free(rec->offer);
@@ -1672,6 +1697,30 @@ static void *janus_recordplay_handler(void *data) {
 					rec->audio_pt = 9;
 			}
 			rec->video_pt = VIDEO_PT;
+			/* Check if relevant extensions are negotiated */
+			GList *temp = offer->m_lines;
+			while(temp) {
+				/* Which media are available? */
+				janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+				if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
+					/* Are the extmaps we care about there? */
+					GList *ma = m->attributes;
+					while(ma) {
+						janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
+						if(a->name && a->value) {
+							if(m->type == JANUS_SDP_AUDIO && strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
+								if(janus_string_to_uint8(a->value, &rec->audiolevel_ext_id) < 0)
+									JANUS_LOG(LOG_WARN, "Invalid audio-level extension ID: %s\n", a->value);
+							} else if(m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {
+								if(janus_string_to_uint8(a->value, &rec->videoorient_ext_id) < 0)
+									JANUS_LOG(LOG_WARN, "Invalid video-orientation extension ID: %s\n", a->value);
+							}
+						}
+						ma = ma->next;
+					}
+				}
+				temp = temp->next;
+			}
 			/* Create a date string */
 			time_t t = time(NULL);
 			struct tm *tmv = localtime(&t);
@@ -1688,6 +1737,9 @@ static void *janus_recordplay_handler(void *data) {
 				}
 				rec->arc_file = g_strdup(filename);
 				janus_recorder *rc = janus_recorder_create(recordings_path, janus_audiocodec_name(rec->acodec), rec->arc_file);
+				/* If the audio-level extension has been negotiated, mark it in the recording */
+				if(rec->audiolevel_ext_id > 0)
+					janus_recorder_add_extmap(rc, rec->audiolevel_ext_id, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 				/* If media is encrypted, mark it in the recording */
 				if(e2ee)
 					janus_recorder_encrypted(rc);
@@ -1703,6 +1755,9 @@ static void *janus_recordplay_handler(void *data) {
 				rec->vrc_file = g_strdup(filename);
 				janus_recorder *rc = janus_recorder_create_full(recordings_path,
 					janus_videocodec_name(rec->vcodec), rec->vfmtp, rec->vrc_file);
+				/* If the video-orientation extension has been negotiated, mark it in the recording */
+				if(rec->videoorient_ext_id > 0)
+					janus_recorder_add_extmap(rc, rec->videoorient_ext_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
 				/* If media is encrypted, mark it in the recording */
 				if(e2ee)
 					janus_recorder_encrypted(rc);
@@ -1745,8 +1800,9 @@ recdone:
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
-				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_FRAME_MARKING,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION,
 				JANUS_SDP_OA_DONE);
 			g_free(answer->s_name);
 			char s_name[100];
@@ -2101,7 +2157,7 @@ void janus_recordplay_update_recordings_list(void) {
 			char fmtp[256];
 			fmtp[0] = '\0';
 			rec->acodec = janus_audiocodec_from_name(janus_recordplay_parse_codec(recordings_path,
-				rec->arc_file, fmtp, sizeof(fmtp), &e2ee));
+				rec->arc_file, fmtp, sizeof(fmtp), &rec->audiolevel_ext_id, NULL, &e2ee));
 			if(strlen(fmtp) > 0)
 				rec->afmtp = g_strdup(fmtp);
 			if(e2ee)
@@ -2117,7 +2173,7 @@ void janus_recordplay_update_recordings_list(void) {
 			char fmtp[256];
 			fmtp[0] = '\0';
 			rec->vcodec = janus_videocodec_from_name(janus_recordplay_parse_codec(recordings_path,
-				rec->vrc_file, fmtp, sizeof(fmtp), &e2ee));
+				rec->vrc_file, fmtp, sizeof(fmtp), NULL, &rec->videoorient_ext_id, &e2ee));
 			if(strlen(fmtp) > 0)
 				rec->vfmtp = g_strdup(fmtp);
 			if(e2ee)
@@ -2129,7 +2185,7 @@ void janus_recordplay_update_recordings_list(void) {
 			if(ext != NULL)
 				*ext = '\0';
 			const char *textcodec = janus_recordplay_parse_codec(recordings_path,
-				rec->drc_file, NULL, sizeof(NULL), NULL);
+				rec->drc_file, NULL, sizeof(NULL), NULL, NULL, NULL);
 			rec->textdata = textcodec && (!strcasecmp(textcodec, "text"));
 		}
 		rec->audio_pt = AUDIO_PT;
