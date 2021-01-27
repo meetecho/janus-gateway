@@ -6088,9 +6088,19 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				/* Done */
 				janus_mutex_lock(&session->mutex);
+				/* Make sure the session has not been destroyed in the meanwhile */
+				if(g_atomic_int_get(&session->destroyed)) {
+					janus_mutex_unlock(&session->mutex);
+					janus_mutex_unlock(&publisher->room->mutex);
+					janus_refcount_decrease(&publisher->room->ref);
+					janus_videoroom_publisher_destroy(publisher);
+					JANUS_LOG(LOG_ERR, "Session destroyed, invalidating new publisher\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Session destroyed, invalidating new publisher");
+					goto error;
+				}
 				session->participant_type = janus_videoroom_p_type_publisher;
 				session->participant = publisher;
-				janus_mutex_unlock(&session->mutex);
 				/* Return a list of all available publishers (those with an SDP available, that is) */
 				json_t *list = json_array(), *attendees = NULL;
 				if(publisher->room->notify_joining)
@@ -6101,6 +6111,7 @@ static void *janus_videoroom_handler(void *data) {
 				g_hash_table_insert(publisher->room->participants,
 					string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
 					publisher);
+				janus_mutex_unlock(&session->mutex);
 				g_hash_table_iter_init(&iter, publisher->room->participants);
 				while (!g_atomic_int_get(&publisher->room->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
 					janus_videoroom_publisher *p = value;
