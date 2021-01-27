@@ -3581,7 +3581,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		g_hash_table_iter_init(&iter, videoroom->participants);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_videoroom_publisher *p = value;
-			if(p && p->session) {
+			if(p && p->session && p->room) {
 				g_clear_pointer(&p->room, janus_videoroom_room_dereference);
 				/* Notify the user we're going to destroy the room... */
 				int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, destroyed, NULL);
@@ -7246,8 +7246,10 @@ static void *janus_videoroom_handler(void *data) {
 					if(p != participant && p->sdp)
 						count++;
 				}
+				janus_refcount_increase(&videoroom->ref);
 				janus_mutex_unlock(&videoroom->mutex);
 				if(count == videoroom->max_publishers) {
+					janus_refcount_decrease(&videoroom->ref);
 					participant->audio_active = FALSE;
 					participant->video_active = FALSE;
 					participant->data_active = FALSE;
@@ -7257,6 +7259,7 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 				if(videoroom->require_e2ee && !e2ee && !participant->e2ee) {
+					janus_refcount_decrease(&videoroom->ref);
 					participant->audio_active = FALSE;
 					participant->video_active = FALSE;
 					participant->data_active = FALSE;
@@ -7273,6 +7276,7 @@ static void *janus_videoroom_handler(void *data) {
 				char error_str[512];
 				janus_sdp *offer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
 				if(offer == NULL) {
+					janus_refcount_decrease(&videoroom->ref);
 					json_decref(event);
 					JANUS_LOG(LOG_ERR, "Error parsing offer: %s\n", error_str);
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP;
@@ -7580,6 +7584,7 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						s = s->next;
 					}
+					janus_refcount_decrease(&videoroom->ref);
 					janus_mutex_unlock(&participant->subscribers_mutex);
 					json_decref(update);
 				}
