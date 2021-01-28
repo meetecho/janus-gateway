@@ -13,7 +13,7 @@
 #ifndef JANUS_PP_RTP
 #define JANUS_PP_RTP
 
-#ifdef __MACH__
+#if defined(__MACH__) || defined(__FreeBSD__)
 #include <machine/endian.h>
 #define __BYTE_ORDER BYTE_ORDER
 #define __BIG_ENDIAN BIG_ENDIAN
