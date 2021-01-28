@@ -1005,10 +1005,11 @@ room-<unique room ID>: {
  * can start relaying media from the mountpoint the viewer subscribed to
  * to the viewer themselves.
  *
- * Notice that the same exact steps we just went through (\c watch request,
- * followed by JSEP offer by the plugin, followed by \c start request with
- * JSEP answer by the viewer) is what you also use when renegotiations are
- * needed, e.g., for the purpose of ICE restarts.
+ * Notice that, in case you want to force an ICE restart for an existing
+ * subscription, you'll need to use \c configure instead, and add a
+ * \c restart attribute set to \c true ; this will result in a new JSEP
+ * SDP offer originated by the plugin, which you'll have to follow with
+ * a \c start request (again including the JSEP answer by the viewer).
  *
  * As a subscriber, you can temporarily pause and resume the whole media delivery
  * with a \c pause and, again, \c start request (in this case without any JSEP
