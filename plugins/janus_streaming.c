@@ -5711,6 +5711,18 @@ done:
 				goto error;
 			}
 			JANUS_LOG(LOG_VERB, "Starting the streaming\n");
+			if(g_atomic_int_get(&session->paused) == 1) {
+				/* We were paused: reset the sequence number in RTP packets */
+				if(session->streams != NULL) {
+					GList *temp = session->streams;
+					while(temp) {
+						janus_streaming_session_stream *s = (janus_streaming_session_stream *)temp->data;
+						if(s != NULL)
+							s->context.seq_reset = TRUE;
+						temp = temp->next;
+					}
+				}
+			}
 			g_atomic_int_set(&session->paused, 0);
 			result = json_object();
 			/* We wait for the setup_media event to start: on the other hand, it may have already arrived */
@@ -6439,7 +6451,7 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 		rtcpport = janus_streaming_get_fd_port(rtcp_fd);
 	}
 	if(mtype == JANUS_STREAMING_MEDIA_VIDEO) {
-		if(simulcast) {			
+		if(simulcast) {
 			fd[1] = janus_streaming_create_fd(port2, mcast ? inet_addr(mcast) : INADDR_ANY, iface,
 				NULL, 0, "Video", "video", name, FALSE);
 			if(fd[1] < 0) {

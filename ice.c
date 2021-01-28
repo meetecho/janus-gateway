@@ -1377,6 +1377,19 @@ static void janus_ice_handle_free(const janus_refcount *handle_ref) {
 	g_free(handle);
 }
 
+#ifdef HAVE_CLOSE_ASYNC
+static void janus_ice_cb_agent_closed(GObject *src, GAsyncResult *result, gpointer data) {
+	janus_ice_outgoing_traffic *t = (janus_ice_outgoing_traffic *)data;
+	janus_ice_handle *handle = t->handle;
+
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Disposing nice agent %p\n", handle->handle_id, handle->agent);
+	g_object_unref(handle->agent);
+	handle->agent = NULL;
+	g_source_unref((GSource *)t);
+	janus_refcount_decrease(&handle->ref);
+}
+#endif
+
 static void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref) {
 	janus_plugin_session *app_handle = janus_refcount_containerof(app_handle_ref, janus_plugin_session, ref);
 	/* This app handle can be destroyed, free all the resources */
@@ -1436,9 +1449,22 @@ static void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		handle->pc = NULL;
 	}
 	if(handle->agent != NULL) {
+#ifdef HAVE_CLOSE_ASYNC
+		if(G_IS_OBJECT(handle->agent)) {
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Removing stream %d from agent %p\n",
+				handle->handle_id, handle->stream_id, handle->agent);
+			nice_agent_remove_stream(handle->agent, handle->stream_id);
+			handle->stream_id = 0;
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Closing nice agent %p\n", handle->handle_id, handle->agent);
+			janus_refcount_increase(&handle->ref);
+			g_source_ref(handle->rtp_source);
+			nice_agent_close_async(handle->agent, janus_ice_cb_agent_closed, handle->rtp_source);
+		}
+#else
 		if(G_IS_OBJECT(handle->agent))
 			g_object_unref(handle->agent);
 		handle->agent = NULL;
+#endif
 	}
 	if(handle->pending_trickles) {
 		while(handle->pending_trickles) {

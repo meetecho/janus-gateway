@@ -264,10 +264,10 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 						int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
 						int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
 						JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
-						if(vp8w > max_width)
+						if(vp8w*vp8h > max_width*max_height) {
 							max_width = vp8w;
-						if(vp8h > max_height)
 							max_height = vp8h;
+						}
 					}
 				}
 			}
@@ -338,10 +338,10 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 						uint16_t *h = (uint16_t *)buffer;
 						int height = ntohs(*h);
 						buffer += 2;
-						if(width > max_width)
+						if(width*height > max_width*max_height) {
 							max_width = width;
-						if(height > max_height)
 							max_height = height;
+						}
 					}
 				}
 			}

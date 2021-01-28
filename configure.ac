@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.10.9],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.10.10],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -69,9 +69,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=109
+JANUS_VERSION=110
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.10.9"
+JANUS_VERSION_STRING="0.10.10"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -393,6 +393,12 @@ AC_CHECK_LIB([nice],
              [nice_address_equal_no_port],
              [AC_DEFINE(HAVE_LIBNICE_TCP)],
              [AC_MSG_NOTICE([libnice version does not support TCP candidates])]
+             )
+
+AC_CHECK_LIB([nice],
+             [nice_agent_close_async],
+             [AC_DEFINE(HAVE_CLOSE_ASYNC)],
+             [AC_MSG_NOTICE([libnice version does not have nice_agent_close_async])]
              )
 
 AC_CHECK_LIB([dl],

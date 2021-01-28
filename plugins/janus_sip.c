@@ -378,6 +378,34 @@
  * When a session has been established, there are different requests that
  * you can use to interact with the session.
  *
+ * First of all, you can put a call on-hold with the \c hold request.
+ * By default, this request will send a new INVITE to the peer with a
+ * \c sendonly direction for media, but in case you want to set a
+ * different direction (\c recvonly or \c inactive ) you can do that by
+ * passing a \c direction attribute as well:
+ *
+\verbatim
+{
+	"request" : "hold",
+	"direction" : "<sendonly, recvonly or inactive>"
+}
+\endverbatim
+ *
+ * No WebRTC renegotiation will be involved here on the holder side, as
+ * this will only trigger a re-INVITE on the SIP side. To remove the
+ * call from on-hold, just send a \c unhold request to the plugin,
+ * which requires no additional attributes:
+ *
+\verbatim
+{
+	"request" : "hold",
+	"direction" : "<sendonly, recvonly or inactive>"
+}
+\endverbatim
+ *
+ * and will restore the media direction that was set in the SDP before
+ * putting the call on-hold.
+ *
  * The \c message request allows you to send a SIP MESSAGE to the peer:
  *
 \verbatim
@@ -749,6 +777,9 @@ static struct janus_json_parameter decline_parameters[] = {
 static struct janus_json_parameter transfer_parameters[] = {
 	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"call_id", JANUS_JSON_STRING, 0}
+};
+static struct janus_json_parameter hold_parameters[] = {
+	{"direction", JSON_STRING, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
 	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -2530,7 +2561,12 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		session->media.ready = FALSE;
 		session->media.on_hold = FALSE;
 		janus_sip_call_update_status(session, janus_sip_call_status_closing);
-		nua_bye(session->stack->s_nh_i, TAG_END());
+
+		if(g_atomic_int_get(&session->established))
+			nua_bye(session->stack->s_nh_i, TAG_END());
+		else
+			nua_respond(session->stack->s_nh_i, 480, sip_status_phrase(480), TAG_END());
+
 		/* Notify the operation */
 		json_t *event = json_object();
 		json_object_set_new(event, "sip", json_string("event"));
@@ -4104,23 +4140,48 @@ static void *janus_sip_handler(void *data) {
 			}
 			gboolean hold = !strcasecmp(request_text, "hold");
 			if(hold != session->media.on_hold) {
-				/* To put the call on-hold, we need to set the direction to recvonly:
+				/* To put the call on-hold, we need to change the media direction:
 				 * resuming it means resuming the direction we had before */
+				janus_sdp_mdirection hold_dir = JANUS_SDP_SENDONLY;
+				if(hold) {
+					/* By default when holding we use recvonly, but the
+					 * actual direction to set can be passed via API too */
+					JANUS_VALIDATE_JSON_OBJECT(root, hold_parameters,
+						error_code, error_cause, TRUE,
+						JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+					if(error_code != 0)
+						goto error;
+					json_t *hdir = json_object_get(root, "direction");
+					if(hdir != NULL) {
+						const char *dir = json_string_value(hdir);
+						hold_dir = janus_sdp_parse_mdirection(dir);
+						if(hold_dir != JANUS_SDP_SENDONLY && hold_dir != JANUS_SDP_RECVONLY &&
+								hold_dir != JANUS_SDP_INACTIVE) {
+							/* Invalid direction */
+							JANUS_LOG(LOG_ERR, "Invalid direction (can only be sendonly, recvonly or inactive)\n");
+							error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+							g_snprintf(error_cause, 512, "Invalid direction (can only be sendonly, recvonly or inactive)");
+							goto error;
+						}
+					}
+				}
 				session->media.on_hold = hold;
 				janus_sdp_mline *m = janus_sdp_mline_find(session->sdp, JANUS_SDP_AUDIO);
 				if(m) {
 					if(hold) {
 						/* Take note of the original media direction */
 						session->media.pre_hold_audio_dir = m->direction;
-						/* Update the media direction */
-						switch(m->direction) {
-							case JANUS_SDP_DEFAULT:
-							case JANUS_SDP_SENDRECV:
-								m->direction = JANUS_SDP_SENDONLY;
-								break;
-							default:
-								m->direction = JANUS_SDP_INACTIVE;
-								break;
+						if(m->direction != hold_dir) {
+							/* Update the media direction */
+							switch(m->direction) {
+								case JANUS_SDP_DEFAULT:
+								case JANUS_SDP_SENDRECV:
+									m->direction = hold_dir;
+									break;
+								default:
+									m->direction = JANUS_SDP_INACTIVE;
+									break;
+							}
 						}
 					} else {
 						m->direction = session->media.pre_hold_audio_dir;
@@ -4131,15 +4192,17 @@ static void *janus_sip_handler(void *data) {
 					if(hold) {
 						/* Take note of the original media direction */
 						session->media.pre_hold_video_dir = m->direction;
-						/* Update the media direction */
-						switch(m->direction) {
-							case JANUS_SDP_DEFAULT:
-							case JANUS_SDP_SENDRECV:
-								m->direction = JANUS_SDP_SENDONLY;
-								break;
-							default:
-								m->direction = JANUS_SDP_INACTIVE;
-								break;
+						if(m->direction != hold_dir) {
+							/* Update the media direction */
+							switch(m->direction) {
+								case JANUS_SDP_DEFAULT:
+								case JANUS_SDP_SENDRECV:
+									m->direction = hold_dir;
+									break;
+								default:
+									m->direction = JANUS_SDP_INACTIVE;
+									break;
+							}
 						}
 					} else {
 						m->direction = session->media.pre_hold_video_dir;
