@@ -67,7 +67,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Server © 2014-2020 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2021 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -885,7 +885,7 @@ echotest.createOffer({
      // janus.js does not use 'import' to access to the functionality of webrtc-adapter,
      // instead it expects a global object called 'adapter' for that.
      // Let's make that object available.
-     new webpack.ProvidePlugin({ adapter: 'webrtc-adapter' })
+     new webpack.ProvidePlugin({ adapter: ['webrtc-adapter', 'default'] })
    ]
  }
  \endverbatim
@@ -3490,6 +3490,12 @@ ldd janus | grep asan
  * 		<td>Javascript (node and browser side) API for Janus WebRTC Gateway, Using MQTT</td>
  * </tr>
  * <tr>
+ * 		<td>JavaScript/Angular</td>
+ * 		<td><a href="https://github.com/kevin29a">Kevin Thompson</a></td>
+ * 		<td><a href="https://kevin29a.github.io/angular-janus">janus-angular</a></td>
+ * 		<td>Angular Component for implementing a videoroom</td>
+ * </tr>
+ * <tr>
  * 		<td>ruby</td>
  * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
  * 		<td><a href="https://github.com/cargomedia/janus-gateway-ruby">janus-gateway-ruby</a></td>
@@ -3713,7 +3719,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Server © 2014-2020 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2021 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>

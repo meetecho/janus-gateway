@@ -27,9 +27,12 @@ BIO *BIO_janus_dtls_agent_new(void *dtls);
  * you know for sure the MTU in the network Janus is deployed in is
  * smaller than that, it makes sense to configure an according value to
  * start from
- * @param start_mtu The MTU to start from (1472 by default)
+ * @param start_mtu The MTU to start from (1200 by default)
  */
 void janus_dtls_bio_agent_set_mtu(int start_mtu);
+/*! \brief Return which MTU was configured for the BIO agent writer
+ * @returns The MTU the stack will start from for each session */
+int janus_dtls_bio_agent_get_mtu(void);
 
 #if defined(LIBRESSL_VERSION_NUMBER)
 #define JANUS_USE_OPENSSL_PRE_1_1_API (1)

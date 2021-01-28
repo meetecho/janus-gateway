@@ -602,7 +602,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		/* Setup the Janus API WebSockets server(s) */
 		item = janus_config_get(config, config_general, janus_config_type_item, "ws");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "WebSockets server disabled\n");
+			JANUS_LOG(LOG_VERB, "WebSockets server disabled\n");
 		} else {
 			uint16_t wsport = 8188;
 			item = janus_config_get(config, config_general, janus_config_type_item, "ws_port");
@@ -636,7 +636,9 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.ssl_private_key_password = NULL;
 			info.gid = -1;
 			info.uid = -1;
-			info.options = 0;
+#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
+			info.options = LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
+#endif
 			/* Create the WebSocket context */
 			wss = lws_create_vhost(wsc, &info);
 			if(wss == NULL) {
@@ -648,7 +650,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		}
 		item = janus_config_get(config, config_general, janus_config_type_item, "wss");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Secure WebSockets server disabled\n");
+			JANUS_LOG(LOG_VERB, "Secure WebSockets server disabled\n");
 		} else {
 			uint16_t wsport = 8989;
 			item = janus_config_get(config, config_general, janus_config_type_item, "wss_port");
@@ -701,10 +703,10 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.ssl_cipher_list = ciphers;
 				info.gid = -1;
 				info.uid = -1;
-#if LWS_LIBRARY_VERSION_MAJOR >= 2
+#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
+				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT | LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
+#elif LWS_LIBRARY_VERSION_MAJOR >= 2
 				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
-#else
-				info.options = 0;
 #endif
 				/* Create the secure WebSocket context */
 				swss = lws_create_vhost(wsc, &info);
@@ -719,7 +721,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		/* Do the same for the Admin API, if enabled */
 		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Admin WebSockets server disabled\n");
+			JANUS_LOG(LOG_VERB, "Admin WebSockets server disabled\n");
 		} else {
 			uint16_t wsport = 7188;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws_port");
@@ -753,7 +755,9 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.ssl_private_key_password = NULL;
 			info.gid = -1;
 			info.uid = -1;
-			info.options = 0;
+#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
+			info.options = LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
+#endif
 			/* Create the WebSocket context */
 			admin_wss = lws_create_vhost(wsc, &info);
 			if(admin_wss == NULL) {
@@ -765,7 +769,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		}
 		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Secure Admin WebSockets server disabled\n");
+			JANUS_LOG(LOG_VERB, "Secure Admin WebSockets server disabled\n");
 		} else {
 			uint16_t wsport = 7989;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss_port");
@@ -818,10 +822,10 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.ssl_cipher_list = ciphers;
 				info.gid = -1;
 				info.uid = -1;
-#if LWS_LIBRARY_VERSION_MAJOR >= 2
+#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
+				info.options =  LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT | LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
+#elif LWS_LIBRARY_VERSION_MAJOR >= 2
 				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
-#else
-				info.options = 0;
 #endif
 				/* Create the secure WebSocket context */
 				admin_swss = lws_create_vhost(wsc, &info);

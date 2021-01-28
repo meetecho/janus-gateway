@@ -302,7 +302,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		}
 	}
 	if(!item || !item->value || !janus_is_true(item->value)) {
-		JANUS_LOG(LOG_WARN, "RabbitMQ support disabled (Janus API)\n");
+		JANUS_LOG(LOG_VERB, "RabbitMQ support disabled (Janus API)\n");
 	} else {
 		/* Parse configuration */
 		item = janus_config_get(config, config_general, janus_config_type_item, "to_janus");
@@ -346,7 +346,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		}
 	}
 	if(!item || !item->value || !janus_is_true(item->value)) {
-		JANUS_LOG(LOG_WARN, "RabbitMQ support disabled (Admin API)\n");
+		JANUS_LOG(LOG_VERB, "RabbitMQ support disabled (Admin API)\n");
 	} else {
 		/* Parse configuration */
 		item = janus_config_get(config, config_admin, janus_config_type_item, "to_janus_admin");

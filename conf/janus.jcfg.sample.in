@@ -294,12 +294,15 @@ nat: {
 	# which is currently available in both rfc5766-turn-server and coturn.
 	# You enable this by specifying the address of your TURN REST API backend,
 	# the HTTP method to use (GET or POST) and, if required, the API key Janus
-	# must provide. Notice that the 'opaque_id' provided via Janus API will be
-	# used as the username for a specific PeerConnection by default; if that one
-	# is missing, the 'session_id' will be used as the username instead.
+	# must provide. The timeout can be configured in seconds, with a default of
+	# 10 seconds and a minimum of 1 second. Notice that the 'opaque_id' provided
+	# via Janus API will be used as the username for a specific PeerConnection
+	# by default; if that one is missing, the 'session_id' will be used as the
+	# username instead.
 	#turn_rest_api = "http://yourbackend.com/path/to/api"
 	#turn_rest_api_key = "anyapikeyyoumayhaveset"
 	#turn_rest_api_method = "GET"
+	#turn_rest_api_timeout = 10
 
 	# You can also choose which interfaces should be explicitly used by the
 	# gateway for the purpose of ICE candidates gathering, thus excluding

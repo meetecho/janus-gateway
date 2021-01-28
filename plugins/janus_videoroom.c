@@ -103,8 +103,9 @@ room-<unique room ID>: {
  * (invalid JSON, invalid request) which will always result in a
  * synchronous error response even for asynchronous requests.
  *
- * \c create , \c destroy , \c edit , \c exists, \c list, \c allowed, \c kick
- * and \c listparticipants are synchronous requests, which means you'll
+ * \c create , \c destroy , \c edit , \c exists, \c list, \c allowed,
+ * \c kick , \c moderate , \c enable_recording , \listparticipants
+ * and \c listforwarders are synchronous requests, which means you'll
  * get a response directly within the context of the transaction.
  * \c create allows you to create a new video room dynamically, as an
  * alternative to using the configuration file; \c edit allows you to
@@ -316,6 +317,34 @@ room-<unique room ID>: {
 	"secret" : "<room secret, mandatory if configured>",
 	"room" : <unique numeric ID of the room>,
 	"id" : <unique numeric ID of the participant to kick>
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"videoroom" : "success",
+}
+\endverbatim
+ *
+ * As an administrator, you can also forcibly mute/unmute any of the media
+ * streams sent by participants (i.e., audio, video and data streams),
+ * using the \c moderate requests. Notice that if the participant is self
+ * muted on a stream, and you unmute that stream with \c moderate, they
+ * will NOT be unmuted: you'll simply remove any moderation block
+ * that may have been enforced on the participant for that medium
+ * themselves. The \c moderate request has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "moderate",
+	"secret" : "<room secret, mandatory if configured>",
+	"room" : <unique numeric ID of the room>,
+	"id" : <unique numeric ID of the participant to moderate>,
+	"mute_audio" : <true|false, depending on whether or not audio should be muted by the moderator>,
+	"mute_video" : <true|false, depending on whether or not video should be muted by the moderator>,
+	"mute_data" : <true|false, depending on whether or not data should be muted by the moderator>,
 }
 \endverbatim
  *
@@ -976,10 +1005,11 @@ room-<unique room ID>: {
  * can start relaying media from the mountpoint the viewer subscribed to
  * to the viewer themselves.
  *
- * Notice that the same exact steps we just went through (\c watch request,
- * followed by JSEP offer by the plugin, followed by \c start request with
- * JSEP answer by the viewer) is what you also use when renegotiations are
- * needed, e.g., for the purpose of ICE restarts.
+ * Notice that, in case you want to force an ICE restart for an existing
+ * subscription, you'll need to use \c configure instead, and add a
+ * \c restart attribute set to \c true ; this will result in a new JSEP
+ * SDP offer originated by the plugin, which you'll have to follow with
+ * a \c start request (again including the JSEP answer by the viewer).
  *
  * As a subscriber, you can temporarily pause and resume the whole media delivery
  * with a \c pause and, again, \c start request (in this case without any JSEP
@@ -1292,6 +1322,12 @@ static struct janus_json_parameter allowed_parameters[] = {
 static struct janus_json_parameter kick_parameters[] = {
 	{"secret", JSON_STRING, 0}
 };
+static struct janus_json_parameter moderate_parameters[] = {
+	{"secret", JSON_STRING, 0},
+	{"mute_audio", JANUS_JSON_BOOL, 0},
+	{"mute_video", JANUS_JSON_BOOL, 0},
+	{"mute_data", JANUS_JSON_BOOL, 0}
+};
 static struct janus_json_parameter join_parameters[] = {
 	{"ptype", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"audio", JANUS_JSON_BOOL, 0},
@@ -1579,15 +1615,15 @@ typedef struct janus_videoroom_publisher {
 	guint8 audio_level_extmap_id;		/* Audio level extmap ID */
 	guint8 video_orient_extmap_id;		/* Video orientation extmap ID */
 	guint8 playout_delay_extmap_id;		/* Playout delay extmap ID */
-	gboolean audio_active;
-	gboolean video_active;
+	gboolean audio_active, audio_muted;
+	gboolean video_active, video_muted;
 	int audio_dBov_level;		/* Value in dBov of the audio level (last value from extension) */
 	int audio_active_packets;	/* Participant's number of audio packets to accumulate */
 	int audio_dBov_sum;			/* Participant's accumulated dBov value for audio level*/
 	int user_audio_active_packets;	/* Participant's audio_active_packets overwriting global room setting */
 	int user_audio_level_average;	/* Participant's audio_level_average overwriting global room setting */
 	gboolean talking; /* Whether this participant is currently talking (uses audio levels extension) */
-	gboolean data_active;
+	gboolean data_active, data_muted;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
 	uint32_t bitrate;
 	gint64 remb_startup;/* Incremental changes on REMB to reach the target at startup */
@@ -4349,10 +4385,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			g_snprintf(error_cause, 512, "No such user %s in room %s", user_id_str, room_id_str);
 			goto prepare_response;
 		}
+		janus_refcount_increase(&participant->ref);
 		if(participant->kicked) {
 			/* Already kicked */
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
+			janus_refcount_decrease(&participant->ref);
 			response = json_object();
 			json_object_set_new(response, "videoroom", json_string("success"));
 			/* Done */
@@ -4403,6 +4441,162 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_object_set_new(response, "videoroom", json_string("success"));
 		/* Done */
 		janus_refcount_decrease(&videoroom->ref);
+		janus_refcount_decrease(&participant->ref);
+		goto prepare_response;
+	} else if(!strcasecmp(request_text, "moderate")) {
+		JANUS_LOG(LOG_VERB, "Attempt to moderate a participant as a moderator in an existing VideoRoom room\n");
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		}
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, idstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		JANUS_VALIDATE_JSON_OBJECT(root, moderate_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		json_t *room = json_object_get(root, "room");
+		json_t *id = json_object_get(root, "id");
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
+		janus_mutex_lock(&rooms_mutex);
+		janus_videoroom *videoroom = NULL;
+		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&videoroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&videoroom->mutex);
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&videoroom->mutex);
+			janus_refcount_decrease(&videoroom->ref);
+			goto prepare_response;
+		}
+		guint64 user_id = 0;
+		char user_id_num[30], *user_id_str = NULL;
+		if(!string_ids) {
+			user_id = json_integer_value(id);
+			g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, user_id);
+			user_id_str = user_id_num;
+		} else {
+			user_id_str = (char *)json_string_value(id);
+		}
+		janus_videoroom_publisher *participant = g_hash_table_lookup(videoroom->participants,
+			string_ids ? (gpointer)user_id_str : (gpointer)&user_id);
+		if(participant == NULL) {
+			janus_mutex_unlock(&videoroom->mutex);
+			janus_refcount_decrease(&videoroom->ref);
+			JANUS_LOG(LOG_ERR, "No such user %s in room %s\n", user_id_str, room_id_str);
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+			g_snprintf(error_cause, 512, "No such user %s in room %s", user_id_str, room_id_str);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&participant->ref);
+		/* Check if there's any media delivery to change */
+		json_t *audio = json_object_get(root, "mute_audio");
+		if(audio != NULL) {
+			gboolean audio_muted = json_is_true(audio);
+			if(participant->session && g_atomic_int_get(&participant->session->started) &&
+					!audio_muted && participant->audio_active && participant->audio_muted) {
+				/* Video was just resumed, try resetting the RTP headers for viewers */
+				janus_mutex_lock(&participant->subscribers_mutex);
+				GSList *ps = participant->subscribers;
+				while(ps) {
+					janus_videoroom_subscriber *l = (janus_videoroom_subscriber *)ps->data;
+					if(l)
+						l->context.v_seq_reset = TRUE;
+					ps = ps->next;
+				}
+				janus_mutex_unlock(&participant->subscribers_mutex);
+			}
+			participant->audio_muted = audio_muted;
+		}
+		json_t *video = json_object_get(root, "mute_video");
+		if(video != NULL) {
+			gboolean video_muted = json_is_true(video);
+			if(participant->session && g_atomic_int_get(&participant->session->started) &&
+					!video_muted && participant->video_active && participant->video_muted) {
+				/* Video was just resumed, try resetting the RTP headers for viewers */
+				janus_mutex_lock(&participant->subscribers_mutex);
+				GSList *ps = participant->subscribers;
+				while(ps) {
+					janus_videoroom_subscriber *l = (janus_videoroom_subscriber *)ps->data;
+					if(l)
+						l->context.v_seq_reset = TRUE;
+					ps = ps->next;
+				}
+				janus_mutex_unlock(&participant->subscribers_mutex);
+			}
+			participant->video_muted = video_muted;
+		}
+		json_t *data = json_object_get(root, "mute_data");
+		if(data != NULL) {
+			participant->data_muted = json_is_true(data);
+		}
+		/* If anything changed, prepare an event for this */
+		if(audio || video || data) {
+			json_t *event = json_object();
+			json_object_set_new(event, "videoroom", json_string("event"));
+			json_object_set_new(event, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
+			json_object_set_new(event, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+			if(audio)
+				json_object_set_new(event, "audio-moderation", participant->audio_muted ? json_string("muted") : json_string("unmuted"));
+			if(video)
+				json_object_set_new(event, "video-moderation", participant->audio_muted ? json_string("muted") : json_string("unmuted"));
+			if(data)
+				json_object_set_new(event, "data-moderation", participant->data_muted ? json_string("muted") : json_string("unmuted"));
+			/* Notify the speaker this event is related to as well */
+			janus_videoroom_notify_participants(participant, event, TRUE);
+			json_decref(event);
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "videoroom", json_string("moderated"));
+				json_object_set_new(info, "room", string_ids ? json_string(videoroom->room_id_str) : json_integer(videoroom->room_id));
+				json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+				if(audio)
+					json_object_set_new(info, "audio", participant->audio_muted ? json_string("muted") : json_string("unmuted"));
+				if(video)
+					json_object_set_new(info, "video", participant->audio_muted ? json_string("muted") : json_string("unmuted"));
+				if(data)
+					json_object_set_new(info, "data", participant->data_muted ? json_string("muted") : json_string("unmuted"));
+				gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+			}
+		}
+		janus_mutex_unlock(&videoroom->mutex);
+		/* Prepare response */
+		response = json_object();
+		json_object_set_new(response, "videoroom", json_string("success"));
+		/* Done */
+		janus_refcount_decrease(&videoroom->ref);
+		janus_refcount_decrease(&participant->ref);
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room, specifying whether they're publishers or just attendees */
@@ -4891,7 +5085,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 	char *buf = pkt->buffer;
 	uint16_t len = pkt->length;
 	/* In case this is an audio packet and we're doing talk detection, check the audio level extension */
-	if(!video && videoroom->audiolevel_event && participant->audio_active) {
+	if(!video && videoroom->audiolevel_event && participant->audio_active && !participant->audio_muted) {
 		int level = pkt->extensions.audio_level;
 		if(level != -1) {
 			participant->audio_dBov_sum += level;
@@ -4941,7 +5135,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 		}
 	}
 
-	if((!video && participant->audio_active) || (video && participant->video_active)) {
+	if((!video && participant->audio_active && !participant->audio_muted) || (video && participant->video_active && !participant->video_muted)) {
 		janus_rtp_header *rtp = (janus_rtp_header *)buf;
 		int sc = video ? 0 : -1;
 		/* Check if we're simulcasting, and if so, keep track of the "layer" */
@@ -5108,7 +5302,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 		janus_mutex_unlock_nodebug(&participant->subscribers_mutex);
 
 		/* Check if we need to send any REMB, FIR or PLI back to this publisher */
-		if(video && participant->video_active) {
+		if(video && participant->video_active && !participant->video_muted) {
 			/* Did we send a REMB already, or is it time to send one? */
 			gboolean send_remb = FALSE;
 			if(participant->remb_latest == 0 && participant->remb_startup > 0) {
@@ -5132,7 +5326,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 					participant->remb_latest = janus_get_monotonic_time();
 			}
 			/* Generate FIR/PLI too, if needed */
-			if(video && participant->video_active && (videoroom->fir_freq > 0)) {
+			if(video && participant->video_active && !participant->video_muted && (videoroom->fir_freq > 0)) {
 				/* We generate RTCP every tot seconds/frames */
 				gint64 now = janus_get_monotonic_time();
 				/* First check if this is a keyframe, though: if so, we reset the timer */
@@ -5212,7 +5406,7 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_da
 	janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher_nodebug(session);
 	if(participant == NULL)
 		return;
-	if(g_atomic_int_get(&participant->destroyed) || !participant->data_active || participant->kicked) {
+	if(g_atomic_int_get(&participant->destroyed) || !participant->data_active || participant->data_muted || participant->kicked) {
 		janus_videoroom_publisher_dereference_nodebug(participant);
 		return;
 	}
@@ -5657,7 +5851,7 @@ static void *janus_videoroom_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Configuring new participant\n");
 			/* Not configured yet, we need to do this now */
 			if(strcasecmp(request_text, "join") && strcasecmp(request_text, "joinandconfigure")) {
-				JANUS_LOG(LOG_ERR, "Invalid request on unconfigured participant\n");
+				JANUS_LOG(LOG_ERR, "Invalid request \"%s\" on unconfigured participant\n", request_text);
 				error_code = JANUS_VIDEOROOM_ERROR_JOIN_FIRST;
 				g_snprintf(error_cause, 512, "Invalid request on unconfigured participant");
 				goto error;
@@ -6296,7 +6490,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *user_audio_level_average = json_object_get(root, "audio_level_average");
 				if(audio) {
 					gboolean audio_active = json_is_true(audio);
-					if(g_atomic_int_get(&session->started) && audio_active && !participant->audio_active) {
+					if(g_atomic_int_get(&session->started) && audio_active && !participant->audio_active && !participant->audio_muted) {
 						/* Audio was just resumed, try resetting the RTP headers for viewers */
 						janus_mutex_lock(&participant->subscribers_mutex);
 						GSList *ps = participant->subscribers;
@@ -6332,7 +6526,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				if(video) {
 					gboolean video_active = json_is_true(video);
-					if(g_atomic_int_get(&session->started) && video_active && !participant->video_active) {
+					if(g_atomic_int_get(&session->started) && video_active && !participant->video_active && !participant->video_muted) {
 						/* Video was just resumed, try resetting the RTP headers for viewers */
 						janus_mutex_lock(&participant->subscribers_mutex);
 						GSList *ps = participant->subscribers;
@@ -7317,7 +7511,7 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_unlock(&participant->rec_mutex);
 				/* Generate an SDP string we can offer subscribers later on */
 				char *offer_sdp = janus_sdp_write(offer);
-				if(!sdp_update) {
+				if(!sdp_update || (participant->ssrc[0] == 0 && participant->rid[0] == NULL)) {
 					/* Is simulcasting involved */
 					if(msg_simulcast && (participant->vcodec == JANUS_VIDEOCODEC_VP8 ||
 							participant->vcodec == JANUS_VIDEOCODEC_H264)) {
