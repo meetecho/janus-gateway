@@ -353,6 +353,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
 	if(janus_get_dscp() > 0)
 		json_object_set_new(info, "dscp", json_integer(janus_get_dscp()));
+	json_object_set_new(info, "dtls-mtu", json_integer(janus_dtls_bio_agent_get_mtu()));
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
@@ -994,9 +995,13 @@ int janus_process_incoming_request(janus_request *request) {
 	/* Ok, let's start with the ids */
 	guint64 session_id = 0, handle_id = 0;
 	json_t *s = json_object_get(root, "session_id");
+	if(json_is_null(s))
+		s = NULL;
 	if(s && json_is_integer(s))
 		session_id = json_integer_value(s);
 	json_t *h = json_object_get(root, "handle_id");
+	if(json_is_null(h))
+		h = NULL;
 	if(h && json_is_integer(h))
 		handle_id = json_integer_value(h);
 
@@ -1098,7 +1103,7 @@ int janus_process_incoming_request(janus_request *request) {
 	}
 	if(h && handle_id < 1) {
 		JANUS_LOG(LOG_ERR, "Invalid handle\n");
-		ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_SESSION_NOT_FOUND, NULL);
+		ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_HANDLE_NOT_FOUND, NULL);
 		goto jsondone;
 	}
 
@@ -1527,7 +1532,7 @@ int janus_process_incoming_request(janus_request *request) {
 						if(stream != NULL && stream->component != NULL
 								&& stream->component->dtls != NULL && stream->component->dtls->sctp == NULL) {
 							/* Create SCTP association as well */
-							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Creating datachannels...\n", handle->handle_id);
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating datachannels...\n", handle->handle_id);
 							janus_dtls_srtp_create_sctp(stream->component->dtls);
 						}
 					}
@@ -3786,7 +3791,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			if(stream != NULL && stream->component != NULL &&
 					stream->component->dtls != NULL && stream->component->dtls->sctp == NULL) {
 				/* Create SCTP association as well */
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Creating datachannels...\n", ice_handle->handle_id);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating datachannels...\n", ice_handle->handle_id);
 				janus_dtls_srtp_create_sctp(stream->component->dtls);
 			}
 		}
@@ -4643,6 +4648,7 @@ gint main(int argc, char *argv[])
 	char *turn_rest_api = NULL, *turn_rest_api_key = NULL;
 #ifdef HAVE_TURNRESTAPI
 	char *turn_rest_api_method = NULL;
+	uint turn_rest_api_timeout = 10;
 #endif
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
 	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE,
@@ -4757,6 +4763,15 @@ gint main(int argc, char *argv[])
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_rest_api_method");
 	if(item && item->value)
 		turn_rest_api_method = (char *)item->value;
+	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_rest_api_timeout");
+	if(item && item->value) {
+		int rst = atoi(item->value);
+		if(rst <= 0) { /* Don't allow user to set 0 seconds i.e., infinite wait */
+			JANUS_LOG(LOG_WARN, "Ignoring turn_rest_api_timeout as it's not a positive integer, leaving at default (10 seconds)\n");
+		} else {
+			turn_rest_api_timeout = rst;
+		}
+	}
 #endif
 	/* Do we need a limited number of static event loops, or is it ok to have one per handle (the default)? */
 	item = janus_config_get(config, config_general, janus_config_type_item, "event_loops");
@@ -4785,7 +4800,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_WARN, "A TURN REST API backend specified in the settings, but libcurl support has not been built\n");
 	}
 #else
-	if(janus_ice_set_turn_rest_api(turn_rest_api, turn_rest_api_key, turn_rest_api_method) < 0) {
+	if(janus_ice_set_turn_rest_api(turn_rest_api, turn_rest_api_key, turn_rest_api_method, turn_rest_api_timeout) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid TURN REST API configuration: %s (%s, %s)\n", turn_rest_api, turn_rest_api_key, turn_rest_api_method);
 		exit(1);
 	}
@@ -5002,7 +5017,7 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		enable_events = janus_is_true(item->value);
 	if(!enable_events) {
-		JANUS_LOG(LOG_WARN, "Event handlers support disabled\n");
+		JANUS_LOG(LOG_INFO, "Event handlers support disabled\n");
 	} else {
 		gchar **disabled_eventhandlers = NULL;
 		path = EVENTDIR;

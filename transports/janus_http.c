@@ -35,6 +35,13 @@
 #include <netdb.h>
 
 #include <microhttpd.h>
+#ifdef HAVE_ENUM_MHD_RESULT
+	/* enum MHD_Result introduced in libmicrohttpd v0.9.71 */
+	typedef enum MHD_Result MHD_Result;
+#else
+	typedef int MHD_Result;
+#endif
+
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -103,6 +110,9 @@ janus_transport *create(void) {
 	return &janus_http_transport;
 }
 
+/* MHD uses this value as default */
+#define DEFAULT_CONNECTION_LIMIT (FD_SETSIZE-4)
+static unsigned int connection_limit = DEFAULT_CONNECTION_LIMIT;
 
 /* Useful stuff */
 static gint initialized = 0, stopping = 0;
@@ -110,6 +120,7 @@ static janus_transport_callbacks *gateway = NULL;
 static gboolean http_janus_api_enabled = FALSE;
 static gboolean http_admin_api_enabled = FALSE;
 static gboolean notify_events = TRUE;
+static enum MHD_FLAG mhd_debug_flag = MHD_NO_FLAG;
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
@@ -252,17 +263,17 @@ static GSource *janus_http_request_timeout_create(janus_transport_session *ts, j
 
 
 /* Callback (libmicrohttpd) invoked when a new connection is attempted on the REST API */
-static int janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
+static MHD_Result janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
 /* Callback (libmicrohttpd) invoked when a new connection is attempted on the admin/monitor webserver */
-static int janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
+static MHD_Result janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
 /* Callback (libmicrohttpd) invoked when an HTTP message (GET, POST, OPTIONS, etc.) is available */
-static int janus_http_handler(void *cls, struct MHD_Connection *connection,
+static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connection,
 	const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr);
 /* Callback (libmicrohttpd) invoked when an admin/monitor HTTP message (GET, POST, OPTIONS, etc.) is available */
-static int janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
+static MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
 	const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr);
 /* Callback (libmicrohttpd) invoked when headers of an incoming HTTP message have been parsed */
-static int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
+static MHD_Result janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 /* Callback (libmicrohttpd) invoked when a request has been processed and can be freed */
 static void janus_http_request_completed(void *cls, struct MHD_Connection *connection,
 	void **con_cls, enum MHD_RequestTerminationCode toe);
@@ -271,9 +282,9 @@ static ssize_t janus_http_response_callback(void *cls, uint64_t pos, char *buf, 
 /* Worker to handle requests that are actually long polls */
 static int janus_http_notifier(janus_http_msg *msg);
 /* Helper to quickly send a success response */
-static int janus_http_return_success(janus_transport_session *ts, char *payload);
+static MHD_Result janus_http_return_success(janus_transport_session *ts, char *payload);
 /* Helper to quickly send an error response */
-static int janus_http_return_error(janus_transport_session *ts, uint64_t session_id,
+static MHD_Result janus_http_return_error(janus_transport_session *ts, uint64_t session_id,
 	const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
 
 
@@ -488,7 +499,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 			JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			daemon = MHD_start_daemon(
-				MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK,
+				MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK | mhd_debug_flag,
 				port,
 				admin ? &janus_http_admin_client_connect : &janus_http_client_connect,
 				NULL,
@@ -496,6 +507,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				path,
 				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
 				MHD_OPTION_CONNECTION_TIMEOUT, 120,
+				MHD_OPTION_CONNECTION_LIMIT, connection_limit,
 				MHD_OPTION_END);
 		} else {
 			/* Bind to the interface that was specified */
@@ -503,7 +515,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				ip ? "IP" : "interface", ip ? ip : interface,
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			daemon = MHD_start_daemon(
-				MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0),
+				MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0) | mhd_debug_flag,
 				port,
 				admin ? &janus_http_admin_client_connect : &janus_http_client_connect,
 				NULL,
@@ -512,6 +524,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
 				MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
 				MHD_OPTION_CONNECTION_TIMEOUT, 120,
+				MHD_OPTION_CONNECTION_LIMIT, connection_limit,
 				MHD_OPTION_END);
 		}
 	} else {
@@ -525,7 +538,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 			JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			daemon = MHD_start_daemon(
-				MHD_USE_SSL | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK,
+				MHD_USE_SSL | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK | mhd_debug_flag,
 				port,
 				admin ? &janus_http_admin_client_connect : &janus_http_client_connect,
 				NULL,
@@ -537,6 +550,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 				MHD_OPTION_HTTPS_KEY_PASSWORD, password,
 				MHD_OPTION_CONNECTION_TIMEOUT, 120,
+				MHD_OPTION_CONNECTION_LIMIT, connection_limit,
 				MHD_OPTION_END);
 		} else {
 			/* Bind to the interface that was specified */
@@ -544,7 +558,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				ip ? "IP" : "interface", ip ? ip : interface,
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			daemon = MHD_start_daemon(
-				MHD_USE_SSL | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0),
+				MHD_USE_SSL | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0) | mhd_debug_flag,
 				port,
 				admin ? &janus_http_admin_client_connect : &janus_http_client_connect,
 				NULL,
@@ -557,6 +571,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				MHD_OPTION_HTTPS_KEY_PASSWORD, password,
 				MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
 				MHD_OPTION_CONNECTION_TIMEOUT, 120,
+				MHD_OPTION_CONNECTION_LIMIT, connection_limit,
 				MHD_OPTION_END);
 		}
 	}
@@ -692,6 +707,16 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		} else {
 			admin_ws_path = g_strdup("/admin");
 		}
+		/* Check the open connections limit for mhd */
+		item = janus_config_get(config, config_general, janus_config_type_item, "mhd_connection_limit");
+		if(item && item->value && janus_string_to_uint32(item->value, &connection_limit) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid mhd_connection_limit (%s), falling back to default\n", item->value);
+			connection_limit = DEFAULT_CONNECTION_LIMIT;
+		}
+		/* Should we set the debug flag in libmicrohttpd? */
+		item = janus_config_get(config, config_general, janus_config_type_item, "mhd_debug");
+		if(item && item->value && janus_is_true(item->value))
+			mhd_debug_flag = MHD_USE_DEBUG;
 
 		/* Any ACL for either the Janus or Admin API? */
 		item = janus_config_get(config, config_general, janus_config_type_item, "acl");
@@ -748,7 +773,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		/* Start with the Janus API web server now */
 		item = janus_config_get(config, config_general, janus_config_type_item, "http");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "HTTP webserver disabled\n");
+			JANUS_LOG(LOG_VERB, "HTTP webserver disabled\n");
 		} else {
 			uint16_t wsport = 8088;
 			item = janus_config_get(config, config_general, janus_config_type_item, "port");
@@ -793,7 +818,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 		item = janus_config_get(config, config_general, janus_config_type_item, "https");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "HTTPS webserver disabled\n");
+			JANUS_LOG(LOG_VERB, "HTTPS webserver disabled\n");
 		} else {
 			if(!server_key || !server_pem) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
@@ -824,7 +849,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		/* Admin/monitor time: start web server, if enabled */
 		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_http");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Admin/monitor HTTP webserver disabled\n");
+			JANUS_LOG(LOG_VERB, "Admin/monitor HTTP webserver disabled\n");
 		} else {
 			uint16_t wsport = 7088;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_port");
@@ -851,7 +876,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		/* Do we also have to provide an HTTPS one? */
 		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_https");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Admin/monitor HTTPS webserver disabled\n");
+			JANUS_LOG(LOG_VERB, "Admin/monitor HTTPS webserver disabled\n");
 		} else {
 			if(!server_key) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
@@ -1275,7 +1300,7 @@ plugin_response:
 }
 
 /* Connection notifiers */
-static int janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
+static MHD_Result janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
 	janus_network_address naddr;
 	janus_network_address_string_buffer naddr_buf;
 	if(janus_network_address_from_sockaddr((struct sockaddr *)addr, &naddr) != 0 ||
@@ -1294,7 +1319,7 @@ static int janus_http_client_connect(void *cls, const struct sockaddr *addr, soc
 	return MHD_YES;
 }
 
-static int janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
+static MHD_Result janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
 	janus_network_address naddr;
 	janus_network_address_string_buffer naddr_buf;
 	if(janus_network_address_from_sockaddr((struct sockaddr *)addr, &naddr) != 0 ||
@@ -1315,7 +1340,7 @@ static int janus_http_admin_client_connect(void *cls, const struct sockaddr *add
 
 
 /* WebServer requests handler */
-static int janus_http_handler(void *cls, struct MHD_Connection *connection,
+static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connection,
 		const char *url, const char *method, const char *version,
 		const char *upload_data, size_t *upload_data_size, void **ptr) {
 	if(!g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping))
@@ -1517,15 +1542,15 @@ static int janus_http_handler(void *cls, struct MHD_Connection *connection,
 			token_authorized = TRUE;
 		} else {
 			if(gateway->is_api_secret_valid(&janus_http_transport, secret)) {
-				/* API secret is valid */
+				/* API secret is valid or disabled */
 				secret_authorized = TRUE;
 			}
 			if(gateway->is_auth_token_valid(&janus_http_transport, token)) {
-				/* Token is valid */
+				/* Token is valid or disabled */
 				token_authorized = TRUE;
 			}
-			/* We consider a request authorized if either the proper API secret or a valid token has been provided */
-			if(!secret_authorized && !token_authorized) {
+			/* We consider a request authorized if both the token and the API secret are either disabled or valid */
+			if(!secret_authorized || !token_authorized) {
 				response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 				janus_http_add_cors_headers(msg, response);
 				ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
@@ -1711,7 +1736,7 @@ done:
 }
 
 /* Admin/monitor WebServer requests handler */
-static int janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
+static MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
 		const char *url, const char *method, const char *version,
 		const char *upload_data, size_t *upload_data_size, void **ptr) {
 	if(!g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping))
@@ -1960,7 +1985,7 @@ done:
 	return ret;
 }
 
-static int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
+static MHD_Result janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
 	janus_http_msg *request = (janus_http_msg *)cls;
 	JANUS_LOG(LOG_DBG, "%s: %s\n", key, value);
 	if(!request)
@@ -2101,7 +2126,7 @@ static int janus_http_notifier(janus_http_msg *msg) {
 }
 
 /* Helper to quickly send a success response */
-static int janus_http_return_success(janus_transport_session *ts, char *payload) {
+static MHD_Result janus_http_return_success(janus_transport_session *ts, char *payload) {
 	if(!ts) {
 		g_free(payload);
 		return MHD_NO;
@@ -2125,7 +2150,7 @@ static int janus_http_return_success(janus_transport_session *ts, char *payload)
 }
 
 /* Helper to quickly send an error response */
-static int janus_http_return_error(janus_transport_session *ts, uint64_t session_id,
+static MHD_Result janus_http_return_error(janus_transport_session *ts, uint64_t session_id,
 		const char *transaction, gint error, const char *format, ...) {
 	gchar *error_string = NULL;
 	gchar error_buf[512];

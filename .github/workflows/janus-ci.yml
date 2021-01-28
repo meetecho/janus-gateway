@@ -1,0 +1,154 @@
+name: janus-ci
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+        datachannels: ["yes", "no"]
+        libcurl: ["yes", "no"]
+        include:
+          - datachannel: "yes"
+            libcurl: "yes"
+            deps_from_src: "yes"
+            janus_config_opts: ""
+          - datachannels: "yes"
+            libcurl: "no"
+            deps_from_src: "no"
+            janus_config_opts: "--disable-aes-gcm -disable-mqtt --disable-mqtt-event-handler --disable-turn-rest-api --disable-sample-event-handler"
+          - datachannels: "no"
+            libcurl: "yes"
+            deps_from_src: "no"
+            janus_config_opts: "--disable-aes-gcm -disable-mqtt --disable-mqtt-event-handler --disable-data-channels"
+        exclude:
+          - datachannels: "no"
+            libcurl: "no"
+    env:
+        CC: ${{ matrix.compiler }}
+    steps:
+    - name: install janus apt dependencies
+      run: >
+        sudo apt-get update && sudo apt-get --no-install-recommends -y install
+        autoconf
+        cmake
+        gengetopt
+        gtk-doc-tools
+        libavcodec-dev
+        libavformat-dev
+        libavutil-dev
+        libcollection-dev
+        libconfig-dev
+        libevent-dev
+        libglib2.0-dev
+        libgnutls28-dev
+        libini-config-dev
+        liblua5.3-dev
+        libjansson-dev
+        libmicrohttpd-dev
+        libmount-dev
+        libnanomsg-dev
+        libogg-dev
+        libopus-dev
+        librabbitmq-dev
+        libsofia-sip-ua-dev
+        libssl-dev
+        libvorbis-dev
+        ninja-build
+        openssl
+    - name: setup additional dependencies from apt
+      if: ${{ matrix.deps_from_src == 'no' }}
+      run: >
+        sudo apt-get --no-install-recommends -y install
+        libnice-dev
+        libsrtp2-dev
+        libusrsctp-dev
+        libwebsockets-dev
+    - name: install libcurl from apt
+      if: ${{ matrix.libcurl == 'yes' }}
+      run: sudo apt-get --no-install-recommends -y install libcurl4-openssl-dev
+    - name: setup python
+      if: ${{ matrix.deps_from_src == 'yes' }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+        architecture: 'x64'
+    - name: install python packages
+      if: ${{ matrix.deps_from_src == 'yes' }}
+      run: pip3 install wheel meson
+    - name: setup libnice from sources
+      if: ${{ matrix.deps_from_src == 'yes' }}
+      run: |
+        git clone --depth 1 --quiet -b master https://gitlab.freedesktop.org/libnice/libnice.git libnice
+        pushd libnice
+        if [ $CC = clang ]; then LNICE_CFLAGS="-Wno-cast-align"; fi; 
+        meson setup -Dprefix=/usr -Dlibdir=lib -Dc_args="$LNICE_CFLAGS" -Ddebug=false -Doptimization=0 -Dexamples=disabled -Dgtk_doc=disabled -Dgupnp=disabled -Dgstreamer=disabled -Dtests=disabled build
+        ninja -C build
+        sudo ninja -C build install
+    - name: checkout libsrtp source
+      if: ${{ matrix.deps_from_src == 'yes' }}
+      uses: actions/checkout@v2
+      with:
+        repository: cisco/libsrtp
+        ref: v2.3.0
+    - name: setup libsrtp from sources
+      if: ${{ matrix.deps_from_src == 'yes' }}
+      run: |
+        ./configure --prefix=/usr --enable-openssl
+        make -j$(nproc) shared_library
+        sudo make install
+    - name: checkout usrsctp source
+      if: ${{ matrix.datachannels == 'yes' && matrix.deps_from_src == 'yes' }}
+      uses: actions/checkout@v2
+      with:
+        repository: sctplab/usrsctp
+        ref: master
+    - name: setup usrsctp from sources
+      if: ${{ matrix.datachannels == 'yes' && matrix.deps_from_src == 'yes' }}
+      run: |
+        ./bootstrap
+        ./configure --prefix=/usr --disable-static --disable-debug --disable-programs --disable-inet --disable-inet6
+        make -j$(nproc)
+        sudo make install
+    - name: checkout lws source
+      if: ${{ matrix.deps_from_src == 'yes' }}
+      uses: actions/checkout@v2
+      with:
+        repository: warmcat/libwebsockets
+        ref: v4.1-stable
+    - name: setup lws from sources
+      if: ${{ matrix.deps_from_src == 'yes' }}
+      run: |
+        mkdir -p build
+        pushd build
+        cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DLWS_WITH_STATIC=OFF -DLWS_WITHOUT_CLIENT=ON -DLWS_WITHOUT_TESTAPPS=ON -DLWS_WITHOUT_TEST_SERVER=ON -DLWS_WITH_HTTP2=OFF ..
+        make -j$(nproc)
+        sudo make install
+    - name: checkout paho-mqtt source
+      if: ${{ matrix.deps_from_src == 'yes' }}
+      uses: actions/checkout@v2
+      with:
+        repository: eclipse/paho.mqtt.c
+        ref: v1.3.1
+    - name: setup paho-mqtt from sources
+      if: ${{ matrix.deps_from_src == 'yes' }}
+      run: |
+        cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_SAMPLES=FALSE -DPAHO_BUILD_DOCUMENTATION=FALSE
+        make -j$(nproc)
+        sudo make install
+    - name: checkout janus source
+      uses: actions/checkout@v2
+    - name: build janus from sources
+      env:
+        JANUS_CONFIG_COMMON: "--disable-docs --enable-post-processing --enable-plugin-lua --enable-plugin-duktape --enable-json-logger"
+        JANUS_CONFIG_OPTS: ${{ matrix.janus_config_opts }}
+      run: |
+        ./autogen.sh
+        ./configure $JANUS_CONFIG_COMMON $JANUS_CONFIG_OPTS
+         make -j$(nproc)
+         make check-fuzzers
