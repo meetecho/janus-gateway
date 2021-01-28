@@ -25,6 +25,9 @@ void janus_dtls_bio_agent_set_mtu(int start_mtu) {
 	mtu = start_mtu;
 	JANUS_LOG(LOG_VERB, "Setting starting MTU in the DTLS BIO writer: %d\n", mtu);
 }
+int janus_dtls_bio_agent_get_mtu(void) {
+	return mtu;
+}
 
 /* BIO implementation */
 static int janus_dtls_bio_agent_write(BIO *h, const char *buf, int num);

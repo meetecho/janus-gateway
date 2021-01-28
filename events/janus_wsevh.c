@@ -595,11 +595,11 @@ static void *janus_wsevh_handler(void *data) {
 }
 
 static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
-	if(ws_client == NULL)
-		ws_client = (janus_wsevh_client *)user;
 	switch(reason) {
 		case LWS_CALLBACK_CLIENT_ESTABLISHED: {
 			/* Prepare the session */
+			if(ws_client == NULL)
+				ws_client = (janus_wsevh_client *)user;
 			ws_client->wsi = wsi;
 			ws_client->buffer = NULL;
 			ws_client->buflen = 0;

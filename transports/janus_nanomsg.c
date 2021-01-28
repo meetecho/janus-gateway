@@ -205,7 +205,7 @@ int janus_nanomsg_init(janus_transport_callbacks *callback, const char *config_p
 		/* Setup the Janus API Nanomsg server(s) */
 		item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Nanomsg server disabled (Janus API)\n");
+			JANUS_LOG(LOG_VERB, "Nanomsg server disabled (Janus API)\n");
 		} else {
 			item = janus_config_get(config, config_general, janus_config_type_item, "address");
 			const char *address = item && item->value ? item->value : NULL;
@@ -246,7 +246,7 @@ int janus_nanomsg_init(janus_transport_callbacks *callback, const char *config_p
 		/* Do the same for the Admin API, if enabled */
 		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Nanomsg server disabled (Admin API)\n");
+			JANUS_LOG(LOG_VERB, "Nanomsg server disabled (Admin API)\n");
 		} else {
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_address");
 			const char *address = item && item->value ? item->value : NULL;
