@@ -51,7 +51,8 @@ CFLAGS="$CFLAGS \
 	-Wstrict-prototypes \
 	-Wswitch-default \
 	-Wunused \
-	-Wwrite-strings"
+	-Wwrite-strings \
+	-Werror=implicit-function-declaration"
 
 case "$CC" in
 clang*)
