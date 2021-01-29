@@ -129,6 +129,14 @@ gboolean janus_ice_is_mdns_enabled(void);
 /*! \brief Method to check whether IPv6 candidates are enabled/supported or not
  * @returns true if IPv6 candidates are enabled/supported, false otherwise */
 gboolean janus_ice_is_ipv6_enabled(void);
+#ifdef HAVE_ICE_NOMINATION
+/*! \brief Method to configure the ICE nomination mode (regular or aggressive)
+ * @param[in] nomination The ICE nomination mode (regular or aggressive) */
+void janus_ice_set_nomination_mode(const char *nomination);
+/*! \brief Method to return a string description of the configured ICE nomination mode
+ * @returns "regular" or "aggressive" */
+const char *janus_ice_get_nomination_mode(void);
+#endif
 /*! \brief Method to modify the min NACK value (i.e., the minimum time window of packets per handle to store for retransmissions)
  * @param[in] mnq The new min NACK value */
 void janus_set_min_nack_queue(uint16_t mnq);
