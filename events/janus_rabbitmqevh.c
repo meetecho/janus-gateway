@@ -266,7 +266,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 		exchange_type = g_strdup(item->value);
 	}
 
-	// By default we *DO* declare the outgoing queue
+	/* By default we *DO* declare the outgoing queue */
 	item = janus_config_get(config, config_general, janus_config_type_item, "declare_outgoing_queue");
 	if(item && item->value && !janus_is_true(item->value)) {
 		declare_outgoing_queue = FALSE;

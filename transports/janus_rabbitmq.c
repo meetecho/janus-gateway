@@ -303,7 +303,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		JANUS_LOG(LOG_VERB, "RabbitMQ support disabled (Janus API)\n");
 	} else {
 
-		// Get exchange name config, or set to default exchange
+		/* Get exchange name config, or set to default exchange */
 		item = janus_config_get(config, config_general, janus_config_type_item, "janus_exchange");
 		if(!item || !item->value) {
 			JANUS_LOG(LOG_INFO, "Missing name of outgoing exchange for RabbitMQ integration, using default\n");
@@ -311,7 +311,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			janus_exchange = g_strdup(item->value);
 		}
 
-		// Get exchange type config, or set to default
+		/* Get exchange type config, or set to default */
 		item = janus_config_get(config, config_general, janus_config_type_item, "janus_exchange_type");
 		if(!item || !item->value) {
 			janus_exchange_type = (char *)JANUS_RABBITMQ_EXCHANGE_TYPE;
@@ -464,7 +464,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		if(rmq_janus_api_enabled) {
 			rmq_client->janus_api_enabled = TRUE;
 
-			// Set queue options
+			/* Set queue options */
 			amqp_boolean_t queue_durable = 0;
 			item = janus_config_get(config, config_general, janus_config_type_item, "queue_durable");
 			if(item && item->value && janus_is_true(item->value)) {
@@ -483,7 +483,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 				queue_autodelete = 1;
 			}
 
-			// Case when we have a queue_name, and to_janus is the name of the topic to bind on (if exchange_type is topic)
+			/* Case when we have a queue_name, and to_janus is the name of the topic to bind on (if exchange_type is topic) */
 			if(queue_name != NULL) {
 				JANUS_LOG(LOG_VERB, "Declaring incoming queue (using queue_name)... (%s)\n", queue_name);
 				declare = amqp_queue_declare(rmq_client->rmq_conn, rmq_client->rmq_channel, amqp_cstring_bytes(queue_name), 0, queue_durable, queue_exclusive, queue_autodelete, amqp_empty_table);
@@ -505,7 +505,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 					}
 				}
 
-			// Case when to_janus is the name of the queue (and there's no binding)
+			/* Case when to_janus is the name of the queue (and there's no binding) */
 			} else {
 				JANUS_LOG(LOG_VERB, "Declaring incoming queue (using to_janus)... (%s)\n", to_janus);
 				declare = amqp_queue_declare(rmq_client->rmq_conn, rmq_client->rmq_channel, amqp_cstring_bytes(to_janus), 0, queue_durable, queue_exclusive, queue_autodelete, amqp_empty_table);
@@ -518,7 +518,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 				}
 			}
 
-			// By default, declare the outgoing queue
+			/* By default, declare the outgoing queue */
 			item = janus_config_get(config, config_general, janus_config_type_item, "declare_outgoing_queue");
 			if(!item || !item->value || janus_is_true(item->value)) {
 				JANUS_LOG(LOG_VERB, "Declaring outgoing queue... (%s)\n", from_janus);
@@ -541,7 +541,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		if(rmq_admin_api_enabled) {
 			rmq_client->admin_api_enabled = TRUE;
 
-			// Set queue options
+			/* Set queue options */
 			amqp_boolean_t queue_durable_admin = 0;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "queue_durable_admin");
 			if(item && item->value && janus_is_true(item->value)) {
@@ -560,7 +560,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 				queue_autodelete_admin = 1;
 			}
 
-			// Case when we have a queue_name_admin, and to_janus_admin is the name of the routing key to bind on (if exchange_type is topic or direct)
+			/* Case when we have a queue_name_admin, and to_janus_admin is the name of the routing key to bind on (if exchange_type is topic or direct) */
 			if(queue_name_admin != NULL) {
 				JANUS_LOG(LOG_VERB, "Declaring incoming admin queue (using queue_name_admin)... (%s)\n", queue_name_admin);
 				declare = amqp_queue_declare(rmq_client->rmq_conn, rmq_client->rmq_channel, amqp_cstring_bytes(queue_name_admin), 0, queue_durable_admin, queue_exclusive_admin, queue_autodelete_admin, amqp_empty_table);
@@ -582,7 +582,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 					}
 				}
 
-			// Case when to_janus_admin is the name of the queue (and there's no binding
+			/* Case when to_janus_admin is the name of the queue (and there's no binding */
 			} else {
 				JANUS_LOG(LOG_VERB, "Declaring incoming admin queue (using to_janus_admin)... (%s)\n", to_janus_admin);
 				rmq_client->to_janus_admin_queue = amqp_cstring_bytes(to_janus_admin);
@@ -596,7 +596,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 				}
 			}
 
-			// By default, declare the outgoing queue
+			/* By default, declare the outgoing queue */
 			item = janus_config_get(config, config_admin, janus_config_type_item, "declare_outgoing_queue_admin");
 			if(!item || !item->value || janus_is_true(item->value)) {
 				JANUS_LOG(LOG_VERB, "Declaring outgoing queue... (%s)\n", from_janus_admin);
@@ -909,7 +909,8 @@ void *janus_rmq_in_thread(void *data) {
 			/* Check if this is a Janus or Admin API request */
 			if(rmq_client->admin_api_enabled) {
 				char incoming_topic[d->routing_key.len + 2];
-				strlcpy(incoming_topic, (char *)d->routing_key.bytes, d->routing_key.len + 1); // Convert the amqp_bytes_t back to char*
+				/* Convert the amqp_bytes_t back to char* */
+				g_strlcpy(incoming_topic, (char *)d->routing_key.bytes, d->routing_key.len + 1);
 				if(strcmp(incoming_topic, to_janus_admin) == 0) {
 					admin = TRUE;
 				}
