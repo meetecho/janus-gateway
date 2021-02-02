@@ -6474,7 +6474,11 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	int asport = 0, asport_rtcp = 0;
 	multiple_fds audio_fds = {-1, -1};
 
-	janus_mutex_lock(&mountpoints_mutex);
+	if(g_atomic_int_get(&mp->destroyed))
+       return -8;
+	janus_mutex_lock(&mp_mutex);
+	if(g_atomic_int_get(&mp->destroyed))
+	   return -8;
 	/* Parse both video and audio first before proceed to setup as curldata will be reused */
 	int vresult = -1;
 	if(dovideo) {
@@ -6486,7 +6490,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		aresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", abase, &apt,
 			atransport, ahost, artpmap, afmtp, acontrol, &source->audio_iface, &audio_fds);
 	}
-	janus_mutex_unlock(&mountpoints_mutex);
+	janus_mutex_unlock(&mp_mutex);
 
 	if(vresult == -1 && aresult == -1) {
 		/* Both audio and video failed? Give up... */
@@ -7629,6 +7633,9 @@ static void *janus_streaming_relay_thread(void *data) {
 					close(source->video_rtcp_fd);
 				}
 				source->video_rtcp_fd = -1;
+
+				if(g_atomic_int_get(&mountpoint->destroyed))
+					              break;
 				/* Now let's try to reconnect */
 				if(janus_streaming_rtsp_connect_to_server(mountpoint) < 0) {
 					/* Reconnection failed? Let's try again later */
