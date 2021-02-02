@@ -24,6 +24,9 @@
 
 #include <glib.h>
 
+#define JANUS_PP_RTP_EXTMAP_AUDIO_LEVEL			"urn:ietf:params:rtp-hdrext:ssrc-audio-level"
+#define JANUS_PP_RTP_EXTMAP_VIDEO_ORIENTATION	"urn:3gpp:video-orientation"
+
 typedef struct janus_pp_rtp_header
 {
 #if __BYTE_ORDER == __BIG_ENDIAN

@@ -110,6 +110,7 @@
 	"force_udp" : <true|false; if true, forces UDP for the SIP messaging; optional>,
 	"force_tcp" : <true|false; if true, forces TCP for the SIP messaging; optional>,
 	"sips" : <true|false; if true, configures a SIPS URI too when registering; optional>,
+	"rfc2543_cancel" : <true|false; if true, configures sip client to CANCEL pending INVITEs without having received a provisional response first; optional>,
 	"username" : "<SIP URI to register; mandatory>",
 	"secret" : "<password to use to register; optional>",
 	"ha1_secret" : "<prehashed password to use to register; optional>",
@@ -353,7 +354,8 @@
 \verbatim
 {
 	"request" : "decline",
-	"code" : <SIP code to be sent, if not set, 486 is used; optional>"
+	"code" : <SIP code to be sent, if not set, 486 is used; optional>",
+ 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP request; optional>"
 }
 \endverbatim
  *
@@ -375,6 +377,34 @@
  *
  * When a session has been established, there are different requests that
  * you can use to interact with the session.
+ *
+ * First of all, you can put a call on-hold with the \c hold request.
+ * By default, this request will send a new INVITE to the peer with a
+ * \c sendonly direction for media, but in case you want to set a
+ * different direction (\c recvonly or \c inactive ) you can do that by
+ * passing a \c direction attribute as well:
+ *
+\verbatim
+{
+	"request" : "hold",
+	"direction" : "<sendonly, recvonly or inactive>"
+}
+\endverbatim
+ *
+ * No WebRTC renegotiation will be involved here on the holder side, as
+ * this will only trigger a re-INVITE on the SIP side. To remove the
+ * call from on-hold, just send a \c unhold request to the plugin,
+ * which requires no additional attributes:
+ *
+\verbatim
+{
+	"request" : "hold",
+	"direction" : "<sendonly, recvonly or inactive>"
+}
+\endverbatim
+ *
+ * and will restore the media direction that was set in the SDP before
+ * putting the call on-hold.
  *
  * The \c message request allows you to send a SIP MESSAGE to the peer:
  *
@@ -699,6 +729,7 @@ static struct janus_json_parameter register_parameters[] = {
 	{"force_udp", JANUS_JSON_BOOL, 0},
 	{"force_tcp", JANUS_JSON_BOOL, 0},
 	{"sips", JANUS_JSON_BOOL, 0},
+	{"rfc2543_cancel", JANUS_JSON_BOOL, 0},
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JSON_STRING, 0},
 	{"ha1_secret", JSON_STRING, 0},
@@ -740,11 +771,15 @@ static struct janus_json_parameter accept_parameters[] = {
 };
 static struct janus_json_parameter decline_parameters[] = {
 	{"code", JANUS_JSON_INTEGER, 0},
+	{"headers", JSON_OBJECT, 0},
 	{"refer_id", JANUS_JSON_INTEGER, 0}
 };
 static struct janus_json_parameter transfer_parameters[] = {
 	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"call_id", JANUS_JSON_STRING, 0}
+};
+static struct janus_json_parameter hold_parameters[] = {
+	{"direction", JSON_STRING, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
 	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -898,6 +933,7 @@ typedef struct janus_sip_account {
 	gboolean force_udp;
 	gboolean force_tcp;
 	gboolean sips;
+	gboolean rfc2543_cancel;
 	char *username;
 	char *display_name;		/* Used for outgoing calls in the From header */
 	char *authuser;			/**< username to use for authentication */
@@ -1855,6 +1891,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	/* Setup sofia */
 	su_init();
 	if(notify_events && callback->events_is_enabled()) {
+		JANUS_LOG(LOG_WARN, "sofia-sip logs are going to be redirected and they will not be shown in the process output\n");
 		/* Enable the transport logging, as we want to have access to the SIP messages */
 		setenv("TPORT_LOG", "1", 1);
 		su_log_redirect(NULL, janus_sip_sofia_logger, NULL);
@@ -1971,6 +2008,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.force_udp = FALSE;
 	session->account.force_tcp = FALSE;
 	session->account.sips = TRUE;
+	session->account.rfc2543_cancel = FALSE;
 	session->account.username = NULL;
 	session->account.display_name = NULL;
 	session->account.user_agent = NULL;
@@ -2521,7 +2559,12 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		session->media.ready = FALSE;
 		session->media.on_hold = FALSE;
 		janus_sip_call_update_status(session, janus_sip_call_status_closing);
-		nua_bye(session->stack->s_nh_i, TAG_END());
+
+		if(g_atomic_int_get(&session->established))
+			nua_bye(session->stack->s_nh_i, TAG_END());
+		else
+			nua_respond(session->stack->s_nh_i, 480, sip_status_phrase(480), TAG_END());
+
 		/* Notify the operation */
 		json_t *event = json_object();
 		json_object_set_new(event, "sip", json_string("event"));
@@ -2725,6 +2768,11 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Conflicting elements: force_udp and force_tcp cannot both be true");
 				goto error;
 			}
+			gboolean rfc2543_cancel = FALSE;
+			json_t *do_rfc2543_cancel = json_object_get(root, "rfc2543_cancel");
+			if(do_rfc2543_cancel != NULL) {
+				rfc2543_cancel = json_is_true(do_rfc2543_cancel);
+			}
 
 			/* Parse addresses */
 			json_t *proxy = json_object_get(root, "proxy");
@@ -2882,6 +2930,7 @@ static void *janus_sip_handler(void *data) {
 				session->account.force_udp = FALSE;
 				session->account.force_tcp = FALSE;
 				session->account.sips = TRUE;
+				session->account.rfc2543_cancel = FALSE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
 				session->account.username = NULL;
@@ -2913,6 +2962,7 @@ static void *janus_sip_handler(void *data) {
 			session->account.force_udp = force_udp;
 			session->account.force_tcp = force_tcp;
 			session->account.sips = sips;
+			session->account.rfc2543_cancel = rfc2543_cancel;
 			session->account.username = g_strdup(user_id);
 			session->account.authuser = g_strdup(authuser_text ? authuser_text : user_id);
 			session->account.secret = secret_text ? g_strdup(secret_text) : NULL;
@@ -3691,6 +3741,7 @@ static void *janus_sip_handler(void *data) {
 				SOATAG_USER_SDP_STR(sdp),
 				SOATAG_RTP_SELECT(SOA_RTP_SELECT_COMMON),
 				NUTAG_AUTOANSWER(0),
+				NUTAG_AUTOACK(FALSE),
 				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				TAG_END());
 			g_free(sdp);
@@ -3835,6 +3886,16 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Error manipulating SDP");
 				goto error;
 			}
+			if(!offer) {
+				if(session->media.audio_pt_name == NULL && session->media.audio_pt > -1) {
+					session->media.audio_pt_name = janus_get_codec_from_pt(sdp, session->media.audio_pt);
+					JANUS_LOG(LOG_VERB, "Detected audio codec: %d (%s)\n", session->media.audio_pt, session->media.audio_pt_name);
+				}
+				if(session->media.video_pt_name == NULL && session->media.video_pt > -1) {
+					session->media.video_pt_name = janus_get_codec_from_pt(sdp, session->media.video_pt);
+					JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
+				}
+			}
 			/* Take note of the new SDP */
 			janus_sdp_destroy(session->sdp);
 			session->sdp = parsed_sdp;
@@ -3950,7 +4011,12 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_WARN, "Invalid SIP response code specified, using 486 to decline call\n");
 				response_code = 486;
 			}
-			nua_respond(session->stack->s_nh_i, response_code, sip_status_phrase(response_code), TAG_END());
+			/* Check if the response needs to be enriched with custom headers */
+			char custom_headers[2048];
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
+			nua_respond(session->stack->s_nh_i, response_code, sip_status_phrase(response_code),
+				    TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
+				    TAG_END());
 			janus_mutex_lock(&session->mutex);
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
@@ -4065,23 +4131,48 @@ static void *janus_sip_handler(void *data) {
 			}
 			gboolean hold = !strcasecmp(request_text, "hold");
 			if(hold != session->media.on_hold) {
-				/* To put the call on-hold, we need to set the direction to recvonly:
+				/* To put the call on-hold, we need to change the media direction:
 				 * resuming it means resuming the direction we had before */
+				janus_sdp_mdirection hold_dir = JANUS_SDP_SENDONLY;
+				if(hold) {
+					/* By default when holding we use recvonly, but the
+					 * actual direction to set can be passed via API too */
+					JANUS_VALIDATE_JSON_OBJECT(root, hold_parameters,
+						error_code, error_cause, TRUE,
+						JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+					if(error_code != 0)
+						goto error;
+					json_t *hdir = json_object_get(root, "direction");
+					if(hdir != NULL) {
+						const char *dir = json_string_value(hdir);
+						hold_dir = janus_sdp_parse_mdirection(dir);
+						if(hold_dir != JANUS_SDP_SENDONLY && hold_dir != JANUS_SDP_RECVONLY &&
+								hold_dir != JANUS_SDP_INACTIVE) {
+							/* Invalid direction */
+							JANUS_LOG(LOG_ERR, "Invalid direction (can only be sendonly, recvonly or inactive)\n");
+							error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+							g_snprintf(error_cause, 512, "Invalid direction (can only be sendonly, recvonly or inactive)");
+							goto error;
+						}
+					}
+				}
 				session->media.on_hold = hold;
 				janus_sdp_mline *m = janus_sdp_mline_find(session->sdp, JANUS_SDP_AUDIO);
 				if(m) {
 					if(hold) {
 						/* Take note of the original media direction */
 						session->media.pre_hold_audio_dir = m->direction;
-						/* Update the media direction */
-						switch(m->direction) {
-							case JANUS_SDP_DEFAULT:
-							case JANUS_SDP_SENDRECV:
-								m->direction = JANUS_SDP_SENDONLY;
-								break;
-							default:
-								m->direction = JANUS_SDP_INACTIVE;
-								break;
+						if(m->direction != hold_dir) {
+							/* Update the media direction */
+							switch(m->direction) {
+								case JANUS_SDP_DEFAULT:
+								case JANUS_SDP_SENDRECV:
+									m->direction = hold_dir;
+									break;
+								default:
+									m->direction = JANUS_SDP_INACTIVE;
+									break;
+							}
 						}
 					} else {
 						m->direction = session->media.pre_hold_audio_dir;
@@ -4092,24 +4183,31 @@ static void *janus_sip_handler(void *data) {
 					if(hold) {
 						/* Take note of the original media direction */
 						session->media.pre_hold_video_dir = m->direction;
-						/* Update the media direction */
-						switch(m->direction) {
-							case JANUS_SDP_DEFAULT:
-							case JANUS_SDP_SENDRECV:
-								m->direction = JANUS_SDP_SENDONLY;
-								break;
-							default:
-								m->direction = JANUS_SDP_INACTIVE;
-								break;
+						if(m->direction != hold_dir) {
+							/* Update the media direction */
+							switch(m->direction) {
+								case JANUS_SDP_DEFAULT:
+								case JANUS_SDP_SENDRECV:
+									m->direction = hold_dir;
+									break;
+								default:
+									m->direction = JANUS_SDP_INACTIVE;
+									break;
+							}
 						}
 					} else {
 						m->direction = session->media.pre_hold_video_dir;
 					}
 				}
+				/* Check if the INVITE needs to be enriched with custom headers */
+				char custom_headers[2048];
+				janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
+
 				/* Send the re-INVITE */
 				char *sdp = janus_sdp_write(session->sdp);
 				nua_invite(session->stack->s_nh_i,
 					SOATAG_USER_SDP_STR(sdp),
+					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 					TAG_END());
 				g_free(sdp);
 			}
@@ -5070,8 +5168,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, notify, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(notify);
-			/* Send a 200 back */
-			nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
 			break;
 		}
 		case nua_i_options:
@@ -5469,11 +5565,19 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(status == 401) {
 					/* Get scheme/realm from 401 error */
 					sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
+					if(www_auth == NULL) {
+						/* No WWW-Authenticate header, give up */
+						goto auth_failed;
+					}
 					scheme = www_auth->au_scheme;
 					realm = msg_params_find(www_auth->au_params, "realm=");
 				} else {
 					/* Get scheme/realm from 407 error, proxy-auth */
 					sip_proxy_authenticate_t const* proxy_auth = sip->sip_proxy_authenticate;
+					if(proxy_auth == NULL) {
+						/* No Proxy-Authenticate header, give up */
+						goto auth_failed;
+					}
 					scheme = proxy_auth->au_scheme;
 					realm = msg_params_find(proxy_auth->au_params, "realm=");
 				}
@@ -5507,6 +5611,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					NUTAG_AUTH(auth),
 					TAG_END());
 			} else if(status >= 400) {
+auth_failed:
 				/* Authentication failed? */
 				session->account.registration_status = janus_sip_registration_status_failed;
 				/* Cleanup registration values */
@@ -5520,6 +5625,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->account.force_udp = FALSE;
 				session->account.force_tcp = FALSE;
 				session->account.sips = TRUE;
+				session->account.rfc2543_cancel = FALSE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
 				session->account.username = NULL;
@@ -6359,7 +6465,7 @@ static void *janus_sip_relay_thread(void *data) {
 					}
 					pollerrs = 0;
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
-					if(session->media.audio_ssrc_peer != ntohl(header->ssrc)) {
+					if(session->media.audio_ssrc_peer == 0) {
 						session->media.audio_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
 					}
@@ -6379,6 +6485,7 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					janus_rtp_header_update(header, &session->media.context, FALSE, 0);
 					/* Save the frame if we're recording */
+					header->ssrc = htonl(session->media.audio_ssrc_peer);
 					janus_recorder_save_frame(session->arc_peer, buffer, bytes);
 					/* Relay to application */
 					janus_plugin_rtp rtp = { .video = FALSE, .buffer = buffer, .length = bytes };
@@ -6429,7 +6536,7 @@ static void *janus_sip_relay_thread(void *data) {
 					}
 					pollerrs = 0;
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
-					if(session->media.video_ssrc_peer != ntohl(header->ssrc)) {
+					if(session->media.video_ssrc_peer == 0) {
 						session->media.video_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer video SSRC: %"SCNu32"\n", session->media.video_ssrc_peer);
 					}
@@ -6449,6 +6556,7 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					janus_rtp_header_update(header, &session->media.context, TRUE, 0);
 					/* Save the frame if we're recording */
+					header->ssrc = htonl(session->media.video_ssrc_peer);
 					janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
 					/* Relay to application */
 					janus_plugin_rtp rtp = { .video = TRUE, .buffer = buffer, .length = bytes };
@@ -6562,6 +6670,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_APPL_METHOD("REFER"),			/* We'll respond to incoming REFER messages ourselves */
 				SIPTAG_SUPPORTED_STR("replaces"),	/* Advertise that we support the Replaces header */
 				SIPTAG_SUPPORTED(NULL),
+				NTATAG_CANCEL_2543(session->account.rfc2543_cancel),
 				TAG_NULL());
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */

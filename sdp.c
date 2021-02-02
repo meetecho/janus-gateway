@@ -760,6 +760,7 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 			GResolver *resolver = g_resolver_get_default();
 			g_resolver_lookup_by_name_async(resolver, rip, NULL,
 				(GAsyncReadyCallback)janus_sdp_mdns_resolved, mc);
+			g_object_unref(resolver);
 			return 0;
 		}
 		/* Add remote candidate */
@@ -1089,6 +1090,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 				|| !strcasecmp(a->name, "fingerprint")
 				|| !strcasecmp(a->name, "group")
 				|| !strcasecmp(a->name, "msid-semantic")
+				|| !strcasecmp(a->name, "extmap-allow-mixed")
 				|| !strcasecmp(a->name, "rtcp-rsize")) {
 			anon->attributes = g_list_remove(anon->attributes, a);
 			temp = anon->attributes;

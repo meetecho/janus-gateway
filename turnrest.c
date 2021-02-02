@@ -31,6 +31,7 @@
 static const char *api_server = NULL;
 static const char *api_key = NULL;
 static gboolean api_http_get = FALSE;
+static uint api_timeout;
 static janus_mutex api_mutex = JANUS_MUTEX_INITIALIZER;
 
 
@@ -69,7 +70,7 @@ void janus_turnrest_deinit(void) {
 	janus_mutex_unlock(&api_mutex);
 }
 
-void janus_turnrest_set_backend(const char *server, const char *key, const char *method) {
+void janus_turnrest_set_backend(const char *server, const char *key, const char *method, const uint timeout) {
 	janus_mutex_lock(&api_mutex);
 
 	/* Get rid of the old values first */
@@ -93,6 +94,7 @@ void janus_turnrest_set_backend(const char *server, const char *key, const char 
 				api_http_get = FALSE;
 			}
 		}
+		api_timeout = timeout;
 	}
 	janus_mutex_unlock(&api_mutex);
 }
@@ -163,7 +165,7 @@ janus_turnrest_response *janus_turnrest_request(const char *user) {
 		/* FIXME Some servers don't like a POST with no data */
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query_string);
 	}
-	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);	/* FIXME Max 10 seconds */
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, api_timeout);
 	/* For getting data, we use an helper struct and the libcurl callback */
 	janus_turnrest_buffer data;
 	data.buffer = g_malloc0(1);

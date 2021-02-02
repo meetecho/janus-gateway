@@ -5,6 +5,7 @@
 # all the web servers will try and bind on both IPv4 and IPv6: if you
 # want to only bind to IPv4 addresses (e.g., because your system does not
 # support IPv6), you should set the web server 'ip' property to '0.0.0.0'.
+# To see debug logs from the HTTP server library, set 'mhd_debug'.
 general: {
 	#events = true					# Whether to notify event handlers about transport events (default=true)
 	json = "indented"				# Whether the JSON messages should be indented (default),
@@ -19,6 +20,8 @@ general: {
 	#secure_interface = "eth0"		# Whether we should bind this server to a specific interface only
 	#secure_ip = "192.168.0.1"		# Whether we should bind this server to a specific IP address (v4 or v6) only
 	#acl = "127.,192.168.0."		# Only allow requests coming from this comma separated list of addresses
+	#mhd_connection_limit = 1020		# Open connections limit in libmicrohttpd (default=1020)
+	#mhd_debug = false					# Ask libmicrohttpd to write warning and error messages to stderr (default=false)
 }
 
 # Janus can also expose an admin/monitor endpoint, to allow you to check
@@ -52,8 +55,12 @@ admin: {
 # you need that, uncomment and set the 'allow_origin' below to specify
 # what must be returned in 'Access-Control-Allow-Origin'. More details:
 # https://developer.mozilla.org/en-US/docs/Web/HTTP/Access_control_CORS
+# In case you want to enforce the Origin validation, rather than leave
+# it to browsers, you can set 'enforce_cors' to 'true' to have Janus
+# return a '403 Forbidden' for all requests that don't comply.
 cors: {
 	#allow_origin = "http://foo.example"
+	#enforce_cors = true
 }
 
 # Certificate and key to use for HTTPS, if enabled (and passphrase if needed).

@@ -3,6 +3,50 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.10.9] - 2020-12-23
+
+- Replaced Travis CI with GitHub Actions [[PR-2486](#2486)]
+- Fixed data channel messages potentially getting stuck in case of burst transfers (thanks @afshin2003!) [[PR-2427](#2427)]
+- Fixed simulcast issues when renegotiating PeerConnections [[Issue-2466](#2466)]
+- Added configurable TURN REST API timeout (thanks @evorw!) [[PR-2470](#2470)]
+- Added support for recording of binary data channels [[PR-2481](#2481)]
+- Fixed occasional SRTP errors when pausing and then resuming Streaming plugin handles after a long time
+- Fixed occasional SRTP errors when leaving and joining AudioBridge rooms without a new PeerConnection after a long time
+- Added support for playout of data channels in Record&Play plugin and demo (thanks @ricardo-salgado-tekever!) [[PR-2468](#2468)]
+- Added option to override connections limit in HTTP transport plugin [[PR-2489](#2489)]
+- Added options to enable libmicrohttpd debugging in HTTP transport plugin (thanks @evorw!) [[PR-2471](#2471)]
+- Fixed a few compile and runtime issues in WebSocket event handler
+- Refactored postprocessing management of timestamps to fix some key issues [[PR-2345](#2345)]
+- Fixed postprocessing of audio recordings containing RTP silence suppression packets [[PR-2467](#2467)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+## [v0.10.8] - 2020-11-23
+
+- Added differentiation between IPv4 and IPv6 NAT-1-1 addresses [[PR-2423](#2423)]
+- Made NACK buffer cleanup on outgoing keyframe disabled by default but configurable [[PR-2402](#2402)]
+- Added support for simulcast and TWCC to Duktape and Lua plugins [[PR-2409](#2409)]
+- Fixed rare crash in AudioBridge plugin when leaving a room [[Issue-2432](#2432)]
+- Fixed codec names not being updated in the SIP plugin after renegotiations (thanks @ihusejnovic!) [[PR-2417](#2417)]
+- Fixed crash in SIP plugin when handling REGISTER challenges without WWW-Authenticate headers [[Issue-2419](#2419)]
+- Added option to SIP plugin to let users CANCEL pending transactions without waiting for a 1xx [[PR-2434](#2434)]
+- Added option to enforce CORS on the server side in both HTTP and WebSocket transport plugins [[PR-2410](#2410)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+## [v0.10.7] - 2020-10-30
+
+- Fixed SDP negotiation when client uses max-bundle [[Issue-2390](#2390)]
+- Added optional JSEP flag to invert processing order of simulcast "rid" in SDP [[PR-2385](#2385)]
+- Fixed broken rid-based simulcast when using less than 3 substreams
+- Fixed occasional misleading "private IP" warning on startup (thanks @npikimasu!) [[PR-2386](#2386)]
+- Added "plugin-offer mode" to AudioBridge [[PR-2366](#2366)]
+- Fixed occasional deadlock when sending SUBSCRIBE messages via SIP plugin [[PR-2387](#2387)]
+- Fixed occasional SIGABRT in RabbitMQ transport (thanks @david-goncalves!) [[PR-2380](#2380)]
+- Fixed broken RTP parsing in janus-pp-rec when there were too many extensions (thanks @isnumanagic!) [[PR-2411](#2411)]
+- Fixed occasional segfault when post-processing G.722 mjr recordings
+- Added configurable simulcast encodings to janus.js (thanks @fippo!) [[PR-2393](#2392)]
+- Updated old Insertable Streams APIs in janus.js and e2etest.js
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.10.6] - 2020-10-05
 
 - New mechanism to tweak/query transport plugins via Admin API [[PR-2354](https://github.com/meetecho/janus-gateway/pull/2354)]

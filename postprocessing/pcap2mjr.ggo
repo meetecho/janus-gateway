@@ -1,4 +1,4 @@
-#pcap2mjr 0.10.7 gengetopt file
+#pcap2mjr 0.10.10 gengetopt file
 usage "pcap2mjr [OPTIONS] source.pcap destination.mjr"
 option "codec" c "Codec the recording will contain (e.g., opus, vp8, etc.)" string typestr="codec" required
 option "ssrc" s "SSRC of the packets in the pcap file to save" int typestr="ssrc" required
