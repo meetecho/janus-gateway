@@ -563,6 +563,24 @@ EXTRA_DIST += conf/janus.plugin.duktape.jcfg.sample.in
 endif
 
 
+bin_PROGRAMS += sdp-testcase
+sdp_testcase_SOURCES = \
+	sdp-testcase.c \
+	log.c \
+	sdp-utils.c \
+	utils.c \
+	$(NULL)
+
+sdp_testcase_CFLAGS = \
+	$(AM_CFLAGS) \
+	$(JANUS_CFLAGS) \
+	$(NULL)
+
+sdp_testcase_LDADD = \
+	$(JANUS_LIBS) \
+	$(JANUS_MANUAL_LIBS) \
+	$(NULL)
+
 ##
 # Post-processing
 ##
