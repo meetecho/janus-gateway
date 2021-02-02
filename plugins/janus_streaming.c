@@ -7639,8 +7639,10 @@ static void *janus_streaming_relay_thread(void *data) {
 				}
 				source->video_rtcp_fd = -1;
 
-				if(g_atomic_int_get(&mountpoint->destroyed))
-					              break;
+				if(g_atomic_int_get(&mountpoint->destroyed)){
+					break;
+				}
+				
 				/* Now let's try to reconnect */
 				if(janus_streaming_rtsp_connect_to_server(mountpoint) < 0) {
 					/* Reconnection failed? Let's try again later */
