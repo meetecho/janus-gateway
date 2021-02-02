@@ -344,3 +344,4 @@ Janus is thoroughly documented. You can find the current documentation, automati
 Any thought, feedback or (hopefully not!) insult is welcome!
 
 Developed by [@meetecho](https://github.com/meetecho)
+
