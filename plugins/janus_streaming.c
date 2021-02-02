@@ -6478,10 +6478,10 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		return -8;
 	}
 	
-	janus_mutex_lock(&mp_mutex);
+	janus_mutex_lock(&mp->mutex);
 	
 	if(g_atomic_int_get(&mp->destroyed)){
-		janus_mutex_unlock(&mp_mutex);
+		janus_mutex_unlock(&mp->mutex);
 		return -8;
 	}
 	/* Parse both video and audio first before proceed to setup as curldata will be reused */
@@ -6495,7 +6495,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		aresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", abase, &apt,
 			atransport, ahost, artpmap, afmtp, acontrol, &source->audio_iface, &audio_fds);
 	}
-	janus_mutex_unlock(&mp_mutex);
+	janus_mutex_unlock(&mp->mutex);
 
 	if(vresult == -1 && aresult == -1) {
 		/* Both audio and video failed? Give up... */
