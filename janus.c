@@ -349,6 +349,7 @@ static json_t *janus_info(const char *transaction) {
 #ifdef HAVE_ICE_NOMINATION
 	json_object_set_new(info, "ice-nomination", json_string(janus_ice_get_nomination_mode()));
 #endif
+	json_object_set_new(info, "ice-keepalive-conncheck", janus_ice_is_keepalive_conncheck_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "mdns-enabled", janus_ice_is_mdns_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "min-nack-queue", json_integer(janus_get_min_nack_queue()));
@@ -4798,6 +4799,9 @@ gint main(int argc, char *argv[])
 		janus_ice_set_nomination_mode(item->value);
 #endif
 	}
+	item = janus_config_get(config, config_nat, janus_config_type_item, "ice_keepalive_conncheck");
+	if(item && item->value)
+		janus_ice_set_keepalive_conncheck_enabled(janus_is_true(item->value));
 	if(janus_ice_set_turn_server(turn_server, turn_port, turn_type, turn_user, turn_pwd) < 0) {
 		if(!ignore_unreachable_ice_server) {
 			JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);

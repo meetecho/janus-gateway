@@ -123,6 +123,18 @@ const char *janus_ice_get_nomination_mode(void) {
 }
 #endif
 
+/* Keepalive via connectivity checks */
+static gboolean janus_ice_keepalive_connckecks = FALSE;
+void janus_ice_set_keepalive_conncheck_enabled(gboolean enabled) {
+	janus_ice_keepalive_connckecks = enabled;
+	if(janus_ice_keepalive_connckecks) {
+		JANUS_LOG(LOG_INFO, "Using connectivity checks as PeerConnection keep-alives\n");
+	}
+}
+gboolean janus_ice_is_keepalive_conncheck_enabled(void) {
+	return janus_ice_keepalive_connckecks;
+}
+
 /* Opaque IDs set by applications are by default only passed to event handlers
  * for correlation purposes, but not sent back to the user or application in
  * the related Janus API responses or events, unless configured otherwise */
@@ -3486,6 +3498,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #ifdef HAVE_ICE_NOMINATION
 		"nomination-mode", janus_ice_nomination,
 #endif
+		"keepalive-conncheck", janus_ice_keepalive_connckecks ? FALSE : TRUE,
 #ifdef HAVE_LIBNICE_TCP
 		"ice-udp", TRUE,
 		"ice-tcp", janus_ice_tcp_enabled ? TRUE : FALSE,
