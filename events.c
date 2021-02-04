@@ -105,7 +105,7 @@ void log_event(json_t* event) {
 	JANUS_PRINT("[WEBRTC_EVENT] %s", json_dumps(container_event, JSON_COMPACT));
 
 	/* Delete the container event */
-	json_decref(container_event);
+	//json_decref(container_event);
 }
 /* BB end */
 
