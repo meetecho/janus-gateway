@@ -92,7 +92,7 @@ void log_event(json_t* event) {
 	char timestamp[128];
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
-	sprintf(timestamp, 128, "%d.%03d", tv.tv_sec, tv.tv_usec/1000);
+	snprintf(timestamp, 127, "%d.%03d", tv.tv_sec, tv.tv_usec/1000);
 
 	/* Create container object */
 	json_t *container_event = json_object();
