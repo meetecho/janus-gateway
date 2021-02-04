@@ -3994,6 +3994,7 @@ gint main(int argc, char *argv[])
 	core_limits.rlim_cur = core_limits.rlim_max = RLIM_INFINITY;
 	setrlimit(RLIMIT_CORE, &core_limits);
 
+	/* BB - temporary, remove when done */
 	g_print("*** Experimental branch nuance_event_01 ***\n");
 
 	g_print("Janus commit: %s\n", janus_build_git_sha);

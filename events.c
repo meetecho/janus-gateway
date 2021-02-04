@@ -11,6 +11,7 @@
  */
 
 #include <stdarg.h>
+#include <sys/time.h>
 
 #include "events.h"
 #include "utils.h"
@@ -83,6 +84,30 @@ void janus_events_deinit(void) {
 gboolean janus_events_is_enabled(void) {
 	return eventsenabled;
 }
+
+/* BB - Log event support */
+void log_event(json_t* event) {
+
+	/* Get timestamp */
+	char timestamp[128];
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	sprintf(timestamp, 128, "%d.%03d", tv.tv_sec, tv.tv_usec/1000);
+
+	/* Create container object */
+	json_t *container_event = json_object();
+
+	/* Add the timestamp to the object */
+	json_object_set_new(container_event, "timestamp", json_string(timestamp));
+	json_object_set(container_event, "event", event);
+
+	/* Log the container event by printing it */
+	JANUS_PRINT("[WEBRTC_EVENT] %s", json_dumps(container_event, JSON_COMPACT));
+
+	/* Delete the container event */
+	json_decref(container_event);
+}
+/* BB end */
 
 void janus_events_notify_handlers(int type, int subtype, guint64 session_id, ...) {
 	/* This method has a variable list of arguments, depending on the event type */
@@ -266,6 +291,8 @@ void janus_events_notify_handlers(int type, int subtype, guint64 session_id, ...
 	json_object_set_new(event, "event", body);
 	va_end(args);
 
+	log_event(event);
+
 	if(!eventsenabled) {
 		json_decref(event);
 		return;
@@ -273,6 +300,8 @@ void janus_events_notify_handlers(int type, int subtype, guint64 session_id, ...
 	/* Enqueue the event */
 	g_async_queue_push(events, event);
 }
+
+
 
 void *janus_events_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining Events handler thread\n");
