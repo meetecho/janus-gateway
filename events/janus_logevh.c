@@ -80,7 +80,6 @@ static janus_mutex evh_mutex;
 
 /* Queue of events to handle */
 static GAsyncQueue *events = NULL;
-static gboolean group_events = TRUE;
 static json_t exit_event;
 static void janus_logevh_event_free(json_t *event) {
 	if(!event || event == &exit_event)
@@ -136,7 +135,7 @@ int janus_logevh_init(const char *config_path) {
 		/* Setup the sample event handler, if required */
 		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Sample event handler disabled (Janus API)\n");
+			JANUS_LOG(LOG_WARN, "Login event handler disabled\n");
 		} else {
 			/* Which events should we subscribe to? */
 			item = janus_config_get(config, config_general, janus_config_type_item, "events");
@@ -544,7 +543,7 @@ void log_event(json_t* event) {
 	char timestamp[128];
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
-	snprintf(timestamp, 127, "%d.%03d", tv.tv_sec, tv.tv_usec/1000);
+	snprintf(timestamp, 127, "%ld.%03ld", tv.tv_sec, tv.tv_usec/1000);
 
 	/* Create container object */
 	json_t *container_event = json_object();

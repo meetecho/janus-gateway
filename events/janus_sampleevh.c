@@ -1,4 +1,4 @@
-/*! \file   janus_logevh.c
+/*! \file   janus_sampleevh.c
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus SampleEventHandler plugin
@@ -24,58 +24,58 @@
 
 
 /* Plugin information */
-#define JANUS_LOGEVH_VERSION			1
-#define JANUS_LOGEVH_VERSION_STRING	"0.0.1"
-#define JANUS_LOGEVH_DESCRIPTION		"This is a trivial sample event handler plugin for Janus, which forwards events via HTTP POST."
-#define JANUS_LOGEVH_NAME			"JANUS SampleEventHandler plugin"
-#define JANUS_LOGEVH_AUTHOR			"Meetecho s.r.l."
-#define JANUS_LOGEVH_PACKAGE			"janus.eventhandler.logevh"
+#define JANUS_SAMPLEEVH_VERSION			1
+#define JANUS_SAMPLEEVH_VERSION_STRING	"0.0.1"
+#define JANUS_SAMPLEEVH_DESCRIPTION		"This is a trivial sample event handler plugin for Janus, which forwards events via HTTP POST."
+#define JANUS_SAMPLEEVH_NAME			"JANUS SampleEventHandler plugin"
+#define JANUS_SAMPLEEVH_AUTHOR			"Meetecho s.r.l."
+#define JANUS_SAMPLEEVH_PACKAGE			"janus.eventhandler.sampleevh"
 
 /* Plugin methods */
 janus_eventhandler *create(void);
-int janus_logevh_init(const char *config_path);
-void janus_logevh_destroy(void);
-int janus_logevh_get_api_compatibility(void);
-int janus_logevh_get_version(void);
-const char *janus_logevh_get_version_string(void);
-const char *janus_logevh_get_description(void);
-const char *janus_logevh_get_name(void);
-const char *janus_logevh_get_author(void);
-const char *janus_logevh_get_package(void);
-void janus_logevh_incoming_event(json_t *event);
-json_t *janus_logevh_handle_request(json_t *request);
+int janus_sampleevh_init(const char *config_path);
+void janus_sampleevh_destroy(void);
+int janus_sampleevh_get_api_compatibility(void);
+int janus_sampleevh_get_version(void);
+const char *janus_sampleevh_get_version_string(void);
+const char *janus_sampleevh_get_description(void);
+const char *janus_sampleevh_get_name(void);
+const char *janus_sampleevh_get_author(void);
+const char *janus_sampleevh_get_package(void);
+void janus_sampleevh_incoming_event(json_t *event);
+json_t *janus_sampleevh_handle_request(json_t *request);
 
 /* Event handler setup */
-static janus_eventhandler janus_logevh =
+static janus_eventhandler janus_sampleevh =
 	JANUS_EVENTHANDLER_INIT (
-		.init = janus_logevh_init,
-		.destroy = janus_logevh_destroy,
+		.init = janus_sampleevh_init,
+		.destroy = janus_sampleevh_destroy,
 
-		.get_api_compatibility = janus_logevh_get_api_compatibility,
-		.get_version = janus_logevh_get_version,
-		.get_version_string = janus_logevh_get_version_string,
-		.get_description = janus_logevh_get_description,
-		.get_name = janus_logevh_get_name,
-		.get_author = janus_logevh_get_author,
-		.get_package = janus_logevh_get_package,
+		.get_api_compatibility = janus_sampleevh_get_api_compatibility,
+		.get_version = janus_sampleevh_get_version,
+		.get_version_string = janus_sampleevh_get_version_string,
+		.get_description = janus_sampleevh_get_description,
+		.get_name = janus_sampleevh_get_name,
+		.get_author = janus_sampleevh_get_author,
+		.get_package = janus_sampleevh_get_package,
 
-		.incoming_event = janus_logevh_incoming_event,
-		.handle_request = janus_logevh_handle_request,
+		.incoming_event = janus_sampleevh_incoming_event,
+		.handle_request = janus_sampleevh_handle_request,
 
 		.events_mask = JANUS_EVENT_TYPE_NONE
 	);
 
 /* Plugin creator */
 janus_eventhandler *create(void) {
-	JANUS_LOG(LOG_VERB, "%s created!\n", JANUS_LOGEVH_NAME);
-	return &janus_logevh;
+	JANUS_LOG(LOG_VERB, "%s created!\n", JANUS_SAMPLEEVH_NAME);
+	return &janus_sampleevh;
 }
 
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
 static GThread *handler_thread;
-static void *janus_logevh_handler(void *data);
+static void *janus_sampleevh_handler(void *data);
 static janus_mutex evh_mutex;
 
 /* JSON serialization options */
@@ -89,7 +89,7 @@ static int compression = 6;		/* Z_DEFAULT_COMPRESSION */
 static GAsyncQueue *events = NULL;
 static gboolean group_events = TRUE;
 static json_t exit_event;
-static void janus_logevh_event_free(json_t *event) {
+static void janus_sampleevh_event_free(json_t *event) {
 	if(!event || event == &exit_event)
 		return;
 	json_decref(event);
@@ -121,14 +121,14 @@ static struct janus_json_parameter tweak_parameters[] = {
 	{"retransmissions_backoff", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 /* Error codes (for the tweaking via Admin API */
-#define JANUS_LOGEVH_ERROR_INVALID_REQUEST		411
-#define JANUS_LOGEVH_ERROR_MISSING_ELEMENT		412
-#define JANUS_LOGEVH_ERROR_INVALID_ELEMENT		413
-#define JANUS_LOGEVH_ERROR_UNKNOWN_ERROR			499
+#define JANUS_SAMPLEEVH_ERROR_INVALID_REQUEST		411
+#define JANUS_SAMPLEEVH_ERROR_MISSING_ELEMENT		412
+#define JANUS_SAMPLEEVH_ERROR_INVALID_ELEMENT		413
+#define JANUS_SAMPLEEVH_ERROR_UNKNOWN_ERROR			499
 
 
 /* Plugin implementation */
-int janus_logevh_init(const char *config_path) {
+int janus_sampleevh_init(const char *config_path) {
 	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
 		return -1;
@@ -141,12 +141,12 @@ int janus_logevh_init(const char *config_path) {
 	/* Read configuration */
 	gboolean enabled = FALSE;
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_LOGEVH_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_SAMPLEEVH_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
 	if(config == NULL) {
-		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_LOGEVH_PACKAGE);
-		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_LOGEVH_PACKAGE);
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_SAMPLEEVH_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_SAMPLEEVH_PACKAGE);
 		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 		config = janus_config_parse(filename);
 	}
@@ -196,7 +196,7 @@ int janus_logevh_init(const char *config_path) {
 				/* Which events should we subscribe to? */
 				item = janus_config_get(config, config_general, janus_config_type_item, "events");
 				if(item && item->value)
-					janus_events_edit_events_mask(item->value, &janus_logevh.events_mask);
+					janus_events_edit_events_mask(item->value, &janus_sampleevh.events_mask);
 				/* Is grouping of events ok? */
 				item = janus_config_get(config, config_general, janus_config_type_item, "grouping");
 				if(item && item->value)
@@ -251,14 +251,14 @@ int janus_logevh_init(const char *config_path) {
 	curl_global_init(CURL_GLOBAL_ALL);
 
 	/* Initialize the events queue */
-	events = g_async_queue_new_full((GDestroyNotify) janus_logevh_event_free);
+	events = g_async_queue_new_full((GDestroyNotify) janus_sampleevh_event_free);
 	janus_mutex_init(&evh_mutex);
 
 	g_atomic_int_set(&initialized, 1);
 
 	/* Launch the thread that will handle incoming events */
 	GError *error = NULL;
-	handler_thread = g_thread_try_new("janus logevh handler", janus_logevh_handler, NULL, &error);
+	handler_thread = g_thread_try_new("janus sampleevh handler", janus_sampleevh_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SampleEventHandler handler thread...\n",
@@ -266,11 +266,11 @@ int janus_logevh_init(const char *config_path) {
 		g_error_free(error);
 		return -1;
 	}
-	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_LOGEVH_NAME);
+	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_SAMPLEEVH_NAME);
 	return 0;
 }
 
-void janus_logevh_destroy(void) {
+void janus_sampleevh_destroy(void) {
 	if(!g_atomic_int_get(&initialized))
 		return;
 	g_atomic_int_set(&stopping, 1);
@@ -288,39 +288,39 @@ void janus_logevh_destroy(void) {
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
-	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_LOGEVH_NAME);
+	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_SAMPLEEVH_NAME);
 }
 
-int janus_logevh_get_api_compatibility(void) {
+int janus_sampleevh_get_api_compatibility(void) {
 	/* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
 	return JANUS_EVENTHANDLER_API_VERSION;
 }
 
-int janus_logevh_get_version(void) {
-	return JANUS_LOGEVH_VERSION;
+int janus_sampleevh_get_version(void) {
+	return JANUS_SAMPLEEVH_VERSION;
 }
 
-const char *janus_logevh_get_version_string(void) {
-	return JANUS_LOGEVH_VERSION_STRING;
+const char *janus_sampleevh_get_version_string(void) {
+	return JANUS_SAMPLEEVH_VERSION_STRING;
 }
 
-const char *janus_logevh_get_description(void) {
-	return JANUS_LOGEVH_DESCRIPTION;
+const char *janus_sampleevh_get_description(void) {
+	return JANUS_SAMPLEEVH_DESCRIPTION;
 }
 
-const char *janus_logevh_get_name(void) {
-	return JANUS_LOGEVH_NAME;
+const char *janus_sampleevh_get_name(void) {
+	return JANUS_SAMPLEEVH_NAME;
 }
 
-const char *janus_logevh_get_author(void) {
-	return JANUS_LOGEVH_AUTHOR;
+const char *janus_sampleevh_get_author(void) {
+	return JANUS_SAMPLEEVH_AUTHOR;
 }
 
-const char *janus_logevh_get_package(void) {
-	return JANUS_LOGEVH_PACKAGE;
+const char *janus_sampleevh_get_package(void) {
+	return JANUS_SAMPLEEVH_PACKAGE;
 }
 
-void janus_logevh_incoming_event(json_t *event) {
+void janus_sampleevh_incoming_event(json_t *event) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		/* Janus is closing or the plugin is */
 		return;
@@ -333,15 +333,12 @@ void janus_logevh_incoming_event(json_t *event) {
 	 * and handle it in our own thread: the event contains a monotonic time indicator of
 	 * when the event actually happened on this machine, so that, if relevant, we can compute
 	 * any delay in the actual event processing ourselves. */
-
-	JANUS_LOG(LOG_INFO, "Event received in sample handler");
-
 	json_incref(event);
 	g_async_queue_push(events, event);
 
 }
 
-json_t *janus_logevh_handle_request(json_t *request) {
+json_t *janus_sampleevh_handle_request(json_t *request) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}
@@ -350,7 +347,7 @@ json_t *janus_logevh_handle_request(json_t *request) {
 	char error_cause[512];
 	JANUS_VALIDATE_JSON_OBJECT(request, request_parameters,
 		error_code, error_cause, TRUE,
-		JANUS_LOGEVH_ERROR_MISSING_ELEMENT, JANUS_LOGEVH_ERROR_INVALID_ELEMENT);
+		JANUS_SAMPLEEVH_ERROR_MISSING_ELEMENT, JANUS_SAMPLEEVH_ERROR_INVALID_ELEMENT);
 	if(error_code != 0)
 		goto plugin_response;
 	/* Get the request */
@@ -359,7 +356,7 @@ json_t *janus_logevh_handle_request(json_t *request) {
 		/* We only support a request to tweak the current settings */
 		JANUS_VALIDATE_JSON_OBJECT(request, tweak_parameters,
 			error_code, error_cause, TRUE,
-			JANUS_LOGEVH_ERROR_MISSING_ELEMENT, JANUS_LOGEVH_ERROR_INVALID_ELEMENT);
+			JANUS_SAMPLEEVH_ERROR_MISSING_ELEMENT, JANUS_SAMPLEEVH_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto plugin_response;
 		/* Parameters we can change */
@@ -383,7 +380,7 @@ json_t *janus_logevh_handle_request(json_t *request) {
 			req_backend = json_string_value(json_object_get(request, "backend"));
 		if(req_backend && strstr(req_backend, "http") != req_backend) {
 			/* Not an HTTP address */
-			error_code = JANUS_LOGEVH_ERROR_INVALID_ELEMENT;
+			error_code = JANUS_SAMPLEEVH_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, sizeof(error_cause), "Invalid HTTP URI '%s'", req_backend);
 			goto plugin_response;
 		}
@@ -399,7 +396,7 @@ json_t *janus_logevh_handle_request(json_t *request) {
 		/* If we got here, we can enforce */
 		janus_mutex_lock(&evh_mutex);
 		if(req_events)
-			janus_events_edit_events_mask(req_events, &janus_logevh.events_mask);
+			janus_events_edit_events_mask(req_events, &janus_sampleevh.events_mask);
 		if(req_grouping > -1)
 			group_events = req_grouping ? TRUE : FALSE;
 		if(req_compress > -1)
@@ -427,7 +424,7 @@ json_t *janus_logevh_handle_request(json_t *request) {
 		janus_mutex_unlock(&evh_mutex);
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
-		error_code = JANUS_LOGEVH_ERROR_INVALID_REQUEST;
+		error_code = JANUS_SAMPLEEVH_ERROR_INVALID_REQUEST;
 		g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
 	}
 
@@ -447,7 +444,7 @@ plugin_response:
 }
 
 /* Thread to handle incoming events */
-static void *janus_logevh_handler(void *data) {
+static void *janus_sampleevh_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining SampleEventHandler handler thread\n");
 	json_t *event = NULL, *output = NULL;
 	char *event_text = NULL;
@@ -666,7 +663,6 @@ static void *janus_logevh_handler(void *data) {
 							   }
 							}
 						*/
-						break;
 					case JANUS_EVENT_TYPE_EXTERNAL:
 						/* This is an external event, not originated by Janus itself
 						 * or any of its plugins, but from an ad-hoc Admin API request
