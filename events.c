@@ -85,7 +85,7 @@ gboolean janus_events_is_enabled(void) {
 	return eventsenabled;
 }
 
-/* BB - Log event support */
+/* BB - Log event to the console */
 void log_event(json_t* event) {
 
 	/* Get timestamp */
@@ -292,7 +292,8 @@ void janus_events_notify_handlers(int type, int subtype, guint64 session_id, ...
 	json_object_set_new(event, "event", body);
 	va_end(args);
 
-	log_event(event);
+	/* BB - log all the events */
+	// log_event(event);
 
 	if(!eventsenabled) {
 		json_decref(event);
