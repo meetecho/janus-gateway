@@ -55,10 +55,4 @@ const char *janus_events_type_to_label(int type);
  * @returns The prettified name of the event type, if found, or NULL otherwise */
 const char *janus_events_type_to_name(int type);
 
-/* BB - Event logging */
-/*! \brief Method for logging the event to the console
- * @param[in] event Event to log to the console */
-void log_event(json_t* event);
-
-
 #endif

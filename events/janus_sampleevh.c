@@ -333,6 +333,9 @@ void janus_logevh_incoming_event(json_t *event) {
 	 * and handle it in our own thread: the event contains a monotonic time indicator of
 	 * when the event actually happened on this machine, so that, if relevant, we can compute
 	 * any delay in the actual event processing ourselves. */
+
+	JANUS_LOG(LOG_INFO, "Event received in sample handler");
+
 	json_incref(event);
 	g_async_queue_push(events, event);
 
