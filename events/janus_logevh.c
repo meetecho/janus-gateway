@@ -226,9 +226,6 @@ void janus_logevh_incoming_event(json_t *event) {
 		/* Janus is closing or the plugin is */
 		return;
 	}
-
-	JANUS_LOG(LOG_INFO, "Event received in log handler");
-
 	/* Do NOT handle the event here in this callback! Since Janus notifies you right
 	 * away when something happens, these events are triggered from working threads and
 	 * not some sort of message bus. As such, performing I/O or network operations in
