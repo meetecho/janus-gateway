@@ -318,7 +318,7 @@ events_libadd = \
 	$(EVENTS_LIBS) \
 	$(NULL)
 
-if ENABLE_SAMPLEEVH
+if ENABLE_LOGEVH
 event_LTLIBRARIES += events/libjanus_sampleevh.la
 events_libjanus_sampleevh_la_SOURCES = events/janus_sampleevh.c
 events_libjanus_sampleevh_la_CFLAGS = $(events_cflags) $(LIBCURL_CFLAGS)
@@ -326,6 +326,16 @@ events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) $(LIBCURL_LDFLAGS) $(LI
 events_libjanus_sampleevh_la_LIBADD = $(events_libadd) $(LIBCURL_LIBADD)
 conf_DATA += conf/janus.eventhandler.sampleevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.sampleevh.jcfg.sample
+endif
+
+if ENABLE_LOGEVH
+event_LTLIBRARIES += events/libjanus_logevh.la
+events_libjanus_logevh_la_SOURCES = events/janus_logevh.c
+events_libjanus_logevh_la_CFLAGS = $(events_cflags)
+events_libjanus_logevh_la_LDFLAGS = $(events_ldflags) -lm
+events_libjanus_logevh_la_LIBADD = $(events_libadd) $(LIBCURL_LIBADD)
+conf_DATA += conf/janus.eventhandler.logevh.jcfg.sample
+EXTRA_DIST += conf/janus.eventhandler.logevh.jcfg.sample
 endif
 
 if ENABLE_WSEVH

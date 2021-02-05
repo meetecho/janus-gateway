@@ -85,31 +85,6 @@ gboolean janus_events_is_enabled(void) {
 	return eventsenabled;
 }
 
-/* BB - Log event to the console */
-void log_event(json_t* event) {
-
-	/* Get timestamp */
-	char timestamp[128];
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	snprintf(timestamp, 127, "%d.%03d", tv.tv_sec, tv.tv_usec/1000);
-
-	/* Create container object */
-	json_t *container_event = json_object();
-
-	/* Add the timestamp to the object */
-	json_object_set_new(container_event, "timestamp", json_string(timestamp));
-	json_object_set(container_event, "event", event);
-
-	/* Log the container event by printing it */
-	char* event_string = json_dumps(container_event, JSON_COMPACT);
-	JANUS_PRINT("[WEBRTC_EVENT] %s\n", event_string);
-
-	/* Delete the container event */
-	json_decref(container_event);
-}
-/* BB end */
-
 void janus_events_notify_handlers(int type, int subtype, guint64 session_id, ...) {
 	/* This method has a variable list of arguments, depending on the event type */
 	va_list args;
@@ -418,3 +393,28 @@ const char *janus_events_type_to_name(int type) {
 	}
 	return (char *)NULL;
 }
+
+/* BB - Log event to the console */
+void log_event(json_t* event) {
+
+	/* Get timestamp */
+	char timestamp[128];
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	snprintf(timestamp, 127, "%d.%03d", tv.tv_sec, tv.tv_usec/1000);
+
+	/* Create container object */
+	json_t *container_event = json_object();
+
+	/* Add the timestamp to the object */
+	json_object_set_new(container_event, "timestamp", json_string(timestamp));
+	json_object_set(container_event, "event", event);
+
+	/* Log the container event by printing it */
+	char* event_string = json_dumps(container_event, JSON_COMPACT);
+	JANUS_PRINT("[WEBRTC_EVENT] %s\n", event_string);
+
+	/* Delete the container event */
+	json_decref(container_event);
+}
+/* BB end */

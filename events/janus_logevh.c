@@ -14,7 +14,6 @@
 #include "eventhandler.h"
 
 #include <math.h>
-#include <curl/curl.h>
 
 #include "../debug.h"
 #include "../config.h"
@@ -26,10 +25,10 @@
 /* Plugin information */
 #define JANUS_LOGEVH_VERSION			1
 #define JANUS_LOGEVH_VERSION_STRING	"0.0.1"
-#define JANUS_LOGEVH_DESCRIPTION		"This is a trivial sample event handler plugin for Janus, which forwards events via HTTP POST."
-#define JANUS_LOGEVH_NAME			"JANUS SampleEventHandler plugin"
-#define JANUS_LOGEVH_AUTHOR			"Meetecho s.r.l."
-#define JANUS_LOGEVH_PACKAGE			"janus.eventhandler.logevh"
+#define JANUS_LOGEVH_DESCRIPTION    "This is a trivial log event handler plugin for Janus, which prints the events in the log stream"
+#define JANUS_LOGEVH_NAME			"JANUS LogEventHandler plugin"
+#define JANUS_LOGEVH_AUTHOR			"Nuance"
+#define JANUS_LOGEVH_PACKAGE		"janus.eventhandler.logevh"
 
 /* Plugin methods */
 janus_eventhandler *create(void);
@@ -71,19 +70,11 @@ janus_eventhandler *create(void) {
 	return &janus_logevh;
 }
 
-
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
 static GThread *handler_thread;
 static void *janus_logevh_handler(void *data);
 static janus_mutex evh_mutex;
-
-/* JSON serialization options */
-static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
-
-/* Compression, if any */
-static gboolean compress = FALSE;
-static int compression = 6;		/* Z_DEFAULT_COMPRESSION */
 
 /* Queue of events to handle */
 static GAsyncQueue *events = NULL;
@@ -95,37 +86,18 @@ static void janus_logevh_event_free(json_t *event) {
 	json_decref(event);
 }
 
-/* Retransmission management */
-static int max_retransmissions = 5;
-static int retransmissions_backoff = 100;
-
-/* Web backend to send the events to */
-static char *backend = NULL;
-static char *backend_user = NULL, *backend_pwd = NULL;
-static size_t janus_sampleehv_write_data(void *buffer, size_t size, size_t nmemb, void *userp) {
-	return size*nmemb;
-}
-
-
 /* Parameter validation (for tweaking via Admin API) */
 static struct janus_json_parameter request_parameters[] = {
 	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter tweak_parameters[] = {
 	{"events", JSON_STRING, 0},
-	{"grouping", JANUS_JSON_BOOL, 0},
-	{"backend", JSON_STRING, 0},
-	{"backend_user", JSON_STRING, 0},
-	{"backend_pwd", JSON_STRING, 0},
-	{"max_retransmissions", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"retransmissions_backoff", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 /* Error codes (for the tweaking via Admin API */
 #define JANUS_LOGEVH_ERROR_INVALID_REQUEST		411
 #define JANUS_LOGEVH_ERROR_MISSING_ELEMENT		412
 #define JANUS_LOGEVH_ERROR_INVALID_ELEMENT		413
 #define JANUS_LOGEVH_ERROR_UNKNOWN_ERROR			499
-
 
 /* Plugin implementation */
 int janus_logevh_init(const char *config_path) {
@@ -160,80 +132,10 @@ int janus_logevh_init(const char *config_path) {
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Sample event handler disabled (Janus API)\n");
 		} else {
-			/* Backend to send events to */
-			item = janus_config_get(config, config_general, janus_config_type_item, "backend");
-			if(!item || !item->value || strstr(item->value, "http") != item->value) {
-				JANUS_LOG(LOG_WARN, "Missing or invalid backend\n");
-			} else {
-				backend = g_strdup(item->value);
-				/* Any credentials needed? */
-				item = janus_config_get(config, config_general, janus_config_type_item, "backend_user");
-				backend_user = (item && item->value) ? g_strdup(item->value) : NULL;
-				item = janus_config_get(config, config_general, janus_config_type_item, "backend_pwd");
-				backend_pwd = (item && item->value) ? g_strdup(item->value) : NULL;
-				/* Any specific setting for retransmissions? */
-				item = janus_config_get(config, config_general, janus_config_type_item, "max_retransmissions");
-				if(item && item->value) {
-					int mr = atoi(item->value);
-					if(mr < 0) {
-						JANUS_LOG(LOG_WARN, "Invalid negative value for 'max_retransmissions', using default (%d)\n", max_retransmissions);
-					} else if(mr == 0) {
-						JANUS_LOG(LOG_WARN, "Retransmissions disabled (max_retransmissions=0)\n");
-						max_retransmissions = 0;
-					} else {
-						max_retransmissions = mr;
-					}
-				}
-				item = janus_config_get(config, config_general, janus_config_type_item, "retransmissions_backoff");
-				if(item && item->value) {
-					int rb = atoi(item->value);
-					if(rb <= 0) {
-						JANUS_LOG(LOG_WARN, "Invalid negative or null value for 'retransmissions_backoff', using default (%d)\n", retransmissions_backoff);
-					} else {
-						retransmissions_backoff = rb;
-					}
-				}
-				/* Which events should we subscribe to? */
-				item = janus_config_get(config, config_general, janus_config_type_item, "events");
-				if(item && item->value)
-					janus_events_edit_events_mask(item->value, &janus_logevh.events_mask);
-				/* Is grouping of events ok? */
-				item = janus_config_get(config, config_general, janus_config_type_item, "grouping");
-				if(item && item->value)
-					group_events = janus_is_true(item->value);
-				/* Check the JSON indentation */
-				item = janus_config_get(config, config_general, janus_config_type_item, "json");
-				if(item && item->value) {
-					/* Check how we need to format/serialize the JSON output */
-					if(!strcasecmp(item->value, "indented")) {
-						/* Default: indented, we use three spaces for that */
-						json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
-					} else if(!strcasecmp(item->value, "plain")) {
-						/* Not indented and no new lines, but still readable */
-						json_format = JSON_INDENT(0) | JSON_PRESERVE_ORDER;
-					} else if(!strcasecmp(item->value, "compact")) {
-						/* Compact, so no spaces between separators */
-						json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
-					} else {
-						JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
-						json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
-					}
-				}
-				/* Check if we need any compression */
-				item = janus_config_get(config, config_general, janus_config_type_item, "compress");
-				if(item && item->value && janus_is_true(item->value)) {
-					compress = TRUE;
-					item = janus_config_get(config, config_general, janus_config_type_item, "compression");
-					if(item && item->value) {
-						int c = atoi(item->value);
-						if(c < 0 || c > 9) {
-							JANUS_LOG(LOG_WARN, "Invalid compression factor '%d', falling back to '%d'...\n", c, compression);
-						} else {
-							compression = c;
-						}
-					}
-				}
-				/* Done */
+			/* Which events should we subscribe to? */
+			item = janus_config_get(config, config_general, janus_config_type_item, "events");
+			if(item && item->value) {
+				janus_events_edit_events_mask(item->value, &janus_logevh.events_mask);
 				enabled = TRUE;
 			}
 		}
@@ -242,13 +144,9 @@ int janus_logevh_init(const char *config_path) {
 	janus_config_destroy(config);
 	config = NULL;
 	if(!enabled) {
-		JANUS_LOG(LOG_FATAL, "Sample event handler not enabled/needed, giving up...\n");
+		JANUS_LOG(LOG_FATAL, "Log event handler not enabled/needed, giving up...\n");
 		return -1;	/* No point in keeping the plugin loaded */
 	}
-	JANUS_LOG(LOG_VERB, "Sample event handler configured: %s\n", backend);
-
-	/* Initialize libcurl, needed for forwarding events via HTTP POST */
-	curl_global_init(CURL_GLOBAL_ALL);
 
 	/* Initialize the events queue */
 	events = g_async_queue_new_full((GDestroyNotify) janus_logevh_event_free);
@@ -283,8 +181,6 @@ void janus_logevh_destroy(void) {
 
 	g_async_queue_unref(events);
 	events = NULL;
-
-	g_free(backend);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -360,67 +256,13 @@ json_t *janus_logevh_handle_request(json_t *request) {
 		if(error_code != 0)
 			goto plugin_response;
 		/* Parameters we can change */
-		const char *req_events = NULL, *req_backend = NULL,
-			*req_backend_user = NULL, *req_backend_pwd = NULL;
-		int req_grouping = -1, req_maxretr = -1, req_backoff = -1,
-			req_compress = -1, req_compression = -1;
+		const char *req_events = NULL;
 		/* Events */
 		if(json_object_get(request, "events"))
 			req_events = json_string_value(json_object_get(request, "events"));
-		/* Grouping */
-		if(json_object_get(request, "grouping"))
-			req_grouping = json_is_true(json_object_get(request, "grouping"));
-		/* Compression */
-		if(json_object_get(request, "compress"))
-			req_compress = json_is_true(json_object_get(request, "compress"));
-		if(json_object_get(request, "compression"))
-			req_compression = json_integer_value(json_object_get(request, "compression"));
-		/* Backend stuff */
-		if(json_object_get(request, "backend"))
-			req_backend = json_string_value(json_object_get(request, "backend"));
-		if(req_backend && strstr(req_backend, "http") != req_backend) {
-			/* Not an HTTP address */
-			error_code = JANUS_LOGEVH_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, sizeof(error_cause), "Invalid HTTP URI '%s'", req_backend);
-			goto plugin_response;
-		}
-		if(json_object_get(request, "backend_user"))
-			req_backend_user = json_string_value(json_object_get(request, "backend_user"));
-		if(json_object_get(request, "backend_pwd"))
-			req_backend_pwd = json_string_value(json_object_get(request, "backend_pwd"));
-		/* Retransmissions stuff */
-		if(json_object_get(request, "max_retransmissions"))
-			req_maxretr = json_integer_value(json_object_get(request, "max_retransmissions"));
-		if(json_object_get(request, "retransmissions_backoff"))
-			req_backoff = json_integer_value(json_object_get(request, "retransmissions_backoff"));
-		/* If we got here, we can enforce */
 		janus_mutex_lock(&evh_mutex);
 		if(req_events)
 			janus_events_edit_events_mask(req_events, &janus_logevh.events_mask);
-		if(req_grouping > -1)
-			group_events = req_grouping ? TRUE : FALSE;
-		if(req_compress > -1)
-			compress = req_compress ? TRUE : FALSE;
-		if(req_compression > -1 && req_compression < 10)
-			compression = req_compression;
-		if(req_backend || req_backend_user || req_backend_pwd) {
-			if(req_backend) {
-				g_free(backend);
-				backend = g_strdup(req_backend);
-			}
-			if(req_backend_user) {
-				g_free(backend_user);
-				backend_user = g_strdup(req_backend_user);
-			}
-			if(req_backend_pwd) {
-				g_free(backend_pwd);
-				backend_pwd = g_strdup(req_backend_pwd);
-			}
-		}
-		if(req_maxretr > -1)
-			max_retransmissions = req_maxretr;
-		if(req_backoff > -1)
-			retransmissions_backoff = req_backoff;
 		janus_mutex_unlock(&evh_mutex);
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
@@ -689,101 +531,12 @@ static void *janus_logevh_handler(void *data) {
 						JANUS_LOG(LOG_WARN, "Unknown type of event '%d'\n", type);
 						break;
 				}
-				if(!group_events) {
-					/* We're done here, we just need a single event */
-					output = event;
-					break;
-				}
-				/* If we got here, we're grouping */
-				if(output == NULL)
-					output = json_array();
-				json_array_append_new(output, event);
-				/* Never group more than a maximum number of events, though, or we might stay here forever */
-				count++;
-				if(count == max)
-					break;
-				event = g_async_queue_try_pop(events);
-				if(event == NULL || event == &exit_event)
-					break;
+				log_event(event);
+
 			}
 
-			/* Since this a simple plugin, it does the same for all events: so just convert to string... */
-			event_text = json_dumps(output, json_format);
 		}
-		/* Whether we just prepared the event or this is a retransmission, send it via HTTP POST */
-		CURLcode res;
-		struct curl_slist *headers = NULL;
-		CURL *curl = curl_easy_init();
-		if(curl == NULL) {
-			JANUS_LOG(LOG_ERR, "Error initializing CURL context\n");
-			goto done;
-		}
-		janus_mutex_lock(&evh_mutex);
-		curl_easy_setopt(curl, CURLOPT_URL, backend);
-		/* Any credentials? */
-		if(backend_user != NULL && backend_pwd != NULL) {
-			curl_easy_setopt(curl, CURLOPT_USERNAME, backend_user);
-			curl_easy_setopt(curl, CURLOPT_PASSWORD, backend_pwd);
-		}
-		janus_mutex_unlock(&evh_mutex);
-		/* Check if we need to compress the data */
-		if(compress) {
-			compressed_len = janus_gzip_compress(compression,
-				event_text, strlen(event_text),
-				compressed_text, sizeof(compressed_text));
-			if(compressed_len == 0) {
-				JANUS_LOG(LOG_ERR, "Failed to compress event (%zu bytes)...\n", strlen(event_text));
-				/* Nothing we can do... get rid of the event */
-				g_free(event_text);
-				json_decref(output);
-				output = NULL;
-				continue;
-			}
-		}
-		headers = curl_slist_append(headers, compress ? "Accept: application/gzip": "Accept: application/json");
-		headers = curl_slist_append(headers, compress ? "Content-Type: application/gzip" : "Content-Type: application/json");
-		headers = curl_slist_append(headers, "charsets: utf-8");
-		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, compress ? compressed_text : event_text);
-		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, compress ? compressed_len : strlen(event_text));
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, janus_sampleehv_write_data);
-		/* Don't wait forever (let's say, 10 seconds) */
-		curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-		/* Send the request */
-		res = curl_easy_perform(curl);
-		if(res != CURLE_OK) {
-			JANUS_LOG(LOG_ERR, "Couldn't relay event to the backend: %s\n", curl_easy_strerror(res));
-			if(max_retransmissions > 0) {
-				/* Retransmissions enabled, let's try again */
-				if(retransmit == max_retransmissions) {
-					retransmit = 0;
-					JANUS_LOG(LOG_WARN, "Maximum number of retransmissions reached (%d), event lost...\n", max_retransmissions);
-				} else {
-					int next = retransmissions_backoff * (pow(2, retransmit));
-					JANUS_LOG(LOG_WARN, "Retransmitting event in %d ms...\n", next);
-					g_usleep(next*1000);
-					retransmit++;
-				}
-			} else {
-				JANUS_LOG(LOG_WARN, "Retransmissions disabled, event lost...\n");
-			}
-		} else {
-			JANUS_LOG(LOG_DBG, "Event sent!\n");
-			retransmit = 0;
-		}
-done:
-		/* Cleanup */
-		if(curl)
-			curl_easy_cleanup(curl);
-		if(headers)
-			curl_slist_free_all(headers);
-		if(!retransmit)
-			g_free(event_text);
-
-		/* Done, let's unref the event */
-		json_decref(output);
-		output = NULL;
 	}
-	JANUS_LOG(LOG_VERB, "Leaving SampleEventHandler handler thread\n");
+	JANUS_LOG(LOG_VERB, "Leaving LogEventHandler handler thread\n");
 	return NULL;
 }

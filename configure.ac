@@ -207,6 +207,8 @@ AC_ARG_ENABLE([all-handlers],
               [
                AS_IF([test "x$enable_sample_event_handler" != "xyes"],
                      [enable_sample_event_handler=no])
+               AS_IF([test "x$enable_log_event_handler" != "xyes"],
+                     [enable_log_event_handler=no])              
                AS_IF([test "x$enable_websockets_event_handler" != "xyes"],
                      [enable_websockets_event_handler=no])
                AS_IF([test "x$enable_rabbitmq_event_handler" != "xyes"],
@@ -288,6 +290,13 @@ AC_ARG_ENABLE([sample-event-handler],
               [AS_IF([test "x$enable_sample_event_handler" != "xyes"],
                      [enable_sample_event_handler=no])],
               [enable_sample_event_handler=maybe])
+              
+AC_ARG_ENABLE([log-event-handler],
+              [AS_HELP_STRING([--disable-log-event-handler],
+                              [Disable log event handler ])],
+              [AS_IF([test "x$enable_log_event_handler" != "xyes"],
+                     [enable_log_event_handler=no])],
+              [enable_log_event_handler=maybe])
 
 AC_ARG_ENABLE([websockets-event-handler],
               [AS_HELP_STRING([--disable-websockets-event-handler],
@@ -458,7 +467,7 @@ PKG_CHECK_MODULES([LIBCURL],
                       ])
                     AS_IF([test "x$enable_sample_event_handler" != "xno"],
                       [
-                        AC_DEFINE(HAVE_SAMPLEEVH)
+                        AC_DEFINE(HAVE_LOGEVH)
                         enable_sample_event_handler=yes
                       ])
                   ],
@@ -469,7 +478,14 @@ PKG_CHECK_MODULES([LIBCURL],
                           [AC_MSG_ERROR([libcurl not found. See README.md for installation instructions or use --disable-sample-event-handler])])
                   ])
 AM_CONDITIONAL([ENABLE_TURN_REST_API], [test "x$enable_turn_rest_api" = "xyes"])
-AM_CONDITIONAL([ENABLE_SAMPLEEVH], [test "x$enable_sample_event_handler" = "xyes"])
+AM_CONDITIONAL([ENABLE_LOGEVH], [test "x$enable_sample_event_handler" = "xyes"])
+
+AS_IF([test "x$enable_log_event_handler" != "xno"],
+      [
+       AC_DEFINE(HAVE_LOGEVH)
+       enable_log_event_handler=yes
+      ])
+AM_CONDITIONAL([ENABLE_LOGEVH], [test "x$enable_log_event_handler" = "xyes"])
 
 AC_CHECK_PROG([DOXYGEN],
               [doxygen],
@@ -477,6 +493,7 @@ AC_CHECK_PROG([DOXYGEN],
 AC_CHECK_PROG([DOT],
               [dot],
               [dot])
+              
 AS_IF([test -z "$DOXYGEN" -o -z "$DOT"],
       [
         AS_IF([test "x$enable_docs" = "xyes"],
@@ -1049,9 +1066,12 @@ AM_COND_IF([ENABLE_PLUGIN_DUKTAPE],
 	[echo "    Duktape Interpreter:   yes"],
 	[echo "    Duktape Interpreter:   no"])
 echo "Event handlers:"
-AM_COND_IF([ENABLE_SAMPLEEVH],
+AM_COND_IF([ENABLE_LOGEVH],
 	[echo "    Sample event handler:  yes"],
 	[echo "    Sample event handler:  no"])
+AM_COND_IF([ENABLE_LOGEVH],
+	[echo "    Log event handler:  yes"],
+	[echo "    Log event handler:  no"])
 AM_COND_IF([ENABLE_WSEVH],
 	[echo "    WebSocket ev. handler: yes"],
 	[echo "    WebSocket ev. handler: no"])

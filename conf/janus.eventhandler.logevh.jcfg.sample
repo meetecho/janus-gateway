@@ -1,0 +1,9 @@
+# This configures the sample event handler. Since this plugin simply
+# forwards each event it receives via HTTP POST, you simply need to
+# configure (i) which events to subscribe to, and (ii) the address of
+# the web server which will receive the requests.
+
+general: {
+	enabled = false		# By default the module is not enabled
+	events = "all"		# Comma separated list of the events mask you're interested
+}

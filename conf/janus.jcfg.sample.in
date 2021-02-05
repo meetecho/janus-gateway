@@ -393,6 +393,6 @@ loggers: {
 # not other media-related events).
 events: {
 	#broadcast = true
-	#disable = "libjanus_sampleevh.so"
+	#disable = "libjanus_logevh.so"
 	#stats_period = 5
 }
