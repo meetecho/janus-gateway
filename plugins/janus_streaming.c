@@ -6474,12 +6474,9 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	int asport = 0, asport_rtcp = 0;
 	multiple_fds audio_fds = {-1, -1};
 
-	if(g_atomic_int_get(&mp->destroyed)){
-		return -8;
-	}
-	
-	janus_mutex_lock(&mp->mutex);
-	
+	if(g_atomic_int_get(&mp->destroyed))
+		return -8;		
+	janus_mutex_lock(&mp->mutex);	
 	if(g_atomic_int_get(&mp->destroyed)){
 		janus_mutex_unlock(&mp->mutex);
 		return -8;
@@ -7638,11 +7635,8 @@ static void *janus_streaming_relay_thread(void *data) {
 					close(source->video_rtcp_fd);
 				}
 				source->video_rtcp_fd = -1;
-
-				if(g_atomic_int_get(&mountpoint->destroyed)){
-					break;
-				}
-				
+				if(g_atomic_int_get(&mountpoint->destroyed))
+					break;								
 				/* Now let's try to reconnect */
 				if(janus_streaming_rtsp_connect_to_server(mountpoint) < 0) {
 					/* Reconnection failed? Let's try again later */
