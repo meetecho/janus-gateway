@@ -1467,8 +1467,8 @@ typedef struct janus_videoroom {
 	uint32_t bitrate;			/* Global bitrate limit */
 	gboolean bitrate_cap;		/* Whether the above limit is insormountable */
 	uint16_t fir_freq;			/* Regular FIR frequency (0=disabled) */
-	janus_audiocodec acodec[3];	/* Audio codec(s) to force on publishers */
-	janus_videocodec vcodec[3];	/* Video codec(s) to force on publishers */
+	janus_audiocodec acodec[5];	/* Audio codec(s) to force on publishers */
+	janus_videocodec vcodec[5];	/* Video codec(s) to force on publishers */
 	char *vp9_profile;			/* VP9 codec profile to prefer, if more are negotiated */
 	char *h264_profile;			/* H.264 codec profile to prefer, if more are negotiated */
 	gboolean do_opusfec;		/* Whether inband FEC must be negotiated (note: only available for Opus) */
@@ -1836,6 +1836,14 @@ static void janus_videoroom_codecstr(janus_videoroom *videoroom, char *audio_cod
 			g_strlcat(audio_codecs, split, str_len);
 			g_strlcat(audio_codecs, janus_audiocodec_name(videoroom->acodec[2]), str_len);
 		}
+		if (videoroom->acodec[3] != JANUS_AUDIOCODEC_NONE) {
+			g_strlcat(audio_codecs, split, str_len);
+			g_strlcat(audio_codecs, janus_audiocodec_name(videoroom->acodec[3]), str_len);
+		}
+		if (videoroom->acodec[4] != JANUS_AUDIOCODEC_NONE) {
+			g_strlcat(audio_codecs, split, str_len);
+			g_strlcat(audio_codecs, janus_audiocodec_name(videoroom->acodec[4]), str_len);
+		}
 	}
 	if (video_codecs) {
 		video_codecs[0] = 0;
@@ -1847,6 +1855,14 @@ static void janus_videoroom_codecstr(janus_videoroom *videoroom, char *audio_cod
 		if (videoroom->vcodec[2] != JANUS_VIDEOCODEC_NONE) {
 			g_strlcat(video_codecs, split, str_len);
 			g_strlcat(video_codecs, janus_videocodec_name(videoroom->vcodec[2]), str_len);
+		}
+		if (videoroom->vcodec[3] != JANUS_VIDEOCODEC_NONE) {
+			g_strlcat(video_codecs, split, str_len);
+			g_strlcat(video_codecs, janus_videocodec_name(videoroom->vcodec[3]), str_len);
+		}
+		if (videoroom->vcodec[4] != JANUS_VIDEOCODEC_NONE) {
+			g_strlcat(video_codecs, split, str_len);
+			g_strlcat(video_codecs, janus_videocodec_name(videoroom->vcodec[4]), str_len);
 		}
 	}
 }
@@ -2266,6 +2282,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->acodec[0] = JANUS_AUDIOCODEC_OPUS;
 			videoroom->acodec[1] = JANUS_AUDIOCODEC_NONE;
 			videoroom->acodec[2] = JANUS_AUDIOCODEC_NONE;
+			videoroom->acodec[3] = JANUS_AUDIOCODEC_NONE;
+			videoroom->acodec[4] = JANUS_AUDIOCODEC_NONE;
 			/* Check if we're forcing a different single codec, or allowing more than one */
 			if(audiocodec && audiocodec->value) {
 				gchar **list = g_strsplit(audiocodec->value, ",", 4);
@@ -2273,7 +2291,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				if(codec != NULL) {
 					int i=0;
 					while(codec != NULL) {
-						if(i == 3) {
+						if(i == 5) {
 							JANUS_LOG(LOG_WARN, "Ignoring extra audio codecs: %s\n", codec);
 							break;
 						}
@@ -2289,6 +2307,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->vcodec[0] = JANUS_VIDEOCODEC_VP8;
 			videoroom->vcodec[1] = JANUS_VIDEOCODEC_NONE;
 			videoroom->vcodec[2] = JANUS_VIDEOCODEC_NONE;
+			videoroom->vcodec[3] = JANUS_VIDEOCODEC_NONE;
+			videoroom->vcodec[4] = JANUS_VIDEOCODEC_NONE;
 			/* Check if we're forcing a different single codec, or allowing more than one */
 			if(videocodec && videocodec->value) {
 				gchar **list = g_strsplit(videocodec->value, ",", 4);
@@ -2296,7 +2316,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				if(codec != NULL) {
 					int i=0;
 					while(codec != NULL) {
-						if(i == 3) {
+						if(i == 5) {
 							JANUS_LOG(LOG_WARN, "Ignoring extra video codecs: %s\n", codec);
 							break;
 						}
@@ -2310,19 +2330,25 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			}
 			if(vp9profile && vp9profile->value && (videoroom->vcodec[0] == JANUS_VIDEOCODEC_VP9 ||
 					videoroom->vcodec[1] == JANUS_VIDEOCODEC_VP9 ||
-					videoroom->vcodec[2] == JANUS_VIDEOCODEC_VP9)) {
+					videoroom->vcodec[2] == JANUS_VIDEOCODEC_VP9 ||
+					videoroom->vcodec[3] == JANUS_VIDEOCODEC_VP9 ||
+					videoroom->vcodec[4] == JANUS_VIDEOCODEC_VP9)) {
 				videoroom->vp9_profile = g_strdup(vp9profile->value);
 			}
 			if(h264profile && h264profile->value && (videoroom->vcodec[0] == JANUS_VIDEOCODEC_H264 ||
 					videoroom->vcodec[1] == JANUS_VIDEOCODEC_H264 ||
-					videoroom->vcodec[2] == JANUS_VIDEOCODEC_H264)) {
+					videoroom->vcodec[2] == JANUS_VIDEOCODEC_H264 ||
+					videoroom->vcodec[3] == JANUS_VIDEOCODEC_H264 ||
+					videoroom->vcodec[4] == JANUS_VIDEOCODEC_H264)) {
 				videoroom->h264_profile = g_strdup(h264profile->value);
 			}
 			if(fec && fec->value) {
 				videoroom->do_opusfec = janus_is_true(fec->value);
 				if(videoroom->acodec[0] != JANUS_AUDIOCODEC_OPUS &&
 						videoroom->acodec[1] != JANUS_AUDIOCODEC_OPUS &&
-						videoroom->acodec[2] != JANUS_AUDIOCODEC_OPUS) {
+						videoroom->acodec[2] != JANUS_AUDIOCODEC_OPUS &&
+						videoroom->acodec[3] != JANUS_AUDIOCODEC_OPUS &&
+						videoroom->acodec[4] != JANUS_AUDIOCODEC_OPUS) {
 					videoroom->do_opusfec = FALSE;
 					JANUS_LOG(LOG_WARN, "Inband FEC is only supported for rooms that allow Opus: disabling it...\n");
 				}
@@ -2330,7 +2356,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			if(svc && svc->value && janus_is_true(svc->value)) {
 				if(videoroom->vcodec[0] == JANUS_VIDEOCODEC_VP9 &&
 						videoroom->vcodec[1] == JANUS_VIDEOCODEC_NONE &&
-						videoroom->vcodec[2] == JANUS_VIDEOCODEC_NONE) {
+						videoroom->vcodec[2] == JANUS_VIDEOCODEC_NONE &&
+						videoroom->vcodec[3] == JANUS_VIDEOCODEC_NONE &&
+						videoroom->vcodec[4] == JANUS_VIDEOCODEC_NONE) {
 					videoroom->do_svc = TRUE;
 				} else {
 					JANUS_LOG(LOG_WARN, "SVC is only supported, in an experimental way, for VP9 only rooms: disabling it...\n");
@@ -2945,7 +2973,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(codec != NULL) {
 				int i=0;
 				while(codec != NULL) {
-					if(i == 3) {
+					if(i == 5) {
 						break;
 					}
 					if(strlen(codec) == 0 || JANUS_AUDIOCODEC_NONE == janus_audiocodec_from_name(codec)) {
@@ -2968,7 +2996,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(codec != NULL) {
 				int i=0;
 				while(codec != NULL) {
-					if(i == 3) {
+					if(i == 5) {
 						break;
 					}
 					if(strlen(codec) == 0 || JANUS_VIDEOCODEC_NONE == janus_videocodec_from_name(codec)) {
@@ -3113,6 +3141,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		videoroom->acodec[0] = JANUS_AUDIOCODEC_OPUS;
 		videoroom->acodec[1] = JANUS_AUDIOCODEC_NONE;
 		videoroom->acodec[2] = JANUS_AUDIOCODEC_NONE;
+		videoroom->acodec[3] = JANUS_AUDIOCODEC_NONE;
+		videoroom->acodec[4] = JANUS_AUDIOCODEC_NONE;
 		/* Check if we're forcing a different single codec, or allowing more than one */
 		if(audiocodec) {
 			const char *audiocodec_value = json_string_value(audiocodec);
@@ -3121,7 +3151,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(codec != NULL) {
 				int i=0;
 				while(codec != NULL) {
-					if(i == 3) {
+					if(i == 5) {
 						JANUS_LOG(LOG_WARN, "Ignoring extra audio codecs: %s\n", codec);
 						break;
 					}
@@ -3137,6 +3167,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		videoroom->vcodec[0] = JANUS_VIDEOCODEC_VP8;
 		videoroom->vcodec[1] = JANUS_VIDEOCODEC_NONE;
 		videoroom->vcodec[2] = JANUS_VIDEOCODEC_NONE;
+		videoroom->vcodec[3] = JANUS_VIDEOCODEC_NONE;
+		videoroom->vcodec[4] = JANUS_VIDEOCODEC_NONE;
 		/* Check if we're forcing a different single codec, or allowing more than one */
 		if(videocodec) {
 			const char *videocodec_value = json_string_value(videocodec);
@@ -3145,7 +3177,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(codec != NULL) {
 				int i=0;
 				while(codec != NULL) {
-					if(i == 3) {
+					if(i == 5) {
 						JANUS_LOG(LOG_WARN, "Ignoring extra video codecs: %s\n", codec);
 						break;
 					}
@@ -3160,20 +3192,26 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		const char *vp9_profile = json_string_value(vp9profile);
 		if(vp9_profile && (videoroom->vcodec[0] == JANUS_VIDEOCODEC_VP9 ||
 				videoroom->vcodec[1] == JANUS_VIDEOCODEC_VP9 ||
-				videoroom->vcodec[2] == JANUS_VIDEOCODEC_VP9)) {
+				videoroom->vcodec[2] == JANUS_VIDEOCODEC_VP9 ||
+				videoroom->vcodec[3] == JANUS_VIDEOCODEC_VP9 ||
+				videoroom->vcodec[4] == JANUS_VIDEOCODEC_VP9)) {
 			videoroom->vp9_profile = g_strdup(vp9_profile);
 		}
 		const char *h264_profile = json_string_value(h264profile);
 		if(h264_profile && (videoroom->vcodec[0] == JANUS_VIDEOCODEC_H264 ||
 				videoroom->vcodec[1] == JANUS_VIDEOCODEC_H264 ||
-				videoroom->vcodec[2] == JANUS_VIDEOCODEC_H264)) {
+				videoroom->vcodec[2] == JANUS_VIDEOCODEC_H264 ||
+				videoroom->vcodec[3] == JANUS_VIDEOCODEC_H264 ||
+				videoroom->vcodec[4] == JANUS_VIDEOCODEC_H264)) {
 			videoroom->h264_profile = g_strdup(h264_profile);
 		}
 		if(fec) {
 			videoroom->do_opusfec = json_is_true(fec);
 			if(videoroom->acodec[0] != JANUS_AUDIOCODEC_OPUS &&
 					videoroom->acodec[1] != JANUS_AUDIOCODEC_OPUS &&
-					videoroom->acodec[2] != JANUS_AUDIOCODEC_OPUS) {
+					videoroom->acodec[2] != JANUS_AUDIOCODEC_OPUS &&
+					videoroom->acodec[3] != JANUS_AUDIOCODEC_OPUS &&
+					videoroom->acodec[4] != JANUS_AUDIOCODEC_OPUS) {
 				videoroom->do_opusfec = FALSE;
 				JANUS_LOG(LOG_WARN, "Inband FEC is only supported for rooms that allow Opus: disabling it...\n");
 			}
@@ -3181,7 +3219,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if(svc && json_is_true(svc)) {
 			if(videoroom->vcodec[0] == JANUS_VIDEOCODEC_VP9 &&
 					videoroom->vcodec[1] == JANUS_VIDEOCODEC_NONE &&
-					videoroom->vcodec[2] == JANUS_VIDEOCODEC_NONE) {
+					videoroom->vcodec[2] == JANUS_VIDEOCODEC_NONE &&
+					videoroom->vcodec[3] == JANUS_VIDEOCODEC_NONE &&
+					videoroom->vcodec[4] == JANUS_VIDEOCODEC_NONE) {
 				videoroom->do_svc = TRUE;
 			} else {
 				JANUS_LOG(LOG_WARN, "SVC is only supported, in an experimental way, for VP9 only rooms: disabling it...\n");
@@ -6523,7 +6563,9 @@ static void *janus_videoroom_handler(void *data) {
 					if(acodec == JANUS_AUDIOCODEC_NONE ||
 							(acodec != participant->room->acodec[0] &&
 							acodec != participant->room->acodec[1] &&
-							acodec != participant->room->acodec[2])) {
+							acodec != participant->room->acodec[2] &&
+							acodec != participant->room->acodec[3] &&
+							acodec != participant->room->acodec[4])) {
 						JANUS_LOG(LOG_ERR, "Participant asked for audio codec '%s', but it's not allowed (room %s, user %s)\n",
 							json_string_value(audiocodec), participant->room_id_str, participant->user_id_str);
 						janus_refcount_decrease(&participant->ref);
@@ -6559,7 +6601,9 @@ static void *janus_videoroom_handler(void *data) {
 					if(vcodec == JANUS_VIDEOCODEC_NONE ||
 							(vcodec != participant->room->vcodec[0] &&
 							vcodec != participant->room->vcodec[1] &&
-							vcodec != participant->room->vcodec[2])) {
+							vcodec != participant->room->vcodec[2] &&
+							vcodec != participant->room->vcodec[3] &&
+							vcodec != participant->room->vcodec[4])) {
 						JANUS_LOG(LOG_ERR, "Participant asked for video codec '%s', but it's not allowed (room %s, user %s)\n",
 							json_string_value(videocodec), participant->room_id_str, participant->user_id_str);
 						janus_refcount_decrease(&participant->ref);
@@ -7346,7 +7390,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* Check the codecs we can use, or the ones we should */
 				if(participant->acodec == JANUS_AUDIOCODEC_NONE) {
 					int i=0;
-					for(i=0; i<3; i++) {
+					for(i=0; i<5; i++) {
 						if(videoroom->acodec[i] == JANUS_AUDIOCODEC_NONE)
 							continue;
 						if(janus_sdp_get_codec_pt(offer, janus_audiocodec_name(videoroom->acodec[i])) != -1) {
@@ -7365,7 +7409,7 @@ static void *janus_videoroom_handler(void *data) {
 				char *h264_profile = videoroom->h264_profile;
 				if(participant->vcodec == JANUS_VIDEOCODEC_NONE) {
 					int i=0;
-					for(i=0; i<3; i++) {
+					for(i=0; i<5; i++) {
 						if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_NONE)
 							continue;
 						if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_VP9 && vp9_profile) {
