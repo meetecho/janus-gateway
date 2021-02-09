@@ -156,7 +156,7 @@ declare namespace JanusJS {
 		isVideoMuted(): boolean;
 		muteVideo(): void;
 		unmuteVideo(): void;
-		getBitrate(): number;
+		getBitrate(): string;
 		hangup(sendRequest?: boolean): void;
 		detach(params: any): void;
 	}
