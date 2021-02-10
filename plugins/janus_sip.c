@@ -2558,12 +2558,14 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		session->media.autoaccept_reinvites = TRUE;
 		session->media.ready = FALSE;
 		session->media.on_hold = FALSE;
-		janus_sip_call_update_status(session, janus_sip_call_status_closing);
 
-		if(g_atomic_int_get(&session->established))
+		/* Send a BYE or respond with 480 */
+		if(g_atomic_int_get(&session->established) || session->status == janus_sip_call_status_inviting)
 			nua_bye(session->stack->s_nh_i, TAG_END());
 		else
 			nua_respond(session->stack->s_nh_i, 480, sip_status_phrase(480), TAG_END());
+
+		janus_sip_call_update_status(session, janus_sip_call_status_closing);
 
 		/* Notify the operation */
 		json_t *event = json_object();
