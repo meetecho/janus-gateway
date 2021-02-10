@@ -7640,10 +7640,10 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						s = s->next;
 					}
-					janus_refcount_decrease(&videoroom->ref);
 					janus_mutex_unlock(&participant->subscribers_mutex);
 					json_decref(update);
 				}
+				janus_refcount_decrease(&videoroom->ref);
 				json_decref(event);
 				json_decref(jsep);
 			}
