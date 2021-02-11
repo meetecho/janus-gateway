@@ -104,7 +104,7 @@ room-<unique room ID>: {
  * synchronous error response even for asynchronous requests.
  *
  * \c create , \c destroy , \c edit , \c exists, \c list, \c allowed,
- * \c kick , \c moderate , \c enable_recording , \listparticipants
+ * \c kick , \c moderate , \c enable_recording , \c listparticipants
  * and \c listforwarders are synchronous requests, which means you'll
  * get a response directly within the context of the transaction.
  * \c create allows you to create a new video room dynamically, as an
