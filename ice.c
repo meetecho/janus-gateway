@@ -129,6 +129,7 @@ void janus_ice_set_keepalive_conncheck_enabled(gboolean enabled) {
 	janus_ice_keepalive_connckecks = enabled;
 	if(janus_ice_keepalive_connckecks) {
 		JANUS_LOG(LOG_INFO, "Using connectivity checks as PeerConnection keep-alives\n");
+		JANUS_LOG(LOG_WARN, "Notice that the current libnice master is breaking connections after 50s when keepalive-conncheck enabled. As such, better to stick to 0.1.18 until the issue is addressed upstream\n");
 	}
 }
 gboolean janus_ice_is_keepalive_conncheck_enabled(void) {

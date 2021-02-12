@@ -244,7 +244,10 @@ media: {
 # values are "regular" and "aggressive" (the default depends on the libnice
 # version itself; if we can set it, we set regular nomination). You can
 # also configure whether to use connectivity checks as keep-alives, which
-# might help detecting when a peer is no longer available. Finally,
+# might help detecting when a peer is no longer available (notice that
+# current libnice master is breaking connections after 50 seconds when
+# keepalive-conncheck is being used, so if you want to use it, better
+# sticking to 0.1.18 until the issue is addressed upstream). Finally,
 # you can also enable ICE-TCP support (beware that this may lead to problems
 # if you do not enable ICE Lite as well), choose which interfaces should
 # be used for gathering candidates, and enable or disable the
