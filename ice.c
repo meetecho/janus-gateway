@@ -101,6 +101,41 @@ gboolean janus_ice_is_ipv6_enabled(void) {
 	return janus_ipv6_enabled;
 }
 
+#ifdef HAVE_ICE_NOMINATION
+/* Since libnice 0.1.15, we can configure the ICE nomination mode: it was
+ * always "aggressive" before, we set it to "regular" by default if we can */
+static NiceNominationMode janus_ice_nomination = NICE_NOMINATION_MODE_REGULAR;
+void janus_ice_set_nomination_mode(const char *nomination) {
+	if(nomination == NULL) {
+		JANUS_LOG(LOG_WARN, "Invalid ICE nomination mode, falling back to 'regular'\n");
+	} else if(!strcasecmp(nomination, "regular")) {
+		JANUS_LOG(LOG_INFO, "Configuring Janus to use ICE regular nomination\n");
+		janus_ice_nomination = NICE_NOMINATION_MODE_REGULAR;
+	} else if(!strcasecmp(nomination, "aggressive")) {
+		JANUS_LOG(LOG_INFO, "Configuring Janus to use ICE aggressive nomination\n");
+		janus_ice_nomination = NICE_NOMINATION_MODE_AGGRESSIVE;
+	} else {
+		JANUS_LOG(LOG_WARN, "Unsupported ICE nomination mode '%s', falling back to 'regular'\n", nomination);
+	}
+}
+const char *janus_ice_get_nomination_mode(void) {
+	return (janus_ice_nomination == NICE_NOMINATION_MODE_REGULAR ? "regular" : "aggressive");
+}
+#endif
+
+/* Keepalive via connectivity checks */
+static gboolean janus_ice_keepalive_connckecks = FALSE;
+void janus_ice_set_keepalive_conncheck_enabled(gboolean enabled) {
+	janus_ice_keepalive_connckecks = enabled;
+	if(janus_ice_keepalive_connckecks) {
+		JANUS_LOG(LOG_INFO, "Using connectivity checks as PeerConnection keep-alives\n");
+		JANUS_LOG(LOG_WARN, "Notice that the current libnice master is breaking connections after 50s when keepalive-conncheck enabled. As such, better to stick to 0.1.18 until the issue is addressed upstream\n");
+	}
+}
+gboolean janus_ice_is_keepalive_conncheck_enabled(void) {
+	return janus_ice_keepalive_connckecks;
+}
+
 /* Opaque IDs set by applications are by default only passed to event handlers
  * for correlation purposes, but not sent back to the user or application in
  * the related Janus API responses or events, unless configured otherwise */
@@ -3461,6 +3496,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		"main-context", handle->mainctx,
 		"reliable", FALSE,
 		"full-mode", janus_ice_lite_enabled ? FALSE : TRUE,
+#ifdef HAVE_ICE_NOMINATION
+		"nomination-mode", janus_ice_nomination,
+#endif
+		"keepalive-conncheck", janus_ice_keepalive_connckecks ? FALSE : TRUE,
 #ifdef HAVE_LIBNICE_TCP
 		"ice-udp", TRUE,
 		"ice-tcp", janus_ice_tcp_enabled ? TRUE : FALSE,

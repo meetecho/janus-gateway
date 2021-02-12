@@ -239,7 +239,15 @@ media: {
 # configured to do full-trickle (Janus also trickles its candidates to
 # users) rather than the default half-trickle (Janus supports trickle
 # candidates from users, but sends its own within the SDP), and whether
-# it should work in ICE-Lite mode (by default it doesn't). Finally,
+# it should work in ICE-Lite mode (by default it doesn't). If libnice is
+# at least 0.1.15, you can choose which ICE nomination mode to use: valid
+# values are "regular" and "aggressive" (the default depends on the libnice
+# version itself; if we can set it, we set regular nomination). You can
+# also configure whether to use connectivity checks as keep-alives, which
+# might help detecting when a peer is no longer available (notice that
+# current libnice master is breaking connections after 50 seconds when
+# keepalive-conncheck is being used, so if you want to use it, better
+# sticking to 0.1.18 until the issue is addressed upstream). Finally,
 # you can also enable ICE-TCP support (beware that this may lead to problems
 # if you do not enable ICE Lite as well), choose which interfaces should
 # be used for gathering candidates, and enable or disable the
@@ -249,6 +257,8 @@ nat: {
 	#stun_port = 3478
 	nice_debug = false
 	#full_trickle = true
+	#ice_nomination = "regular"
+	#ice_keepalive_conncheck = true
 	#ice_lite = true
 	#ice_tcp = true
 

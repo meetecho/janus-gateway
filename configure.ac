@@ -402,6 +402,12 @@ AC_CHECK_LIB([nice],
              [AC_MSG_NOTICE([libnice version does not have nice_agent_close_async])]
              )
 
+AC_CHECK_LIB([nice],
+             [nice_agent_new_full],
+             [AC_DEFINE(HAVE_ICE_NOMINATION)],
+             [AC_MSG_NOTICE([libnice version does not have nice_agent_new_full])]
+             )
+
 AC_CHECK_LIB([dl],
              [dlopen],
              [JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -ldl"],
