@@ -12,7 +12,7 @@
  */
 
 #include <arpa/inet.h>
-#ifdef __MACH__
+#if defined(__MACH__) || defined(__FreeBSD__)
 #include <machine/endian.h>
 #else
 #include <endian.h>
