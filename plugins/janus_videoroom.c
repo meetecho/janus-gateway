@@ -6015,13 +6015,16 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				/* Process the request */
 				json_t *audio = NULL, *video = NULL, *data = NULL,
+					*audiocodec = NULL, *videocodec = NULL,
 					*bitrate = NULL, *record = NULL, *recfile = NULL,
 					*user_audio_active_packets = NULL, *user_audio_level_average = NULL;
 				if(!strcasecmp(request_text, "joinandconfigure")) {
 					/* Also configure (or publish a new feed) audio/video/bitrate for this new publisher */
 					/* join_parameters were validated earlier. */
 					audio = json_object_get(root, "audio");
+					audiocodec = json_object_get(root, "audiocodec");
 					video = json_object_get(root, "video");
+					videocodec = json_object_get(root, "videocodec");
 					data = json_object_get(root, "data");
 					bitrate = json_object_get(root, "bitrate");
 					record = json_object_get(root, "record");
@@ -6091,10 +6094,50 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_VERB, "Setting audio property: %s (room %s, user %s)\n",
 						publisher->audio_active ? "true" : "false", publisher->room_id_str, publisher->user_id_str);
 				}
+				if(audiocodec && json_string_value(json_object_get(msg->jsep, "sdp")) != NULL) {
+					/* The publisher would like to use an audio codec in particular */
+					janus_audiocodec acodec = janus_audiocodec_from_name(json_string_value(audiocodec));
+					if(acodec == JANUS_AUDIOCODEC_NONE ||
+							(acodec != publisher->room->acodec[0] &&
+							acodec != publisher->room->acodec[1] &&
+							acodec != publisher->room->acodec[2] &&
+							acodec != publisher->room->acodec[3] &&
+							acodec != publisher->room->acodec[4])) {
+						JANUS_LOG(LOG_ERR, "Participant asked for audio codec '%s', but it's not allowed (room %s, user %s)\n",
+							json_string_value(audiocodec), publisher->room_id_str, publisher->user_id_str);
+						janus_refcount_decrease(&publisher->ref);
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Audio codec unavailable in this room");
+						goto error;
+					}
+					publisher->acodec = acodec;
+					JANUS_LOG(LOG_VERB, "Participant asked for audio codec '%s' (room %s, user %s)\n",
+						json_string_value(audiocodec), publisher->room_id_str, publisher->user_id_str);
+				}
 				if(video) {
 					publisher->video_active = json_is_true(video);
 					JANUS_LOG(LOG_VERB, "Setting video property: %s (room %s, user %s)\n",
 						publisher->video_active ? "true" : "false", publisher->room_id_str, publisher->user_id_str);
+				}
+				if(videocodec && json_string_value(json_object_get(msg->jsep, "sdp")) != NULL) {
+					/* The publisher would like to use a video codec in particular */
+					janus_videocodec vcodec = janus_videocodec_from_name(json_string_value(videocodec));
+					if(vcodec == JANUS_VIDEOCODEC_NONE ||
+							(vcodec != publisher->room->vcodec[0] &&
+							vcodec != publisher->room->vcodec[1] &&
+							vcodec != publisher->room->vcodec[2] &&
+							vcodec != publisher->room->vcodec[3] &&
+							vcodec != publisher->room->vcodec[4])) {
+						JANUS_LOG(LOG_ERR, "Participant asked for video codec '%s', but it's not allowed (room %s, user %s)\n",
+							json_string_value(videocodec), publisher->room_id_str, publisher->user_id_str);
+						janus_refcount_decrease(&publisher->ref);
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Video codec unavailable in this room");
+						goto error;
+					}
+					publisher->vcodec = vcodec;
+					JANUS_LOG(LOG_VERB, "Participant asked for video codec '%s' (room %s, user %s)\n",
+						json_string_value(videocodec), publisher->room_id_str, publisher->user_id_str);
 				}
 				if(data) {
 					publisher->data_active = json_is_true(data);
