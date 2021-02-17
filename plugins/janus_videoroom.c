@@ -4609,7 +4609,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(audio)
 				json_object_set_new(event, "audio-moderation", participant->audio_muted ? json_string("muted") : json_string("unmuted"));
 			if(video)
-				json_object_set_new(event, "video-moderation", participant->audio_muted ? json_string("muted") : json_string("unmuted"));
+				json_object_set_new(event, "video-moderation", participant->video_muted ? json_string("muted") : json_string("unmuted"));
 			if(data)
 				json_object_set_new(event, "data-moderation", participant->data_muted ? json_string("muted") : json_string("unmuted"));
 			/* Notify the speaker this event is related to as well */
@@ -4624,7 +4624,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				if(audio)
 					json_object_set_new(info, "audio", participant->audio_muted ? json_string("muted") : json_string("unmuted"));
 				if(video)
-					json_object_set_new(info, "video", participant->audio_muted ? json_string("muted") : json_string("unmuted"));
+					json_object_set_new(info, "video", participant->video_muted ? json_string("muted") : json_string("unmuted"));
 				if(data)
 					json_object_set_new(info, "data", participant->data_muted ? json_string("muted") : json_string("unmuted"));
 				gateway->notify_event(&janus_videoroom_plugin, NULL, info);
