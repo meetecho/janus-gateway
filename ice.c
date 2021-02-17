@@ -978,7 +978,7 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port,
 		addrlen = sizeof(remote6);
 	}
 	if(bind(fd, address, addrlen) < 0) {
-		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test: %d (%s)\n", errno, g_strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -997,7 +997,7 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port,
 	timeout.tv_usec = 0;
 	int err = select(fd+1, &readfds, NULL, NULL, &timeout);
 	if(err < 0) {
-		JANUS_LOG(LOG_FATAL, "Error waiting for a response to our STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+		JANUS_LOG(LOG_FATAL, "Error waiting for a response to our STUN BINDING test: %d (%s)\n", errno, g_strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -3576,7 +3576,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	char host[NI_MAXHOST];
 	if(getifaddrs(&ifaddr) == -1) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error getting list of interfaces... %d (%s)\n",
-			handle->handle_id, errno, strerror(errno));
+			handle->handle_id, errno, g_strerror(errno));
 	} else {
 		for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
 			if(ifa->ifa_addr == NULL)

@@ -580,7 +580,7 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 				/* This is the info header */
 				bytes = fread(prebuffer, sizeof(char), len, file);
 				if(bytes < 0) {
-					JANUS_LOG(LOG_ERR, "Error reading from file... %s\n", strerror(errno));
+					JANUS_LOG(LOG_ERR, "Error reading from file... %s\n", g_strerror(errno));
 					fclose(file);
 					return NULL;
 				}
@@ -814,7 +814,7 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 		int res = janus_mkdir(recordings_path, 0755);
 		JANUS_LOG(LOG_VERB, "Creating folder: %d\n", res);
 		if(res != 0) {
-			JANUS_LOG(LOG_ERR, "%s", strerror(errno));
+			JANUS_LOG(LOG_ERR, "%s", g_strerror(errno));
 			return -1;	/* No point going on... */
 		}
 	}
@@ -2317,7 +2317,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				JANUS_LOG(LOG_VERB, "New .mjr header format\n");
 				bytes = fread(prebuffer, sizeof(char), len, file);
 				if(bytes < 0) {
-					JANUS_LOG(LOG_ERR, "Error reading from file... %s\n", strerror(errno));
+					JANUS_LOG(LOG_ERR, "Error reading from file... %s\n", g_strerror(errno));
 					fclose(file);
 					return NULL;
 				}
