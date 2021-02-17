@@ -124,16 +124,16 @@ const char *janus_ice_get_nomination_mode(void) {
 #endif
 
 /* Keepalive via connectivity checks */
-static gboolean janus_ice_keepalive_connckecks = FALSE;
+static gboolean janus_ice_keepalive_connchecks = FALSE;
 void janus_ice_set_keepalive_conncheck_enabled(gboolean enabled) {
-	janus_ice_keepalive_connckecks = enabled;
-	if(janus_ice_keepalive_connckecks) {
+	janus_ice_keepalive_connchecks = enabled;
+	if(janus_ice_keepalive_connchecks) {
 		JANUS_LOG(LOG_INFO, "Using connectivity checks as PeerConnection keep-alives\n");
 		JANUS_LOG(LOG_WARN, "Notice that the current libnice master is breaking connections after 50s when keepalive-conncheck enabled. As such, better to stick to 0.1.18 until the issue is addressed upstream\n");
 	}
 }
 gboolean janus_ice_is_keepalive_conncheck_enabled(void) {
-	return janus_ice_keepalive_connckecks;
+	return janus_ice_keepalive_connchecks;
 }
 
 /* Opaque IDs set by applications are by default only passed to event handlers
@@ -3499,7 +3499,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #ifdef HAVE_ICE_NOMINATION
 		"nomination-mode", janus_ice_nomination,
 #endif
-		"keepalive-conncheck", janus_ice_keepalive_connckecks ? TRUE : FALSE,
+		"keepalive-conncheck", janus_ice_keepalive_connchecks ? TRUE : FALSE,
 #ifdef HAVE_LIBNICE_TCP
 		"ice-udp", TRUE,
 		"ice-tcp", janus_ice_tcp_enabled ? TRUE : FALSE,
