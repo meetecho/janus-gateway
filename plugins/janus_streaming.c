@@ -8106,6 +8106,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					JANUS_LOG(LOG_HUGE, "[%s] Got audio RTCP feedback: SSRC %"SCNu32"\n",
 						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
+					packet.is_rtp = FALSE;
 					packet.is_video = FALSE;
 					packet.data = (janus_rtp_header *)buffer;
 					packet.length = bytes;
@@ -8132,6 +8133,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					JANUS_LOG(LOG_HUGE, "[%s] Got video RTCP feedback: SSRC %"SCNu32"\n",
 						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
+					packet.is_rtp = FALSE;
 					packet.is_video = TRUE;
 					packet.data = (janus_rtp_header *)buffer;
 					packet.length = bytes;

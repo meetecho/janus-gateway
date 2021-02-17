@@ -2558,12 +2558,14 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		session->media.autoaccept_reinvites = TRUE;
 		session->media.ready = FALSE;
 		session->media.on_hold = FALSE;
-		janus_sip_call_update_status(session, janus_sip_call_status_closing);
 
-		if(g_atomic_int_get(&session->established))
+		/* Send a BYE or respond with 480 */
+		if(g_atomic_int_get(&session->established) || session->status == janus_sip_call_status_inviting)
 			nua_bye(session->stack->s_nh_i, TAG_END());
 		else
 			nua_respond(session->stack->s_nh_i, 480, sip_status_phrase(480), TAG_END());
+
+		janus_sip_call_update_status(session, janus_sip_call_status_closing);
 
 		/* Notify the operation */
 		json_t *event = json_object();
@@ -3575,6 +3577,7 @@ static void *janus_sip_handler(void *data) {
 			/* Send an ack back */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("calling"));
+			json_object_set_new(result, "call_id", json_string(session->callid));
 		} else if(!strcasecmp(request_text, "accept")) {
 			if(session->status != janus_sip_call_status_invited) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
@@ -4035,6 +4038,8 @@ static void *janus_sip_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "event", json_string("declining"));
 			json_object_set_new(result, "code", json_integer(response_code));
+			if(session->callid)
+				json_object_set_new(result, "call_id", json_string(session->callid));
 		} else if(!strcasecmp(request_text, "transfer")) {
 			/* Transfer an existing call */
 			JANUS_VALIDATE_JSON_OBJECT(root, transfer_parameters,
@@ -4922,6 +4927,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_t *calling = json_object();
 			json_object_set_new(calling, "event", json_string(reinvite ? "updatingcall" : "incomingcall"));
 			json_object_set_new(calling, "username", json_string(session->callee));
+			if(session->callid)
+				json_object_set_new(calling, "call_id", json_string(session->callid));
 			if(sip->sip_from->a_display) {
 				json_object_set_new(calling, "displayname", json_string(sip->sip_from->a_display));
 			}

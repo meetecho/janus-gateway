@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.10.10] - 2021-02-06
+
+- Reduced verbosity of a few LOG_WARN messages at startup
+- Close libnice agent resources asynchronously when hanging up PeerConnections (thanks @fbellet!) [[PR-2492](#2492)]
+- Fixed broken parsing of SDP when trying to match specific codec profiles [[PR-2549](#2549)]
+- Added muting/moderation API to the VideoRoom plugin [[PR-2513](#2513)]
+- Fixed a few race conditions in VideoRoom plugin that could lead to crashes [[PR-2539][#2539)]
+- Send 480 instead of BYE when hanging up calls in early dialog in the SIP plugin (thanks @zayim!) [[PR-2521](#2521)]
+- Added configurable media direction when putting calls on-hold in the SIP plugin [[PR-2525](#2525)]
+- Fixed rare race condition in AudioBridge when using "changeroom" (thanks @JeckLabs!) [[PR-2535][#2535)]
+- Fixed broken API secret management in HTTP long polls (thanks @remvst!) [[PR-2524](#2524)]
+- Report failure if binding to a socket fails in WebSockets transport plugin (thanks @Symbiatch!) [[PR-2534](#2534)]
+- Updated RabbitMQ logic in both transport and event handler (thanks @chriswiggins!) [[PR-2430](#2430)]
+- Fixed segfault in WebSocket event handler when backend was unreachable
+- Added TLS support to MQTT event handler (thanks @RSATom!) [[PR-2517](#2517)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.10.9] - 2020-12-23
 
 - Replaced Travis CI with GitHub Actions [[PR-2486](#2486)]
