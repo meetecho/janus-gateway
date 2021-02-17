@@ -3499,7 +3499,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #ifdef HAVE_ICE_NOMINATION
 		"nomination-mode", janus_ice_nomination,
 #endif
-		"keepalive-conncheck", janus_ice_keepalive_connckecks ? FALSE : TRUE,
+		"keepalive-conncheck", janus_ice_keepalive_connckecks ? TRUE : FALSE,
 #ifdef HAVE_LIBNICE_TCP
 		"ice-udp", TRUE,
 		"ice-tcp", janus_ice_tcp_enabled ? TRUE : FALSE,
