@@ -346,6 +346,10 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
+#ifdef HAVE_ICE_NOMINATION
+	json_object_set_new(info, "ice-nomination", json_string(janus_ice_get_nomination_mode()));
+#endif
+	json_object_set_new(info, "ice-keepalive-conncheck", janus_ice_is_keepalive_conncheck_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "mdns-enabled", janus_ice_is_mdns_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "min-nack-queue", json_integer(janus_get_min_nack_queue()));
@@ -353,6 +357,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
 	if(janus_get_dscp() > 0)
 		json_object_set_new(info, "dscp", json_integer(janus_get_dscp()));
+	json_object_set_new(info, "dtls-mtu", json_integer(janus_dtls_bio_agent_get_mtu()));
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
@@ -994,9 +999,13 @@ int janus_process_incoming_request(janus_request *request) {
 	/* Ok, let's start with the ids */
 	guint64 session_id = 0, handle_id = 0;
 	json_t *s = json_object_get(root, "session_id");
+	if(json_is_null(s))
+		s = NULL;
 	if(s && json_is_integer(s))
 		session_id = json_integer_value(s);
 	json_t *h = json_object_get(root, "handle_id");
+	if(json_is_null(h))
+		h = NULL;
 	if(h && json_is_integer(h))
 		handle_id = json_integer_value(h);
 
@@ -1098,7 +1107,7 @@ int janus_process_incoming_request(janus_request *request) {
 	}
 	if(h && handle_id < 1) {
 		JANUS_LOG(LOG_ERR, "Invalid handle\n");
-		ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_SESSION_NOT_FOUND, NULL);
+		ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_HANDLE_NOT_FOUND, NULL);
 		goto jsondone;
 	}
 
@@ -1527,7 +1536,7 @@ int janus_process_incoming_request(janus_request *request) {
 						if(stream != NULL && stream->component != NULL
 								&& stream->component->dtls != NULL && stream->component->dtls->sctp == NULL) {
 							/* Create SCTP association as well */
-							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Creating datachannels...\n", handle->handle_id);
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating datachannels...\n", handle->handle_id);
 							janus_dtls_srtp_create_sctp(stream->component->dtls);
 						}
 					}
@@ -3786,7 +3795,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			if(stream != NULL && stream->component != NULL &&
 					stream->component->dtls != NULL && stream->component->dtls->sctp == NULL) {
 				/* Create SCTP association as well */
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Creating datachannels...\n", ice_handle->handle_id);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating datachannels...\n", ice_handle->handle_id);
 				janus_dtls_srtp_create_sctp(stream->component->dtls);
 			}
 		}
@@ -4782,6 +4791,17 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_ERR, "Invalid STUN address %s:%u. STUN will be disabled\n", stun_server, stun_port);
 		}
 	}
+	item = janus_config_get(config, config_nat, janus_config_type_item, "ice_nomination");
+	if(item && item->value) {
+#ifndef HAVE_ICE_NOMINATION
+		JANUS_LOG(LOG_WARN, "This version of libnice doesn't support setting the ICE nomination mode, ignoring '%s'\n", item->value);
+#else
+		janus_ice_set_nomination_mode(item->value);
+#endif
+	}
+	item = janus_config_get(config, config_nat, janus_config_type_item, "ice_keepalive_conncheck");
+	if(item && item->value)
+		janus_ice_set_keepalive_conncheck_enabled(janus_is_true(item->value));
 	if(janus_ice_set_turn_server(turn_server, turn_port, turn_type, turn_user, turn_pwd) < 0) {
 		if(!ignore_unreachable_ice_server) {
 			JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
@@ -5012,7 +5032,7 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		enable_events = janus_is_true(item->value);
 	if(!enable_events) {
-		JANUS_LOG(LOG_WARN, "Event handlers support disabled\n");
+		JANUS_LOG(LOG_INFO, "Event handlers support disabled\n");
 	} else {
 		gchar **disabled_eventhandlers = NULL;
 		path = EVENTDIR;

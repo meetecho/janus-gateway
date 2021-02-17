@@ -4959,6 +4959,11 @@ done:
 				goto error;
 			}
 			JANUS_LOG(LOG_VERB, "Starting the streaming\n");
+			if(g_atomic_int_get(&session->paused) == 1) {
+				/* We were paused: reset the sequence number in RTP packets */
+				session->context.a_seq_reset = TRUE;
+				session->context.v_seq_reset = TRUE;
+			}
 			g_atomic_int_set(&session->paused, 0);
 			result = json_object();
 			/* We wait for the setup_media event to start: on the other hand, it may have already arrived */
@@ -8101,6 +8106,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					JANUS_LOG(LOG_HUGE, "[%s] Got audio RTCP feedback: SSRC %"SCNu32"\n",
 						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
+					packet.is_rtp = FALSE;
 					packet.is_video = FALSE;
 					packet.data = (janus_rtp_header *)buffer;
 					packet.length = bytes;
@@ -8127,6 +8133,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					JANUS_LOG(LOG_HUGE, "[%s] Got video RTCP feedback: SSRC %"SCNu32"\n",
 						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
+					packet.is_rtp = FALSE;
 					packet.is_video = TRUE;
 					packet.data = (janus_rtp_header *)buffer;
 					packet.length = bytes;

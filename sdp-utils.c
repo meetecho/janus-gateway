@@ -700,64 +700,20 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 			ml = ml->next;
 			continue;
 		}
-		/* Look in all rtpmap attributes */
+		/* Look in all rtpmap attributes first */
 		GList *ma = m->attributes;
 		int pt = -1;
-		gboolean check_profile = FALSE;
-		gboolean got_profile = FALSE;
+		GList *pts = NULL;
 		while(ma) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
-			if(profile != NULL && a->name != NULL && a->value != NULL && !strcasecmp(a->name, "fmtp")) {
-				if(vp9) {
-					char profile_id[20];
-					g_snprintf(profile_id, sizeof(profile_id), "profile-id=%s", profile);
-					if(strstr(a->value, profile_id) != NULL) {
-						/* Found */
-						JANUS_LOG(LOG_VERB, "VP9 profile %s found --> %d\n", profile, pt);
-						if(check_profile) {
-							return pt;
-						} else {
-							got_profile = TRUE;
-						}
-					}
-				} else if(h264 && strstr(a->value, "packetization-mode=0") == NULL) {
-					/* We only support packetization-mode=1, no matter the profile */
-					char profile_level_id[30];
-					char *profile_lower = g_ascii_strdown(profile, -1);
-					g_snprintf(profile_level_id, sizeof(profile_level_id), "profile-level-id=%s", profile_lower);
-					g_free(profile_lower);
-					if(strstr(a->value, profile_level_id) != NULL) {
-						/* Found */
-						JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
-						if(check_profile) {
-							return pt;
-						} else {
-							got_profile = TRUE;
-						}
-					}
-					/* Not found, try converting the profile to upper case */
-					char *profile_upper = g_ascii_strup(profile, -1);
-					g_snprintf(profile_level_id, sizeof(profile_level_id), "profile-level-id=%s", profile_upper);
-					g_free(profile_upper);
-					if(strstr(a->value, profile_level_id) != NULL) {
-						/* Found */
-						JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
-						if(check_profile) {
-							return pt;
-						} else {
-							got_profile = TRUE;
-						}
-					}
-				}
-			} else if(a->name != NULL && a->value != NULL && !strcasecmp(a->name, "rtpmap")) {
+			if(a->name != NULL && a->value != NULL && !strcasecmp(a->name, "rtpmap")) {
 				pt = atoi(a->value);
-				check_profile = FALSE;
 				if(pt < 0) {
 					JANUS_LOG(LOG_ERR, "Invalid payload type (%s)\n", a->value);
 				} else if(strstr(a->value, format) || strstr(a->value, format2)) {
-					if(profile != NULL && !got_profile && (vp9 || h264)) {
-						/* Let's check the profile first */
-						check_profile = TRUE;
+					if(profile != NULL && (vp9 || h264)) {
+						/* Let's keep track of this payload type */
+						pts = g_list_append(pts, GINT_TO_POINTER(pt));
 					} else {
 						/* Payload type for codec found */
 						return pt;
@@ -766,6 +722,54 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 			}
 			ma = ma->next;
 		}
+		if(profile != NULL) {
+			/* Now look for the profile in the fmtp attributes */
+			ma = m->attributes;
+			while(ma) {
+				janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
+				if(profile != NULL && a->name != NULL && a->value != NULL && !strcasecmp(a->name, "fmtp")) {
+					/* Does this match the payload types we're looking for? */
+					pt = atoi(a->value);
+					if(g_list_find(pts, GINT_TO_POINTER(pt)) == NULL) {
+						/* Not what we're looking for */
+						ma = ma->next;
+						continue;
+					}
+					if(vp9) {
+						char profile_id[20];
+						g_snprintf(profile_id, sizeof(profile_id), "profile-id=%s", profile);
+						if(strstr(a->value, profile_id) != NULL) {
+							/* Found */
+							JANUS_LOG(LOG_VERB, "VP9 profile %s found --> %d\n", profile, pt);
+							return pt;
+						}
+					} else if(h264 && strstr(a->value, "packetization-mode=0") == NULL) {
+						/* We only support packetization-mode=1, no matter the profile */
+						char profile_level_id[30];
+						char *profile_lower = g_ascii_strdown(profile, -1);
+						g_snprintf(profile_level_id, sizeof(profile_level_id), "profile-level-id=%s", profile_lower);
+						g_free(profile_lower);
+						if(strstr(a->value, profile_level_id) != NULL) {
+							/* Found */
+							JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
+							return pt;
+						}
+						/* Not found, try converting the profile to upper case */
+						char *profile_upper = g_ascii_strup(profile, -1);
+						g_snprintf(profile_level_id, sizeof(profile_level_id), "profile-level-id=%s", profile_upper);
+						g_free(profile_upper);
+						if(strstr(a->value, profile_level_id) != NULL) {
+							/* Found */
+							JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
+							return pt;
+						}
+					}
+				}
+				ma = ma->next;
+			}
+		}
+		if(pts != NULL)
+			g_list_free(pts);
 		ml = ml->next;
 	}
 	return -1;

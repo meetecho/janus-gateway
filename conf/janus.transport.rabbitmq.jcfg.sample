@@ -24,11 +24,18 @@ general: {
 	#username = "guest"					# Username to use to authenticate, if needed
 	#password = "guest"					# Password to use to authenticate, if needed
 	#vhost = "/"						# Virtual host to specify when logging in, if needed
-	to_janus = "to-janus"				# Name of the queue for incoming messages
-	from_janus = "from-janus"			# Name of the queue for outgoing messages
+
 	#janus_exchange = "janus-exchange"	# Exchange for outgoing messages, using default if not provided
-	#janus_exchange_type = "fanout" 		# Rabbitmq exchange_type can be one of the available types: direct, topic, headers and fanout (fanout by defualt).
-	#ssl_enabled = false					# Whether ssl support must be enabled
+	#janus_exchange_type = "fanout"		# Rabbitmq exchange_type can be one of the available types: direct, topic, headers and fanout (fanout by defualt).
+	#queue_name = "janus-gateway"		# Queue name for incoming messages (if set and janus_exchange_type is topic/direct, to_janus will be the routing key the queue is bound to the exchange on)
+	to_janus = "to-janus"				# Name of the queue for incoming messages if queue_name isn't set, otherwise, the routing key that queue_name is bound to
+	from_janus = "from-janus"			# Routing key of the message sent from janus (as well as the name of the outgoing queue if declare_outgoing_queue = true)
+	#declare_outgoing_queue = true		# By default (for backwards compatibility), we declare an outgoing queue. Set this to false to disable that behavior
+	#queue_durable = false				# Whether or not incoming queue should remain after a RabbitMQ reboot
+	#queue_autodelete = false			# Whether or not incoming queue should autodelete after janus disconnects from RabbitMQ
+	#queue_exclusive = false			# Whether or not incoming queue should only allow one subscriber
+
+	#ssl_enabled = false				# Whether ssl support must be enabled
 	#ssl_verify_peer = true				# Whether peer verification must be enabled
 	#ssl_verify_hostname = true			# Whether hostname verification must be enabled
 
@@ -43,7 +50,14 @@ general: {
 # Admin API messaging. The same RabbitMQ server is supposed to be used.
 # Notice that by default the Admin API support via RabbitMQ is disabled.
 admin: {
-	#admin_enabled = false					# Whether the support must be enabled
-	#to_janus_admin = "to-janus-admin"		# Name of the queue for incoming messages
-	#from_janus_admin = "from-janus-admin"	# Name of the queue for outgoing messages
+	#admin_enabled = false						# Whether the support must be enabled
+
+	#queue_name_admin = "janus-gateway-admin"	# Queue name for incoming admin messages (if set and janus_exchange_type is topic/direct, to_janus_admin will be the the routing key the queue is bound to the exchange on)
+	#to_janus_admin = "to-janus-admin"			# Name of the queue for incoming messages if queue_name_admin isn't set, otherwise, the routing key that queue_name_admin is bound to
+	#from_janus_admin = "from-janus-admin"		# Routing key of the message sent from janus  (as well as the name of the outgoing queue if declare_outgoing_queue_admin = true)
+	#declare_outgoing_queue_admin = true		# By default (for backwards compatibility), we declare an outgoing queue. Set this to false to disable that behavior
+	#queue_durable_admin = false				# Whether or not incoming queue should remain after a RabbitMQ reboot
+	#queue_autodelete_admin = false				# Whether or not incoming queue should autodelete after janus disconnects from RabbitMQ
+	#queue_exclusive_admin = false				# Whether or not incoming queue should only allow one subscriber
+
 }
