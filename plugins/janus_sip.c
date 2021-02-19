@@ -411,6 +411,7 @@
 \verbatim
 {
 	"request" : "message",
+	"content_type" : "<content type; optional>"
 	"content" : "<text to send>"
 }
 \endverbatim
@@ -799,6 +800,7 @@ static struct janus_json_parameter info_parameters[] = {
 	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter sipmessage_parameters[] = {
+	{"content_type", JSON_STRING, 0},
 	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 
@@ -4464,7 +4466,7 @@ static void *janus_sip_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "event", json_string("infosent"));
 		} else if(!strcasecmp(request_text, "message")) {
-			/* Send a SIP MESSAGE request: we'll only need the content */
+			/* Send a SIP MESSAGE request: we'll only need the content and optional payload type */
 			if(!(session->status == janus_sip_call_status_inviting ||
 					janus_sip_call_is_established(session))) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not established? status=%s)\n", janus_sip_call_status_string(session->status));
@@ -4487,9 +4489,15 @@ static void *janus_sip_handler(void *data) {
 				janus_mutex_unlock(&session->mutex);
 				goto error;
 			}
+
+			const char *content_type = "text/plain";
+			json_t *content_type_text = json_object_get(root, "content_type");
+			if(content_type_text && json_is_string(content_type_text))
+				content_type = json_string_value(content_type_text);
+
 			const char *msg_content = json_string_value(json_object_get(root, "content"));
 			nua_message(session->stack->s_nh_i,
-				SIPTAG_CONTENT_TYPE_STR("text/plain"),
+				SIPTAG_CONTENT_TYPE_STR(content_type),
 				SIPTAG_PAYLOAD_STR(msg_content),
 				TAG_END());
 			/* Notify the operation */
