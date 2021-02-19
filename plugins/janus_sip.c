@@ -425,6 +425,7 @@
 		"event" : "message",
 		"sender" : "<SIP URI of the message sender>",
 		"displayname" : "<display name of the sender, if available; optional>",
+		"content_type" : "<content type of the message>",
 		"content" : "<content of the message>",
 		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
@@ -5111,11 +5112,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		case nua_i_message: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* We expect a payload */
-			if(!sip->sip_payload || !sip->sip_payload->pl_data) {
+			if(!sip->sip_content_type || !sip->sip_content_type->c_type || !sip->sip_payload || !sip->sip_payload->pl_data) {
 				nua_respond(nh, 488, sip_status_phrase(488),
 					NUTAG_WITH_CURRENT(nua), TAG_END());
 				return;
 			}
+			const char *content_type = sip->sip_content_type->c_type;
 			char *payload = sip->sip_payload->pl_data;
 			/* Notify the application */
 			json_t *message = json_object();
@@ -5135,6 +5137,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			if(session->callid)
 				json_object_set_new(message, "call_id", json_string(session->callid));
+			json_object_set_new(result, "content_type", json_string(content_type));
 			json_object_set_new(message, "result", result);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, message, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
