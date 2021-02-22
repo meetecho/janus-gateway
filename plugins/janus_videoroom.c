@@ -4282,10 +4282,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		janus_refcount_increase(&videoroom->ref);
 		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&videoroom->mutex);
 		/* A secret may be required for this action */
 		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
+			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
 			goto prepare_response;
 		}
@@ -4311,6 +4313,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					}
 				}
 				if(!ok) {
+					janus_mutex_unlock(&videoroom->mutex);
 					JANUS_LOG(LOG_ERR, "Invalid element in the allowed array (not a string)\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 					g_snprintf(error_cause, 512, "Invalid element in the allowed array (not a string)");
@@ -4347,6 +4350,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			json_object_set_new(response, "allowed", list);
 		}
 		/* Done */
+		janus_mutex_unlock(&videoroom->mutex);
 		janus_refcount_decrease(&videoroom->ref);
 		JANUS_LOG(LOG_VERB, "VideoRoom room allowed list updated\n");
 		goto prepare_response;
