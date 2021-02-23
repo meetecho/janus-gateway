@@ -53,6 +53,8 @@ var sfutest = null;
 var opaqueId = "videoroomtest-"+Janus.randomString(12);
 
 var myroom = 1234;	// Demo room
+if(getQueryStringValue("room") !== "")
+	myroom = parseInt(getQueryStringValue("room"));
 var myusername = null;
 var myid = null;
 var mystream = null;
@@ -66,6 +68,9 @@ var bitrateTimer = [], simulcastStarted = {};
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
+var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
+var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
+var subscriber_mode = (getQueryStringValue("subscriber-mode") === "yes" || getQueryStringValue("subscriber-mode") === "true");
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -168,7 +173,12 @@ $(document).ready(function() {
 											myid = msg["id"];
 											mypvtid = msg["private_id"];
 											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
-											publishOwnFeed(true);
+											if(subscriber_mode) {
+												$('#videojoin').hide();
+												$('#videos').removeClass('hide').show();
+											} else {
+												publishOwnFeed(true);
+											}
 											// Any new feed to attach to?
 											if(msg["publishers"]) {
 												var list = msg["publishers"];
@@ -485,6 +495,10 @@ function publishOwnFeed(useAudio) {
 				// so the browser supports it), and (2) the codec is in the list of
 				// allowed codecs in a room. With respect to the point (2) above,
 				// refer to the text in janus.plugin.videoroom.cfg for more details
+				if(acodec)
+					publish["audiocodec"] = acodec;
+				if(vcodec)
+					publish["videocodec"] = vcodec;
 				sfutest.send({ message: publish, jsep: jsep });
 			},
 			error: function(error) {

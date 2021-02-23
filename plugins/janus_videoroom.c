@@ -1942,6 +1942,8 @@ typedef struct janus_videoroom_publisher {
 	gchar *user_id_str;	/* Unique ID in the room (when using strings) */
 	guint32 pvt_id;		/* This is sent to the publisher for mapping purposes, but shouldn't be shared with others */
 	gchar *display;		/* Display name (just for fun) */
+	janus_audiocodec acodec;				/* Audio codec preference for this publisher (if audio) */
+	janus_videocodec vcodec;				/* Video codec preference for this publisher (if video) */
 	int user_audio_active_packets;	/* Participant's audio_active_packets overwriting global room setting */
 	int user_audio_level_average;	/* Participant's audio_level_average overwriting global room setting */
 	gboolean talking; 	/* Whether this participant is currently talking (uses audio levels extension) */
@@ -6808,6 +6810,8 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 		participant->recording_base = NULL;
 		janus_videoroom_recorder_close(participant);
 		janus_mutex_unlock(&participant->rec_mutex);
+		participant->acodec = JANUS_AUDIOCODEC_NONE;
+		participant->vcodec = JANUS_VIDEOCODEC_NONE;
 		participant->firefox = FALSE;
 		participant->e2ee = FALSE;
 		/* Get rid of streams */
@@ -7196,6 +7200,8 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->firefox = FALSE;
 				publisher->bitrate = publisher->room->bitrate;
 				publisher->subscriptions = NULL;
+				publisher->acodec = JANUS_AUDIOCODEC_NONE;
+				publisher->vcodec = JANUS_VIDEOCODEC_NONE;
 				janus_mutex_init(&publisher->subscribers_mutex);
 				janus_mutex_init(&publisher->own_subscriptions_mutex);
 				publisher->streams_byid = g_hash_table_new_full(NULL, NULL,
@@ -7226,39 +7232,41 @@ static void *janus_videoroom_handler(void *data) {
 				if(audiocodec && json_string_value(json_object_get(msg->jsep, "sdp")) != NULL) {
 					janus_audiocodec acodec = janus_audiocodec_from_name(json_string_value(audiocodec));
 					if(acodec == JANUS_AUDIOCODEC_NONE ||
-							(acodec != participant->room->acodec[0] &&
-							acodec != participant->room->acodec[1] &&
-							acodec != participant->room->acodec[2] &&
-							acodec != participant->room->acodec[3] &&
-							acodec != participant->room->acodec[4])) {
+							(acodec != publisher->room->acodec[0] &&
+							acodec != publisher->room->acodec[1] &&
+							acodec != publisher->room->acodec[2] &&
+							acodec != publisher->room->acodec[3] &&
+							acodec != publisher->room->acodec[4])) {
 						JANUS_LOG(LOG_ERR, "Participant asked for audio codec '%s', but it's not allowed (room %s, user %s)\n",
-							json_string_value(audiocodec), participant->room_id_str, participant->user_id_str);
-						janus_refcount_decrease(&participant->ref);
+							json_string_value(audiocodec), publisher->room_id_str, publisher->user_id_str);
+						janus_refcount_decrease(&publisher->ref);
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 						g_snprintf(error_cause, 512, "Audio codec unavailable in this room");
 						goto error;
 					}
 					JANUS_LOG(LOG_VERB, "Participant asked for audio codec '%s' (room %s, user %s)\n",
-						json_string_value(audiocodec), participant->room_id_str, participant->user_id_str);
+						json_string_value(audiocodec), publisher->room_id_str, publisher->user_id_str);
+					publisher->acodec = acodec;
 				}
 				if(videocodec && json_string_value(json_object_get(msg->jsep, "sdp")) != NULL) {
-					/* The participant would like to use a video codec in particular */
+					/* The publisher would like to use a video codec in particular */
 					janus_videocodec vcodec = janus_videocodec_from_name(json_string_value(videocodec));
 					if(vcodec == JANUS_VIDEOCODEC_NONE ||
-							(vcodec != participant->room->vcodec[0] &&
-							vcodec != participant->room->vcodec[1] &&
-							vcodec != participant->room->vcodec[2] &&
-							vcodec != participant->room->vcodec[3] &&
-							vcodec != participant->room->vcodec[4])) {
+							(vcodec != publisher->room->vcodec[0] &&
+							vcodec != publisher->room->vcodec[1] &&
+							vcodec != publisher->room->vcodec[2] &&
+							vcodec != publisher->room->vcodec[3] &&
+							vcodec != publisher->room->vcodec[4])) {
 						JANUS_LOG(LOG_ERR, "Participant asked for video codec '%s', but it's not allowed (room %s, user %s)\n",
-							json_string_value(videocodec), participant->room_id_str, participant->user_id_str);
-						janus_refcount_decrease(&participant->ref);
+							json_string_value(videocodec), publisher->room_id_str, publisher->user_id_str);
+						janus_refcount_decrease(&publisher->ref);
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 						g_snprintf(error_cause, 512, "Video codec unavailable in this room");
 						goto error;
 					}
 					JANUS_LOG(LOG_VERB, "Participant asked for video codec '%s' (room %s, user %s)\n",
-						json_string_value(videocodec), participant->room_id_str, participant->user_id_str);
+						json_string_value(videocodec), publisher->room_id_str, publisher->user_id_str);
+					publisher->vcodec = vcodec;
 				}
 				if(bitrate) {
 					publisher->bitrate = json_integer_value(bitrate);
@@ -7967,7 +7975,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				/* Check if there's an SDP to take into account */
 				if(json_string_value(json_object_get(msg->jsep, "sdp"))) {
-					if(audiocodec && !sdp_update) {
+					if(audiocodec) {
 						/* The participant would like to use an audio codec in particular */
 						janus_audiocodec acodec = janus_audiocodec_from_name(json_string_value(audiocodec));
 						if(acodec == JANUS_AUDIOCODEC_NONE ||
@@ -7985,8 +7993,9 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						JANUS_LOG(LOG_VERB, "Participant asked for audio codec '%s' (room %s, user %s)\n",
 							json_string_value(audiocodec), participant->room_id_str, participant->user_id_str);
+						participant->acodec = acodec;
 					}
-					if(videocodec && !sdp_update) {
+					if(videocodec) {
 						/* The participant would like to use a video codec in particular */
 						janus_videocodec vcodec = janus_videocodec_from_name(json_string_value(videocodec));
 						if(vcodec == JANUS_VIDEOCODEC_NONE ||
@@ -8004,6 +8013,7 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						JANUS_LOG(LOG_VERB, "Participant asked for video codec '%s' (room %s, user %s)\n",
 							json_string_value(videocodec), participant->room_id_str, participant->user_id_str);
+						participant->vcodec = vcodec;
 					}
 				}
 				/* Update the audio/video/data flags, if set (and just configuring) */
@@ -9443,8 +9453,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *descriptions = json_object_get(root, "descriptions");
 				const char *audiocodec = NULL, *videocodec = NULL;
 				char *audio_fmtp = NULL;
-				char *vp9_profile = videoroom->vp9_profile;
-				char *h264_profile = videoroom->h264_profile;
+				char *vp9_profile = NULL, *h264_profile = NULL;
 				GList *temp = offer->m_lines;
 				janus_mutex_lock(&participant->streams_mutex);
 				while(temp) {
@@ -9469,8 +9478,8 @@ static void *janus_videoroom_handler(void *data) {
 						janus_refcount_increase(&participant->ref);	/* Add a reference to the publisher */
 						/* Initialize the stream */
 						ps->active = TRUE;
-						ps->acodec = JANUS_AUDIOCODEC_NONE;
-						ps->vcodec = JANUS_VIDEOCODEC_NONE;
+						ps->acodec = participant->acodec;
+						ps->vcodec = participant->vcodec;
 						ps->pt = -1;
 						g_atomic_int_set(&ps->destroyed, 0);
 						janus_refcount_init(&ps->ref, janus_videoroom_publisher_stream_free);
@@ -9507,52 +9516,95 @@ static void *janus_videoroom_handler(void *data) {
 					janus_sdp_mdirection mdir = JANUS_SDP_INACTIVE;
 					if(m->direction != JANUS_SDP_INACTIVE) {
 						if(m->type == JANUS_SDP_AUDIO) {
-							int i=0;
-							for(i=0; i<5; i++) {
-								if(videoroom->acodec[i] == JANUS_AUDIOCODEC_NONE)
-									continue;
-								if(janus_sdp_get_codec_pt(offer, m->index, janus_audiocodec_name(videoroom->acodec[i])) != -1) {
-									ps->acodec = videoroom->acodec[i];
+							if(ps->acodec != JANUS_AUDIOCODEC_NONE) {
+								/* We already know which codec we'll use */
+								if(ps->pt == -1 && janus_sdp_get_codec_pt(offer, m->index, janus_audiocodec_name(ps->acodec)) != -1) {
 									ps->pt = janus_audiocodec_pt(ps->acodec);
-									break;
+								}
+							} else {
+								/* Check the codec priorities in the room configuration */
+								int i=0;
+								for(i=0; i<5; i++) {
+									if(videoroom->acodec[i] == JANUS_AUDIOCODEC_NONE)
+										continue;
+									if(janus_sdp_get_codec_pt(offer, m->index, janus_audiocodec_name(videoroom->acodec[i])) != -1) {
+										ps->acodec = videoroom->acodec[i];
+										ps->pt = janus_audiocodec_pt(ps->acodec);
+										break;
+									}
 								}
 							}
 							mdir = (ps->acodec != JANUS_AUDIOCODEC_NONE ? JANUS_SDP_RECVONLY : JANUS_SDP_INACTIVE);
 						} else if(m->type == JANUS_SDP_VIDEO) {
-							int i=0;
-							for(i=0; i<5; i++) {
-								if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_NONE)
-									continue;
-								if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_VP9 && vp9_profile) {
+							vp9_profile = videoroom->vp9_profile;
+							h264_profile = videoroom->h264_profile;
+							if(ps->vcodec != JANUS_VIDEOCODEC_NONE) {
+								/* We already know which codec we'll use */
+								if(ps->pt == -1 && ps->vcodec == JANUS_VIDEOCODEC_VP9 && vp9_profile) {
 									/* Check if this VP9 profile is available */
-									if(janus_sdp_get_codec_pt_full(offer, -1, janus_videocodec_name(videoroom->vcodec[i]), vp9_profile) != -1) {
+									if(janus_sdp_get_codec_pt_full(offer, -1, janus_videocodec_name(ps->vcodec), vp9_profile) != -1) {
 										/* It is */
 										h264_profile = NULL;
-										ps->vcodec = videoroom->vcodec[i];
 										ps->pt = janus_videocodec_pt(ps->vcodec);
+										g_free(ps->vp9_profile);
 										ps->vp9_profile = g_strdup(vp9_profile);
-										break;
+									} else {
+										/* It isn't, fallback to checking whether VP9 is available without the profile */
+										vp9_profile = NULL;
 									}
-									/* It isn't, fallback to checking whether VP9 is available without the profile */
-									vp9_profile = NULL;
-								} else if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_H264 && h264_profile) {
+								} else if(ps->pt == -1 && ps->vcodec == JANUS_VIDEOCODEC_H264 && h264_profile) {
 									/* Check if this H.264 profile is available */
-									if(janus_sdp_get_codec_pt_full(offer, -1, janus_videocodec_name(videoroom->vcodec[i]), h264_profile) != -1) {
+									if(janus_sdp_get_codec_pt_full(offer, -1, janus_videocodec_name(ps->vcodec), h264_profile) != -1) {
 										/* It is */
 										vp9_profile = NULL;
+										ps->pt = janus_videocodec_pt(ps->vcodec);
+										g_free(ps->h264_profile);
+										ps->h264_profile = g_strdup(h264_profile);
+									} else {
+										/* It isn't, fallback to checking whether H.264 is available without the profile */
+										h264_profile = NULL;
+									}
+								}
+								if(ps->pt == -1 && janus_sdp_get_codec_pt(offer, m->index, janus_videocodec_name(ps->vcodec)) != -1) {
+									ps->pt = janus_videocodec_pt(ps->vcodec);
+								}
+							} else {
+								/* Check the codec priorities in the room configuration */
+								int i=0;
+								for(i=0; i<5; i++) {
+									if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_NONE)
+										continue;
+									if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_VP9 && vp9_profile) {
+										/* Check if this VP9 profile is available */
+										if(janus_sdp_get_codec_pt_full(offer, -1, janus_videocodec_name(videoroom->vcodec[i]), vp9_profile) != -1) {
+											/* It is */
+											h264_profile = NULL;
+											ps->vcodec = videoroom->vcodec[i];
+											ps->pt = janus_videocodec_pt(ps->vcodec);
+											ps->vp9_profile = g_strdup(vp9_profile);
+											break;
+										}
+										/* It isn't, fallback to checking whether VP9 is available without the profile */
+										vp9_profile = NULL;
+									} else if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_H264 && h264_profile) {
+										/* Check if this H.264 profile is available */
+										if(janus_sdp_get_codec_pt_full(offer, -1, janus_videocodec_name(videoroom->vcodec[i]), h264_profile) != -1) {
+											/* It is */
+											vp9_profile = NULL;
+											ps->vcodec = videoroom->vcodec[i];
+											ps->pt = janus_videocodec_pt(ps->vcodec);
+											ps->h264_profile = g_strdup(h264_profile);
+											break;
+										}
+										/* It isn't, fallback to checking whether H.264 is available without the profile */
+										h264_profile = NULL;
+									}
+									/* Check if the codec is available */
+									if(janus_sdp_get_codec_pt(offer, m->index, janus_videocodec_name(videoroom->vcodec[i])) != -1) {
 										ps->vcodec = videoroom->vcodec[i];
 										ps->pt = janus_videocodec_pt(ps->vcodec);
-										ps->h264_profile = g_strdup(h264_profile);
 										break;
 									}
-									/* It isn't, fallback to checking whether H.264 is available without the profile */
-									h264_profile = NULL;
-								}
-								/* Check if the codec is available */
-								if(janus_sdp_get_codec_pt(offer, m->index, janus_videocodec_name(videoroom->vcodec[i])) != -1) {
-									ps->vcodec = videoroom->vcodec[i];
-									ps->pt = janus_videocodec_pt(ps->vcodec);
-									break;
 								}
 							}
 							/* Check if simulcast is in place */
