@@ -171,19 +171,6 @@ $(document).ready(function() {
 													Janus.log("The ID of the current recording is " + id);
 													recordingId = id;
 												}
-											} else if(event === 'slow_link') {
-												var uplink = result["uplink"];
-												if(uplink !== 0) {
-													// Janus detected issues when receiving our media, let's slow down
-													bandwidth = parseInt(bandwidth / 1.5);
-													recordplay.send({
-														message: {
-															request: 'configure',
-															'video-bitrate-max': bandwidth,		// Reduce the bitrate
-															'video-keyframe-interval': 15000	// Keep the 15 seconds key frame interval
-														}
-													});
-												}
 											} else if(event === 'playing') {
 												Janus.log("Playout has started!");
 											} else if(event === 'stopped') {
@@ -290,6 +277,26 @@ $(document).ready(function() {
 										} else {
 											spinner.spin();
 										}
+										if($('#curres').length === 0) {
+											$('#videobox').append(
+												'<span class="label label-primary" id="curres' +'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
+												'<span class="label label-info" id="curbw' +'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
+											$("#video").bind("playing", function () {
+												var width = this.videoWidth;
+												var height = this.videoHeight;
+												$('#curres').text(width + 'x' + height);
+											});
+											recordplay.bitrateTimer = setInterval(function() {
+												// Display updated bitrate, if supported
+												var bitrate = recordplay.getBitrate();
+												$('#curbw').text(bitrate);
+												var video = $('#thevideo').get(0);
+												var width = video.videoWidth;
+												var height = video.videoHeight;
+												if(width > 0 && height > 0)
+													$('#curres').text(width + 'x' + height);
+											}, 1000);
+										}
 										// Show the video, hide the spinner and show the resolution when we get a playing event
 										$("#thevideo").bind("playing", function () {
 											$('#waitingvideo').remove();
@@ -337,6 +344,9 @@ $(document).ready(function() {
 									if(spinner)
 										spinner.stop();
 									spinner = null;
+									if(recordplay.bitrateTimer)
+										clearInterval(recordplay.bitrateTimer);
+									delete recordplay.bitrateTimer;
 									$('#videobox').empty();
 									$("#videobox").parent().unblock();
 									$('#video').hide();

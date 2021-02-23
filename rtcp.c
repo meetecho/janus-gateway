@@ -316,7 +316,7 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 		}
 		delta_us = delta*250;
 		/* Print summary */
-		JANUS_LOG(LOG_HUGE, "  [%02"SCNu16"][%"SCNu16"] %s (%"SCNu32"us)\n", num, base_seq+num-1,
+		JANUS_LOG(LOG_HUGE, "  [%02"SCNu16"][%"SCNu16"] %s (%"SCNu32"us)\n", num, (uint16_t)(base_seq+num-1),
 			janus_rtp_packet_status_description(s), delta_us);
 		iter = iter->next;
 	}

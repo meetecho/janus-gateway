@@ -266,7 +266,7 @@ janus_plugin *create(void) {
 
 /* Useful stuff */
 volatile gint duktape_initialized = 0, duktape_stopping = 0;
-janus_callbacks *janus_core = NULL;
+janus_callbacks *duktape_janus_core = NULL;
 static char *duktape_folder = NULL;
 
 /* Duktape stuff */
@@ -401,7 +401,7 @@ static void *janus_duktape_async_event_helper(void *data) {
 		return NULL;
 	if(asev->type == janus_duktape_async_event_type_pushevent) {
 		/* Send the event */
-		janus_core->push_event(asev->session->handle, &janus_duktape_plugin, asev->transaction, asev->event, asev->jsep);
+		duktape_janus_core->push_event(asev->session->handle, &janus_duktape_plugin, asev->transaction, asev->event, asev->jsep);
 	}
 	json_decref(asev->event);
 	json_decref(asev->jsep);
@@ -646,7 +646,7 @@ static duk_ret_t janus_duktape_method_pushevent(duk_context *ctx) {
 		return 1;
 	}
 	/* No SDP, send the event now */
-	int res = janus_core->push_event(session->handle, &janus_duktape_plugin, transaction, event, NULL);
+	int res = duktape_janus_core->push_event(session->handle, &janus_duktape_plugin, transaction, event, NULL);
 	janus_refcount_decrease(&session->ref);
 	json_decref(event);
 	duk_push_int(ctx, res);
@@ -669,7 +669,7 @@ static duk_ret_t janus_duktape_method_notifyevent(duk_context *ctx) {
 	if(event_text == NULL)
 		return duk_throw(ctx);
 	/* Get the arguments from the provided context */
-	if(!janus_core->events_is_enabled()) {
+	if(!duktape_janus_core->events_is_enabled()) {
 		/* Event handlers are disabled in the core, ignoring */
 		duk_push_int(ctx, 0);
 		return 1;
@@ -688,7 +688,7 @@ static duk_ret_t janus_duktape_method_notifyevent(duk_context *ctx) {
 		janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&duktape_sessions_mutex);
 	/* Notify the event */
-	janus_core->notify_event(&janus_duktape_plugin, session ? session->handle : NULL, event);
+	duktape_janus_core->notify_event(&janus_duktape_plugin, session ? session->handle : NULL, event);
 	if(session != NULL)
 		janus_refcount_decrease(&session->ref);
 	duk_push_int(ctx, 0);
@@ -697,7 +697,7 @@ static duk_ret_t janus_duktape_method_notifyevent(duk_context *ctx) {
 
 static duk_ret_t janus_duktape_method_eventsisenabled(duk_context *ctx) {
 	/* Return info on whether event handlers are enabled in the core or not */
-	duk_push_int(ctx, janus_core->events_is_enabled());
+	duk_push_int(ctx, duktape_janus_core->events_is_enabled());
 	return 1;
 }
 
@@ -719,7 +719,7 @@ static duk_ret_t janus_duktape_method_closepc(duk_context *ctx) {
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&duktape_sessions_mutex);
 	/* Close the PeerConnection */
-	janus_core->close_pc(session->handle);
+	duktape_janus_core->close_pc(session->handle);
 	duk_push_int(ctx, 0);
 	return 1;
 }
@@ -742,7 +742,7 @@ static duk_ret_t janus_duktape_method_endsession(duk_context *ctx) {
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&duktape_sessions_mutex);
 	/* Close the plugin handle */
-	janus_core->end_session(session->handle);
+	duktape_janus_core->end_session(session->handle);
 	duk_push_int(ctx, 0);
 	return 1;
 }
@@ -936,7 +936,7 @@ static duk_ret_t janus_duktape_method_setbitrate(duk_context *ctx) {
 	/* Send a REMB right away too, if the PeerConnection is up */
 	if(g_atomic_int_get(&session->started)) {
 		/* No limit ~= 10000000 */
-		janus_core->send_remb(session->handle, session->bitrate ? session->bitrate : 10000000);
+		duktape_janus_core->send_remb(session->handle, session->bitrate ? session->bitrate : 10000000);
 	}
 	/* Done */
 	janus_refcount_decrease(&session->ref);
@@ -1055,7 +1055,7 @@ static duk_ret_t janus_duktape_method_sendpli(duk_context *ctx) {
 	/* Send a PLI */
 	session->pli_latest = janus_get_monotonic_time();
 	JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->id);
-	janus_core->send_pli(session->handle);
+	duktape_janus_core->send_pli(session->handle);
 	/* Done */
 	janus_refcount_decrease(&session->ref);
 	duk_push_int(ctx, 0);
@@ -1104,7 +1104,7 @@ static duk_ret_t janus_duktape_method_relayrtp(duk_context *ctx) {
 	/* Send the RTP packet */
 	janus_plugin_rtp rtp = { .video = is_video, .buffer = (char *)payload, .length = len };
 	janus_plugin_rtp_extensions_reset(&rtp.extensions);
-	janus_core->relay_rtp(session->handle, &rtp);
+	duktape_janus_core->relay_rtp(session->handle, &rtp);
 	duk_push_int(ctx, 0);
 	return 1;
 }
@@ -1150,7 +1150,7 @@ static duk_ret_t janus_duktape_method_relayrtcp(duk_context *ctx) {
 	janus_mutex_unlock(&duktape_sessions_mutex);
 	/* Send the RTCP packet */
 	janus_plugin_rtcp rtcp = { .video = is_video, .buffer = (char *)payload, .length = len };
-	janus_core->relay_rtcp(session->handle, &rtcp);
+	duktape_janus_core->relay_rtcp(session->handle, &rtcp);
 	duk_push_int(ctx, 0);
 	return 1;
 }
@@ -1203,7 +1203,7 @@ static duk_ret_t janus_duktape_method_relaytextdata(duk_context *ctx) {
 		.buffer = (char *)payload,
 		.length = len
 	};
-	janus_core->relay_data(session->handle, &data);
+	duktape_janus_core->relay_data(session->handle, &data);
 	janus_refcount_decrease(&session->ref);
 	duk_push_int(ctx, 0);
 	return 1;
@@ -1256,7 +1256,7 @@ static duk_ret_t janus_duktape_method_relaybinarydata(duk_context *ctx) {
 		.buffer = (char *)payload,
 		.length = len
 	};
-	janus_core->relay_data(session->handle, &data);
+	duktape_janus_core->relay_data(session->handle, &data);
 	janus_refcount_decrease(&session->ref);
 	duk_push_int(ctx, 0);
 	return 1;
@@ -1364,7 +1364,7 @@ static duk_ret_t janus_duktape_method_startrecording(duk_context *ctx) {
 		/* Also send a keyframe request */
 		session->pli_latest = janus_get_monotonic_time();
 		JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->id);
-		janus_core->send_pli(session->handle);
+		duktape_janus_core->send_pli(session->handle);
 	}
 	if(drc) {
 		session->drc = drc;
@@ -1699,7 +1699,7 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 	}
 
 	/* This is the callback we'll need to invoke to contact the Janus core */
-	janus_core = callback;
+	duktape_janus_core = callback;
 
 	/* Init the JS script, in case it's needed */
 	duk_get_global_string(duktape_ctx, "init");
@@ -2445,7 +2445,7 @@ void janus_duktape_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *
 		gint64 now = janus_get_monotonic_time();
 		if((now-session->pli_latest) >= ((gint64)session->pli_freq*G_USEC_PER_SEC)) {
 			session->pli_latest = now;
-			janus_core->send_pli(handle);
+			duktape_janus_core->send_pli(handle);
 		}
 	}
 }
@@ -2488,7 +2488,7 @@ void janus_duktape_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp
 	uint32_t bitrate = janus_rtcp_get_remb(buf, len);
 	if(bitrate > 0) {
 		/* No limit ~= 10000000 */
-		janus_core->send_remb(handle, session->bitrate ? session->bitrate : 10000000);
+		duktape_janus_core->send_remb(handle, session->bitrate ? session->bitrate : 10000000);
 	}
 	/* If there's an incoming PLI, instead, relay it to the source of the media if any */
 	if(janus_rtcp_has_pli(buf, len)) {
@@ -2497,7 +2497,7 @@ void janus_duktape_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp
 			/* Send a PLI */
 			session->sender->pli_latest = janus_get_monotonic_time();
 			JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->sender->id);
-			janus_core->send_pli(session->sender->handle);
+			duktape_janus_core->send_pli(session->sender->handle);
 			janus_mutex_unlock_nodebug(&session->sender->recipients_mutex);
 		}
 	}
@@ -2733,7 +2733,7 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 		if(session->sim_context.need_pli && sender->handle) {
 			/* Send a PLI */
 			JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
-			janus_core->send_pli(sender->handle);
+			duktape_janus_core->send_pli(sender->handle);
 		}
 		/* Do we need to drop this? */
 		if(!relay)
@@ -2787,10 +2787,10 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 				session->sim_context.changed_substream);
 		}
 		/* Send the packet */
-		if(janus_core != NULL) {
+		if(duktape_janus_core != NULL) {
 			janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
 			janus_plugin_rtp_extensions_reset(&rtp.extensions);
-			janus_core->relay_rtp(session->handle, &rtp);
+			duktape_janus_core->relay_rtp(session->handle, &rtp);
 		}
 		/* Restore the timestamp and sequence number to what the publisher set them to */
 		packet->data->timestamp = htonl(packet->timestamp);
@@ -2803,10 +2803,10 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 		/* Fix sequence number and timestamp (publisher switching may be involved) */
 		janus_rtp_header_update(packet->data, &session->rtpctx, packet->is_video, 0);
 		/* Send the packet */
-		if(janus_core != NULL) {
+		if(duktape_janus_core != NULL) {
 			janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
 			janus_plugin_rtp_extensions_reset(&rtp.extensions);
-			janus_core->relay_rtp(session->handle, &rtp);
+			duktape_janus_core->relay_rtp(session->handle, &rtp);
 		}
 		/* Restore the timestamp and sequence number to what the publisher set them to */
 		packet->data->timestamp = htonl(packet->timestamp);
@@ -2827,7 +2827,7 @@ static void janus_duktape_relay_data_packet(gpointer data, gpointer user_data) {
 			!session->accept_data || !g_atomic_int_get(&session->dataready)) {
 		return;
 	}
-	if(janus_core != NULL) {
+	if(duktape_janus_core != NULL) {
 		JANUS_LOG(LOG_VERB, "Forwarding %s DataChannel message (%d bytes) to session %"SCNu32"\n",
 			packet->textdata ? "text" : "binary", packet->length, session->id);
 		janus_plugin_data data = {
@@ -2837,7 +2837,7 @@ static void janus_duktape_relay_data_packet(gpointer data, gpointer user_data) {
 			.buffer = (char *)packet->data,
 			.length = packet->length
 		};
-		janus_core->relay_data(session->handle, &data);
+		duktape_janus_core->relay_data(session->handle, &data);
 	}
 	return;
 }
