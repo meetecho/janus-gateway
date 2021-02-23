@@ -411,6 +411,7 @@
 \verbatim
 {
 	"request" : "message",
+	"content_type" : "<content type; optional>"
 	"content" : "<text to send>"
 }
 \endverbatim
@@ -425,6 +426,7 @@
 		"event" : "message",
 		"sender" : "<SIP URI of the message sender>",
 		"displayname" : "<display name of the sender, if available; optional>",
+		"content_type" : "<content type of the message>",
 		"content" : "<content of the message>",
 		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
@@ -798,6 +800,7 @@ static struct janus_json_parameter info_parameters[] = {
 	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter sipmessage_parameters[] = {
+	{"content_type", JSON_STRING, 0},
 	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 
@@ -4463,7 +4466,7 @@ static void *janus_sip_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "event", json_string("infosent"));
 		} else if(!strcasecmp(request_text, "message")) {
-			/* Send a SIP MESSAGE request: we'll only need the content */
+			/* Send a SIP MESSAGE request: we'll only need the content and optional payload type */
 			if(!(session->status == janus_sip_call_status_inviting ||
 					janus_sip_call_is_established(session))) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not established? status=%s)\n", janus_sip_call_status_string(session->status));
@@ -4486,9 +4489,15 @@ static void *janus_sip_handler(void *data) {
 				janus_mutex_unlock(&session->mutex);
 				goto error;
 			}
+
+			const char *content_type = "text/plain";
+			json_t *content_type_text = json_object_get(root, "content_type");
+			if(content_type_text && json_is_string(content_type_text))
+				content_type = json_string_value(content_type_text);
+
 			const char *msg_content = json_string_value(json_object_get(root, "content"));
 			nua_message(session->stack->s_nh_i,
-				SIPTAG_CONTENT_TYPE_STR("text/plain"),
+				SIPTAG_CONTENT_TYPE_STR(content_type),
 				SIPTAG_PAYLOAD_STR(msg_content),
 				TAG_END());
 			/* Notify the operation */
@@ -5111,11 +5120,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		case nua_i_message: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* We expect a payload */
-			if(!sip->sip_payload || !sip->sip_payload->pl_data) {
+			if(!sip->sip_content_type || !sip->sip_content_type->c_type || !sip->sip_payload || !sip->sip_payload->pl_data) {
 				nua_respond(nh, 488, sip_status_phrase(488),
 					NUTAG_WITH_CURRENT(nua), TAG_END());
 				return;
 			}
+			const char *content_type = sip->sip_content_type->c_type;
 			char *payload = sip->sip_payload->pl_data;
 			/* Notify the application */
 			json_t *message = json_object();
@@ -5135,6 +5145,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			if(session->callid)
 				json_object_set_new(message, "call_id", json_string(session->callid));
+			json_object_set_new(result, "content_type", json_string(content_type));
 			json_object_set_new(message, "result", result);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, message, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
