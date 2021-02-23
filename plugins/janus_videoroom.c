@@ -1743,8 +1743,26 @@ static void janus_videoroom_publisher_dereference_nodebug(janus_videoroom_publis
 }
 
 static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
-	if(p && g_atomic_int_compare_and_exchange(&p->destroyed, 0, 1))
+	if(p && g_atomic_int_compare_and_exchange(&p->destroyed, 0, 1)) {
+		/* Forwarders with RTCP support may have an extra reference, stop their source */
+		janus_mutex_lock(&p->rtp_forwarders_mutex);
+		if(g_hash_table_size(p->rtp_forwarders) > 0) {
+			GHashTableIter iter_f;
+			gpointer key_f, value_f;
+			g_hash_table_iter_init(&iter_f, p->rtp_forwarders);
+			while(g_hash_table_iter_next(&iter_f, &key_f, &value_f)) {
+				janus_videoroom_rtp_forwarder *rpv = value_f;
+				if(rpv->rtcp_recv) {
+					GSource *source = rpv->rtcp_recv;
+					rpv->rtcp_recv = NULL;
+					g_source_destroy(source);
+					g_source_unref(source);
+				}
+			}
+		}
+		janus_mutex_unlock(&p->rtp_forwarders_mutex);
 		janus_refcount_decrease(&p->ref);
+	}
 }
 
 static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
@@ -2103,7 +2121,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 
 static void janus_videoroom_rtp_forwarder_destroy(janus_videoroom_rtp_forwarder *forward) {
 	if(forward && g_atomic_int_compare_and_exchange(&forward->destroyed, 0, 1)) {
-		if(forward->rtcp_fd > -1) {
+		if(forward->rtcp_fd > -1 && forward->rtcp_recv != NULL) {
 			g_source_destroy(forward->rtcp_recv);
 			g_source_unref(forward->rtcp_recv);
 		}
