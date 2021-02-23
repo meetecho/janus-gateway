@@ -4751,8 +4751,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
 				break;
 			}
-			if(sip->sip_from == NULL || sip->sip_from->a_url == NULL ||
-					sip->sip_to == NULL || sip->sip_to->a_url == NULL) {
+			if(sip->sip_from == NULL || sip->sip_from->a_url->url_user == NULL ||
+					sip->sip_to == NULL || sip->sip_to->a_url->url_user == NULL) {
 				JANUS_LOG(LOG_ERR, "\tInvalid request (missing From or To)\n");
 				nua_respond(nh, 400, sip_status_phrase(400), TAG_END());
 				break;

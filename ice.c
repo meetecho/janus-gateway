@@ -3916,7 +3916,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
 		int sdeslen = 16;
-		char rtcpbuf[srlen+sdeslen];
+		char rtcpbuf[sizeof(janus_rtcp_sr)+sdeslen];
 		memset(rtcpbuf, 0, sizeof(rtcpbuf));
 		rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
 		sr->header.version = 2;
@@ -3942,7 +3942,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		}
 		sr->si.s_packets = htonl(stream->component->out_stats.audio.packets);
 		sr->si.s_octets = htonl(stream->component->out_stats.audio.bytes);
-		rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
+		rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[srlen];
 		janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janus", 5);
 		sdes->chunk.ssrc = htonl(stream->audio_ssrc);
 		/* Enqueue it, we'll send it later */
@@ -3977,7 +3977,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
 		int sdeslen = 16;
-		char rtcpbuf[srlen+sdeslen];
+		char rtcpbuf[sizeof(janus_rtcp_sr)+sdeslen];
 		memset(rtcpbuf, 0, sizeof(rtcpbuf));
 		rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
 		sr->header.version = 2;
@@ -4003,7 +4003,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		}
 		sr->si.s_packets = htonl(stream->component->out_stats.video[0].packets);
 		sr->si.s_octets = htonl(stream->component->out_stats.video[0].bytes);
-		rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
+		rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[srlen];
 		janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janus", 5);
 		sdes->chunk.ssrc = htonl(stream->video_ssrc);
 		/* Enqueue it, we'll send it later */

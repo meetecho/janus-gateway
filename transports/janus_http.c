@@ -1051,7 +1051,7 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 			transport = (janus_transport_session *)session->longpolls->data;
 			msg = (janus_http_msg *)(transport ? transport->transport_p : NULL);
 			/* Is this connection ready to send a response back? */
-			if(msg && g_atomic_pointer_compare_and_exchange(&msg->longpoll, session, NULL)) {
+			if(msg && g_atomic_pointer_compare_and_exchange(&msg->longpoll, (volatile void *)session, NULL)) {
 				janus_refcount_increase(&msg->ref);
 				/* Send the events back */
 				if(g_atomic_int_compare_and_exchange(&msg->timeout_flag, 1, 0)) {
@@ -1176,7 +1176,7 @@ void janus_http_session_claimed(janus_transport_session *transport, guint64 sess
 				g_source_unref(msg->timeout);
 			}
 			msg->timeout = NULL;
-			if(g_atomic_pointer_compare_and_exchange(&msg->longpoll, session, NULL)) {
+			if(g_atomic_pointer_compare_and_exchange(&msg->longpoll, (volatile void *)session, NULL)) {
 				/* Return an error on the long poll right away */
 				janus_http_timeout(transport, old_session);
 			}
