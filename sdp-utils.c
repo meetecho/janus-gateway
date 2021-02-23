@@ -522,9 +522,9 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							break;
 						}
 						*semicolon = '\0';
-						if(strcmp(line, "AS") && strcmp(line, "TIAS")) {	
-							/* We only support b=AS and b=TIAS, skip */	
-							break;	
+						if(strcmp(line, "AS") && strcmp(line, "TIAS")) {
+							/* We only support b=AS and b=TIAS, skip */
+							break;
 						}
 						mline->b_name = g_strdup(line);
 						mline->b_value = atol(semicolon+1);
