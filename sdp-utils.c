@@ -507,17 +507,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						break;
 					}
 					case 'b': {
-						if(strcmp(line, "AS") && strcmp(line, "TIAS")) {
-							/* We only support b=AS and b=TIAS, skip */
-							line += 2;
-							break;
-						}
-						if(mline->b_name) {
-							if(error)
-								g_snprintf(error, errlen, "Multiple m-line b= lines: %s", line);
-							success = FALSE;
-							break;
-						}
+						//if(mline->b_name) {
+							//if(error)
+							//	g_snprintf(error, errlen, "Multiple m-line b= lines: %s", line);
+							//success = FALSE;
+							//break;
+						//}
 						line += 2;
 						char *semicolon = strchr(line, ':');
 						if(semicolon == NULL || (*(semicolon+1) == '\0')) {
@@ -527,6 +522,10 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							break;
 						}
 						*semicolon = '\0';
+						if(strcmp(line, "AS") && strcmp(line, "TIAS")) {	
+							/* We only support b=AS and b=TIAS, skip */	
+							break;	
+						}
 						mline->b_name = g_strdup(line);
 						mline->b_value = atol(semicolon+1);
 						*semicolon = ':';
