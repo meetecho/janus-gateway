@@ -6321,15 +6321,15 @@ static void *janus_audiobridge_handler(void *data) {
 			/* If we got an offer, we need to answer */
 			janus_sdp *offer = NULL, *answer = NULL;
 			if(got_offer) {
-				janus_sdp *answer = janus_sdp_generate_answer(offer);
+				answer = janus_sdp_generate_answer(sdp);
 				/* Only accept the first audio line, and reject everything else if offered */
-				GList *temp = offer->m_lines;
+				GList *temp = sdp->m_lines;
 				gboolean accepted = FALSE;
 				while(temp) {
 					janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 					if(m->type == JANUS_SDP_AUDIO && !accepted) {
 						accepted = TRUE;
-						janus_sdp_generate_answer_mline(offer, answer, m,
+						janus_sdp_generate_answer_mline(sdp, answer, m,
 							JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
 							JANUS_SDP_OA_CODEC, janus_audiocodec_name(participant->codec),
 							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
