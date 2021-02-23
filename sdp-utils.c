@@ -509,6 +509,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 					case 'b': {
 						if(strcmp(line, "AS") && strcmp(line, "TIAS")) {
 							/* We only support b=AS and b=TIAS, skip */
+							line += 2;
 							break;
 						}
 						if(mline->b_name) {
