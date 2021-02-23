@@ -1877,7 +1877,7 @@ static void janus_videoroom_codecstr(janus_videoroom *videoroom, char *audio_cod
 }
 
 static void janus_videoroom_reqpli(janus_videoroom_publisher *publisher, const char *reason) {
-	if(publisher == NULL)
+	if(publisher == NULL || g_atomic_int_get(&publisher->destroyed))
 		return;
 	/* Send a PLI */
 	JANUS_LOG(LOG_VERB, "%s sending PLI to %s (%s)\n", reason,
