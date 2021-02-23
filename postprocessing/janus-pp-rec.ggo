@@ -1,4 +1,4 @@
-#Janus-pp-rec 0.10.10 gengetopt file
+#Janus-pp-rec 0.11.1 gengetopt file
 usage "janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]"
 option "json" j "Only print JSON header" flag off
 option "header" H "Only parse .mjr header" flag off

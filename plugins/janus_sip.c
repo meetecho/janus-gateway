@@ -378,6 +378,34 @@
  * When a session has been established, there are different requests that
  * you can use to interact with the session.
  *
+ * First of all, you can put a call on-hold with the \c hold request.
+ * By default, this request will send a new INVITE to the peer with a
+ * \c sendonly direction for media, but in case you want to set a
+ * different direction (\c recvonly or \c inactive ) you can do that by
+ * passing a \c direction attribute as well:
+ *
+\verbatim
+{
+	"request" : "hold",
+	"direction" : "<sendonly, recvonly or inactive>"
+}
+\endverbatim
+ *
+ * No WebRTC renegotiation will be involved here on the holder side, as
+ * this will only trigger a re-INVITE on the SIP side. To remove the
+ * call from on-hold, just send a \c unhold request to the plugin,
+ * which requires no additional attributes:
+ *
+\verbatim
+{
+	"request" : "hold",
+	"direction" : "<sendonly, recvonly or inactive>"
+}
+\endverbatim
+ *
+ * and will restore the media direction that was set in the SDP before
+ * putting the call on-hold.
+ *
  * The \c message request allows you to send a SIP MESSAGE to the peer:
  *
 \verbatim
@@ -749,6 +777,9 @@ static struct janus_json_parameter decline_parameters[] = {
 static struct janus_json_parameter transfer_parameters[] = {
 	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"call_id", JANUS_JSON_STRING, 0}
+};
+static struct janus_json_parameter hold_parameters[] = {
+	{"direction", JSON_STRING, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
 	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -2527,12 +2558,14 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		session->media.autoaccept_reinvites = TRUE;
 		session->media.ready = FALSE;
 		session->media.on_hold = FALSE;
-		janus_sip_call_update_status(session, janus_sip_call_status_closing);
 
-		if(g_atomic_int_get(&session->established))
+		/* Send a BYE or respond with 480 */
+		if(g_atomic_int_get(&session->established) || session->status == janus_sip_call_status_inviting)
 			nua_bye(session->stack->s_nh_i, TAG_END());
 		else
 			nua_respond(session->stack->s_nh_i, 480, sip_status_phrase(480), TAG_END());
+
+		janus_sip_call_update_status(session, janus_sip_call_status_closing);
 
 		/* Notify the operation */
 		json_t *event = json_object();
@@ -3544,6 +3577,7 @@ static void *janus_sip_handler(void *data) {
 			/* Send an ack back */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("calling"));
+			json_object_set_new(result, "call_id", json_string(session->callid));
 		} else if(!strcasecmp(request_text, "accept")) {
 			if(session->status != janus_sip_call_status_invited) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
@@ -4004,6 +4038,8 @@ static void *janus_sip_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "event", json_string("declining"));
 			json_object_set_new(result, "code", json_integer(response_code));
+			if(session->callid)
+				json_object_set_new(result, "call_id", json_string(session->callid));
 		} else if(!strcasecmp(request_text, "transfer")) {
 			/* Transfer an existing call */
 			JANUS_VALIDATE_JSON_OBJECT(root, transfer_parameters,
@@ -4100,23 +4136,48 @@ static void *janus_sip_handler(void *data) {
 			}
 			gboolean hold = !strcasecmp(request_text, "hold");
 			if(hold != session->media.on_hold) {
-				/* To put the call on-hold, we need to set the direction to recvonly:
+				/* To put the call on-hold, we need to change the media direction:
 				 * resuming it means resuming the direction we had before */
+				janus_sdp_mdirection hold_dir = JANUS_SDP_SENDONLY;
+				if(hold) {
+					/* By default when holding we use recvonly, but the
+					 * actual direction to set can be passed via API too */
+					JANUS_VALIDATE_JSON_OBJECT(root, hold_parameters,
+						error_code, error_cause, TRUE,
+						JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+					if(error_code != 0)
+						goto error;
+					json_t *hdir = json_object_get(root, "direction");
+					if(hdir != NULL) {
+						const char *dir = json_string_value(hdir);
+						hold_dir = janus_sdp_parse_mdirection(dir);
+						if(hold_dir != JANUS_SDP_SENDONLY && hold_dir != JANUS_SDP_RECVONLY &&
+								hold_dir != JANUS_SDP_INACTIVE) {
+							/* Invalid direction */
+							JANUS_LOG(LOG_ERR, "Invalid direction (can only be sendonly, recvonly or inactive)\n");
+							error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+							g_snprintf(error_cause, 512, "Invalid direction (can only be sendonly, recvonly or inactive)");
+							goto error;
+						}
+					}
+				}
 				session->media.on_hold = hold;
 				janus_sdp_mline *m = janus_sdp_mline_find(session->sdp, JANUS_SDP_AUDIO);
 				if(m) {
 					if(hold) {
 						/* Take note of the original media direction */
 						session->media.pre_hold_audio_dir = m->direction;
-						/* Update the media direction */
-						switch(m->direction) {
-							case JANUS_SDP_DEFAULT:
-							case JANUS_SDP_SENDRECV:
-								m->direction = JANUS_SDP_SENDONLY;
-								break;
-							default:
-								m->direction = JANUS_SDP_INACTIVE;
-								break;
+						if(m->direction != hold_dir) {
+							/* Update the media direction */
+							switch(m->direction) {
+								case JANUS_SDP_DEFAULT:
+								case JANUS_SDP_SENDRECV:
+									m->direction = hold_dir;
+									break;
+								default:
+									m->direction = JANUS_SDP_INACTIVE;
+									break;
+							}
 						}
 					} else {
 						m->direction = session->media.pre_hold_audio_dir;
@@ -4127,15 +4188,17 @@ static void *janus_sip_handler(void *data) {
 					if(hold) {
 						/* Take note of the original media direction */
 						session->media.pre_hold_video_dir = m->direction;
-						/* Update the media direction */
-						switch(m->direction) {
-							case JANUS_SDP_DEFAULT:
-							case JANUS_SDP_SENDRECV:
-								m->direction = JANUS_SDP_SENDONLY;
-								break;
-							default:
-								m->direction = JANUS_SDP_INACTIVE;
-								break;
+						if(m->direction != hold_dir) {
+							/* Update the media direction */
+							switch(m->direction) {
+								case JANUS_SDP_DEFAULT:
+								case JANUS_SDP_SENDRECV:
+									m->direction = hold_dir;
+									break;
+								default:
+									m->direction = JANUS_SDP_INACTIVE;
+									break;
+							}
 						}
 					} else {
 						m->direction = session->media.pre_hold_video_dir;
@@ -4688,8 +4751,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
 				break;
 			}
-			if(sip->sip_from == NULL || sip->sip_from->a_url == NULL ||
-					sip->sip_to == NULL || sip->sip_to->a_url == NULL) {
+			if(sip->sip_from == NULL || sip->sip_from->a_url->url_user == NULL ||
+					sip->sip_to == NULL || sip->sip_to->a_url->url_user == NULL) {
 				JANUS_LOG(LOG_ERR, "\tInvalid request (missing From or To)\n");
 				nua_respond(nh, 400, sip_status_phrase(400), TAG_END());
 				break;
@@ -4864,6 +4927,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_t *calling = json_object();
 			json_object_set_new(calling, "event", json_string(reinvite ? "updatingcall" : "incomingcall"));
 			json_object_set_new(calling, "username", json_string(session->callee));
+			if(session->callid)
+				json_object_set_new(calling, "call_id", json_string(session->callid));
 			if(sip->sip_from->a_display) {
 				json_object_set_new(calling, "displayname", json_string(sip->sip_from->a_display));
 			}
@@ -5032,6 +5097,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_t *headers = janus_sip_get_incoming_headers(sip, session);
 				json_object_set_new(result, "headers", headers);
 			}
+			if(session->callid)
+				json_object_set_new(info, "call_id", json_string(session->callid));
 			json_object_set_new(info, "result", result);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, info, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -5066,6 +5133,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_t *headers = janus_sip_get_incoming_headers(sip, session);
 				json_object_set_new(result, "headers", headers);
 			}
+			if(session->callid)
+				json_object_set_new(message, "call_id", json_string(session->callid));
 			json_object_set_new(message, "result", result);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, message, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
