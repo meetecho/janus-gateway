@@ -346,6 +346,10 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
+#ifdef HAVE_ICE_NOMINATION
+	json_object_set_new(info, "ice-nomination", json_string(janus_ice_get_nomination_mode()));
+#endif
+	json_object_set_new(info, "ice-keepalive-conncheck", janus_ice_is_keepalive_conncheck_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "mdns-enabled", janus_ice_is_mdns_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "min-nack-queue", json_integer(janus_get_min_nack_queue()));
@@ -4764,6 +4768,17 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_ERR, "Invalid STUN address %s:%u. STUN will be disabled\n", stun_server, stun_port);
 		}
 	}
+	item = janus_config_get(config, config_nat, janus_config_type_item, "ice_nomination");
+	if(item && item->value) {
+#ifndef HAVE_ICE_NOMINATION
+		JANUS_LOG(LOG_WARN, "This version of libnice doesn't support setting the ICE nomination mode, ignoring '%s'\n", item->value);
+#else
+		janus_ice_set_nomination_mode(item->value);
+#endif
+	}
+	item = janus_config_get(config, config_nat, janus_config_type_item, "ice_keepalive_conncheck");
+	if(item && item->value)
+		janus_ice_set_keepalive_conncheck_enabled(janus_is_true(item->value));
 	if(janus_ice_set_turn_server(turn_server, turn_port, turn_type, turn_user, turn_pwd) < 0) {
 		if(!ignore_unreachable_ice_server) {
 			JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);

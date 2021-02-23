@@ -41,7 +41,7 @@
 
 /* Core pointer and related flags */
 extern volatile gint duktape_initialized, duktape_stopping;
-extern janus_callbacks *janus_core;
+extern janus_callbacks *duktape_janus_core;
 
 /* Duktape context: we define context and mutex as extern */
 extern duk_context *duktape_ctx;

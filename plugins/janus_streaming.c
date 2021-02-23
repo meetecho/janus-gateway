@@ -8735,6 +8735,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						name, stream->mindex, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
 					packet.mindex = stream->mindex;
+					packet.is_rtp = FALSE;
 					packet.is_video = (stream->type == JANUS_STREAMING_MEDIA_VIDEO);
 					packet.data = (janus_rtp_header *)buffer;
 					packet.length = bytes;
