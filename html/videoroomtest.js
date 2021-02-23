@@ -66,6 +66,8 @@ var bitrateTimer = [];
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
+var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
+var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var subscriber_mode = (getQueryStringValue("subscriber-mode") === "yes" || getQueryStringValue("subscriber-mode") === "true");
 
 $(document).ready(function() {
@@ -426,7 +428,12 @@ function publishOwnFeed(useAudio) {
 				// a codec will only work if: (1) the codec is actually in the SDP (and
 				// so the browser supports it), and (2) the codec is in the list of
 				// allowed codecs in a room. With respect to the point (2) above,
-				// refer to the text in janus.plugin.videoroom.jcfg for more details
+				// refer to the text in janus.plugin.videoroom.jcfg for more details.
+				// We allow people to specify a codec via query string, for demo purposes
+				if(acodec)
+					publish["audiocodec"] = acodec;
+				if(vcodec)
+					publish["videocodec"] = vcodec;
 				sfutest.send({ message: publish, jsep: jsep });
 			},
 			error: function(error) {
