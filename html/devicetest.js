@@ -52,7 +52,6 @@ var janus = null;
 var echotest = null;
 var opaqueId = "devicetest-"+Janus.randomString(12);
 
-var firstTime = true;
 var bitrateTimer = null;
 var spinner = null;
 
@@ -128,11 +127,6 @@ function initDevices(devices) {
 		// A different device has been selected: hangup the session, and set it up again
 		$('#audio-device, #video-device').attr('disabled', true);
 		$('#change-devices').attr('disabled', true);
-		if(firstTime) {
-			firstTime = false;
-			restartCapture();
-			return;
-		}
 		restartCapture();
 	});
 }

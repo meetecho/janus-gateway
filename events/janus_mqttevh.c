@@ -379,6 +379,15 @@ static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx) {
 	options.keepAliveInterval = ctx->connect.keep_alive_interval;
 	options.maxInflight = ctx->connect.max_inflight;
 
+	MQTTAsync_SSLOptions ssl_opts = MQTTAsync_SSLOptions_initializer;
+	if(ctx->tls.enable) {
+		ssl_opts.trustStore = ctx->tls.cacert_file;
+		ssl_opts.keyStore = ctx->tls.cert_file;
+		ssl_opts.privateKey = ctx->tls.key_file;
+		ssl_opts.enableServerCertAuth = ctx->tls.verify_peer;
+		options.ssl = &ssl_opts;
+	}
+
 	MQTTAsync_willOptions willOptions = MQTTAsync_willOptions_initializer;
 	if(ctx->will.enabled) {
 		willOptions.topicName = ctx->will.topic;
@@ -535,10 +544,14 @@ static int janus_mqttevh_client_publish_message(janus_mqttevh_context *ctx, cons
 	options.onFailure = janus_mqttevh_client_publish_message_failure;
 
 	rc = MQTTAsync_sendMessage(ctx->client, topic, &msg, &options);
-	if(rc == MQTTASYNC_SUCCESS) {
-		JANUS_LOG(LOG_HUGE, "MQTT EVH message sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
-	} else {
-		JANUS_LOG(LOG_WARN, "FAILURE: MQTT EVH message propably not sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
+	switch(rc) {
+		case MQTTASYNC_SUCCESS:
+			JANUS_LOG(LOG_HUGE, "MQTT EVH message sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
+			break;
+		case MQTTASYNC_OPERATION_INCOMPLETE:
+			break;
+		default:
+			JANUS_LOG(LOG_WARN, "FAILURE: MQTT EVH message propably not sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
 	}
 
 	return rc;
@@ -561,10 +574,14 @@ static int janus_mqttevh_client_publish_message5(janus_mqttevh_context *ctx, con
 	options.onFailure5 = janus_mqttevh_client_publish_message_failure5;
 
 	rc = MQTTAsync_sendMessage(ctx->client, topic, &msg, &options);
-	if(rc == MQTTASYNC_SUCCESS) {
-		JANUS_LOG(LOG_HUGE, "MQTT EVH message sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
-	} else {
-		JANUS_LOG(LOG_WARN, "FAILURE: MQTT EVH message propably not sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
+	switch(rc) {
+		case MQTTASYNC_SUCCESS:
+			JANUS_LOG(LOG_HUGE, "MQTT EVH message sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
+			break;
+		case MQTTASYNC_OPERATION_INCOMPLETE:
+			break;
+		default:
+			JANUS_LOG(LOG_WARN, "FAILURE: MQTT EVH message propably not sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
 	}
 
 	return rc;
@@ -604,7 +621,12 @@ static void janus_mqttevh_client_publish_message_failure5(void *context, MQTTAsy
 
 static void janus_mqttevh_client_publish_message_failure_impl(void *context, int rc) {
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
-	JANUS_LOG(LOG_ERR, "MQTT EVH client has failed publishing to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
+	switch(rc) {
+		case MQTTASYNC_OPERATION_INCOMPLETE:
+			break;
+		default:
+			JANUS_LOG(LOG_ERR, "MQTT EVH client has failed publishing to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
+	}
 }
 
 /* Destroy Janus MQTT event handler session context */
@@ -983,6 +1005,7 @@ static int janus_mqttevh_init(const char *config_path) {
 
 	create_options.maxBufferedMessages = ctx->connect.max_buffered;
 
+	create_options.sendWhileDisconnected = TRUE;
 	res = MQTTAsync_createWithOptions(
 		&ctx->client,
 		ctx->connect.url,

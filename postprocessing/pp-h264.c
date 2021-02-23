@@ -288,10 +288,10 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 			JANUS_LOG(LOG_VERB, "Parsing width/height\n");
 			int width = 0, height = 0;
 			janus_pp_h264_parse_sps(prebuffer, &width, &height);
-			if(width > max_width)
+			if(width*height > max_width*max_height) {
 				max_width = width;
-			if(height > max_height)
 				max_height = height;
+			}
 		} else if((prebuffer[0] & 0x1F) == 24) {
 			/* May we find an SPS in this STAP-A? */
 			JANUS_LOG(LOG_HUGE, "Parsing STAP-A...\n");
@@ -310,10 +310,10 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 					JANUS_LOG(LOG_VERB, "Parsing width/height\n");
 					int width = 0, height = 0;
 					janus_pp_h264_parse_sps(buffer, &width, &height);
-					if(width > max_width)
+					if(width*height > max_width*max_height) {
 						max_width = width;
-					if(height > max_height)
 						max_height = height;
+					}
 				}
 				buffer += psize;
 				tot -= psize;

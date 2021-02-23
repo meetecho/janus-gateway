@@ -1090,6 +1090,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 				|| !strcasecmp(a->name, "fingerprint")
 				|| !strcasecmp(a->name, "group")
 				|| !strcasecmp(a->name, "msid-semantic")
+				|| !strcasecmp(a->name, "extmap-allow-mixed")
 				|| !strcasecmp(a->name, "rtcp-rsize")) {
 			anon->attributes = g_list_remove(anon->attributes, a);
 			temp = anon->attributes;

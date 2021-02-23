@@ -162,7 +162,7 @@ static janus_mutex clients_mutex = JANUS_MUTEX_INITIALIZER;
 static void janus_pfunix_client_free(void *client_ref) {
 	if(!client_ref)
 		return;
-	JANUS_LOG(LOG_WARN, "Freeing unix sockets client\n");
+	JANUS_LOG(LOG_INFO, "Freeing unix sockets client\n");
 	janus_pfunix_client *client = (janus_pfunix_client *) client_ref;
 	if(client->messages != NULL) {
 		char *response = NULL;
@@ -282,7 +282,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		/* Setup the Janus API Unix Sockets server(s) */
 		item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Janus API)\n");
+			JANUS_LOG(LOG_VERB, "Unix Sockets server disabled (Janus API)\n");
 		} else {
 			item = janus_config_get(config, config_general, janus_config_type_item, "path");
 			char *pfname = (char *)(item && item->value ? item->value : NULL);
@@ -313,7 +313,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		/* Do the same for the Admin API, if enabled */
 		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Admin API)\n");
+			JANUS_LOG(LOG_VERB, "Unix Sockets server disabled (Admin API)\n");
 		} else {
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_path");
 			char *pfname = (char *)(item && item->value ? item->value : NULL);
