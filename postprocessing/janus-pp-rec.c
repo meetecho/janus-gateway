@@ -1143,7 +1143,7 @@ int main(int argc, char *argv[])
             double diff = pts - rts;
 
             /* New gap found! */
-            if( (diff*1000) > restamp_th ) {
+            if((diff*1000) > restamp_th) {
                 /* Recalculate restamping offset */
                 restamping_offset = diff * rate;
 
