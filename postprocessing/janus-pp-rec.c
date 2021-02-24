@@ -138,6 +138,9 @@ static int audioskew_th = DEFAULT_AUDIO_SKEW_TH;
 #define DEFAULT_SILENCE_DISTANCE 100
 static int silence_distance = DEFAULT_SILENCE_DISTANCE;
 
+#define DEFAULT_RESTAMP_TH 0
+static int restamp_th = DEFAULT_RESTAMP_TH;
+
 /* Signal handler */
 static void janus_pp_handle_signal(int signum) {
 	working = 0;
@@ -233,6 +236,11 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			silence_distance = val;
 	}
+    if(args_info.restamp_given || (g_getenv("JANUS_PPREC_RESTAMP") != NULL)) {
+        int val = args_info.restamp_given ? args_info.restamp_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP"));
+        if(val >= 0)
+            restamp_th = val;
+    }
 
 	/* Evaluate arguments to find source and target */
 	char *source = NULL, *destination = NULL, *setting = NULL;
@@ -255,7 +263,8 @@ int main(int argc, char *argv[])
 				(strcmp(setting, "-d")) && (strcmp(setting, "--debug-level")) &&
 				(strcmp(setting, "-f")) && (strcmp(setting, "--format")) &&
 				(strcmp(setting, "-S")) && (strcmp(setting, "--audioskew")) &&
-				(strcmp(setting, "-C")) && (strcmp(setting, "--silence-distance"))
+				(strcmp(setting, "-C")) && (strcmp(setting, "--silence-distance")) &&
+				(strcmp(setting, "-r")) && (strcmp(setting, "--restamp"))
 		)) {
 			if(source == NULL)
 				source = argv[i];
@@ -1053,7 +1062,7 @@ int main(int argc, char *argv[])
 	while(tmp) {
 		count++;
 		if(!data)
-			JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%.2fs pts=%.2fs\n", tmp->offset, tmp->len, tmp->seq, tmp->ts, (double)(tmp->ts-list->ts)/(double)rate, (double)tmp->p_ts/1000);
+			JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%.2fs pts=%.2fs diff=%.2fs\n", tmp->offset, tmp->len, tmp->seq, tmp->ts, (double)(tmp->ts-list->ts)/(double)rate, (double)tmp->p_ts/1000, (double)(((double)tmp->p_ts/1000) - ((double)(tmp->ts-list->ts)/(double)rate)));
 		else
 			JANUS_LOG(LOG_VERB, "[%10lu][%4d] time=%"SCNu64"s\n", tmp->offset, tmp->len, tmp->ts);
 		tmp = tmp->next;
@@ -1114,7 +1123,43 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if(!video && !data && audioskew_th > 0) {
+	/* Run restamping */
+    if(!video && !data && restamp_th > 0) {
+        tmp = list;
+        double restamping_offset = 0;
+
+        while (tmp) {
+            double original_ts = tmp->ts;
+
+            /* Update ts with current offset */
+            if (restamping_offset > 0) {
+                tmp->ts += restamping_offset;
+            }
+
+            /* Calculate diff between time of reception and the rtp timestamp */
+            double corrected_ts = tmp->ts - list->ts;
+            double rts = corrected_ts / (double) rate;
+            double pts = (double) tmp->p_ts / 1000;
+            double diff = pts - rts;
+
+            /* New gap found! */
+            if( (diff*1000) > restamp_th ) {
+                /* Recalculate restamping offset */
+                restamping_offset = diff * rate;
+
+                /* Update current packet ts with new offset */
+                tmp->ts = original_ts + restamping_offset;
+
+                JANUS_LOG(LOG_VERB, "original_ts=%.f ts=%.f offset=%.f corrected_ts=%.f\n", original_ts, (double) tmp->ts, restamping_offset, corrected_ts);
+                JANUS_LOG(LOG_WARN, "Gap detected. Restamping packets from here. Seq: %d Received: %.2f Time: %.2f Diff: %.2f \n", tmp->seq, pts, rts, diff);
+            }
+
+            tmp = tmp->next;
+        }
+    }
+
+    /* Run audioskew */
+    if(!video && !data && audioskew_th > 0) {
 		tmp = list;
 		janus_pp_rtp_skew_context context = {};
 		context.ssrc = ssrc;
