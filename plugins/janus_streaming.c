@@ -6473,14 +6473,13 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	abase[0] = '\0';
 	int asport = 0, asport_rtcp = 0;
 	multiple_fds audio_fds = {-1, -1};
-
-	if(g_atomic_int_get(&mp->destroyed))
-		return -8;		
-	janus_mutex_lock(&mp->mutex);	
+	
+	janus_mutex_lock(&mp->mutex);
 	if(g_atomic_int_get(&mp->destroyed)){
 		janus_mutex_unlock(&mp->mutex);
 		return -8;
 	}
+	
 	/* Parse both video and audio first before proceed to setup as curldata will be reused */
 	int vresult = -1;
 	if(dovideo) {
