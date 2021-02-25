@@ -1144,8 +1144,8 @@ int main(int argc, char *argv[])
             JANUS_LOG(LOG_VERB, "latency=%.2f mavg=%.2f\n", current_latency, moving_avg_latency);
 
             double avg_latency = moving_avg_latency;
-            if (avg_latency <= 0.05) {
-                avg_latency = 0.05;
+            if (avg_latency <= 0.3) {
+                avg_latency = 0.3;
             }
 
             /* New gap found! */
