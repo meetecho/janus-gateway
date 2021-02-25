@@ -163,6 +163,8 @@ typedef struct janus_pp_rtp_skew_context {
 	gint16 seq_offset;
 } janus_pp_rtp_skew_context;
 static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_rtp_skew_context *context);
+static double get_latency(const janus_pp_frame_packet *tmp, int rate);
+static double get_moving_average_of_latency(janus_pp_frame_packet *pkt, int rate, int num_of_packets);
 
 /* Main Code */
 int main(int argc, char *argv[])
@@ -1126,10 +1128,10 @@ int main(int argc, char *argv[])
 	/* Run restamping */
     if(!video && !data && restamp_th > 0) {
         tmp = list;
-        double restamping_offset = 0;
+        uint64_t restamping_offset = 0;
 
         while (tmp) {
-            double original_ts = tmp->ts;
+            uint64_t original_ts = tmp->ts;
 
             /* Update ts with current offset */
             if (restamping_offset > 0) {
@@ -1137,21 +1139,32 @@ int main(int argc, char *argv[])
             }
 
             /* Calculate diff between time of reception and the rtp timestamp */
-            double corrected_ts = tmp->ts - list->ts;
-            double rts = corrected_ts / (double) rate;
-            double pts = (double) tmp->p_ts / 1000;
-            double diff = pts - rts;
+            double current_latency = get_latency(tmp, rate);
+            double moving_avg_latency = get_moving_average_of_latency(tmp->prev, rate, 10);
+            JANUS_LOG(LOG_VERB, "latency=%.2f mavg=%.2f\n", current_latency, moving_avg_latency);
+
+            double avg_latency = moving_avg_latency;
+            if (avg_latency <= 0.05) {
+                avg_latency = 0.05;
+            }
 
             /* New gap found! */
-            if((diff*1000) > restamp_th) {
-                /* Recalculate restamping offset */
-                restamping_offset = diff * rate;
+            if(current_latency > (avg_latency * 1.5)) {
+                /* Increase restamping offset with current offset */
+                restamping_offset += (current_latency - moving_avg_latency) * rate;
 
                 /* Update current packet ts with new offset */
-                tmp->ts = original_ts + restamping_offset;
+                uint64_t new_ts = original_ts + restamping_offset;
+                if (new_ts < tmp->prev->ts) {
+                    JANUS_LOG(LOG_ERR, "new ts would be smaller than previous ts! new_ts=%.ld prev_ts=%.ld\n", new_ts, tmp->prev->ts);
+                    exit(1);
+                }
 
-                JANUS_LOG(LOG_VERB, "original_ts=%.f ts=%.f offset=%.f corrected_ts=%.f\n", original_ts, (double) tmp->ts, restamping_offset, corrected_ts);
-                JANUS_LOG(LOG_WARN, "Gap detected. Restamping packets from here. Seq: %d Received: %.2f Time: %.2f Diff: %.2f \n", tmp->seq, pts, rts, diff);
+                tmp->ts = new_ts;
+
+                JANUS_LOG(LOG_WARN, "Gap detected. Restamping packets from here. Seq: %d  \n", tmp->seq);
+                JANUS_LOG(LOG_WARN, "latency=%.2f mavg=%.2f\n", current_latency, moving_avg_latency);
+                JANUS_LOG(LOG_WARN, "original_ts=%.ld new_ts=%.ld offset=%.ld\n", original_ts, tmp->ts, restamping_offset);
             }
 
             tmp = tmp->next;
@@ -1532,4 +1545,29 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 	pkt->seq = fixed_rtp_seq;
 
 	return exit_status;
+}
+
+static double get_latency(const janus_pp_frame_packet *tmp, int rate) {
+    double corrected_ts = tmp->ts - list->ts;
+    double rts = corrected_ts / (double) rate;
+    double pts = (double) tmp->p_ts / 1000;
+    return pts - rts;
+}
+
+static double get_moving_average_of_latency(janus_pp_frame_packet *pkt, int rate, int num_of_packets) {
+    if (!pkt) {
+       return 0;
+    }
+
+    int packets = 0;
+    double sum = 0;
+
+    janus_pp_frame_packet *tmp = pkt;
+    while(tmp && packets < num_of_packets) {
+        sum += get_latency(tmp, rate);
+        tmp = tmp->prev;
+        packets++;
+    }
+
+    return sum / packets;
 }
