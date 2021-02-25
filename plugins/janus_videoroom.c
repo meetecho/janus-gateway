@@ -2724,6 +2724,8 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		session->participant = NULL;
 		janus_mutex_unlock(&session->mutex);
 		if(p && p->room) {
+			/* BB */
+			JANUS_LOG(LOG_WARN, "janus_videoroom_leave_or_unpublish 1\n");
 			janus_videoroom_leave_or_unpublish(p, TRUE, FALSE);
 		}
 		janus_videoroom_publisher_destroy(p);
@@ -4559,6 +4561,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_mutex_unlock(&participant->own_subscriptions_mutex);
 		}
 		/* This publisher is leaving, tell everybody */
+		/* BB */
+		JANUS_LOG(LOG_WARN, "janus_videoroom_leave_or_unpublish 2\n");
 		janus_videoroom_leave_or_unpublish(participant, TRUE, TRUE);
 		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 		if(participant && participant->session)
@@ -5877,6 +5881,8 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 		}
 		participant->e2ee = FALSE;
 		janus_mutex_unlock(&participant->subscribers_mutex);
+		/* BB */
+		JANUS_LOG(LOG_WARN, "janus_videoroom_leave_or_unpublish 3\n");
 		janus_videoroom_leave_or_unpublish(participant, FALSE, FALSE);
 		janus_refcount_decrease(&participant->ref);
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
@@ -6901,6 +6907,8 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
 				json_object_set_new(event, "leaving", json_string("ok"));
 				/* This publisher is leaving, tell everybody */
+				/* BB */
+				JANUS_LOG(LOG_WARN, "janus_videoroom_leave_or_unpublish 4\n");
 				janus_videoroom_leave_or_unpublish(participant, TRUE, FALSE);
 				/* Done */
 				participant->audio_active = FALSE;
