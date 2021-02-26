@@ -138,8 +138,14 @@ static int audioskew_th = DEFAULT_AUDIO_SKEW_TH;
 #define DEFAULT_SILENCE_DISTANCE 100
 static int silence_distance = DEFAULT_SILENCE_DISTANCE;
 
-#define DEFAULT_RESTAMP_TH 0
-static int restamp_th = DEFAULT_RESTAMP_TH;
+#define DEFAULT_RESTAMP_MULTIPLIER 0
+static int restamp_multiplier = DEFAULT_RESTAMP_MULTIPLIER;
+
+#define DEFAULT_RESTAMP_MIN_TH 500
+static int restamp_min_th = DEFAULT_RESTAMP_MIN_TH;
+
+#define DEFAULT_RESTAMP_PACKETS 10
+static int restamp_packets = DEFAULT_RESTAMP_PACKETS;
 
 /* Signal handler */
 static void janus_pp_handle_signal(int signum) {
@@ -241,9 +247,18 @@ int main(int argc, char *argv[])
     if(args_info.restamp_given || (g_getenv("JANUS_PPREC_RESTAMP") != NULL)) {
         int val = args_info.restamp_given ? args_info.restamp_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP"));
         if(val >= 0)
-            restamp_th = val;
+            restamp_multiplier = val;
     }
-
+    if(args_info.restamp_packets_given || (g_getenv("JANUS_PPREC_RESTAMP_PACKETS") != NULL)) {
+        int val = args_info.restamp_packets_given ? args_info.restamp_packets_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP_PACKETS"));
+        if(val >= 0)
+            restamp_packets = val;
+    }
+    if(args_info.restamp_min_th_given || (g_getenv("JANUS_PPREC_RESTAMP_MIN_TH") != NULL)) {
+        int val = args_info.restamp_min_th_given ? args_info.restamp_min_th_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP_MIN_TH"));
+        if(val >= 0)
+            restamp_min_th = val;
+    }
 	/* Evaluate arguments to find source and target */
 	char *source = NULL, *destination = NULL, *setting = NULL;
 	int i=0;
@@ -1126,9 +1141,12 @@ int main(int argc, char *argv[])
 	}
 
 	/* Run restamping */
-    if(!video && !data && restamp_th > 0) {
+    if(!video && !data && restamp_multiplier > 0) {
+
         tmp = list;
         uint64_t restamping_offset = 0;
+        double restamp_threshold = (double) restamp_min_th / 1000;
+        double restamp_jump_multiplier = (double) restamp_multiplier / 1000;
 
         while (tmp) {
             uint64_t original_ts = tmp->ts;
@@ -1140,33 +1158,34 @@ int main(int argc, char *argv[])
 
             /* Calculate diff between time of reception and the rtp timestamp */
             double current_latency = get_latency(tmp, rate);
-            double moving_avg_latency = get_moving_average_of_latency(tmp->prev, rate, 10);
-            JANUS_LOG(LOG_VERB, "latency=%.2f mavg=%.2f\n", current_latency, moving_avg_latency);
 
-            double avg_latency = moving_avg_latency;
-            if (avg_latency <= 0.3) {
-                avg_latency = 0.3;
-            }
+            if(current_latency > restamp_threshold) {
+                /* Check for possible jump compared to previous latency values */
+                double moving_avg_latency = get_moving_average_of_latency(tmp->prev, rate, restamp_packets);
+                JANUS_LOG(LOG_VERB, "latency=%.2f mavg=%.2f\n", current_latency, moving_avg_latency);
 
-            /* New gap found! */
-            if(current_latency > (avg_latency * 1.5)) {
-                /* Increase restamping offset with current offset */
-                restamping_offset += (current_latency - moving_avg_latency) * rate;
+                /* Found a new jump in latency? */
+                if(current_latency > (moving_avg_latency * restamp_jump_multiplier)) {
+                    /* Increase restamping offset with current offset */
+                    restamping_offset += (current_latency - moving_avg_latency) * rate;
 
-                /* Update current packet ts with new offset */
-                uint64_t new_ts = original_ts + restamping_offset;
-                /* Checking new_ts against previous ts to avoid converting with wrong timestamps */
-                if (new_ts < tmp->prev->ts) {
-                    /* Avoid creating unnecessary large files... */
-                    JANUS_LOG(LOG_ERR, "new ts would be smaller than previous ts! new_ts=%.ld prev_ts=%.ld\n", new_ts, tmp->prev->ts);
-                    exit(1);
+                    /* Calculate new_ts with new offset */
+                    uint64_t new_ts = original_ts + restamping_offset;
+
+                    /* Checking new_ts against previous ts to avoid converting with wrong timestamps */
+                    if (new_ts < tmp->prev->ts) {
+                        /* Avoid creating unnecessary large files... */
+                        JANUS_LOG(LOG_ERR, "new ts would be smaller than previous ts! new_ts=%.ld prev_ts=%.ld\n", new_ts, tmp->prev->ts);
+                        exit(1);
+                    }
+
+                    /* Update current packet ts with new ts */
+                    tmp->ts = new_ts;
+
+                    JANUS_LOG(LOG_WARN, "Gap detected. Restamping packets from here. Seq: %d  \n", tmp->seq);
+                    JANUS_LOG(LOG_WARN, "latency=%.2f mavg=%.2f\n", current_latency, moving_avg_latency);
+                    JANUS_LOG(LOG_WARN, "original_ts=%.ld new_ts=%.ld offset=%.ld\n", original_ts, tmp->ts, restamping_offset);
                 }
-
-                tmp->ts = new_ts;
-
-                JANUS_LOG(LOG_WARN, "Gap detected. Restamping packets from here. Seq: %d  \n", tmp->seq);
-                JANUS_LOG(LOG_WARN, "latency=%.2f mavg=%.2f\n", current_latency, moving_avg_latency);
-                JANUS_LOG(LOG_WARN, "original_ts=%.ld new_ts=%.ld offset=%.ld\n", original_ts, tmp->ts, restamping_offset);
             }
 
             tmp = tmp->next;
