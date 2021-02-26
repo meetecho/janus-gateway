@@ -281,7 +281,9 @@ int main(int argc, char *argv[])
 				(strcmp(setting, "-f")) && (strcmp(setting, "--format")) &&
 				(strcmp(setting, "-S")) && (strcmp(setting, "--audioskew")) &&
 				(strcmp(setting, "-C")) && (strcmp(setting, "--silence-distance")) &&
-				(strcmp(setting, "-r")) && (strcmp(setting, "--restamp"))
+				(strcmp(setting, "-r")) && (strcmp(setting, "--restamp")) &&
+				(strcmp(setting, "-c")) && (strcmp(setting, "--restamp-packets")) &&
+				(strcmp(setting, "-n")) && (strcmp(setting, "--restamp-min-th"))
 		)) {
 			if(source == NULL)
 				source = argv[i];
