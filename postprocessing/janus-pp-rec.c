@@ -1183,8 +1183,7 @@ int main(int argc, char *argv[])
                     tmp->ts = new_ts;
 
                     JANUS_LOG(LOG_WARN, "Gap detected. Restamping packets from here. Seq: %d  \n", tmp->seq);
-                    JANUS_LOG(LOG_WARN, "latency=%.2f mavg=%.2f\n", current_latency, moving_avg_latency);
-                    JANUS_LOG(LOG_WARN, "original_ts=%.ld new_ts=%.ld offset=%.ld\n", original_ts, tmp->ts, restamping_offset);
+                    JANUS_LOG(LOG_INFO, "latency=%.2f mavg=%.2f original_ts=%.ld new_ts=%.ld offset=%.ld\n", current_latency, moving_avg_latency, original_ts, tmp->ts, restamping_offset);
                 }
             }
 
