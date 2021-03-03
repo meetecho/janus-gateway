@@ -1570,6 +1570,7 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 }
 
 static double get_latency(const janus_pp_frame_packet *tmp, int rate) {
+    /* Get latency of packet based on time of arrival (at server side) and the RTP timestamp */
     double corrected_ts = tmp->ts - list->ts;
     double rts = corrected_ts / (double) rate;
     double pts = (double) tmp->p_ts / 1000;
@@ -1577,6 +1578,7 @@ static double get_latency(const janus_pp_frame_packet *tmp, int rate) {
 }
 
 static double get_moving_average_of_latency(janus_pp_frame_packet *pkt, int rate, int num_of_packets) {
+    /* Get a moving average of packet latency using the get_latency function */
     if (!pkt) {
        return 0;
     }
