@@ -15,6 +15,6 @@ option "format" f "Specifies the output format (overrides the format from the de
 option "faststart" t "For mp4 files write the MOOV atom at the head of the file" flag off
 option "audioskew" S "Time threshold to trigger an audio skew compensation, disabled if 0 (default=0)" int typestr="milliseconds" optional
 option "silence-distance" C "RTP packets distance used to detect RTP silence suppression, disabled if 0 (default=100)" int typestr="count" optional
-option "restamp" r "Modify ts values based on pts if a jump is detected in the difference of their moving average. If the difference in a packet is bigger than the (moving_average*(<restamp>/1000)) the timestamps will be modified. disabled if 0 (default=0)" int typestr="count" optional
-option "restamp-packets" c "Number of packets used for moving average at restamping (default=10)" int typestr="count" optional
-option "restamp-min-th" n "Min average latency before restamping (default=500)" int typestr="milliseconds" optional
+option "restamp" r "If the latency of a packet is bigger than the `moving_average_latency * (<restamp>/1000)` the timestamps will be corrected, disabled if 0 (default=0)" int typestr="count" optional
+option "restamp-packets" c "Number of packets used for calculating moving average latency for timestamp correction (default=10)" int typestr="count" optional
+option "restamp-min-th" n "Minimum latency of moving average to reach before starting to correct timestamps. (default=500)" int typestr="milliseconds" optional
