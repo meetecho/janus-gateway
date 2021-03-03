@@ -75,6 +75,19 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
                                   compensation, disabled if 0 (default=0)
   -C, --silence-distance=count  RTP packets distance used to detect RTP silence
 								  suppression, disabled if 0 (default=100)
+  -r, --restamp=count           Modify ts values based on pts if a jump is
+                                  detected in the difference of their moving
+                                  average. If the difference in a packet is
+                                  bigger than the
+                                  (moving_average*(<restamp>/1000)) the
+                                  timestamps will be modified. disabled if 0
+                                  (default=0)
+  -c, --restamp-packets=count   Number of packets used for moving average at
+                                  restamping (default=10)
+  -n, --restamp-min-th=milliseconds
+                                Min average latency before restamping
+                                  (default=500)
+
 \endverbatim
  *
  * \note This utility does not do any form of transcoding. It just
