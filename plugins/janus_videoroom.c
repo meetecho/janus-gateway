@@ -8822,7 +8822,7 @@ static void *janus_videoroom_handler(void *data) {
 						if(sc_fallback) {
 							stream->sim_context.drop_trigger = json_integer_value(sc_fallback);
 						}
-					} else if(ps->svc) {
+					} else if(ps && ps->svc) {
 						/* Also check if the viewer is trying to configure a layer change */
 						if(spatial) {
 							int spatial_layer = json_integer_value(spatial);
