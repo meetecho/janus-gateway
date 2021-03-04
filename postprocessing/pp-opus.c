@@ -173,8 +173,8 @@ void le16(unsigned char *p, int v) {
 /* Manufacture a generic OpusHead packet */
 ogg_packet *op_opushead(void) {
 	int size = 19;
-	unsigned char *data = g_malloc(size);
-	ogg_packet *op = g_malloc(sizeof(*op));
+	unsigned char *data = g_malloc0(size);
+	ogg_packet *op = g_malloc0(sizeof(*op));
 
 	memcpy(data, "OpusHead", 8);  /* identifier */
 	data[8] = 1;                  /* version */
@@ -187,9 +187,6 @@ ogg_packet *op_opushead(void) {
 	op->packet = data;
 	op->bytes = size;
 	op->b_o_s = 1;
-	op->e_o_s = 0;
-	op->granulepos = 0;
-	op->packetno = 0;
 
 	return op;
 }
@@ -204,8 +201,8 @@ ogg_packet *op_opustags(char *metadata) {
 	int dlen = strlen(desc), mlen = metadata ? strlen(metadata) : 0;
 	if(mlen > 0)
 		size += (4+dlen+mlen);
-	unsigned char *data = g_malloc(size);
-	ogg_packet *op = g_malloc(sizeof(*op));
+	unsigned char *data = g_malloc0(size);
+	ogg_packet *op = g_malloc0(sizeof(*op));
 
 	/* Write down the tags */
 	memcpy(data, identifier, 8);
@@ -222,9 +219,6 @@ ogg_packet *op_opustags(char *metadata) {
 
 	op->packet = data;
 	op->bytes = size;
-	op->b_o_s = 0;
-	op->e_o_s = 0;
-	op->granulepos = 0;
 	op->packetno = 1;
 
 	return op;
@@ -232,14 +226,10 @@ ogg_packet *op_opustags(char *metadata) {
 
 /* Allocate an ogg_packet */
 ogg_packet *op_from_pkt(const unsigned char *pkt, int len) {
-	ogg_packet *op = g_malloc(sizeof(*op));
+	ogg_packet *op = g_malloc0(sizeof(*op));
 
 	op->packet = (unsigned char *)pkt;
 	op->bytes = len;
-	op->b_o_s = 0;
-	op->e_o_s = 0;
-	op->granulepos = 0;
-	op->packetno = 0;
 
 	return op;
 }

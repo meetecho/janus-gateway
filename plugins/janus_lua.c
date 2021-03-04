@@ -1766,9 +1766,6 @@ void janus_lua_create_session(janus_plugin_session *handle, int *error) {
 	session->sim_context.substream_target = 2;
 	session->sim_context.templayer_target = 2;
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
-	session->vcodec = JANUS_VIDEOCODEC_NONE;
-	g_atomic_int_set(&session->hangingup, 0);
-	g_atomic_int_set(&session->destroyed, 0);
 	janus_refcount_init(&session->ref, janus_lua_session_free);
 	handle->plugin_handle = session;
 	g_hash_table_insert(lua_sessions, handle, session);

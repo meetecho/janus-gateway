@@ -440,17 +440,9 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 	janus_voicemail_session *session = g_malloc0(sizeof(janus_voicemail_session));
 	session->handle = handle;
 	session->recording_id = janus_random_uint64();
-	session->start_time = 0;
-	session->stream = NULL;
 	char f[255];
 	g_snprintf(f, 255, "%s/janus-voicemail-%"SCNu64".opus", recordings_path, session->recording_id);
 	session->filename = g_strdup(f);
-	session->file = NULL;
-	session->seq = 0;
-	g_atomic_int_set(&session->started, 0);
-	g_atomic_int_set(&session->stopping, 0);
-	g_atomic_int_set(&session->hangingup, 0);
-	g_atomic_int_set(&session->destroyed, 0);
 	janus_refcount_init(&session->ref, janus_voicemail_session_free);
 	handle->plugin_handle = session;
 
@@ -523,7 +515,7 @@ struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session 
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&sessions_mutex);
 
-	janus_voicemail_message *msg = g_malloc(sizeof(janus_voicemail_message));
+	janus_voicemail_message *msg = g_malloc0(sizeof(janus_voicemail_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -578,11 +570,9 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 		/* FIXME Simulate a "stop" coming from the browser */
 		g_atomic_int_set(&session->started, 0);
 		janus_refcount_increase(&session->ref);
-		janus_voicemail_message *msg = g_malloc(sizeof(janus_voicemail_message));
+		janus_voicemail_message *msg = g_malloc0(sizeof(janus_voicemail_message));
 		msg->handle = handle;
 		msg->message = json_pack("{ss}", "request", "stop");
-		msg->transaction = NULL;
-		msg->jsep = NULL;
 		g_async_queue_push(messages, msg);
 		return;
 	}
@@ -890,8 +880,8 @@ void le16(unsigned char *p, int v) {
 /* ;anufacture a generic OpusHead packet */
 ogg_packet *op_opushead(void) {
 	int size = 19;
-	unsigned char *data = g_malloc(size);
-	ogg_packet *op = g_malloc(sizeof(*op));
+	unsigned char *data = g_malloc0(size);
+	ogg_packet *op = g_malloc0(sizeof(*op));
 
 	memcpy(data, "OpusHead", 8);  /* identifier */
 	data[8] = 1;                  /* version */
@@ -904,9 +894,6 @@ ogg_packet *op_opushead(void) {
 	op->packet = data;
 	op->bytes = size;
 	op->b_o_s = 1;
-	op->e_o_s = 0;
-	op->granulepos = 0;
-	op->packetno = 0;
 
 	return op;
 }
@@ -916,8 +903,8 @@ ogg_packet *op_opustags(void) {
 	const char *identifier = "OpusTags";
 	const char *vendor = "Janus VoiceMail plugin";
 	int size = strlen(identifier) + 4 + strlen(vendor) + 4;
-	unsigned char *data = g_malloc(size);
-	ogg_packet *op = g_malloc(sizeof(*op));
+	unsigned char *data = g_malloc0(size);
+	ogg_packet *op = g_malloc0(sizeof(*op));
 
 	memcpy(data, identifier, 8);
 	le32(data + 8, strlen(vendor));
@@ -926,9 +913,6 @@ ogg_packet *op_opustags(void) {
 
 	op->packet = data;
 	op->bytes = size;
-	op->b_o_s = 0;
-	op->e_o_s = 0;
-	op->granulepos = 0;
 	op->packetno = 1;
 
 	return op;
@@ -936,14 +920,10 @@ ogg_packet *op_opustags(void) {
 
 /* Allocate an ogg_packet */
 ogg_packet *op_from_pkt(const unsigned char *pkt, int len) {
-	ogg_packet *op = g_malloc(sizeof(*op));
+	ogg_packet *op = g_malloc0(sizeof(*op));
 
 	op->packet = (unsigned char *)pkt;
 	op->bytes = len;
-	op->b_o_s = 0;
-	op->e_o_s = 0;
-	op->granulepos = 0;
-	op->packetno = 0;
 
 	return op;
 }

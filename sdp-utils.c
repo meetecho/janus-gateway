@@ -110,7 +110,6 @@ static void janus_sdp_attribute_free(const janus_refcount *attr_ref) {
 /* SDP and m-lines/attributes code */
 janus_sdp_mline *janus_sdp_mline_create(janus_sdp_mtype type, guint16 port, const char *proto, janus_sdp_mdirection direction) {
 	janus_sdp_mline *m = g_malloc0(sizeof(janus_sdp_mline));
-	g_atomic_int_set(&m->destroyed, 0);
 	janus_refcount_init(&m->ref, janus_sdp_mline_free);
 	m->type = type;
 	const char *type_str = janus_sdp_mtype_str(type);
@@ -159,12 +158,9 @@ int janus_sdp_mline_remove(janus_sdp *sdp, janus_sdp_mtype type) {
 janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *value, ...) {
 	if(!name)
 		return NULL;
-	janus_sdp_attribute *a = g_malloc(sizeof(janus_sdp_attribute));
-	g_atomic_int_set(&a->destroyed, 0);
+	janus_sdp_attribute *a = g_malloc0(sizeof(janus_sdp_attribute));
 	janus_refcount_init(&a->ref, janus_sdp_attribute_free);
 	a->name = g_strdup(name);
-	a->direction = JANUS_SDP_DEFAULT;
-	a->value = NULL;
 	if(value) {
 		char buffer[512];
 		va_list ap;
@@ -251,7 +247,6 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 		return NULL;
 	}
 	janus_sdp *imported = g_malloc0(sizeof(janus_sdp));
-	g_atomic_int_set(&imported->destroyed, 0);
 	janus_refcount_init(&imported->ref, janus_sdp_free);
 	imported->o_ipv4 = TRUE;
 	imported->c_ipv4 = TRUE;
@@ -392,7 +387,6 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							*semicolon = '\0';
 							a->name = g_strdup(line);
 							a->value = g_strdup(semicolon+1);
-							a->direction = JANUS_SDP_DEFAULT;
 							*semicolon = ':';
 							if(strstr(line, "/sendonly"))
 								a->direction = JANUS_SDP_SENDONLY;
@@ -406,7 +400,6 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 					}
 					case 'm': {
 						janus_sdp_mline *m = g_malloc0(sizeof(janus_sdp_mline));
-						g_atomic_int_set(&m->destroyed, 0);
 						janus_refcount_init(&m->ref, janus_sdp_mline_free);
 						/* Start with media type, port and protocol */
 						char type[32];
@@ -545,7 +538,6 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 								break;
 							}
 							a->name = g_strdup(line);
-							a->value = NULL;
 						} else {
 							if(*(semicolon+1) == '\0') {
 								janus_sdp_attribute_destroy(a);
@@ -897,8 +889,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 	if(!imported)
 		return NULL;
 	janus_refcount_increase(&imported->ref);
-	char *sdp = g_malloc(JANUS_BUFSIZE), buffer[512];
-	*sdp = '\0';
+	char *sdp = g_malloc0(JANUS_BUFSIZE), buffer[512];
 	/* v= */
 	g_snprintf(buffer, sizeof(buffer), "v=%d\r\n", imported->version);
 	g_strlcat(sdp, buffer, JANUS_BUFSIZE);
@@ -1103,23 +1094,17 @@ const char *janus_sdp_match_preferred_codec(janus_sdp_mtype type, char *codec) {
 }
 
 janus_sdp *janus_sdp_new(const char *name, const char *address) {
-	janus_sdp *sdp = g_malloc(sizeof(janus_sdp));
-	g_atomic_int_set(&sdp->destroyed, 0);
+	janus_sdp *sdp = g_malloc0(sizeof(janus_sdp));
 	janus_refcount_init(&sdp->ref, janus_sdp_free);
 	/* Fill in some predefined stuff */
-	sdp->version = 0;
 	sdp->o_name = g_strdup("-");
 	sdp->o_sessid = janus_get_real_time();
 	sdp->o_version = 1;
 	sdp->o_ipv4 = TRUE;
 	sdp->o_addr = g_strdup(address ? address : "127.0.0.1");
 	sdp->s_name = g_strdup(name ? name : "Janus session");
-	sdp->t_start = 0;
-	sdp->t_stop = 0;
 	sdp->c_ipv4 = TRUE;
 	sdp->c_addr = g_strdup(address ? address : "127.0.0.1");
-	sdp->attributes = NULL;
-	sdp->m_lines = NULL;
 	/* Done */
 	return sdp;
 }
@@ -1435,8 +1420,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	do_data = FALSE;
 #endif
 
-	janus_sdp *answer = g_malloc(sizeof(janus_sdp));
-	g_atomic_int_set(&answer->destroyed, 0);
+	janus_sdp *answer = g_malloc0(sizeof(janus_sdp));
 	janus_refcount_init(&answer->ref, janus_sdp_free);
 	/* Start by copying some of the headers */
 	answer->version = offer->version;
@@ -1446,12 +1430,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	answer->o_ipv4 = offer->o_ipv4;
 	answer->o_addr = g_strdup(offer->o_addr ? offer->o_addr : "127.0.0.1");
 	answer->s_name = g_strdup(offer->s_name ? offer->s_name : "Janus session");
-	answer->t_start = 0;
-	answer->t_stop = 0;
 	answer->c_ipv4 = offer->c_ipv4;
 	answer->c_addr = g_strdup(offer->c_addr ? offer->c_addr : "127.0.0.1");
-	answer->attributes = NULL;
-	answer->m_lines = NULL;
 
 	/* Now iterate on all media, and let's see what we should do */
 	int audio = 0, video = 0, data = 0;
@@ -1460,7 +1440,6 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		/* For each m-line we parse, we'll need a corresponding one in the answer */
 		janus_sdp_mline *am = g_malloc0(sizeof(janus_sdp_mline));
-		g_atomic_int_set(&am->destroyed, 0);
 		janus_refcount_init(&am->ref, janus_sdp_mline_free);
 		am->type = m->type;
 		am->type_str = m->type_str ? g_strdup(m->type_str) : NULL;

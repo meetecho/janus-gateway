@@ -271,7 +271,7 @@ void janus_jsonlog_incoming_logline(int64_t timestamp, const char *line) {
 	 * it in our own thread: we have a monotonic time indicator of when the
 	 * log line was actually added on this machine, so that, if relevant, we can
 	 * compute any delay in the actual log line processing ourselves. */
-	janus_jsonlog_line *l = g_malloc(sizeof(janus_jsonlog_line));
+	janus_jsonlog_line *l = g_malloc0(sizeof(janus_jsonlog_line));
 	l->timestamp = timestamp;
 	l->line = g_strdup(line);
 	g_async_queue_push(loglines, l);

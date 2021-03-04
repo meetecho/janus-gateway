@@ -69,16 +69,13 @@ typedef struct janus_sctp_pending_message {
 	size_t len;
 } janus_sctp_pending_message;
 static janus_sctp_pending_message *janus_sctp_pending_message_create(uint16_t id, gboolean textdata, char *buf, size_t len) {
-	janus_sctp_pending_message *m = g_malloc(sizeof(janus_sctp_pending_message));
+	janus_sctp_pending_message *m = g_malloc0(sizeof(janus_sctp_pending_message));
 	m->id = id;
 	m->textdata = textdata;
 	if(buf != NULL && len > 0) {
-		m->buf = g_malloc(len);
+		m->buf = g_malloc0(len);
 		memcpy(m->buf, buf, len);
 		m->len = len;
-	} else {
-		m->buf = NULL;
-		m->len = 0;
 	}
 	return m;
 }
@@ -188,7 +185,6 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 
 	janus_sctp_association *sctp = g_malloc0(sizeof(janus_sctp_association));
 	janus_refcount_init(&sctp->ref, janus_sctp_association_free);
-	g_atomic_int_set(&sctp->destroyed, 0);
 	sctp->dtls = dtls;
 	janus_refcount_increase(&dtls->ref);
 	sctp->handle = handle;
@@ -196,13 +192,6 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	sctp->handle_id = handle->handle_id;
 	sctp->local_port = 5000;	/* FIXME We always use this one */
 	sctp->remote_port = udp_port;
-	sctp->buffer = NULL;
-	sctp->buflen = 0;
-	sctp->offset = 0;
-	sctp->pending_messages = NULL;
-#ifdef DEBUG_SCTP
-	sctp->debug_dump = NULL;
-#endif
 
 	struct socket *sock = NULL;
 	unsigned int i = 0;
@@ -983,7 +972,7 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	char *label = NULL;
 	guint len = ntohs(req->label_length);
 	if(len > 0 && len < length) {
-		label = g_malloc(len+1);
+		label = g_malloc0(len+1);
 		memcpy(label, req->label, len);
 		label[len] = '\0';
 		g_snprintf(channel->label, sizeof(channel->label), "%s", label);
@@ -991,7 +980,7 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	char *protocol = NULL;
 	guint plen = ntohs(req->protocol_length);
 	if(plen > 0 && plen < length) {
-		protocol = g_malloc(plen+1);
+		protocol = g_malloc0(plen+1);
 		memcpy(protocol, req->label+len, plen);
 		protocol[plen] = '\0';
 		g_snprintf(channel->protocol, sizeof(channel->protocol), "%s", protocol);

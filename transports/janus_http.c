@@ -1122,12 +1122,10 @@ void janus_http_session_created(janus_transport_session *transport, guint64 sess
 		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
-	janus_http_session *session = g_malloc(sizeof(janus_http_session));
+	janus_http_session *session = g_malloc0(sizeof(janus_http_session));
 	session->session_id = session_id;
 	session->events = g_async_queue_new();
-	session->longpolls = NULL;
 	janus_mutex_init(&session->mutex);
-	g_atomic_int_set(&session->destroyed, 0);
 	janus_refcount_init(&session->ref, janus_http_session_free);
 	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
@@ -1151,12 +1149,10 @@ void janus_http_session_claimed(janus_transport_session *transport, guint64 sess
 	if(old_session != NULL)
 		janus_refcount_increase(&old_session->ref);
 	janus_mutex_unlock(&sessions_mutex);
-	janus_http_session *session = g_malloc(sizeof(janus_http_session));
+	janus_http_session *session = g_malloc0(sizeof(janus_http_session));
 	session->session_id = session_id;
 	session->events = g_async_queue_new();
-	session->longpolls = NULL;
 	janus_mutex_init(&session->mutex);
-	g_atomic_int_set(&session->destroyed, 0);
 	janus_refcount_init(&session->ref, janus_http_session_free);
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
@@ -1572,7 +1568,7 @@ static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connectio
 		gateway->incoming_request(&janus_http_transport, ts, (void *)keepalive_id, FALSE, root, NULL);
 		/* Ok, go on */
 		if(handle_path) {
-			char *location = g_malloc(strlen(ws_path) + strlen(session_path) + 2);
+			char *location = g_malloc0(strlen(ws_path) + strlen(session_path) + 2);
 			g_sprintf(location, "%s/%s", ws_path, session_path);
 			JANUS_LOG(LOG_ERR, "Invalid GET to %s, redirecting to %s\n", url, location);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);

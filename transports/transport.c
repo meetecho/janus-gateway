@@ -1,4 +1,4 @@
-/*! \file   transport.h
+/*! \file   transport.c
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Modular Janus API transports
@@ -27,7 +27,6 @@ janus_transport_session *janus_transport_session_create(void *transport_p, void 
 		return NULL;
 	tp->transport_p = transport_p;
 	tp->p_free = p_free;
-	g_atomic_int_set(&tp->destroyed, 0);
 	janus_refcount_init(&tp->ref, janus_transport_session_free);
 	janus_mutex_init(&tp->mutex);
 	return tp;

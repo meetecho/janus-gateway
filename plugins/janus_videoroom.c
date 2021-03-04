@@ -2269,21 +2269,15 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				videoroom->max_publishers = atol(maxp->value);
 			if(videoroom->max_publishers < 0)
 				videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
-			videoroom->bitrate = 0;
 			if(bitrate != NULL && bitrate->value != NULL)
 				videoroom->bitrate = atol(bitrate->value);
 			if(videoroom->bitrate > 0 && videoroom->bitrate < 64000)
 				videoroom->bitrate = 64000;	/* Don't go below 64k */
 			videoroom->bitrate_cap = bitrate_cap && bitrate_cap->value && janus_is_true(bitrate_cap->value);
-			videoroom->fir_freq = 0;
 			if(firfreq != NULL && firfreq->value != NULL)
 				videoroom->fir_freq = atol(firfreq->value);
 			/* By default, we force Opus as the only audio codec */
 			videoroom->acodec[0] = JANUS_AUDIOCODEC_OPUS;
-			videoroom->acodec[1] = JANUS_AUDIOCODEC_NONE;
-			videoroom->acodec[2] = JANUS_AUDIOCODEC_NONE;
-			videoroom->acodec[3] = JANUS_AUDIOCODEC_NONE;
-			videoroom->acodec[4] = JANUS_AUDIOCODEC_NONE;
 			/* Check if we're forcing a different single codec, or allowing more than one */
 			if(audiocodec && audiocodec->value) {
 				gchar **list = g_strsplit(audiocodec->value, ",", 4);
@@ -2305,10 +2299,6 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			}
 			/* By default, we force VP8 as the only video codec */
 			videoroom->vcodec[0] = JANUS_VIDEOCODEC_VP8;
-			videoroom->vcodec[1] = JANUS_VIDEOCODEC_NONE;
-			videoroom->vcodec[2] = JANUS_VIDEOCODEC_NONE;
-			videoroom->vcodec[3] = JANUS_VIDEOCODEC_NONE;
-			videoroom->vcodec[4] = JANUS_VIDEOCODEC_NONE;
 			/* Check if we're forcing a different single codec, or allowing more than one */
 			if(videocodec && videocodec->value) {
 				gchar **list = g_strsplit(videocodec->value, ",", 4);
@@ -2367,7 +2357,6 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->audiolevel_ext = TRUE;
 			if(audiolevel_ext != NULL && audiolevel_ext->value != NULL)
 				videoroom->audiolevel_ext = janus_is_true(audiolevel_ext->value);
-			videoroom->audiolevel_event = FALSE;
 			if(audiolevel_event != NULL && audiolevel_event->value != NULL)
 				videoroom->audiolevel_event = janus_is_true(audiolevel_event->value);
 			if(videoroom->audiolevel_event) {
@@ -2408,10 +2397,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			}
 			/* By default, the VideoRoom plugin does not notify about participants simply joining the room.
 			   It only notifies when the participant actually starts publishing media. */
-			videoroom->notify_joining = FALSE;
 			if(notify_joining != NULL && notify_joining->value != NULL)
 				videoroom->notify_joining = janus_is_true(notify_joining->value);
-			g_atomic_int_set(&videoroom->destroyed, 0);
 			janus_mutex_init(&videoroom->mutex);
 			janus_refcount_init(&videoroom->ref, janus_videoroom_room_free);
 			videoroom->participants = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
@@ -2576,10 +2563,6 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_videoroom_session *session = g_malloc0(sizeof(janus_videoroom_session));
 	session->handle = handle;
-	session->participant_type = janus_videoroom_p_type_none;
-	session->participant = NULL;
-	g_atomic_int_set(&session->hangingup, 0);
-	g_atomic_int_set(&session->destroyed, 0);
 	handle->plugin_handle = session;
 	janus_mutex_init(&session->mutex);
 	janus_refcount_init(&session->ref, janus_videoroom_session_free);
@@ -3128,21 +3111,15 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			videoroom->max_publishers = json_integer_value(publishers);
 		if(videoroom->max_publishers < 0)
 			videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
-		videoroom->bitrate = 0;
 		if(bitrate)
 			videoroom->bitrate = json_integer_value(bitrate);
 		if(videoroom->bitrate > 0 && videoroom->bitrate < 64000)
 			videoroom->bitrate = 64000;	/* Don't go below 64k */
 		videoroom->bitrate_cap = bitrate_cap ? json_is_true(bitrate_cap) : FALSE;
-		videoroom->fir_freq = 0;
 		if(fir_freq)
 			videoroom->fir_freq = json_integer_value(fir_freq);
 		/* By default, we force Opus as the only audio codec */
 		videoroom->acodec[0] = JANUS_AUDIOCODEC_OPUS;
-		videoroom->acodec[1] = JANUS_AUDIOCODEC_NONE;
-		videoroom->acodec[2] = JANUS_AUDIOCODEC_NONE;
-		videoroom->acodec[3] = JANUS_AUDIOCODEC_NONE;
-		videoroom->acodec[4] = JANUS_AUDIOCODEC_NONE;
 		/* Check if we're forcing a different single codec, or allowing more than one */
 		if(audiocodec) {
 			const char *audiocodec_value = json_string_value(audiocodec);
@@ -3165,10 +3142,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		/* By default, we force VP8 as the only video codec */
 		videoroom->vcodec[0] = JANUS_VIDEOCODEC_VP8;
-		videoroom->vcodec[1] = JANUS_VIDEOCODEC_NONE;
-		videoroom->vcodec[2] = JANUS_VIDEOCODEC_NONE;
-		videoroom->vcodec[3] = JANUS_VIDEOCODEC_NONE;
-		videoroom->vcodec[4] = JANUS_VIDEOCODEC_NONE;
 		/* Check if we're forcing a different single codec, or allowing more than one */
 		if(videocodec) {
 			const char *videocodec_value = json_string_value(videocodec);
@@ -3258,7 +3231,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if(lock_record) {
 			videoroom->lock_record = json_is_true(lock_record);
 		}
-		g_atomic_int_set(&videoroom->destroyed, 0);
 		janus_mutex_init(&videoroom->mutex);
 		janus_refcount_init(&videoroom->ref, janus_videoroom_room_free);
 		videoroom->participants = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
@@ -4950,7 +4922,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			|| !strcasecmp(request_text, "leave")) {
 		/* These messages are handled asynchronously */
 
-		janus_videoroom_message *msg = g_malloc(sizeof(janus_videoroom_message));
+		janus_videoroom_message *msg = g_malloc0(sizeof(janus_videoroom_message));
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -6045,43 +6017,22 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->user_id = user_id;
 				publisher->user_id_str = user_id_str ? g_strdup(user_id_str) : NULL;
 				publisher->display = display_text ? g_strdup(display_text) : NULL;
-				publisher->sdp = NULL;		/* We'll deal with this later */
-				publisher->audio = FALSE;	/* We'll deal with this later */
-				publisher->video = FALSE;	/* We'll deal with this later */
-				publisher->data = FALSE;	/* We'll deal with this later */
-				publisher->acodec = JANUS_AUDIOCODEC_NONE;	/* We'll deal with this later */
-				publisher->vcodec = JANUS_VIDEOCODEC_NONE;	/* We'll deal with this later */
 				publisher->audio_active = TRUE;
 				publisher->video_active = TRUE;
 				publisher->data_active = TRUE;
-				publisher->recording_active = FALSE;
-				publisher->recording_base = NULL;
-				publisher->arc = NULL;
-				publisher->vrc = NULL;
-				publisher->drc = NULL;
 				janus_mutex_init(&publisher->rec_mutex);
-				publisher->firefox = FALSE;
 				publisher->bitrate = publisher->room->bitrate;
-				publisher->subscribers = NULL;
-				publisher->subscriptions = NULL;
 				janus_mutex_init(&publisher->subscribers_mutex);
 				janus_mutex_init(&publisher->own_subscriptions_mutex);
 				publisher->audio_pt = -1;	/* We'll deal with this later */
 				publisher->video_pt = -1;	/* We'll deal with this later */
-				publisher->audio_level_extmap_id = 0;
-				publisher->video_orient_extmap_id = 0;
-				publisher->playout_delay_extmap_id = 0;
 				publisher->remb_startup = 4;
-				publisher->remb_latest = 0;
-				publisher->fir_latest = 0;
-				publisher->fir_seq = 0;
 				janus_mutex_init(&publisher->rtp_forwarders_mutex);
 				publisher->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_rtp_forwarder_destroy);
 				publisher->srtp_contexts = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, (GDestroyNotify)janus_videoroom_srtp_context_free);
 				publisher->udp_sock = -1;
 				/* Finally, generate a private ID: this is only needed in case the participant
 				 * wants to allow the plugin to know which subscriptions belong to them */
-				publisher->pvt_id = 0;
 				while(publisher->pvt_id == 0) {
 					publisher->pvt_id = janus_random_uint32();
 					if(g_hash_table_lookup(publisher->room->private_ids, GUINT_TO_POINTER(publisher->pvt_id)) != NULL) {
@@ -6090,7 +6041,6 @@ static void *janus_videoroom_handler(void *data) {
 					}
 				}
 				g_hash_table_insert(publisher->room->private_ids, GUINT_TO_POINTER(publisher->pvt_id), publisher);
-				g_atomic_int_set(&publisher->destroyed, 0);
 				janus_refcount_init(&publisher->ref, janus_videoroom_publisher_free);
 				/* In case we also wanted to configure */
 				if(audio) {
@@ -6430,7 +6380,6 @@ static void *janus_videoroom_handler(void *data) {
 					if(!publisher->data || !subscriber->data_offered)
 						subscriber->data = FALSE;	/* ... unless the publisher isn't sending any data or we're skipping it */
 					subscriber->paused = TRUE;	/* We need an explicit start from the subscriber */
-					g_atomic_int_set(&subscriber->destroyed, 0);
 					janus_refcount_init(&subscriber->ref, janus_videoroom_subscriber_free);
 					janus_refcount_increase(&subscriber->ref);	/* This reference is for handling the setup */
 					janus_refcount_increase(&subscriber->ref);	/* The publisher references the new subscriber too */
@@ -7676,12 +7625,10 @@ static void *janus_videoroom_handler(void *data) {
 						janus_videoroom_subscriber *subscriber = (janus_videoroom_subscriber *)s->data;
 						if(subscriber && subscriber->session && subscriber->session->handle) {
 							/* Enqueue the fake request: this will trigger a renegotiation */
-							janus_videoroom_message *msg = g_malloc(sizeof(janus_videoroom_message));
+							janus_videoroom_message *msg = g_malloc0(sizeof(janus_videoroom_message));
 							janus_refcount_increase(&subscriber->session->ref);
 							msg->handle = subscriber->session->handle;
 							msg->message = update;
-							msg->transaction = NULL;
-							msg->jsep = NULL;
 							json_incref(update);
 							g_async_queue_push(messages, msg);
 						}

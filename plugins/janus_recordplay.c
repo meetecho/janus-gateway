@@ -910,21 +910,11 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_recordplay_session *session = g_malloc0(sizeof(janus_recordplay_session));
 	session->handle = handle;
-	session->active = FALSE;
-	session->recorder = FALSE;
-	session->firefox = FALSE;
-	session->arc = NULL;
-	session->vrc = NULL;
-	session->drc = NULL;
 	janus_mutex_init(&session->rec_mutex);
-	g_atomic_int_set(&session->hangingup, 0);
-	g_atomic_int_set(&session->destroyed, 0);
 	session->video_remb_startup = 4;
 	session->video_remb_last = janus_get_monotonic_time();
 	session->video_bitrate = 1024 * 1024; 		/* This is 1mbps by default */
-	session->video_keyframe_request_last = 0;
 	session->video_keyframe_interval = 15000; 	/* 15 seconds by default */
-	session->video_fir_seq = 0;
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
@@ -1106,7 +1096,7 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 	} else if(!strcasecmp(request_text, "record") || !strcasecmp(request_text, "play")
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "stop")) {
 		/* These messages are handled asynchronously */
-		janus_recordplay_message *msg = g_malloc(sizeof(janus_recordplay_message));
+		janus_recordplay_message *msg = g_malloc0(sizeof(janus_recordplay_message));
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -1628,13 +1618,7 @@ static void *janus_recordplay_handler(void *data) {
 			rec = g_malloc0(sizeof(janus_recordplay_recording));
 			rec->id = id;
 			rec->name = g_strdup(name_text);
-			rec->viewers = NULL;
-			rec->offer = NULL;
-			rec->acodec = JANUS_AUDIOCODEC_NONE;
-			rec->vcodec = JANUS_VIDEOCODEC_NONE;
 			rec->e2ee = e2ee;
-			g_atomic_int_set(&rec->destroyed, 0);
-			g_atomic_int_set(&rec->completed, 0);
 			janus_refcount_init(&rec->ref, janus_recordplay_recording_free);
 			janus_refcount_increase(&rec->ref);	/* This is for the user writing the recording */
 			janus_mutex_init(&rec->mutex);
@@ -2199,11 +2183,9 @@ void janus_recordplay_update_recordings_list(void) {
 				rec->audio_pt = 9;
 		}
 		rec->video_pt = VIDEO_PT;
-		rec->viewers = NULL;
 		if(janus_recordplay_generate_offer(rec) < 0) {
 			JANUS_LOG(LOG_WARN, "Could not generate offer for recording %"SCNu64"...\n", rec->id);
 		}
-		g_atomic_int_set(&rec->destroyed, 0);
 		g_atomic_int_set(&rec->completed, 1);
 		janus_refcount_init(&rec->ref, janus_recordplay_recording_free);
 		janus_mutex_init(&rec->mutex);
@@ -2449,13 +2431,11 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 			offset += sizeof(gint64);
 			len -= sizeof(gint64);
 			/* Generate frame packet and insert in the ordered list */
-			janus_recordplay_frame_packet *p = g_malloc(sizeof(janus_recordplay_frame_packet));
-			p->seq = 0;
+			janus_recordplay_frame_packet *p = g_malloc0(sizeof(janus_recordplay_frame_packet));
 			/* We "abuse" the timestamp field for the timing info */
 			p->ts = when-c_time;
 			p->len = len;
 			p->offset = offset;
-			p->next = NULL;
 			p->prev = last;
 			if(list == NULL) {
 				list = p;
@@ -2477,7 +2457,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 		JANUS_LOG(LOG_HUGE, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
 				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 		/* Generate frame packet and insert in the ordered list */
-		janus_recordplay_frame_packet *p = g_malloc(sizeof(janus_recordplay_frame_packet));
+		janus_recordplay_frame_packet *p = g_malloc0(sizeof(janus_recordplay_frame_packet));
 		p->seq = ntohs(rtp->seq_number);
 		if(reset == 0) {
 			/* Simple enough... */
@@ -2496,8 +2476,6 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 		}
 		p->len = len;
 		p->offset = offset;
-		p->next = NULL;
-		p->prev = NULL;
 		if(list == NULL) {
 			/* First element becomes the list itself (and the last item), at least for now */
 			list = p;

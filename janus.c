@@ -734,16 +734,11 @@ janus_session *janus_session_create(guint64 session_id) {
 			}
 		}
 	}
-	session = (janus_session *)g_malloc(sizeof(janus_session));
+	session = (janus_session *)g_malloc0(sizeof(janus_session));
 	JANUS_LOG(LOG_INFO, "Creating new session: %"SCNu64"; %p\n", session_id, session);
 	session->session_id = session_id;
 	janus_refcount_init(&session->ref, janus_session_free);
-	session->source = NULL;
-	g_atomic_int_set(&session->destroyed, 0);
-	g_atomic_int_set(&session->timeout, 0);
-	g_atomic_int_set(&session->transport_gone, 0);
 	session->last_activity = janus_get_monotonic_time();
-	session->ice_handles = NULL;
 	janus_mutex_init(&session->mutex);
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, janus_uint64_dup(session->session_id), session);
@@ -878,14 +873,13 @@ static void janus_request_free(const janus_refcount *request_ref) {
 }
 
 janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message) {
-	janus_request *request = g_malloc(sizeof(janus_request));
+	janus_request *request = g_malloc0(sizeof(janus_request));
 	request->transport = transport;
 	request->instance = instance;
 	janus_refcount_increase(&instance->ref);
 	request->request_id = request_id;
 	request->admin = admin;
 	request->message = message;
-	g_atomic_int_set(&request->destroyed, 0);
 	janus_refcount_init(&request->ref, janus_request_free);
 	return request;
 }

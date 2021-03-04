@@ -298,9 +298,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 	/* Set default values */
 	/* Strings are set to default values later */
-	ctx->status.enabled = FALSE;
 	ctx->status.qos = JANUS_MQTT_DEFAULT_STATUS_QOS;
-	ctx->status.retain = FALSE;
 
 	/* Prepare the transport session (again, just one) */
 	mqtt_session = janus_transport_session_create(context_, NULL);
@@ -1145,10 +1143,10 @@ int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicL
 				goto done;
 			}
 
-			MQTTProperties *properties = g_malloc(sizeof(MQTTProperties));
+			MQTTProperties *properties = g_malloc0(sizeof(MQTTProperties));
 			*properties = MQTTProperties_copy(&message->properties);
 
-			janus_mqtt_transaction_state *state = g_malloc(sizeof(janus_mqtt_transaction_state));
+			janus_mqtt_transaction_state *state = g_malloc0(sizeof(janus_mqtt_transaction_state));
 			state->properties = properties;
 			state->created_at = janus_get_monotonic_time();
 

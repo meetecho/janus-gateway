@@ -78,7 +78,7 @@ const char *janus_sdp_mtype_str(janus_sdp_mtype type);
 /*! \brief Helper enumeration to quickly identify m-line directions */
 typedef enum janus_sdp_mdirection {
 	/*! \brief default=sendrecv */
-	JANUS_SDP_DEFAULT,
+	JANUS_SDP_DEFAULT = 0,
 	/*! \brief sendrecv */
 	JANUS_SDP_SENDRECV,
 	/*! \brief sendonly */

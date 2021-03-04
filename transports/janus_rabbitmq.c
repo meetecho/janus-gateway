@@ -460,7 +460,6 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 				goto error;
 			}
 		}
-		rmq_client->janus_api_enabled = FALSE;
 		if(rmq_janus_api_enabled) {
 			rmq_client->janus_api_enabled = TRUE;
 
@@ -537,7 +536,6 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 				goto error;
 			}
 		}
-		rmq_client->admin_api_enabled = FALSE;
 		if(rmq_admin_api_enabled) {
 			rmq_client->admin_api_enabled = TRUE;
 
@@ -774,7 +772,7 @@ int janus_rabbitmq_send_message(janus_transport_session *transport, void *reques
 	}
 	JANUS_LOG(LOG_HUGE, "Sending %s API %s via RabbitMQ\n", admin ? "admin" : "Janus", request_id ? "response" : "event");
 	/* FIXME Add to the queue of outgoing messages */
-	janus_rabbitmq_response *response = g_malloc(sizeof(janus_rabbitmq_response));
+	janus_rabbitmq_response *response = g_malloc0(sizeof(janus_rabbitmq_response));
 	response->admin = admin;
 	response->payload = json_dumps(message, json_format);
 	json_decref(message);

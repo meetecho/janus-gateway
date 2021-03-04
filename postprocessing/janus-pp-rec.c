@@ -755,21 +755,15 @@ int main(int argc, char *argv[])
 			offset += sizeof(gint64);
 			len -= sizeof(gint64);
 			/* Generate frame packet and insert in the ordered list */
-			janus_pp_frame_packet *p = g_malloc(sizeof(janus_pp_frame_packet));
+			janus_pp_frame_packet *p = g_malloc0(sizeof(janus_pp_frame_packet));
 			p->version = has_timestamps ? 2 : 1;
 			p->p_ts = pkt_ts;
-			p->seq = 0;
 			/* We "abuse" the timestamp field for the timing info */
 			p->ts = when-c_time;
 			p->len = len;
-			p->pt = 0;
-			p->drop = 0;
 			p->offset = offset;
-			p->skip = 0;
 			p->audiolevel = -1;
 			p->rotation = -1;
-			p->next = NULL;
-			p->prev = NULL;
 			if(list == NULL) {
 				list = p;
 			} else {
@@ -869,7 +863,6 @@ int main(int argc, char *argv[])
 		p->seq = ntohs(rtp->seq_number);
 		p->pt = rtp->type;
 		p->len = len;
-		p->drop = 0;
 		uint32_t rtp_ts = ntohl(rtp->timestamp);
 		/* Due to resets, we need to mess a bit with the original timestamps */
 		if(!started) {

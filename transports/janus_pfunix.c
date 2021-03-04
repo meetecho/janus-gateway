@@ -756,12 +756,10 @@ void *janus_pfunix_thread(void *data) {
 							JANUS_LOG(LOG_INFO, "Got new Unix Sockets %s API client: %d\n",
 								poll_fds[i].fd == pfd ? "Janus" : "Admin", cfd);
 							/* Allocate new client */
-							janus_pfunix_client *client = g_malloc(sizeof(janus_pfunix_client));
+							janus_pfunix_client *client = g_malloc0(sizeof(janus_pfunix_client));
 							client->fd = cfd;
-							memset(&client->addr, 0, sizeof(client->addr));
 							client->admin = (poll_fds[i].fd == admin_pfd);	/* API client type */
 							client->messages = g_async_queue_new();
-							client->session_timeout = FALSE;
 							/* Create a transport instance as well */
 							client->ts = janus_transport_session_create(client, janus_pfunix_client_free);
 							/* Take note of this new client */
@@ -803,12 +801,11 @@ void *janus_pfunix_thread(void *data) {
 							JANUS_LOG(LOG_INFO, "Got new Unix Sockets %s API client: %s\n",
 								poll_fds[i].fd == pfd ? "Janus" : "Admin", uaddr->sun_path);
 							/* Allocate new client */
-							client = g_malloc(sizeof(janus_pfunix_client));
+							client = g_malloc0(sizeof(janus_pfunix_client));
 							client->fd = -1;
 							memcpy(&client->addr, uaddr, sizeof(struct sockaddr_un));
 							client->admin = (poll_fds[i].fd == admin_pfd);	/* API client type */
 							client->messages = g_async_queue_new();
-							client->session_timeout = FALSE;
 							/* Create a transport instance as well */
 							client->ts = janus_transport_session_create(client, janus_pfunix_client_free);
 							/* Take note of this new client */
@@ -897,7 +894,7 @@ void *janus_pfunix_thread(void *data) {
 	}
 
 	socklen_t addrlen = sizeof(struct sockaddr_un);
-	void *addr = g_malloc(addrlen+1);
+	void *addr = g_malloc0(addrlen+1);
 	if(pfd > -1) {
 		/* Unlink the path name first */
 #ifdef HAVE_LIBSYSTEMD

@@ -110,9 +110,6 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 	/* Create the recorder */
 	janus_recorder *rc = g_malloc0(sizeof(janus_recorder));
 	janus_refcount_init(&rc->ref, janus_recorder_free);
-	rc->dir = NULL;
-	rc->filename = NULL;
-	rc->file = NULL;
 	rc->codec = g_strdup(codec);
 	rc->fmtp = fmtp ? g_strdup(fmtp) : NULL;
 	rc->created = janus_get_real_time();
@@ -245,11 +242,8 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 		return NULL;
 	}
 	g_atomic_int_set(&rc->writable, 1);
-	/* We still need to also write the info header first */
-	g_atomic_int_set(&rc->header, 0);
 	janus_mutex_init(&rc->mutex);
 	/* Done */
-	g_atomic_int_set(&rc->destroyed, 0);
 	g_free(copy_for_parent);
 	g_free(copy_for_base);
 	return rc;

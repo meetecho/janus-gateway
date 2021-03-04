@@ -90,9 +90,8 @@ static janus_log_buffer *janus_log_getbuf(void) {
 	}
 	g_mutex_unlock(&lock);
 	if (b == NULL) {
-		b = g_malloc(INITIAL_BUFSZ + sizeof(*b));
+		b = g_malloc0(INITIAL_BUFSZ + sizeof(*b));
 		b->allocated = INITIAL_BUFSZ;
-		b->next = NULL;
 	}
 	return b;
 }

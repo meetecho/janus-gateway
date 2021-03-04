@@ -465,7 +465,7 @@ static duk_ret_t janus_duktape_method_readfile(duk_context *ctx) {
 		return duk_throw(ctx);
 	}
 	fseek(f, 0, SEEK_SET);
-	char *text = g_malloc(len);
+	char *text = g_malloc0(len);
 	size_t offset = 0, r = 0, t = len;
 	while(t > 0) {
 		r = fread(text+offset, 1, t, f);
@@ -2023,9 +2023,6 @@ void janus_duktape_create_session(janus_plugin_session *handle, int *error) {
 	session->sim_context.substream_target = 2;
 	session->sim_context.templayer_target = 2;
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
-	session->vcodec = JANUS_VIDEOCODEC_NONE;
-	g_atomic_int_set(&session->hangingup, 0);
-	g_atomic_int_set(&session->destroyed, 0);
 	janus_refcount_init(&session->ref, janus_duktape_session_free);
 	handle->plugin_handle = session;
 	g_hash_table_insert(duktape_sessions, handle, session);

@@ -2196,13 +2196,10 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			if(pin != NULL && pin->value != NULL) {
 				audiobridge->room_pin = g_strdup(pin->value);
 			}
-			audiobridge->record = FALSE;
 			if(record && record->value && janus_is_true(record->value))
 				audiobridge->record = TRUE;
 			if(recfile && recfile->value)
 				audiobridge->record_file = g_strdup(recfile->value);
-			audiobridge->recording = NULL;
-			audiobridge->destroy = 0;
 			audiobridge->participants = g_hash_table_new_full(
 				string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
 				(GDestroyNotify)g_free, (GDestroyNotify)janus_audiobridge_participant_unref);
@@ -2210,10 +2207,8 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				(GDestroyNotify)g_free, (GDestroyNotify)janus_audiobridge_participant_unref);
 			audiobridge->check_tokens = FALSE;	/* Static rooms can't have an "allowed" list yet, no hooks to the configuration file */
 			audiobridge->allowed = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
-			g_atomic_int_set(&audiobridge->destroyed, 0);
 			janus_mutex_init(&audiobridge->mutex);
 			audiobridge->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_audiobridge_rtp_forwarder_destroy);
-			audiobridge->rtp_encoder = NULL;
 			audiobridge->rtp_udp_sock = -1;
 			janus_mutex_init(&audiobridge->rtp_mutex);
 			janus_refcount_init(&audiobridge->ref, janus_audiobridge_room_free);
@@ -2356,9 +2351,6 @@ void janus_audiobridge_create_session(janus_plugin_session *handle, int *error) 
 	}
 	janus_audiobridge_session *session = g_malloc0(sizeof(janus_audiobridge_session));
 	session->handle = handle;
-	g_atomic_int_set(&session->started, 0);
-	g_atomic_int_set(&session->hangingup, 0);
-	g_atomic_int_set(&session->destroyed, 0);
 	handle->plugin_handle = session;
 	janus_refcount_init(&session->ref, janus_audiobridge_session_free);
 
@@ -2685,10 +2677,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			}
 			audiobridge->check_tokens = TRUE;
 		}
-		g_atomic_int_set(&audiobridge->destroyed, 0);
 		janus_mutex_init(&audiobridge->mutex);
 		audiobridge->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_audiobridge_rtp_forwarder_destroy);
-		audiobridge->rtp_encoder = NULL;
 		audiobridge->rtp_udp_sock = -1;
 		janus_mutex_init(&audiobridge->rtp_mutex);
 		janus_refcount_init(&audiobridge->ref, janus_audiobridge_room_free);
@@ -4485,7 +4475,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 	} else if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "configure")
 			|| !strcasecmp(request_text, "changeroom") || !strcasecmp(request_text, "leave")) {
 		/* These messages are handled asynchronously */
-		janus_audiobridge_message *msg = g_malloc(sizeof(janus_audiobridge_message));
+		janus_audiobridge_message *msg = g_malloc0(sizeof(janus_audiobridge_message));
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -4670,14 +4660,11 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 				rtp->type, participant->codec == JANUS_AUDIOCODEC_PCMA ? 8 : 0);
 			return;
 		}
-		janus_audiobridge_rtp_relay_packet *pkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
+		janus_audiobridge_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_audiobridge_rtp_relay_packet));
 		pkt->data = g_malloc0(BUFFER_SAMPLES*sizeof(opus_int16));
-		pkt->ssrc = 0;
 		pkt->timestamp = ntohl(rtp->timestamp);
 		pkt->seq_number = ntohs(rtp->seq_number);
 		/* We might check the audio level extension to see if this is silence */
-		pkt->silence = FALSE;
-		pkt->length = 0;
 
 		/* First check if probation period */
 		if(participant->probation == MIN_SEQUENTIAL) {
@@ -4823,13 +4810,10 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 				uint8_t i=0;
 				for(i=1; i<=gap ; i++) {
 					int32_t output_samples;
-					janus_audiobridge_rtp_relay_packet *lost_pkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
+					janus_audiobridge_rtp_relay_packet *lost_pkt = g_malloc0(sizeof(janus_audiobridge_rtp_relay_packet));
 					lost_pkt->data = g_malloc0(BUFFER_SAMPLES*sizeof(opus_int16));
-					lost_pkt->ssrc = 0;
 					lost_pkt->timestamp = participant->last_timestamp + (i * OPUS_SAMPLES);
 					lost_pkt->seq_number = start_lost_seq++;
-					lost_pkt->silence = FALSE;
-					lost_pkt->length = 0;
 					if(i == gap) {
 						/* Attempt to decode with in-band FEC from next packet */
 						opus_decoder_ctl(participant->decoder, OPUS_GET_LAST_PACKET_DURATION(&output_samples));
@@ -5326,22 +5310,9 @@ static void *janus_audiobridge_handler(void *data) {
 			if(participant == NULL) {
 				participant = g_malloc0(sizeof(janus_audiobridge_participant));
 				janus_refcount_init(&participant->ref, janus_audiobridge_participant_free);
-				g_atomic_int_set(&participant->active, 0);
 				participant->codec = codec;
 				participant->prebuffering = TRUE;
-				participant->display = NULL;
-				participant->inbuf = NULL;
-				participant->outbuf = NULL;
-				participant->last_drop = 0;
-				participant->encoder = NULL;
-				participant->decoder = NULL;
-				participant->reset = FALSE;
-				participant->fec = FALSE;
-				participant->expected_seq = 0;
-				participant->probation = 0;
-				participant->last_timestamp = 0;
 				janus_mutex_init(&participant->qmutex);
-				participant->arc = NULL;
 				janus_mutex_init(&participant->rec_mutex);
 			}
 			participant->session = session;
@@ -6715,8 +6686,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				/* FIXME Smoothen/Normalize instead of truncating? */
 				outBuffer[i] = sumBuffer[i];
 			/* Enqueue this mixed frame for encoding in the participant thread */
-			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
-			mixedpkt->data = g_malloc(samples*2);
+			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc0(sizeof(janus_audiobridge_rtp_relay_packet));
+			mixedpkt->data = g_malloc0(samples*2);
 			if(p->codec != JANUS_AUDIOCODEC_OPUS && audiobridge->sampling_rate != 8000) {
 				/* Downsample this from whatever the mixer uses */
 				i = janus_audiobridge_resample(outBuffer, samples, audiobridge->sampling_rate, (int16_t *)mixedpkt->data, 8000);
@@ -6734,7 +6705,6 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			mixedpkt->timestamp = ts;
 			mixedpkt->seq_number = seq;
 			mixedpkt->ssrc = audiobridge->room_ssrc;
-			mixedpkt->silence = FALSE;
 			g_async_queue_push(p->outbuf, mixedpkt);
 			if(pkt) {
 				g_free(pkt->data);
@@ -6921,13 +6891,8 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	janus_audiobridge_session *session = participant->session;
 
 	/* Output buffer */
-	janus_audiobridge_rtp_relay_packet *outpkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
+	janus_audiobridge_rtp_relay_packet *outpkt = g_malloc0(sizeof(janus_audiobridge_rtp_relay_packet));
 	outpkt->data = g_malloc0(1500);
-	outpkt->ssrc = 0;
-	outpkt->timestamp = 0;
-	outpkt->seq_number = 0;
-	outpkt->length = 0;
-	outpkt->silence = FALSE;
 	uint8_t *payload = (uint8_t *)outpkt->data;
 
 	janus_audiobridge_rtp_relay_packet *mixedpkt = NULL;

@@ -130,7 +130,7 @@ char *janus_random_uuid(void) {
 }
 
 guint64 *janus_uint64_dup(guint64 num) {
-	guint64 *numdup = g_malloc(sizeof(guint64));
+	guint64 *numdup = g_malloc0(sizeof(guint64));
 	*numdup = num;
 	return numdup;
 }

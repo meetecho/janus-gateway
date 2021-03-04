@@ -19,7 +19,7 @@
 /* Plugin results */
 janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *text, json_t *content) {
 	JANUS_LOG(LOG_HUGE, "Creating plugin result...\n");
-	janus_plugin_result *result = g_malloc(sizeof(janus_plugin_result));
+	janus_plugin_result *result = g_malloc0(sizeof(janus_plugin_result));
 	result->type = type;
 	result->text = text;
 	result->content = content;

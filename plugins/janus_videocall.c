@@ -582,23 +582,13 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_videocall_session *session = g_malloc0(sizeof(janus_videocall_session));
 	session->handle = handle;
-	session->has_audio = FALSE;
-	session->has_video = FALSE;
-	session->has_data = FALSE;
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
-	session->bitrate = 0;	/* No limit */
-	session->peer_bitrate = 0;
-	session->peer = NULL;
-	session->username = NULL;
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
 	janus_mutex_init(&session->mutex);
 	janus_mutex_init(&session->rec_mutex);
-	g_atomic_int_set(&session->incall, 0);
-	g_atomic_int_set(&session->hangingup, 0);
-	g_atomic_int_set(&session->destroyed, 0);
 	handle->plugin_handle = session;
 	janus_refcount_init(&session->ref, janus_videocall_session_free);
 
@@ -709,7 +699,7 @@ struct janus_plugin_result *janus_videocall_handle_message(janus_plugin_session 
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&sessions_mutex);
 
-	janus_videocall_message *msg = g_malloc(sizeof(janus_videocall_message));
+	janus_videocall_message *msg = g_malloc0(sizeof(janus_videocall_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;

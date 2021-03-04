@@ -1110,12 +1110,8 @@ void janus_textroom_create_session(janus_plugin_session *handle, int *error) {
 	session->handle = handle;
 	session->rooms = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)janus_textroom_participant_dereference);
-	session->destroyed = 0;
 	janus_mutex_init(&session->mutex);
 	janus_refcount_init(&session->ref, janus_textroom_session_free);
-	g_atomic_int_set(&session->setup, 0);
-	g_atomic_int_set(&session->dataready, 0);
-	g_atomic_int_set(&session->hangingup, 0);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -1246,7 +1242,7 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 		return result;
 	} else if(!strcasecmp(request_text, "setup") || !strcasecmp(request_text, "ack") || !strcasecmp(request_text, "restart")) {
 		/* These messages are handled asynchronously */
-		janus_textroom_message *msg = g_malloc(sizeof(janus_textroom_message));
+		janus_textroom_message *msg = g_malloc0(sizeof(janus_textroom_message));
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -1389,9 +1385,8 @@ void janus_textroom_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 		janus_refcount_decrease(&session->ref);
 		return;
 	}
-	char *text = g_malloc(len+1);
+	char *text = g_malloc0(len+1);
 	memcpy(text, buf, len);
-	*(text+len) = '\0';
 	JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes): %s\n", strlen(text), text);
 	janus_textroom_handle_incoming_request(handle, text, NULL, FALSE);
 	janus_refcount_decrease(&session->ref);
@@ -1691,12 +1686,11 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		json_t *display = json_object_get(root, "display");
 		const char *display_text = json_string_value(display);
 		/* Create a participant instance */
-		participant = g_malloc(sizeof(janus_textroom_participant));
+		participant = g_malloc0(sizeof(janus_textroom_participant));
 		participant->session = session;
 		participant->room = textroom;
 		participant->username = g_strdup(username_text);
 		participant->display = display_text ? g_strdup(display_text) : NULL;
-		participant->destroyed = 0;
 		janus_mutex_init(&participant->mutex);
 		janus_refcount_init(&participant->ref, janus_textroom_participant_free);
 		janus_refcount_increase(&participant->ref);

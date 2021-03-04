@@ -751,12 +751,11 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 			/* We'll resolve this address asynchronously, in order not to keep this thread busy */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Resolving mDNS address (%s) asynchronously\n",
 				handle->handle_id, rip);
-			janus_sdp_mdns_candidate *mc = g_malloc(sizeof(janus_sdp_mdns_candidate));
+			janus_sdp_mdns_candidate *mc = g_malloc0(sizeof(janus_sdp_mdns_candidate));
 			janus_refcount_increase(&handle->ref);
 			mc->handle = handle;
 			mc->candidate = g_strdup(candidate);
 			mc->local = g_strdup(rip);
-			mc->cancellable = NULL;
 			GResolver *resolver = g_resolver_get_default();
 			g_resolver_lookup_by_name_async(resolver, rip, NULL,
 				(GAsyncReadyCallback)janus_sdp_mdns_resolved, mc);

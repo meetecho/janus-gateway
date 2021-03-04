@@ -187,7 +187,7 @@ janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, i
 	}
 
 	/* Create the text2pcap instance */
-	tp = g_malloc(sizeof(janus_text2pcap));
+	tp = g_malloc0(sizeof(janus_text2pcap));
 	tp->filename = fname;
 	tp->file = f;
 	tp->truncate = truncate;

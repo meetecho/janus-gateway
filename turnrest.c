@@ -227,11 +227,10 @@ janus_turnrest_response *janus_turnrest_request(const char *user) {
 		return NULL;
 	}
 	/* Turn the response into a janus_turnrest_response object we can use */
-	janus_turnrest_response *response = g_malloc(sizeof(janus_turnrest_response));
+	janus_turnrest_response *response = g_malloc0(sizeof(janus_turnrest_response));
 	response->username = g_strdup(json_string_value(username));
 	response->password = g_strdup(json_string_value(password));
 	response->ttl = ttl ? json_integer_value(ttl) : 0;
-	response->servers = NULL;
 	size_t i = 0;
 	for(i=0; i<json_array_size(uris); i++) {
 		json_t *uri = json_array_get(uris, i);
@@ -244,7 +243,7 @@ janus_turnrest_response *janus_turnrest_request(const char *user) {
 			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (not a TURN URI)...\n", turn_uri);
 			continue;
 		}
-		janus_turnrest_instance *instance = g_malloc(sizeof(janus_turnrest_instance));
+		janus_turnrest_instance *instance = g_malloc0(sizeof(janus_turnrest_instance));
 		instance->transport = NICE_RELAY_TYPE_TURN_UDP;
 		if(strstr(turn_uri, "turns:") == turn_uri || strstr(turn_uri, "transport=tls") != NULL)
 			instance->transport = NICE_RELAY_TYPE_TURN_TLS;

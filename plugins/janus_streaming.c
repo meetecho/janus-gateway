@@ -2288,12 +2288,7 @@ void janus_streaming_create_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_streaming_session *session = g_malloc0(sizeof(janus_streaming_session));
 	session->handle = handle;
-	session->mountpoint = NULL;	/* This will happen later */
 	janus_mutex_init(&session->mutex);
-	g_atomic_int_set(&session->started, 0);
-	g_atomic_int_set(&session->paused, 0);
-	g_atomic_int_set(&session->destroyed, 0);
-	g_atomic_int_set(&session->hangingup, 0);
 	handle->plugin_handle = session;
 	janus_refcount_init(&session->ref, janus_streaming_session_free);
 	janus_mutex_lock(&sessions_mutex);
@@ -4268,7 +4263,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			|| !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "stop")
 			|| !strcasecmp(request_text, "configure") || !strcasecmp(request_text, "switch")) {
 		/* These messages are handled asynchronously */
-		janus_streaming_message *msg = g_malloc(sizeof(janus_streaming_message));
+		janus_streaming_message *msg = g_malloc0(sizeof(janus_streaming_message));
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -5889,7 +5884,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp->description = description;
 	live_rtp->metadata = (metadata ? g_strdup(metadata) : NULL);
 	live_rtp->enabled = TRUE;
-	live_rtp->active = FALSE;
 	live_rtp->audio = doaudio;
 	live_rtp->video = dovideo;
 	live_rtp->data = dodata;
@@ -5995,9 +5989,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->data_iface = dodata && !janus_network_address_is_null(diface) ? *diface : nil;
 	if(dodata && strlen(datahost) > 0)
 		live_rtp_source->data_host = g_strdup(datahost);
-	live_rtp_source->arc = NULL;
-	live_rtp_source->vrc = NULL;
-	live_rtp_source->drc = NULL;
 	janus_rtp_switching_context_reset(&live_rtp_source->context[0]);
 	janus_rtp_switching_context_reset(&live_rtp_source->context[1]);
 	janus_rtp_switching_context_reset(&live_rtp_source->context[2]);
@@ -6016,21 +6007,16 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->last_received_video = janus_get_monotonic_time();
 	live_rtp_source->last_received_data = janus_get_monotonic_time();
 	live_rtp_source->keyframe.enabled = bufferkf;
-	live_rtp_source->keyframe.latest_keyframe = NULL;
-	live_rtp_source->keyframe.temp_keyframe = NULL;
-	live_rtp_source->keyframe.temp_ts = 0;
 	janus_mutex_init(&live_rtp_source->keyframe.mutex);
 	live_rtp_source->rtp_collision = rtp_collision;
 	live_rtp_source->textdata = textdata;
 	live_rtp_source->buffermsg = buffermsg;
-	live_rtp_source->last_msg = NULL;
 	janus_mutex_init(&live_rtp_source->buffermsg_mutex);
 	live_rtp->source = live_rtp_source;
 	live_rtp->source_destroy = (GDestroyNotify) janus_streaming_rtp_source_free;
 	live_rtp->codecs.audio_pt = doaudio ? acodec : -1;
 	live_rtp->codecs.audio_rtpmap = doaudio ? g_strdup(artpmap) : NULL;
 	live_rtp->codecs.audio_fmtp = doaudio ? (afmtp ? g_strdup(afmtp) : NULL) : NULL;
-	live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_NONE;
 	if(dovideo) {
 		if(strstr(vrtpmap, "vp8") || strstr(vrtpmap, "VP8"))
 			live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_VP8;
@@ -6053,8 +6039,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp->codecs.video_pt = dovideo ? vcodec : -1;
 	live_rtp->codecs.video_rtpmap = dovideo ? g_strdup(vrtpmap) : NULL;
 	live_rtp->codecs.video_fmtp = dovideo ? (vfmtp ? g_strdup(vfmtp) : NULL) : NULL;
-	live_rtp->viewers = NULL;
-	g_atomic_int_set(&live_rtp->destroyed, 0);
 	janus_refcount_init(&live_rtp->ref, janus_streaming_mountpoint_free);
 	janus_mutex_init(&live_rtp->mutex);
 	janus_mutex_lock(&mountpoints_mutex);
@@ -6186,10 +6170,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	file_source->description = description;
 	file_source->metadata = (metadata ? g_strdup(metadata) : NULL);
 	file_source->enabled = TRUE;
-	file_source->active = FALSE;
 	file_source->audio = TRUE;
-	file_source->video = FALSE;
-	file_source->data = FALSE;
 	file_source->streaming_type = live ? janus_streaming_type_live : janus_streaming_type_on_demand;
 	file_source->streaming_source = janus_streaming_source_file;
 	janus_streaming_file_source *file_source_source = g_malloc0(sizeof(janus_streaming_file_source));
@@ -6206,9 +6187,6 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 		file_source->codecs.audio_rtpmap = g_strdup(strstr(filename, ".alaw") ? "PCMA/8000" : "PCMU/8000");
 	}
 	file_source->codecs.video_pt = -1;	/* FIXME We don't support video for this type yet */
-	file_source->codecs.video_rtpmap = NULL;
-	file_source->viewers = NULL;
-	g_atomic_int_set(&file_source->destroyed, 0);
 	janus_refcount_init(&file_source->ref, janus_streaming_mountpoint_free);
 	janus_mutex_init(&file_source->mutex);
 	janus_mutex_lock(&mountpoints_mutex);
@@ -6369,9 +6347,8 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		curl_easy_setopt(curl, CURLOPT_PASSWORD, source->rtsp_password);
 	}
 	/* Send an RTSP DESCRIBE */
-	janus_streaming_buffer *curldata = g_malloc(sizeof(janus_streaming_buffer));
+	janus_streaming_buffer *curldata = g_malloc0(sizeof(janus_streaming_buffer));
 	curldata->buffer = g_malloc0(1);
-	curldata->size = 0;
 	curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, source->rtsp_url);
 	curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_DESCRIBE);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, janus_streaming_rtsp_curl_callback);
@@ -6994,10 +6971,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp->description = description;
 	live_rtsp->metadata = (metadata ? g_strdup(metadata) : NULL);
 	live_rtsp->enabled = TRUE;
-	live_rtsp->active = FALSE;
 	live_rtsp->audio = doaudio;
 	live_rtsp->video = dovideo;
-	live_rtsp->data = FALSE;
 	live_rtsp->streaming_type = janus_streaming_type_live;
 	live_rtsp->streaming_source = janus_streaming_source_rtp;
 	janus_streaming_rtp_source *live_rtsp_source = g_malloc0(sizeof(janus_streaming_rtp_source));
@@ -7005,9 +6980,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp_source->rtsp_url = g_strdup(url);
 	live_rtsp_source->rtsp_username = username ? g_strdup(username) : NULL;
 	live_rtsp_source->rtsp_password = password ? g_strdup(password) : NULL;
-	live_rtsp_source->arc = NULL;
-	live_rtsp_source->vrc = NULL;
-	live_rtsp_source->drc = NULL;
 	live_rtsp_source->audio_fd = -1;
 	live_rtsp_source->audio_rtcp_fd = -1;
 	live_rtsp_source->audio_iface = iface ? *iface : nil;
@@ -7022,16 +6994,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	pipe(live_rtsp_source->pipefd);
 	live_rtsp_source->data_iface = nil;
 	live_rtsp_source->keyframe.enabled = bufferkf;
-	live_rtsp_source->keyframe.latest_keyframe = NULL;
-	live_rtsp_source->keyframe.temp_keyframe = NULL;
-	live_rtsp_source->keyframe.temp_ts = 0;
 	janus_mutex_init(&live_rtsp_source->keyframe.mutex);
-	live_rtsp_source->reconnect_timer = 0;
 	janus_mutex_init(&live_rtsp_source->rtsp_mutex);
 	live_rtsp->source = live_rtsp_source;
 	live_rtsp->source_destroy = (GDestroyNotify) janus_streaming_rtp_source_free;
-	live_rtsp->viewers = NULL;
-	g_atomic_int_set(&live_rtsp->destroyed, 0);
 	janus_refcount_init(&live_rtsp->ref, janus_streaming_mountpoint_free);
 	janus_mutex_init(&live_rtsp->mutex);
 	/* We may have to override the payload type and/or rtpmap and/or fmtp for audio and/or video */
@@ -7911,7 +7877,7 @@ static void *janus_streaming_relay_thread(void *data) {
 							janus_mutex_lock(&source->keyframe.mutex);
 							JANUS_LOG(LOG_HUGE, "[%s] ... other part of keyframe received! ts=%"SCNu32"\n", name, source->keyframe.temp_ts);
 							janus_streaming_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_streaming_rtp_relay_packet));
-							pkt->data = g_malloc(bytes);
+							pkt->data = g_malloc0(bytes);
 							memcpy(pkt->data, buffer, bytes);
 							pkt->data->ssrc = htons(1);
 							pkt->data->type = mountpoint->codecs.video_pt;
@@ -7959,7 +7925,7 @@ static void *janus_streaming_relay_thread(void *data) {
 									JANUS_LOG(LOG_HUGE, "[%s] New keyframe received! ts=%"SCNu32"\n", name, source->keyframe.temp_ts);
 									janus_mutex_lock(&source->keyframe.mutex);
 									janus_streaming_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_streaming_rtp_relay_packet));
-									pkt->data = g_malloc(bytes);
+									pkt->data = g_malloc0(bytes);
 									memcpy(pkt->data, buffer, bytes);
 									pkt->data->ssrc = htons(1);
 									pkt->data->type = mountpoint->codecs.video_pt;
@@ -8056,7 +8022,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					if(!mountpoint->enabled && !source->drc)
 						continue;
 					/* Copy the data */
-					char *data = g_malloc(bytes);
+					char *data = g_malloc0(bytes);
 					memcpy(data, buffer, bytes);
 					/* Relay on all sessions */
 					packet.data = (janus_rtp_header *)data;
@@ -8071,7 +8037,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						if(source->buffermsg) {
 							janus_mutex_lock(&source->buffermsg_mutex);
 							janus_streaming_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_streaming_rtp_relay_packet));
-							pkt->data = g_malloc(bytes);
+							pkt->data = g_malloc0(bytes);
 							memcpy(pkt->data, data, bytes);
 							packet.is_rtp = FALSE;
 							packet.is_data = TRUE;
@@ -8522,7 +8488,7 @@ static void janus_streaming_helper_rtprtcp_packet(gpointer data, gpointer user_d
 	}
 	/* Clone the packet and queue it for delivery on the helper thread */
 	janus_streaming_rtp_relay_packet *copy = g_malloc0(sizeof(janus_streaming_rtp_relay_packet));
-	copy->data = g_malloc(packet->length);
+	copy->data = g_malloc0(packet->length);
 	memcpy(copy->data, packet->data, packet->length);
 	copy->length = packet->length;
 	copy->is_rtp = packet->is_rtp;

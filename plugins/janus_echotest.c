@@ -401,20 +401,13 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_echotest_session *session = g_malloc0(sizeof(janus_echotest_session));
 	session->handle = handle;
-	session->has_audio = FALSE;
-	session->has_video = FALSE;
-	session->has_data = FALSE;
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
 	janus_mutex_init(&session->rec_mutex);
-	session->bitrate = 0;	/* No limit */
-	session->peer_bitrate = 0;
+	/* NOTE: There is no limit for bitrate here */
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
-	session->destroyed = 0;
-	g_atomic_int_set(&session->hangingup, 0);
-	g_atomic_int_set(&session->destroyed, 0);
 	janus_refcount_init(&session->ref, janus_echotest_session_free);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
@@ -501,7 +494,7 @@ struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *
 	janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;
 	if(!session)
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
-	janus_echotest_message *msg = g_malloc(sizeof(janus_echotest_message));
+	janus_echotest_message *msg = g_malloc0(sizeof(janus_echotest_message));
 	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
 	janus_refcount_increase(&session->ref);
 
@@ -672,15 +665,14 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 			return;
 		}
 		/* Text data */
-		char *text = g_malloc(len+1);
+		char *text = g_malloc0(len+1);
 		memcpy(text, buf, len);
-		*(text+len) = '\0';
 		JANUS_LOG(LOG_VERB, "Got a DataChannel message (label=%s, %zu bytes) to bounce back: %s\n", label, strlen(text), text);
 		/* Save the frame if we're recording */
 		janus_recorder_save_frame(session->drc, text, strlen(text));
 		/* We send back the same text with a custom prefix */
 		const char *prefix = "Janus EchoTest here! You wrote: ";
-		char *reply = g_malloc(strlen(prefix)+len+1);
+		char *reply = g_malloc0(strlen(prefix)+len+1);
 		g_snprintf(reply, strlen(prefix)+len+1, "%s%s", prefix, text);
 		g_free(text);
 		/* Prepare the packet and send it back */
@@ -831,7 +823,7 @@ static void *janus_echotest_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining EchoTest handler thread\n");
 	janus_echotest_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = g_malloc(512);
+	char *error_cause = g_malloc0(512);
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);

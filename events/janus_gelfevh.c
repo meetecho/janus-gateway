@@ -141,7 +141,7 @@ static char *randstring(size_t length) {
 	char *randomString = NULL;
 	int n;
 	if(length) {
-		randomString = g_malloc(sizeof(char) * (length + 1));
+		randomString = g_malloc0(sizeof(char) * (length + 1));
 		if(randomString) {
 			for(n = 0; n < (int)length; n++) {
 				int key = rand() % (int)(sizeof(charset) - 1);

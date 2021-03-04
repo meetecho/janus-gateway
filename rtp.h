@@ -93,7 +93,7 @@ typedef struct janus_rtp_header_extension {
 
 
 typedef enum janus_audiocodec {
-	JANUS_AUDIOCODEC_NONE,
+	JANUS_AUDIOCODEC_NONE = 0,
 	JANUS_AUDIOCODEC_OPUS,
 	JANUS_AUDIOCODEC_MULTIOPUS,
 	JANUS_AUDIOCODEC_PCMU,
@@ -107,7 +107,7 @@ janus_audiocodec janus_audiocodec_from_name(const char *name);
 int janus_audiocodec_pt(janus_audiocodec acodec);
 
 typedef enum janus_videocodec {
-	JANUS_VIDEOCODEC_NONE,
+	JANUS_VIDEOCODEC_NONE = 0,
 	JANUS_VIDEOCODEC_VP8,
 	JANUS_VIDEOCODEC_VP9,
 	JANUS_VIDEOCODEC_H264,

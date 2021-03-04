@@ -787,8 +787,7 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 janus_ice_trickle *janus_ice_trickle_new(const char *transaction, json_t *candidate) {
 	if(transaction == NULL || candidate == NULL)
 		return NULL;
-	janus_ice_trickle *trickle = g_malloc(sizeof(janus_ice_trickle));
-	trickle->handle = NULL;
+	janus_ice_trickle *trickle = g_malloc0(sizeof(janus_ice_trickle));
 	trickle->received = janus_get_monotonic_time();
 	trickle->transaction = g_strdup(transaction);
 	trickle->candidate = json_deep_copy(candidate);
@@ -1263,10 +1262,8 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 		return JANUS_ERROR_PLUGIN_ATTACH;
 	}
 	int error = 0;
-	janus_plugin_session *session_handle = g_malloc(sizeof(janus_plugin_session));
+	janus_plugin_session *session_handle = g_malloc0(sizeof(janus_plugin_session));
 	session_handle->gateway_handle = handle;
-	session_handle->plugin_handle = NULL;
-	g_atomic_int_set(&session_handle->stopped, 0);
 	plugin->create_session(session_handle, &error);
 	if(error) {
 		/* TODO Make error struct to pass verbose information */
@@ -2791,7 +2788,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 									stream->rtx_nacked[vindex] = g_hash_table_new(NULL, NULL);
 								g_hash_table_insert(stream->rtx_nacked[vindex], GUINT_TO_POINTER(cur_seq->seq), GINT_TO_POINTER(1));
 								/* We don't track it forever, though: add a timed source to remove it in a few seconds */
-								janus_ice_nacked_packet *np = g_malloc(sizeof(janus_ice_nacked_packet));
+								janus_ice_nacked_packet *np = g_malloc0(sizeof(janus_ice_nacked_packet));
 								np->handle = handle;
 								np->seq_number = cur_seq->seq;
 								np->vindex = vindex;
@@ -3050,15 +3047,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							p->last_retransmit = now;
 							retransmits_cnt++;
 							/* Enqueue it */
-							janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
-							pkt->data = g_malloc(p->length+SRTP_MAX_TAG_LEN);
+							janus_ice_queued_packet *pkt = g_malloc0(sizeof(janus_ice_queued_packet));
+							pkt->data = g_malloc0(p->length+SRTP_MAX_TAG_LEN);
 							memcpy(pkt->data, p->data, p->length);
 							pkt->length = p->length;
 							pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
-							pkt->control = FALSE;
 							pkt->retransmission = TRUE;
-							pkt->label = NULL;
-							pkt->protocol = NULL;
 							pkt->added = janus_get_monotonic_time();
 							/* What to send and how depends on whether we're doing RFC4588 or not */
 							if(!video || !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
@@ -3066,7 +3060,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								pkt->encrypted = TRUE;
 							} else {
 								/* We are: overwrite the RTP header (which means we'll need a new SRTP encrypt) */
-								pkt->encrypted = FALSE;
 								janus_rtp_header *header = (janus_rtp_header *)pkt->data;
 								header->type = stream->video_rtx_payload_type;
 								header->ssrc = htonl(stream->video_ssrc_rtx);
@@ -3851,10 +3844,9 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 				guint32 i = 0;
 				for(i = stream->transport_wide_cc_last_feedback_seq_num+1; i<transport_seq_num; ++i) {
 					/* Create new stat */
-					janus_rtcp_transport_wide_cc_stats *missing = g_malloc(sizeof(janus_rtcp_transport_wide_cc_stats));
+					janus_rtcp_transport_wide_cc_stats *missing = g_malloc0(sizeof(janus_rtcp_transport_wide_cc_stats));
 					/* Add missing packet */
 					missing->transport_seq_num = i;
-					missing->timestamp = 0;
 					/* Add it */
 					g_queue_push_tail(packets, missing);
 				}
@@ -4515,10 +4507,10 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 						janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
 					/* Save the packet for retransmissions that may be needed later: start by
 					 * making room for two more bytes to store the original sequence number */
-					p = g_malloc(sizeof(janus_rtp_packet));
+					p = g_malloc0(sizeof(janus_rtp_packet));
 					janus_rtp_header *header = (janus_rtp_header *)pkt->data;
 					guint16 original_seq = header->seq_number;
-					p->data = g_malloc(pkt->length+2);
+					p->data = g_malloc0(pkt->length+2);
 					p->length = pkt->length+2;
 					/* Check where the payload starts */
 					int plen = 0;
@@ -4634,8 +4626,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 						}
 						if(p == NULL) {
 							/* If we're not doing RFC4588, we're saving the SRTP packet as it is */
-							p = g_malloc(sizeof(janus_rtp_packet));
-							p->data = g_malloc(protected);
+							p = g_malloc0(sizeof(janus_rtp_packet));
+							p->data = g_malloc0(protected);
 							memcpy(p->data, pkt->data, protected);
 							p->length = protected;
 						}
@@ -4818,8 +4810,8 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 		totlen += extlen;
 	}
 	/* Queue this packet */
-	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
-	pkt->data = g_malloc(totlen + SRTP_MAX_TAG_LEN);
+	janus_ice_queued_packet *pkt = g_malloc0(sizeof(janus_ice_queued_packet));
+	pkt->data = g_malloc0(totlen + SRTP_MAX_TAG_LEN);
 	/* RTP header first */
 	memcpy(pkt->data, packet->buffer, RTP_HEADER_SIZE);
 	/* Then RTP extensions, if any */
@@ -4830,11 +4822,6 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 		memcpy(pkt->data + RTP_HEADER_SIZE + extlen, payload, plen);
 	pkt->length = totlen;
 	pkt->type = packet->video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
-	pkt->control = FALSE;
-	pkt->encrypted = FALSE;
-	pkt->retransmission = FALSE;
-	pkt->label = NULL;
-	pkt->protocol = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 	/* Restore the extension flag to what the plugin set it to */
@@ -4869,16 +4856,12 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_plugin_rtcp *
 			packet->video ? stream->video_ssrc_peer[0] : stream->audio_ssrc_peer);
 	}
 	/* Queue this packet */
-	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
-	pkt->data = g_malloc(rtcp_len+SRTP_MAX_TAG_LEN+4);
+	janus_ice_queued_packet *pkt = g_malloc0(sizeof(janus_ice_queued_packet));
+	pkt->data = g_malloc0(rtcp_len+SRTP_MAX_TAG_LEN+4);
 	memcpy(pkt->data, rtcp_buf, rtcp_len);
 	pkt->length = rtcp_len;
 	pkt->type = packet->video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
 	pkt->control = TRUE;
-	pkt->encrypted = FALSE;
-	pkt->retransmission = FALSE;
-	pkt->label = NULL;
-	pkt->protocol = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 	if(rtcp_buf != packet->buffer) {
@@ -4935,14 +4918,11 @@ void janus_ice_relay_data(janus_ice_handle *handle, janus_plugin_data *packet) {
 	if(!handle || handle->queued_packets == NULL || packet == NULL || packet->buffer == NULL || packet->length < 1)
 		return;
 	/* Queue this packet */
-	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
-	pkt->data = g_malloc(packet->length);
+	janus_ice_queued_packet *pkt = g_malloc0(sizeof(janus_ice_queued_packet));
+	pkt->data = g_malloc0(packet->length);
 	memcpy(pkt->data, packet->buffer, packet->length);
 	pkt->length = packet->length;
 	pkt->type = packet->binary ? JANUS_ICE_PACKET_BINARY : JANUS_ICE_PACKET_TEXT;
-	pkt->control = FALSE;
-	pkt->encrypted = FALSE;
-	pkt->retransmission = FALSE;
 	pkt->label = packet->label ? g_strdup(packet->label) : NULL;
 	pkt->protocol = packet->protocol ? g_strdup(packet->protocol) : NULL;
 	pkt->added = janus_get_monotonic_time();
@@ -4955,16 +4935,11 @@ void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length) {
 	if(!handle || handle->queued_packets == NULL || buffer == NULL || length < 1)
 		return;
 	/* Queue this packet */
-	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
-	pkt->data = g_malloc(length);
+	janus_ice_queued_packet *pkt = g_malloc0(sizeof(janus_ice_queued_packet));
+	pkt->data = g_malloc0(length);
 	memcpy(pkt->data, buffer, length);
 	pkt->length = length;
 	pkt->type = JANUS_ICE_PACKET_SCTP;
-	pkt->control = FALSE;
-	pkt->encrypted = FALSE;
-	pkt->retransmission = FALSE;
-	pkt->label = NULL;
-	pkt->protocol = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 #endif

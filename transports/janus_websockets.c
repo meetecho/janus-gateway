@@ -1268,13 +1268,9 @@ static int janus_websockets_common_callback(
 				return -1;
 			}
 			/* Prepare the session */
+			memset(ws_client, 0, sizeof(*ws_client));
 			ws_client->wsi = wsi;
 			ws_client->messages = g_async_queue_new();
-			ws_client->buffer = NULL;
-			ws_client->buflen = 0;
-			ws_client->bufpending = 0;
-			ws_client->bufoffset = 0;
-			g_atomic_int_set(&ws_client->destroyed, 0);
 			ws_client->ts = janus_transport_session_create(ws_client, NULL);
 #if (LWS_LIBRARY_VERSION_MAJOR >= 3)
 			janus_mutex_lock(&writable_mutex);
@@ -1370,7 +1366,7 @@ static int janus_websockets_common_callback(
 			const size_t remaining = lws_remaining_packet_payload(wsi);
 			if(ws_client->incoming == NULL) {
 				JANUS_LOG(LOG_HUGE, "[%s-%p] First fragment: %zu bytes, %zu remaining\n", log_prefix, wsi, len, remaining);
-				ws_client->incoming = g_malloc(len+1);
+				ws_client->incoming = g_malloc0(len+1);
 				memcpy(ws_client->incoming, in, len);
 				ws_client->incoming[len] = '\0';
 				JANUS_LOG(LOG_HUGE, "%s\n", ws_client->incoming);
