@@ -181,6 +181,8 @@ typedef struct janus_pp_rtp_skew_context {
 	gint16 seq_offset;
 } janus_pp_rtp_skew_context;
 static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_rtp_skew_context *context);
+
+/* Helper methods for timestamp correction (restamp) */
 static double get_latency(const janus_pp_frame_packet *tmp, int rate);
 static double get_moving_average_of_latency(janus_pp_frame_packet *pkt, int rate, int num_of_packets);
 
@@ -256,21 +258,21 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			silence_distance = val;
 	}
-    if(args_info.restamp_given || (g_getenv("JANUS_PPREC_RESTAMP") != NULL)) {
-        int val = args_info.restamp_given ? args_info.restamp_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP"));
-        if(val >= 0)
-            restamp_multiplier = val;
-    }
-    if(args_info.restamp_packets_given || (g_getenv("JANUS_PPREC_RESTAMP_PACKETS") != NULL)) {
-        int val = args_info.restamp_packets_given ? args_info.restamp_packets_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP_PACKETS"));
-        if(val >= 0)
-            restamp_packets = val;
-    }
-    if(args_info.restamp_min_th_given || (g_getenv("JANUS_PPREC_RESTAMP_MIN_TH") != NULL)) {
-        int val = args_info.restamp_min_th_given ? args_info.restamp_min_th_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP_MIN_TH"));
-        if(val >= 0)
-            restamp_min_th = val;
-    }
+	if(args_info.restamp_given || (g_getenv("JANUS_PPREC_RESTAMP") != NULL)) {
+		int val = args_info.restamp_given ? args_info.restamp_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP"));
+		if(val >= 0)
+			restamp_multiplier = val;
+	}
+	if(args_info.restamp_packets_given || (g_getenv("JANUS_PPREC_RESTAMP_PACKETS") != NULL)) {
+		int val = args_info.restamp_packets_given ? args_info.restamp_packets_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP_PACKETS"));
+		if(val >= 0)
+			restamp_packets = val;
+	}
+	if(args_info.restamp_min_th_given || (g_getenv("JANUS_PPREC_RESTAMP_MIN_TH") != NULL)) {
+		int val = args_info.restamp_min_th_given ? args_info.restamp_min_th_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP_MIN_TH"));
+		if(val >= 0)
+			restamp_min_th = val;
+	}
 	/* Evaluate arguments to find source and target */
 	char *source = NULL, *destination = NULL, *setting = NULL;
 	int i=0;
@@ -1155,58 +1157,57 @@ int main(int argc, char *argv[])
 	}
 
 	/* Run restamping */
-    if(!video && !data && restamp_multiplier > 0) {
+	if(!video && !data && restamp_multiplier > 0) {
+		tmp = list;
+		uint64_t restamping_offset = 0;
+		double restamp_threshold = (double) restamp_min_th/1000;
+		double restamp_jump_multiplier = (double) restamp_multiplier/1000;
 
-        tmp = list;
-        uint64_t restamping_offset = 0;
-        double restamp_threshold = (double) restamp_min_th / 1000;
-        double restamp_jump_multiplier = (double) restamp_multiplier / 1000;
+		while(tmp) {
+			uint64_t original_ts = tmp->ts;
 
-        while (tmp) {
-            uint64_t original_ts = tmp->ts;
+			/* Update ts with current offset */
+			if(restamping_offset > 0) {
+				tmp->ts += restamping_offset;
+			}
 
-            /* Update ts with current offset */
-            if (restamping_offset > 0) {
-                tmp->ts += restamping_offset;
-            }
+			/* Calculate diff between time of reception and the rtp timestamp */
+			double current_latency = get_latency(tmp, rate);
 
-            /* Calculate diff between time of reception and the rtp timestamp */
-            double current_latency = get_latency(tmp, rate);
+			if(current_latency > restamp_threshold) {
+				/* Check for possible jump compared to previous latency values */
+				double moving_avg_latency = get_moving_average_of_latency(tmp->prev, rate, restamp_packets);
+				JANUS_LOG(LOG_VERB, "latency=%.2f mavg=%.2f\n", current_latency, moving_avg_latency);
 
-            if(current_latency > restamp_threshold) {
-                /* Check for possible jump compared to previous latency values */
-                double moving_avg_latency = get_moving_average_of_latency(tmp->prev, rate, restamp_packets);
-                JANUS_LOG(LOG_VERB, "latency=%.2f mavg=%.2f\n", current_latency, moving_avg_latency);
+				/* Found a new jump in latency? */
+				if(current_latency > (moving_avg_latency*restamp_jump_multiplier)) {
+					/* Increase restamping offset with current offset */
+					restamping_offset += (current_latency-moving_avg_latency)*rate;
 
-                /* Found a new jump in latency? */
-                if(current_latency > (moving_avg_latency * restamp_jump_multiplier)) {
-                    /* Increase restamping offset with current offset */
-                    restamping_offset += (current_latency - moving_avg_latency) * rate;
+					/* Calculate new_ts with new offset */
+					uint64_t new_ts = original_ts+restamping_offset;
 
-                    /* Calculate new_ts with new offset */
-                    uint64_t new_ts = original_ts + restamping_offset;
+					/* Checking new_ts against previous ts to avoid converting with wrong timestamps */
+					if(new_ts < tmp->prev->ts) {
+						/* Avoid creating unnecessary large files... */
+						JANUS_LOG(LOG_ERR, "new ts would be smaller than previous ts! new_ts=%.ld prev_ts=%.ld\n", new_ts, tmp->prev->ts);
+						exit(1);
+					}
 
-                    /* Checking new_ts against previous ts to avoid converting with wrong timestamps */
-                    if (new_ts < tmp->prev->ts) {
-                        /* Avoid creating unnecessary large files... */
-                        JANUS_LOG(LOG_ERR, "new ts would be smaller than previous ts! new_ts=%.ld prev_ts=%.ld\n", new_ts, tmp->prev->ts);
-                        exit(1);
-                    }
+					/* Update current packet ts with new ts */
+					tmp->ts = new_ts;
 
-                    /* Update current packet ts with new ts */
-                    tmp->ts = new_ts;
+					JANUS_LOG(LOG_WARN, "Gap detected. Restamping packets from here. Seq: %d\n", tmp->seq);
+					JANUS_LOG(LOG_INFO, "latency=%.2f mavg=%.2f original_ts=%.ld new_ts=%.ld offset=%.ld\n", current_latency, moving_avg_latency, original_ts, tmp->ts, restamping_offset);
+				}
+			}
 
-                    JANUS_LOG(LOG_WARN, "Gap detected. Restamping packets from here. Seq: %d  \n", tmp->seq);
-                    JANUS_LOG(LOG_INFO, "latency=%.2f mavg=%.2f original_ts=%.ld new_ts=%.ld offset=%.ld\n", current_latency, moving_avg_latency, original_ts, tmp->ts, restamping_offset);
-                }
-            }
+			tmp = tmp->next;
+		}
+	}
 
-            tmp = tmp->next;
-        }
-    }
-
-    /* Run audioskew */
-    if(!video && !data && audioskew_th > 0) {
+	/* Run audioskew */
+	if(!video && !data && audioskew_th > 0) {
 		tmp = list;
 		janus_pp_rtp_skew_context context = {};
 		context.ssrc = ssrc;
@@ -1582,28 +1583,28 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 }
 
 static double get_latency(const janus_pp_frame_packet *tmp, int rate) {
-    /* Get latency of packet based on time of arrival (at server side) and the RTP timestamp */
-    double corrected_ts = tmp->ts - list->ts;
-    double rts = corrected_ts / (double) rate;
-    double pts = (double) tmp->p_ts / 1000;
-    return pts - rts;
+	/* Get latency of packet based on time of arrival (at server side) and the RTP timestamp */
+	double corrected_ts = tmp->ts-list->ts;
+	double rts = corrected_ts/(double) rate;
+	double pts = (double) tmp->p_ts/1000;
+	return pts-rts;
 }
 
 static double get_moving_average_of_latency(janus_pp_frame_packet *pkt, int rate, int num_of_packets) {
-    /* Get a moving average of packet latency using the get_latency function */
-    if (!pkt) {
-       return 0;
-    }
+	/* Get a moving average of packet latency using the get_latency function */
+	if(!pkt) {
+		return 0;
+	}
 
-    int packets = 0;
-    double sum = 0;
+	int packets = 0;
+	double sum = 0;
 
-    janus_pp_frame_packet *tmp = pkt;
-    while(tmp && packets < num_of_packets) {
-        sum += get_latency(tmp, rate);
-        tmp = tmp->prev;
-        packets++;
-    }
+	janus_pp_frame_packet *tmp = pkt;
+	while(tmp && packets < num_of_packets) {
+		sum += get_latency(tmp, rate);
+		tmp = tmp->prev;
+		packets++;
+	}
 
-    return sum / packets;
+	return sum/packets;
 }
