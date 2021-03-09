@@ -2263,7 +2263,7 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * \subsection adminreqc Configuration-related requests
  * - \c get_status: returns the current value for the settings that can be
  * modified at runtime via the Admin API (see below);
- * - \c set_session_timeout: change the session timeout value in Janus;
+ * - \c set_session_timeout: change global session timeout value in Janus;
  * - \c set_log_level: change the log level in Janus;
  * - \c set_log_timestamps: selectively enable/disable adding a timestamp
  * to all log lines Janus writes on the console and/or to file;
@@ -2293,6 +2293,7 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * you want to stop accepting new sessions because you're draining this instance;
  * - \c list_sessions: list all the sessions currently active in Janus
  * (returns an array of session identifiers);
+ * - \c set_session_timeout: change session timeout value in Janus;
  * - \c destroy_session: destroy a specific session; this behaves exactly
  * as the \c destroy request does in the Janus API.
  *
