@@ -7155,7 +7155,7 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_lock(&participant_mutex);
 
 				if (!subscriber) {
-					JANUS_LOG(session, LOG_ERR, "Subscriber is NULL\n");
+					JANUS_LOG(LOG_ERR, "Subscriber is NULL\n");
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 					g_snprintf(error_cause, 512, "Subscriber is NULL");
 					janus_mutex_unlock(&participant_mutex);
