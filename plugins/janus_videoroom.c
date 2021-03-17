@@ -1688,6 +1688,7 @@ typedef struct janus_videoroom_subscriber {
 	volatile gint destroyed;
 	janus_refcount ref;
 } janus_videoroom_subscriber;
+static janus_mutex participant_mutex = JANUS_MUTEX_INITIALIZER;
 
 typedef struct janus_videoroom_rtp_relay_packet {
 	janus_rtp_header *data;
@@ -2765,13 +2766,17 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		if(p)
 			janus_refcount_decrease(&p->ref);
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
+		janus_mutex_lock(&session->mutex);
 		janus_videoroom_subscriber *s = (janus_videoroom_subscriber *)session->participant;
 		session->participant = NULL;
+		janus_mutex_unlock(&session->mutex);
+		janus_mutex_lock(&participant_mutex);
 		if(s->room) {
 			janus_refcount_decrease(&s->room->ref);
 			janus_refcount_decrease(&s->ref);
 		}
 		janus_videoroom_subscriber_destroy(s);
+		janus_mutex_unlock(&participant_mutex);
 	}
 	janus_refcount_decrease(&session->ref);
 	return;
@@ -5775,6 +5780,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 		janus_videoroom_recorder_close(participant);
 		janus_mutex_unlock(&participant->rec_mutex);
 		/* Use subscribers_mutex to protect fields used in janus_videoroom_incoming_rtp */
+		janus_mutex_lock(&participant_mutex);
 		janus_mutex_lock(&participant->subscribers_mutex);
 		g_free(participant->sdp);
 		participant->sdp = NULL;
@@ -5814,11 +5820,15 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 		}
 		participant->e2ee = FALSE;
 		janus_mutex_unlock(&participant->subscribers_mutex);
+		janus_mutex_unlock(&participant_mutex);
 		janus_videoroom_leave_or_unpublish(participant, FALSE, FALSE);
 		janus_refcount_decrease(&participant->ref);
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 		/* Get rid of subscriber */
+		janus_mutex_lock(&session->mutex);
 		janus_videoroom_subscriber *subscriber = (janus_videoroom_subscriber *)session->participant;
+		janus_mutex_unlock(&session->mutex);
+		janus_mutex_lock(&participant_mutex);
 		if(subscriber) {
 			subscriber->paused = TRUE;
 			janus_videoroom_publisher *publisher = subscriber->feed;
@@ -5841,6 +5851,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 			}
 			subscriber->e2ee = FALSE;
 		}
+		janus_mutex_unlock(&participant_mutex);
 		/* TODO Should we close the handle as well? */
 	}
 	g_atomic_int_set(&session->hangingup, 0);
@@ -5878,8 +5889,13 @@ static void *janus_videoroom_handler(void *data) {
 			continue;
 		}
 		if(session->participant_type == janus_videoroom_p_type_subscriber) {
+			janus_mutex_lock(&session->mutex);
 			subscriber = (janus_videoroom_subscriber *)session->participant;
+			janus_mutex_unlock(&session->mutex);
+
+			janus_mutex_lock(&participant_mutex);
 			if(subscriber == NULL || g_atomic_int_get(&subscriber->destroyed)) {
+				janus_mutex_unlock(&participant_mutex);
 				janus_mutex_unlock(&sessions_mutex);
 				JANUS_LOG(LOG_ERR, "Invalid subscriber instance\n");
 				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
@@ -5887,6 +5903,7 @@ static void *janus_videoroom_handler(void *data) {
 				goto error;
 			}
 			if(subscriber->room == NULL) {
+				janus_mutex_unlock(&participant_mutex);
 				janus_mutex_unlock(&sessions_mutex);
 				JANUS_LOG(LOG_ERR, "No such room\n");
 				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
@@ -5894,6 +5911,7 @@ static void *janus_videoroom_handler(void *data) {
 				goto error;
 			}
 			janus_refcount_increase(&subscriber->ref);
+			janus_mutex_unlock(&participant_mutex);
 		}
 		janus_mutex_unlock(&sessions_mutex);
 		/* Handle request */
@@ -7133,11 +7151,41 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "paused", json_string("ok"));
 			} else if(!strcasecmp(request_text, "switch")) {
 				/* This subscriber wants to switch to a different publisher */
+
+				janus_mutex_lock(&participant_mutex);
+
+				if (!subscriber) {
+					JANUS_LOG(session, LOG_ERR, "Subscriber is NULL\n");
+					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+					g_snprintf(error_cause, 512, "Subscriber is NULL");
+					janus_mutex_unlock(&participant_mutex);
+					goto error;
+				}
+
+				if(g_atomic_int_get(&subscriber->destroyed)) {
+					JANUS_LOG(LOG_ERR, "Subscriber destroyed\n");
+					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+					g_snprintf(error_cause, 512, "Subscriber destroyed");
+					janus_refcount_decrease(&subscriber->ref);
+					janus_mutex_unlock(&participant_mutex);
+					goto error;
+				}
+
+				if(!subscriber->room) {
+					JANUS_LOG(LOG_ERR, "Room Destroyed\n");
+					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+					g_snprintf(error_cause, 512, "Room destroyed");
+					janus_refcount_decrease(&subscriber->ref);
+					janus_mutex_unlock(&participant_mutex);
+					goto error;
+				}
+
 				JANUS_VALIDATE_JSON_OBJECT(root, subscriber_parameters,
 					error_code, error_cause, TRUE,
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0) {
 					janus_refcount_decrease(&subscriber->ref);
+					janus_mutex_unlock(&participant_mutex);
 					goto error;
 				}
 				if(!string_ids) {
@@ -7151,6 +7199,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				if(error_code != 0) {
 					janus_refcount_decrease(&subscriber->ref);
+					janus_mutex_unlock(&participant_mutex);
 					goto error;
 				}
 				json_t *feed = json_object_get(root, "feed");
@@ -7174,6 +7223,7 @@ static void *janus_videoroom_handler(void *data) {
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 					g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");
 					janus_refcount_decrease(&subscriber->ref);
+					janus_mutex_unlock(&participant_mutex);
 					goto error;
 				}
 				json_t *temporal = json_object_get(root, "temporal_layer");
@@ -7184,23 +7234,10 @@ static void *janus_videoroom_handler(void *data) {
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 					g_snprintf(error_cause, 512, "Invalid value (temporal/temporal_layer should be 0, 1 or 2)");
 					janus_refcount_decrease(&subscriber->ref);
+					janus_mutex_unlock(&participant_mutex);
 					goto error;
 				}
 				json_t *sc_fallback = json_object_get(root, "fallback");
-				if(!subscriber->room) {
-					JANUS_LOG(LOG_ERR, "Room Destroyed\n");
-					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-					g_snprintf(error_cause, 512, "No such room");
-					janus_refcount_decrease(&subscriber->ref);
-					goto error;
-				}
-				if(g_atomic_int_get(&subscriber->destroyed)) {
-					JANUS_LOG(LOG_ERR, "Room Destroyed (%s)\n", subscriber->room_id_str);
-					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-					g_snprintf(error_cause, 512, "No such room (%s)", subscriber->room_id_str);
-					janus_refcount_decrease(&subscriber->ref);
-					goto error;
-				}
 				janus_mutex_lock(&subscriber->room->mutex);
 				janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants,
 					string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
@@ -7210,6 +7247,7 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "No such feed (%s)", feed_id_str);
 					janus_mutex_unlock(&subscriber->room->mutex);
 					janus_refcount_decrease(&subscriber->ref);
+					janus_mutex_unlock(&participant_mutex);
 					goto error;
 				}
 				janus_refcount_increase(&publisher->ref);
@@ -7229,6 +7267,7 @@ static void *janus_videoroom_handler(void *data) {
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP;
 						g_snprintf(error_cause, 512, "The two publishers are not using the same codecs, can't switch");
 						janus_refcount_decrease(&subscriber->ref);
+						janus_mutex_unlock(&participant_mutex);
 						goto error;
 					}
 					/* Go on */
@@ -7290,6 +7329,9 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(info, "feed", string_ids ? json_string(publisher->user_id_str) : json_integer(publisher->user_id));
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 				}
+
+				janus_mutex_unlock(&participant_mutex);
+
 			} else if(!strcasecmp(request_text, "leave")) {
 				guint64 room_id = subscriber ? subscriber->room_id : 0;
 				char *room_id_str = subscriber ? subscriber->room_id_str : NULL;
