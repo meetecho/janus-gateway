@@ -249,4 +249,31 @@ file-ondemand-sample: {
 	#rtsp_user = "username"
 	#rtsp_pwd = "password"
 	#secret = "adminpwd"
+
+	# After n seconds passed and no media assumed, the RTSP server has
+	# gone and schedule a reconnect.
+	#
+	# Default value is 5 seconds.
+	#reconnect_delay = 5
+
+	# By default the sreaming plugin will check the RTSP connection with an OPTIONS query,
+	# the value of the timeout is came from the RTSP session initializer and by default
+	# this session timeout is the half of this value.
+	#
+	# In some cases this value is can be too high (for example more than one minute)
+	# because of the media server. In that case this plugin will calculate the timeout
+	# with this formula: timeout = min(session_timeout, rtsp_session_timeout / 2).
+	#
+	# Default value is 0 seconds, then it doesn't override the RTSP server's session timeout..
+	#session_timeout = 0
+
+	# Communication timeout for cURL call gathering the RTSP information.
+	#
+	# Default value is 10 seconds.
+	# rtsp_timeout = 10
+
+	# Connection timeout for cURL call gathering the RTSP information.
+	#
+	# Default value is 5 seconds.
+	# rtsp_conn_timeout = 5
 #}
