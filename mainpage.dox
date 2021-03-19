@@ -654,7 +654,6 @@ janus.attach(
  *
  * - \c externalStream: \c MediaStream a MediaStream object you obtained yourself;
  * - \c replaceVideo: if set, stop capturing the current video (remove the local video track), and replace it with the new MediaStream;
- * this option can either be a MediaStream object
  *
  * Notice that these properties are only processed when you're trying a
  * renegotiation, and will be ignored when creating a new PeerConnection.
