@@ -134,7 +134,7 @@ so neither Janus nor the Streaming plugin have access to anything.
 DO NOT SET THIS PROPERTY IF YOU DON'T KNOW WHAT YOU'RE DOING!
 e2ee = true
 
-The following options are only valid for the 'rstp' type:
+The following options are only valid for the 'rtsp' type:
 url = RTSP stream URL
 rtsp_user = RTSP authorization username, if needed
 rtsp_pwd = RTSP authorization password, if needed
