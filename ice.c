@@ -103,11 +103,11 @@ gboolean janus_ice_is_ipv6_enabled(void) {
 
 #ifdef HAVE_ICE_NOMINATION
 /* Since libnice 0.1.15, we can configure the ICE nomination mode: it was
- * always "aggressive" before, we set it to "regular" by default if we can */
-static NiceNominationMode janus_ice_nomination = NICE_NOMINATION_MODE_REGULAR;
+ * always "aggressive" before, so we set it to "aggressive" by default as well */
+static NiceNominationMode janus_ice_nomination = NICE_NOMINATION_MODE_AGGRESSIVE;
 void janus_ice_set_nomination_mode(const char *nomination) {
 	if(nomination == NULL) {
-		JANUS_LOG(LOG_WARN, "Invalid ICE nomination mode, falling back to 'regular'\n");
+		JANUS_LOG(LOG_WARN, "Invalid ICE nomination mode, falling back to 'aggressive'\n");
 	} else if(!strcasecmp(nomination, "regular")) {
 		JANUS_LOG(LOG_INFO, "Configuring Janus to use ICE regular nomination\n");
 		janus_ice_nomination = NICE_NOMINATION_MODE_REGULAR;
@@ -115,7 +115,7 @@ void janus_ice_set_nomination_mode(const char *nomination) {
 		JANUS_LOG(LOG_INFO, "Configuring Janus to use ICE aggressive nomination\n");
 		janus_ice_nomination = NICE_NOMINATION_MODE_AGGRESSIVE;
 	} else {
-		JANUS_LOG(LOG_WARN, "Unsupported ICE nomination mode '%s', falling back to 'regular'\n", nomination);
+		JANUS_LOG(LOG_WARN, "Unsupported ICE nomination mode '%s', falling back to 'aggressive'\n", nomination);
 	}
 }
 const char *janus_ice_get_nomination_mode(void) {
