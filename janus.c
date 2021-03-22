@@ -919,7 +919,7 @@ static int janus_request_check_secret(janus_request *request, guint64 session_id
 			}
 		}
 		/* We consider a request authorized if either the proper API secret or a valid token has been provided */
-		if(!secret_authorized && !token_authorized)
+		if(!(api_secret != NULL && secret_authorized) && !(janus_auth_is_enabled() && token_authorized))
 			return JANUS_ERROR_UNAUTHORIZED;
 	}
 	return 0;

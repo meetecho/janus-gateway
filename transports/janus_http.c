@@ -1536,7 +1536,9 @@ static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connectio
 		const char *secret = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "apisecret");
 		const char *token = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "token");
 		gboolean secret_authorized = FALSE, token_authorized = FALSE;
-		if(!gateway->is_api_secret_needed(&janus_http_transport) && !gateway->is_auth_token_needed(&janus_http_transport)) {
+		gboolean is_api_secret_needed = gateway->is_api_secret_needed(&janus_http_transport);
+		gboolean is_auth_token_needed = gateway->is_auth_token_needed(&janus_http_transport);
+		if(!is_api_secret_needed && !is_auth_token_needed) {
 			/* Nothing to check */
 			secret_authorized = TRUE;
 			token_authorized = TRUE;
@@ -1549,8 +1551,8 @@ static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connectio
 				/* Token is valid or disabled */
 				token_authorized = TRUE;
 			}
-			/* We consider a request authorized if both the token and the API secret are either disabled or valid */
-			if(!secret_authorized || !token_authorized) {
+			/* We consider a request authorized if either the proper API secret or a valid token has been provided */
+			if(!(is_api_secret_needed && secret_authorized) && !(is_auth_token_needed && token_authorized)) {
 				response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 				janus_http_add_cors_headers(msg, response);
 				ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
