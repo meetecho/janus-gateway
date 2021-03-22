@@ -906,6 +906,13 @@ typedef struct ssip_oper_s ssip_oper_t;
 #undef NUA_HMAGIC_T
 #define NUA_HMAGIC_T	ssip_oper_t
 
+typedef struct janus_event_t
+{
+	gboolean is_ready;
+	janus_mutex mutex;
+	janus_condition cond;
+} janus_event_t;
+
 struct ssip_s {
 	su_home_t s_home[1];
 	su_root_t *s_root;
@@ -914,6 +921,8 @@ struct ssip_s {
 	GHashTable *subscriptions;
 	janus_mutex smutex;
 	struct janus_sip_session *session;
+	const gchar* sip_from_str;
+	janus_event_t event; // event object waiting for nua_r_get_params NUA event
 };
 
 typedef struct janus_sip_transfer {
@@ -1030,6 +1039,70 @@ static GHashTable *masters;
 static GHashTable *transfers;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
+static void janus_event_init(janus_event_t *event)
+{
+	if (event == NULL)
+		return;
+
+	event->is_ready = FALSE;
+	janus_mutex_init(&event->mutex);
+	janus_condition_init(&event->cond);
+}
+
+static void janus_event_destroy(janus_event_t *event)
+{
+	if (event == NULL)
+		return;
+
+	event->is_ready = FALSE;
+	janus_condition_destroy(&event->cond);
+	janus_mutex_destroy(&event->mutex);
+}
+
+static void janus_event_reset(janus_event_t *event)
+{
+	if (event == NULL)
+		return;
+
+	event->is_ready = FALSE;
+}
+
+static void janus_event_set(janus_event_t *event)
+{
+	if (event == NULL)
+		return;
+
+	janus_mutex_lock(&event->mutex);
+	event->is_ready = TRUE;
+	janus_condition_signal(&event->cond);
+	janus_mutex_unlock(&event->mutex);
+}
+
+static gboolean janus_event_wait_timeout(janus_event_t *event, gint64 timeout)
+{
+	gboolean sts = FALSE;
+	gint64 end_time = 0;
+
+	if (event == NULL || timeout <= 0)
+		return sts;
+
+	janus_mutex_lock(&event->mutex);
+	end_time = g_get_monotonic_time() + timeout * G_TIME_SPAN_SECOND;
+	while (!event->is_ready)
+	{
+		sts = janus_condition_wait_until(&event->cond, &event->mutex, end_time);
+		if (!sts)
+			goto exit; // timeout occured
+	}
+
+	sts = TRUE;
+
+	exit:
+	janus_event_reset(event);
+	janus_mutex_unlock(&event->mutex);
+	return sts;
+}
+
 static void janus_sip_srtp_cleanup(janus_sip_session *session);
 static void janus_sip_media_reset(janus_sip_session *session);
 
@@ -1071,6 +1144,9 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 			g_hash_table_unref(session->stack->subscriptions);
 		session->stack->subscriptions = NULL;
 		janus_mutex_unlock(&session->stack->smutex);
+		janus_mutex_destroy(&session->stack->smutex);
+		janus_event_destroy(&session->stack->event);
+		g_free((gchar *)session->stack->sip_from_str);
 		g_free(session->stack);
 		session->stack = NULL;
 	}
@@ -1506,6 +1582,7 @@ static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_
 #define JANUS_SIP_ERROR_TOO_STRICT			452
 #define JANUS_SIP_ERROR_HELPER_ERROR		453
 #define JANUS_SIP_ERROR_NO_SUCH_CALLID		454
+#define JANUS_SIP_ERROR_TIMEOUT				455
 
 
 /* Random string helper (for call-ids) */
@@ -2023,7 +2100,12 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.outbound_proxy = NULL;
 	session->account.registration_status = janus_sip_registration_status_unregistered;
 	session->status = janus_sip_call_status_idle;
-	session->stack = NULL;
+
+	session->stack = g_malloc0(sizeof(ssip_t));
+	su_home_init(session->stack->s_home);
+	janus_mutex_init(&session->stack->smutex);
+	janus_event_init(&session->stack->event);
+
 	session->transaction = NULL;
 	session->callee = NULL;
 	session->callid = NULL;
@@ -2708,10 +2790,6 @@ static void *janus_sip_handler(void *data) {
 				session->account.registration_status = janus_sip_registration_status_disabled;
 				g_free(session->account.username);
 				session->account.username = ms->account.username ? g_strdup(ms->account.username) : NULL;
-				if(session->stack == NULL) {
-					session->stack = g_malloc0(sizeof(ssip_t));
-					su_home_init(session->stack->s_home);
-				}
 				session->stack->session = session;
 				janus_mutex_unlock(&sessions_mutex);
 				/* Send an event back */
@@ -2986,7 +3064,7 @@ static void *janus_sip_handler(void *data) {
 			}
 
 			session->account.registration_status = janus_sip_registration_status_registering;
-			if(!refresh && session->stack == NULL) {
+			if (!refresh) {
 				/* Start the thread first */
 				GError *error = NULL;
 				char tname[16];
@@ -2994,27 +3072,44 @@ static void *janus_sip_handler(void *data) {
 				janus_refcount_increase(&session->ref);
 				g_thread_try_new(tname, janus_sip_sofia_thread, session, &error);
 				if(error != NULL) {
-					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP Sofia thread...\n",
 						error->code, error->message ? error->message : "??");
 					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
 					g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the SIP Sofia thread",
 						error->code, error->message ? error->message : "??");
 					g_error_free(error);
+					janus_refcount_decrease(&session->ref);
 					goto error;
 				}
 				long int timeout = 0;
-				while(session->stack == NULL || session->stack->s_nua == NULL) {
-					g_usleep(100000);
-					timeout += 100000;
-					if(timeout >= 2000000) {
+				while (timeout < 2000000) {
+					janus_mutex_lock(&session->stack->smutex);
+					if (session->stack->s_nua != NULL) {
+						janus_mutex_unlock(&session->stack->smutex);
 						break;
 					}
+					janus_mutex_unlock(&session->stack->smutex);
+					g_usleep(100000);
+					timeout += 100000;
 				}
 				if(timeout >= 2000000) {
 					JANUS_LOG(LOG_ERR, "Two seconds passed and still no NUA, problems with the thread?\n");
 					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
 					g_snprintf(error_cause, 512, "Two seconds passed and still no NUA, problems with the thread?");
+					goto error;
+				}
+
+				janus_mutex_lock(&session->stack->smutex);
+				if (session->stack->s_nua != NULL)
+					nua_get_params(session->stack->s_nua, SIPTAG_FROM_STR(""), TAG_END());
+				janus_mutex_unlock(&session->stack->smutex);
+
+				if (!janus_event_wait_timeout(&session->stack->event, 2))
+				{
+					const char* err_str = "Unable to obtain 'siptag_from_str': timeout occured!";
+					error_code = JANUS_SIP_ERROR_TIMEOUT;
+					g_snprintf(error_cause, 512, "%s", err_str);
+					JANUS_LOG(LOG_ERR, "%s\n", err_str);
 					goto error;
 				}
 			}
@@ -3561,9 +3656,11 @@ static void *janus_sip_handler(void *data) {
 			/* Add a reference for this call */
 			janus_sip_ref_active_call(session);
 			/* Send the INVITE */
+			janus_mutex_lock(&session->stack->smutex);
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
+				TAG_IF(session->stack->sip_from_str != NULL, SIPTAG_CONTACT_STR(session->stack->sip_from_str)),
 				SIPTAG_CALL_ID_STR(callid),
 				SOATAG_USER_SDP_STR(sdp),
 				NUTAG_PROXY(session->helper && session->master ?
@@ -3573,6 +3670,7 @@ static void *janus_sip_handler(void *data) {
 				NUTAG_AUTOANSWER(0),
 				NUTAG_AUTOACK(FALSE),
 				TAG_END());
+			janus_mutex_unlock(&session->stack->smutex);
 			g_free(sdp);
 			g_free(session->transaction);
 			g_free(referred_by);
@@ -5199,8 +5297,52 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 	/* Responses */
 		case nua_r_get_params:
+		{
+			const gchar* str = NULL;
+			const gchar* sip_from_str = NULL;
+			const tagi_t* sip_from_tag = NULL;
+
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-			break;
+
+			if ((status != 200) || ((sip_from_tag = tl_find(tags, siptag_from_str)) == NULL))
+			{
+				JANUS_LOG(LOG_ERR, "Unable to find 'siptag_from_str' among all the tags\n");
+				break;
+			}
+
+			if ((str = (const gchar *)sip_from_tag->t_value) == NULL)
+			{
+				JANUS_LOG(LOG_ERR, "'siptag_from_str' is NULL!\n");
+				break;
+			}
+
+			if (strlen(str) <= 2)
+			{
+				JANUS_LOG(LOG_ERR, "'siptag_from_str' is too short!\n");
+				break;
+			}
+
+			if ((sip_from_str = g_strndup(str + 1, strlen(str) - 2)) == NULL)
+			{
+				JANUS_LOG(LOG_ERR, "Unable to duplicate 'siptag_from_str'!\n");
+				break;
+			}
+
+			JANUS_LOG(LOG_VERB, "Contact header has been generated from SOFIA's 'siptag_from_str' tag: %s\n", sip_from_str);
+
+			janus_mutex_lock(&ssip->smutex);
+			if (ssip->sip_from_str)
+			{
+				g_free((char *)ssip->sip_from_str);
+				ssip->sip_from_str = NULL;
+			}
+			ssip->sip_from_str = sip_from_str;
+			janus_mutex_unlock(&ssip->smutex);
+			sip_from_str = NULL;
+
+			janus_event_set(&ssip->event);
+		}
+		break;
 		case nua_r_set_params:
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
@@ -6653,15 +6795,14 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Joining sofia loop thread (%s)...\n", session->account.username);
-	session->stack = g_malloc0(sizeof(ssip_t));
-	su_home_init(session->stack->s_home);
+	janus_mutex_lock(&session->stack->smutex);
 	session->stack->session = session;
 	session->stack->s_nua = NULL;
 	session->stack->s_nh_r = NULL;
 	session->stack->s_nh_i = NULL;
 	session->stack->s_root = su_root_create(session->stack);
 	session->stack->subscriptions = NULL;
-	janus_mutex_init(&session->stack->smutex);
+	janus_mutex_unlock(&session->stack->smutex);
 	JANUS_LOG(LOG_VERB, "Setting up sofia stack (sip:%s@%s)\n", session->account.username, local_ip);
 	char sip_url[128];
 	char sips_url[128];
@@ -6679,6 +6820,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 		g_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
 	if(!behind_nat)
 		g_strlcat(outbound_options, " no-natify", sizeof(outbound_options));
+	janus_mutex_lock(&session->stack->smutex);
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
@@ -6694,6 +6836,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				SIPTAG_SUPPORTED(NULL),
 				NTATAG_CANCEL_2543(session->account.rfc2543_cancel),
 				TAG_NULL());
+	janus_mutex_unlock(&session->stack->smutex);
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */
 	janus_mutex_lock(&session->stack->smutex);
