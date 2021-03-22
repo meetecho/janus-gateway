@@ -1944,7 +1944,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
 			janus_refcount_decrease(&p->ref);
 			JANUS_LOG(LOG_ERR, "Error creating RTCP socket for new RTP forwarder... %d (%s)\n",
-				errno, strerror(errno));
+				errno, g_strerror(errno));
 			return 0;
 		}
 		int v6only = 0;
@@ -1952,7 +1952,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
 			janus_refcount_decrease(&p->ref);
 			JANUS_LOG(LOG_ERR, "Error creating RTCP socket for new RTP forwarder... %d (%s)\n",
-				errno, strerror(errno));
+				errno, g_strerror(errno));
 			close(fd);
 			return 0;
 		}
@@ -1967,7 +1967,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
 			janus_refcount_decrease(&p->ref);
 			JANUS_LOG(LOG_ERR, "Error binding RTCP socket for new RTP forwarder... %d (%s)\n",
-				errno, strerror(errno));
+				errno, g_strerror(errno));
 			close(fd);
 			return 0;
 		}
@@ -5291,7 +5291,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 				size_t addrlen = (rtp_forward->serv_addr.sin_family == AF_INET ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6));
 				if(sendto(participant->udp_sock, buf, len, 0, address, addrlen) < 0) {
 					JANUS_LOG(LOG_HUGE, "Error forwarding RTP %s packet for %s... %s (len=%d)...\n",
-						(video ? "video" : "audio"), participant->display, strerror(errno), len);
+						(video ? "video" : "audio"), participant->display, g_strerror(errno), len);
 				}
 			} else {
 				/* SRTP: check if we already encrypted the packet before */
@@ -5315,7 +5315,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 					size_t addrlen = (rtp_forward->serv_addr.sin_family == AF_INET ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6));
 					if(sendto(participant->udp_sock, rtp_forward->srtp_ctx->sbuf, rtp_forward->srtp_ctx->slen, 0, address, addrlen) < 0) {
 						JANUS_LOG(LOG_HUGE, "Error forwarding SRTP %s packet for %s... %s (len=%d)...\n",
-							(video ? "video" : "audio"), participant->display, strerror(errno), rtp_forward->srtp_ctx->slen);
+							(video ? "video" : "audio"), participant->display, g_strerror(errno), rtp_forward->srtp_ctx->slen);
 					}
 				}
 			}
@@ -5505,7 +5505,7 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_da
 			size_t addrlen = (rtp_forward->serv_addr.sin_family == AF_INET ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6));
 			if(sendto(participant->udp_sock, buf, len, 0, address, addrlen) < 0) {
 				JANUS_LOG(LOG_HUGE, "Error forwarding data packet for %s... %s (len=%d)...\n",
-					participant->display, strerror(errno), len);
+					participant->display, g_strerror(errno), len);
 			}
 		}
 	}

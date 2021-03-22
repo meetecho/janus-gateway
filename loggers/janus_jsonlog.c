@@ -150,7 +150,7 @@ int janus_jsonlog_init(const char *server_name, const char *config_path) {
 				logfile = fopen(logfilename, "a");
 				if(logfile == NULL) {
 					JANUS_LOG(LOG_FATAL, "Error opening file '%s' (%d, %s)\n",
-						logfilename, errno, strerror(errno));
+						logfilename, errno, g_strerror(errno));
 				}
 			}
 

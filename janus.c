@@ -4544,7 +4544,7 @@ gint main(int argc, char *argv[])
 		janus_network_address_string_buffer ibuf;
 		if(getifaddrs(&ifas) == -1) {
 			JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected... %d (%s)\n",
-				errno, strerror(errno));
+				errno, g_strerror(errno));
 		} else {
 			if(janus_network_lookup_interface(ifas, item->value, &iface) != 0) {
 				JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);

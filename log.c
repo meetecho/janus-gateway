@@ -230,7 +230,7 @@ int janus_log_init(gboolean daemon, gboolean console, const char *logfile) {
 		/* Open a log file for writing (and append) */
 		janus_log_file = fopen(logfile, "awt");
 		if(janus_log_file == NULL) {
-			g_print("Error opening log file %s: %s\n", logfile, strerror(errno));
+			g_print("Error opening log file %s: %s\n", logfile, g_strerror(errno));
 			return -1;
 		}
 		janus_log_filepath = g_strdup(logfile);
