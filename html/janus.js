@@ -1741,7 +1741,7 @@ function Janus(gatewayCallbacks) {
 		}
 		// We're now capturing the new stream: check if we're updating or if it's a new thing
 		var addTracks = false;
-    if(!config.myStream || !media.update || (config.streamExternal && !media.replaceVideoExternalStream)) {
+		if(!config.myStream || !media.update || (config.streamExternal && !media.replaceVideoExternalStream)) {
 			config.myStream = stream;
 			addTracks = true;
 		} else {
@@ -2079,12 +2079,12 @@ function Janus(gatewayCallbacks) {
 			// can go directly to preparing the new SDP offer or answer
 			if(callbacks.stream) {
 				// External stream: is this the same as the one we were using before?
-        var newStream = (callbacks.stream.externalStream ? callbacks.stream.externalStream : callbacks.stream);
+				var newStream = (callbacks.stream.externalStream ? callbacks.stream.externalStream : callbacks.stream);
 				if(newStream !== config.myStream) {
 					Janus.log("Renegotiation involves a new external stream");
-          if(callbacks.stream.replaceVideo) {
-            media.replaceVideoExternalStream = true;
-          }
+					if(callbacks.stream.replaceVideo) {
+						media.replaceVideoExternalStream = true;
+					}
 				}
 			} else {
 				// Check if there are changes on audio
@@ -2264,7 +2264,7 @@ function Janus(gatewayCallbacks) {
 		}
 		// Was a MediaStream object passed, or do we need to take care of that?
 		if(callbacks.stream) {
-      var stream = callbacks.stream.externalStream ? callbacks.stream.externalStream : callbacks.stream;
+			var stream = callbacks.stream.externalStream ? callbacks.stream.externalStream : callbacks.stream;
 			Janus.log("MediaStream provided by the application");
 			Janus.debug(stream);
 			// If this is an update, let's check if we need to release the previous stream
