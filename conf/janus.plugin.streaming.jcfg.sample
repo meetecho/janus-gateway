@@ -81,9 +81,9 @@
 # rtspiface = network interface or IP address to bind to, if any (binds to all otherwise), when receiving RTSP streams
 # rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=true)
 # rtsp_reconnect_delay = after n seconds passed and no media assumed, the RTSP server has gone and schedule a reconnect (default=5s)
-# rtsp_session_timeout = by default the sreaming plugin will check the RTSP connection with an OPTIONS query,
-#		the value of the timeout is came from the RTSP session initializer and by default
-#		this session timeout is the half of this value In some cases this value is can be too high (for example more than one minute)
+# rtsp_session_timeout = by default the streaming plugin will check the RTSP connection with an OPTIONS query,
+#		the value of the timeout comes from the RTSP session  initializer and by default
+#		this session timeout is the half of this value In some cases this value can be too high (for example more than one minute)
 #		because of the media server. In that case this plugin will calculate the timeout with this
 #		formula: timeout = min(session_timeout, rtsp_session_timeout / 2). (default=0s)
 # rtsp_timeout = communication timeout (CURLOPT_TIMEOUT) for cURL call gathering the RTSP information (default=10s)

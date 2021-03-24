@@ -141,9 +141,9 @@ rtsp_pwd = RTSP authorization password, if needed
 rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=true)
 rtspiface = network interface IP address or device name to listen on when receiving RTSP streams
 rtsp_reconnect_delay = after n seconds passed and no media assumed, the RTSP server has gone and schedule a reconnect (default=5s)
-rtsp_session_timeout = by default the sreaming plugin will check the RTSP connection with an OPTIONS query,
-	the value of the timeout is came from the RTSP session initializer and by default
-	this session timeout is the half of this value In some cases this value is can be too high (for example more than one minute)
+rtsp_session_timeout = by default the streaming plugin will check the RTSP connection with an OPTIONS query,
+	the value of the timeout comes from the RTSP session initializer and by default
+	this session timeout is the half of this value In some cases this value can be too high (for example more than one minute)
 	because of the media server. In that case this plugin will calculate the timeout with this
 	formula: timeout = min(session_timeout, rtsp_session_timeout / 2). (default=0s)
 rtsp_timeout = communication timeout (CURLOPT_TIMEOUT) for cURL call gathering the RTSP information (default=10s)
@@ -733,7 +733,7 @@ rtsp_conn_timeout = connection timeout for cURL (CURLOPT_CONNECTTIMEOUT) call ga
 #define JANUS_STREAMING_DEFAULT_SESSION_TIMEOUT 0 /* Overwrite the RTSP session timeout. If set to zero, the RTSP timeout is derived from a session. */
 #define JANUS_STREAMING_DEFAULT_RECONNECT_DELAY 5 /* Reconnecting delay in seconds. */
 #define JANUS_STREAMING_DEFAULT_CURL_TIMEOUT 10L /* Communication timeout for cURL. */
-#define JANUS_STREAMING_DEFAULT_CURL_CONNECT_TIMEOUT 5L /* Conection timeout for cURL. */
+#define JANUS_STREAMING_DEFAULT_CURL_CONNECT_TIMEOUT 5L /* Connection timeout for cURL. */
 
 /* Plugin information */
 #define JANUS_STREAMING_VERSION			8
@@ -7584,7 +7584,7 @@ static void *janus_streaming_relay_thread(void *data) {
 			}
 			now = janus_get_monotonic_time();
 			if(!source->reconnecting && (now - source->reconnect_timer > source->reconnect_delay)) {
-				/* n seconds passed and no media? Assume the RTSP server has gone and schedule a reconnect */
+				/*  Assume the RTSP server has gone and schedule a reconnect */
 				JANUS_LOG(LOG_WARN, "[%s] %"SCNi64"s passed with no media, trying to reconnect the RTSP stream\n",
 					name, (now - source->reconnect_timer)/G_USEC_PER_SEC);
 				audio_fd = -1;
