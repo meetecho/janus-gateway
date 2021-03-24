@@ -162,7 +162,7 @@ static janus_mutex clients_mutex = JANUS_MUTEX_INITIALIZER;
 static void janus_pfunix_client_free(void *client_ref) {
 	if(!client_ref)
 		return;
-	JANUS_LOG(LOG_WARN, "Freeing unix sockets client\n");
+	JANUS_LOG(LOG_INFO, "Freeing unix sockets client\n");
 	janus_pfunix_client *client = (janus_pfunix_client *) client_ref;
 	if(client->messages != NULL) {
 		char *response = NULL;
@@ -188,7 +188,7 @@ static int janus_pfunix_create_socket(char *pfname, gboolean use_dgram) {
 	int flags = use_dgram ? SOCK_DGRAM | SOCK_NONBLOCK : SOCK_SEQPACKET | SOCK_NONBLOCK;
 	fd = socket(use_dgram ? AF_UNIX : PF_UNIX, flags, 0);
 	if(fd < 0) {
-		JANUS_LOG(LOG_FATAL, "Unix Sockets %s creation failed: %d, %s\n", pfname, errno, strerror(errno));
+		JANUS_LOG(LOG_FATAL, "Unix Sockets %s creation failed: %d, %s\n", pfname, errno, g_strerror(errno));
 	} else {
 		/* Unlink before binding */
 		unlink(pfname);
@@ -199,7 +199,7 @@ static int janus_pfunix_create_socket(char *pfname, gboolean use_dgram) {
 		g_snprintf(address.sun_path, UNIX_PATH_MAX, "%s", pfname);
 		JANUS_LOG(LOG_VERB, "Binding Unix Socket %s... (Janus API)\n", pfname);
 		if(bind(fd, (struct sockaddr *)&address, sizeof(address)) != 0) {
-			JANUS_LOG(LOG_FATAL, "Bind for Unix Socket %s failed: %d, %s\n", pfname, errno, strerror(errno));
+			JANUS_LOG(LOG_FATAL, "Bind for Unix Socket %s failed: %d, %s\n", pfname, errno, g_strerror(errno));
 			close(fd);
 			fd = -1;
 			return fd;
@@ -207,7 +207,7 @@ static int janus_pfunix_create_socket(char *pfname, gboolean use_dgram) {
 		if(!use_dgram) {
 			JANUS_LOG(LOG_VERB, "Listening on Unix Socket %s...\n", pfname);
 			if(listen(fd, 128) != 0) {
-				JANUS_LOG(LOG_FATAL, "Listening on Unix Socket %s failed: %d, %s\n", pfname, errno, strerror(errno));
+				JANUS_LOG(LOG_FATAL, "Listening on Unix Socket %s failed: %d, %s\n", pfname, errno, g_strerror(errno));
 				close(fd);
 				fd = -1;
 			}
@@ -275,14 +275,14 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 
 		/* First of all, initialize the socketpair for writeable notifications */
 		if(socketpair(PF_LOCAL, SOCK_STREAM, 0, write_fd) < 0) {
-			JANUS_LOG(LOG_FATAL, "Error creating socket pair for writeable events: %d, %s\n", errno, strerror(errno));
+			JANUS_LOG(LOG_FATAL, "Error creating socket pair for writeable events: %d, %s\n", errno, g_strerror(errno));
 			return -1;
 		}
 
 		/* Setup the Janus API Unix Sockets server(s) */
 		item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Janus API)\n");
+			JANUS_LOG(LOG_VERB, "Unix Sockets server disabled (Janus API)\n");
 		} else {
 			item = janus_config_get(config, config_general, janus_config_type_item, "path");
 			char *pfname = (char *)(item && item->value ? item->value : NULL);
@@ -313,7 +313,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		/* Do the same for the Admin API, if enabled */
 		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Admin API)\n");
+			JANUS_LOG(LOG_VERB, "Unix Sockets server disabled (Admin API)\n");
 		} else {
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_path");
 			char *pfname = (char *)(item && item->value ? item->value : NULL);
@@ -636,10 +636,10 @@ void *janus_pfunix_thread(void *data) {
 			continue;
 		if(res < 0) {
 			if(errno == EINTR) {
-				JANUS_LOG(LOG_HUGE, "Got an EINTR (%s) polling the Unix Sockets descriptors, ignoring...\n", strerror(errno));
+				JANUS_LOG(LOG_HUGE, "Got an EINTR (%s) polling the Unix Sockets descriptors, ignoring...\n", g_strerror(errno));
 				continue;
 			}
-			JANUS_LOG(LOG_ERR, "poll() failed: %d (%s)\n", errno, strerror(errno));
+			JANUS_LOG(LOG_ERR, "poll() failed: %d (%s)\n", errno, g_strerror(errno));
 			break;
 		}
 		int i = 0;
@@ -655,7 +655,7 @@ void *janus_pfunix_thread(void *data) {
 					close(write_fd[1]);
 					write_fd[1] = -1;
 					if(socketpair(PF_LOCAL, SOCK_STREAM, 0, write_fd) < 0) {
-						JANUS_LOG(LOG_FATAL, "Error creating socket pair for writeable events: %d, %s\n", errno, strerror(errno));
+						JANUS_LOG(LOG_FATAL, "Error creating socket pair for writeable events: %d, %s\n", errno, g_strerror(errno));
 						continue;
 					}
 				} else if(poll_fds[i].fd == pfd) {

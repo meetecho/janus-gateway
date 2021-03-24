@@ -593,6 +593,44 @@ int main(int argc, char *argv[])
 				}
 				/* Any codec-specific info? (just informational) */
 				const char *f = json_string_value(json_object_get(info, "f"));
+				/* Check if there are RTP extensions */
+				json_t *exts = json_object_get(info, "x");
+				if(exts != NULL) {
+					/* There are: check if audio-level and/or video-orientation
+					 * are among them, as we might need them */
+					int extid = 0;
+					const char *key = NULL, *extmap = NULL;
+					json_t *value = NULL;
+					json_object_foreach(exts, key, value) {
+						if(key == NULL || value == NULL || !json_is_string(value))
+							continue;
+						extid = atoi(key);
+						extmap = json_string_value(value);
+						if(!strcasecmp(extmap, JANUS_PP_RTP_EXTMAP_AUDIO_LEVEL)) {
+							/* Audio level */
+							if(audio_level_extmap_id != -1) {
+								if(audio_level_extmap_id != extid) {
+									JANUS_LOG(LOG_WARN, "Audio level extension ID found in header (%d) is different from the one provided via argument (%d)\n",
+										audio_level_extmap_id, extid);
+								}
+							} else {
+								audio_level_extmap_id = extid;
+								JANUS_LOG(LOG_INFO, "Audio level extension ID: %d\n", audio_level_extmap_id);
+							}
+						} else if(!strcasecmp(extmap, JANUS_PP_RTP_EXTMAP_VIDEO_ORIENTATION)) {
+							/* Video orientation */
+							if(video_orient_extmap_id != -1) {
+								if(video_orient_extmap_id != extid) {
+									JANUS_LOG(LOG_WARN, "Video orientation extension ID found in header (%d) is different from the one provided via argument (%d)\n",
+										video_orient_extmap_id, extid);
+								}
+							} else {
+								video_orient_extmap_id = extid;
+								JANUS_LOG(LOG_INFO, "Video orientation extension ID: %d\n", video_orient_extmap_id);
+							}
+						}
+					}
+				}
 				/* When was the file created? */
 				json_t *created = json_object_get(info, "s");
 				if(!created || !json_is_integer(created)) {
@@ -639,7 +677,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Now that we know what we're working with, check the extension */
-	if(strcasecmp(extension, "opus") && strcasecmp(extension, "wav") &&
+	if(extension && strcasecmp(extension, "opus") && strcasecmp(extension, "wav") &&
 			strcasecmp(extension, "webm") && strcasecmp(extension, "mp4") &&
 			strcasecmp(extension, "srt") && (!data || (data && textdata))) {
 		/* Unsupported extension? */
@@ -778,7 +816,7 @@ int main(int argc, char *argv[])
 			rtp_read_n = (rtp->csrccount + rtp->extension)*4;
 			bytes = fread(prebuffer+rtp_header_len, sizeof(char), rtp_read_n, file);
 			if(bytes < rtp_read_n) {
-				JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n",
+				JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %d)\n",
 					rtp_header_len+bytes, rtp_header_len+rtp_read_n);
 				break;
 			} else {
@@ -795,7 +833,7 @@ int main(int argc, char *argv[])
 			skip += 4 + rtp_read_n;
 			bytes = fread(prebuffer+rtp_header_len, sizeof(char), rtp_read_n, file);
 			if(bytes < rtp_read_n) {
-				JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n",
+				JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %d)\n",
 					rtp_header_len+bytes, rtp_header_len+rtp_read_n);
 				break;
 			} else {

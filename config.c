@@ -188,7 +188,7 @@ janus_config *janus_config_parse(const char *config_file) {
 	/* Open file */
 	FILE *file = fopen(config_file, "rt");
 	if(!file) {
-		JANUS_LOG(LOG_ERR, "  -- Error reading configuration file '%s'... error %d (%s)\n", filename, errno, strerror(errno));
+		JANUS_LOG(LOG_ERR, "  -- Error reading configuration file '%s'... error %d (%s)\n", filename, errno, g_strerror(errno));
 		g_free(tmp_filename);
 		return NULL;
 	}

@@ -171,7 +171,7 @@ int main(int argc, char *argv[])
 	size_t res = fwrite(header, sizeof(char), strlen(header), outfile);
 	if(res != strlen(header)) {
 		JANUS_LOG(LOG_ERR, "Couldn't write .mjr header (%zu != %zu, %s)\n",
-			res, strlen(header), strerror(errno));
+			res, strlen(header), g_strerror(errno));
 		cmdline_parser_free(&args_info);
 		pcap_close(pcap);
 		exit(1);
@@ -289,12 +289,12 @@ int main(int argc, char *argv[])
 			size_t res = fwrite(&info_bytes, sizeof(uint16_t), 1, outfile);
 			if(res != 1) {
 				JANUS_LOG(LOG_WARN, "Couldn't write size of JSON header in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
-					res, sizeof(uint16_t), strerror(errno));
+					res, sizeof(uint16_t), g_strerror(errno));
 			}
 			res = fwrite(info_text, sizeof(char), strlen(info_text), outfile);
 			if(res != strlen(info_text)) {
 				JANUS_LOG(LOG_WARN, "Couldn't write JSON header in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
-					res, strlen(info_text), strerror(errno));
+					res, strlen(info_text), g_strerror(errno));
 			}
 			free(info_text);
 		}
@@ -302,20 +302,20 @@ int main(int argc, char *argv[])
 		size_t res = fwrite(frame_header, sizeof(char), strlen(frame_header), outfile);
 		if(res != strlen(frame_header)) {
 			JANUS_LOG(LOG_WARN, "Couldn't write frame header in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
-				res, strlen(frame_header), strerror(errno));
+				res, strlen(frame_header), g_strerror(errno));
 		}
 		uint32_t timestamp = (uint32_t)(pkt_ts > start_ts ? ((pkt_ts - start_ts)/1000) : 0);
 		timestamp = htonl(timestamp);
 		res = fwrite(&timestamp, sizeof(uint32_t), 1, outfile);
 		if(res != 1) {
 			JANUS_LOG(LOG_WARN, "Couldn't write frame timestamp in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
-				res, sizeof(uint32_t), strerror(errno));
+				res, sizeof(uint32_t), g_strerror(errno));
 		}
 		uint16_t header_bytes = htons(pkt_size);
 		res = fwrite(&header_bytes, sizeof(uint16_t), 1, outfile);
 		if(res != 1) {
 			JANUS_LOG(LOG_WARN, "Couldn't write size of frame in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
-				res, sizeof(uint16_t), strerror(errno));
+				res, sizeof(uint16_t), g_strerror(errno));
 		}
 		/* Save packet on file */
 		written++;

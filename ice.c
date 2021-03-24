@@ -101,6 +101,41 @@ gboolean janus_ice_is_ipv6_enabled(void) {
 	return janus_ipv6_enabled;
 }
 
+#ifdef HAVE_ICE_NOMINATION
+/* Since libnice 0.1.15, we can configure the ICE nomination mode: it was
+ * always "aggressive" before, so we set it to "aggressive" by default as well */
+static NiceNominationMode janus_ice_nomination = NICE_NOMINATION_MODE_AGGRESSIVE;
+void janus_ice_set_nomination_mode(const char *nomination) {
+	if(nomination == NULL) {
+		JANUS_LOG(LOG_WARN, "Invalid ICE nomination mode, falling back to 'aggressive'\n");
+	} else if(!strcasecmp(nomination, "regular")) {
+		JANUS_LOG(LOG_INFO, "Configuring Janus to use ICE regular nomination\n");
+		janus_ice_nomination = NICE_NOMINATION_MODE_REGULAR;
+	} else if(!strcasecmp(nomination, "aggressive")) {
+		JANUS_LOG(LOG_INFO, "Configuring Janus to use ICE aggressive nomination\n");
+		janus_ice_nomination = NICE_NOMINATION_MODE_AGGRESSIVE;
+	} else {
+		JANUS_LOG(LOG_WARN, "Unsupported ICE nomination mode '%s', falling back to 'aggressive'\n", nomination);
+	}
+}
+const char *janus_ice_get_nomination_mode(void) {
+	return (janus_ice_nomination == NICE_NOMINATION_MODE_REGULAR ? "regular" : "aggressive");
+}
+#endif
+
+/* Keepalive via connectivity checks */
+static gboolean janus_ice_keepalive_connchecks = FALSE;
+void janus_ice_set_keepalive_conncheck_enabled(gboolean enabled) {
+	janus_ice_keepalive_connchecks = enabled;
+	if(janus_ice_keepalive_connchecks) {
+		JANUS_LOG(LOG_INFO, "Using connectivity checks as PeerConnection keep-alives\n");
+		JANUS_LOG(LOG_WARN, "Notice that the current libnice master is breaking connections after 50s when keepalive-conncheck enabled. As such, better to stick to 0.1.18 until the issue is addressed upstream\n");
+	}
+}
+gboolean janus_ice_is_keepalive_conncheck_enabled(void) {
+	return janus_ice_keepalive_connchecks;
+}
+
 /* Opaque IDs set by applications are by default only passed to event handlers
  * for correlation purposes, but not sent back to the user or application in
  * the related Janus API responses or events, unless configured otherwise */
@@ -943,7 +978,7 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port,
 		addrlen = sizeof(remote6);
 	}
 	if(bind(fd, address, addrlen) < 0) {
-		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test: %d (%s)\n", errno, g_strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -962,7 +997,7 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port,
 	timeout.tv_usec = 0;
 	int err = select(fd+1, &readfds, NULL, NULL, &timeout);
 	if(err < 0) {
-		JANUS_LOG(LOG_FATAL, "Error waiting for a response to our STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+		JANUS_LOG(LOG_FATAL, "Error waiting for a response to our STUN BINDING test: %d (%s)\n", errno, g_strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -3461,6 +3496,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		"main-context", handle->mainctx,
 		"reliable", FALSE,
 		"full-mode", janus_ice_lite_enabled ? FALSE : TRUE,
+#ifdef HAVE_ICE_NOMINATION
+		"nomination-mode", janus_ice_nomination,
+#endif
+		"keepalive-conncheck", janus_ice_keepalive_connchecks ? TRUE : FALSE,
 #ifdef HAVE_LIBNICE_TCP
 		"ice-udp", TRUE,
 		"ice-tcp", janus_ice_tcp_enabled ? TRUE : FALSE,
@@ -3537,7 +3576,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	char host[NI_MAXHOST];
 	if(getifaddrs(&ifaddr) == -1) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error getting list of interfaces... %d (%s)\n",
-			handle->handle_id, errno, strerror(errno));
+			handle->handle_id, errno, g_strerror(errno));
 	} else {
 		for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
 			if(ifa->ifa_addr == NULL)
@@ -3877,7 +3916,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
 		int sdeslen = 16;
-		char rtcpbuf[srlen+sdeslen];
+		char rtcpbuf[sizeof(janus_rtcp_sr)+sdeslen];
 		memset(rtcpbuf, 0, sizeof(rtcpbuf));
 		rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
 		sr->header.version = 2;
@@ -3903,7 +3942,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		}
 		sr->si.s_packets = htonl(stream->component->out_stats.audio.packets);
 		sr->si.s_octets = htonl(stream->component->out_stats.audio.bytes);
-		rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
+		rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[srlen];
 		janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janus", 5);
 		sdes->chunk.ssrc = htonl(stream->audio_ssrc);
 		/* Enqueue it, we'll send it later */
@@ -3938,7 +3977,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
 		int sdeslen = 16;
-		char rtcpbuf[srlen+sdeslen];
+		char rtcpbuf[sizeof(janus_rtcp_sr)+sdeslen];
 		memset(rtcpbuf, 0, sizeof(rtcpbuf));
 		rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
 		sr->header.version = 2;
@@ -3964,7 +4003,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		}
 		sr->si.s_packets = htonl(stream->component->out_stats.video[0].packets);
 		sr->si.s_octets = htonl(stream->component->out_stats.video[0].bytes);
-		rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
+		rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[srlen];
 		janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janus", 5);
 		sdes->chunk.ssrc = htonl(stream->video_ssrc);
 		/* Enqueue it, we'll send it later */

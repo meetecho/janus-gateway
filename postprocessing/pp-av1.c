@@ -96,12 +96,13 @@ int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart) {
 #ifdef USE_CODECPAR
 #if LIBAVCODEC_VER_AT_LEAST(57, 25)
 	AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_AV1);
-#endif
+#else
 	if(!codec) {
 		/* Error opening video codec */
 		JANUS_LOG(LOG_ERR, "Encoder not available\n");
 		return -1;
 	}
+#endif
 	fctx->video_codec = codec;
 	fctx->oformat->video_codec = codec->id;
 	vStream = avformat_new_stream(fctx, codec);
@@ -249,8 +250,8 @@ static void janus_pp_av1_parse_sh(char *buffer, uint16_t *width, uint16_t *heigh
 		if(value)
 			initial_display_delay = TRUE;
 		/* Skip operating_points_cnt_minus_1 (5 bits) */
-		value = janus_pp_av1_getbits(base, 5, &offset)+1;
-		for(i=0; i<value; i++) {
+		uint32_t opcm1 = janus_pp_av1_getbits(base, 5, &offset)+1;
+		for(i=0; i<opcm1; i++) {
 			/* Skip operating_point_idc[i] (12 bits) */
 			janus_pp_av1_getbits(base, 12, &offset);
 			/* Skip seq_level_idx[i] (5 bits) */

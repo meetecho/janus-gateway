@@ -164,14 +164,14 @@ static int janus_gelfevh_connect(void) {
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 		if(res)
 			freeaddrinfo(res);
-		JANUS_LOG(LOG_ERR, "Could not resolve address (%s): %d (%s)\n", backend, errno, strerror(errno));
+		JANUS_LOG(LOG_ERR, "Could not resolve address (%s): %d (%s)\n", backend, errno, g_strerror(errno));
 		return -1;
 	}
 	char *host = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
 	freeaddrinfo(res);
 
 	if((sockfd = socket(AF_INET, transport, 0)) < 0 ) {
-		JANUS_LOG(LOG_ERR, "Socket creation failed: %d (%s)\n", errno, strerror(errno));
+		JANUS_LOG(LOG_ERR, "Socket creation failed: %d (%s)\n", errno, g_strerror(errno));
 		g_free(host);
 		return -1;
 	}
@@ -206,7 +206,7 @@ static int janus_gelfevh_send(char *message) {
 		while(length > 0) {
 			out_bytes = send(sockfd, buffer, length + 1, 0);
 			if(out_bytes <= 0) {
-				JANUS_LOG(LOG_WARN, "Sending TCP message failed, dropping event: %d (%s)\n", errno, strerror(errno));
+				JANUS_LOG(LOG_WARN, "Sending TCP message failed, dropping event: %d (%s)\n", errno, g_strerror(errno));
 				close(sockfd);
 				return -1;
 			}
@@ -240,7 +240,7 @@ static int janus_gelfevh_send(char *message) {
 		if(total == 1) {
 			int n = send(sockfd, buf, len, 0);
 			if(n < 0) {
-				JANUS_LOG(LOG_WARN, "Sending UDP message failed, dropping event: %d (%s)\n", errno, strerror(errno));
+				JANUS_LOG(LOG_WARN, "Sending UDP message failed, dropping event: %d (%s)\n", errno, g_strerror(errno));
 				return -1;
 			}
 			return 0;
@@ -262,7 +262,7 @@ static int janus_gelfevh_send(char *message) {
 				buf += bytesToSend;
 				int n = send(sockfd, head, bytesToSend + 12, 0);
 				if(n < 0) {
-					JANUS_LOG(LOG_WARN, "Sending UDP message failed: %d (%s)\n", errno, strerror(errno));
+					JANUS_LOG(LOG_WARN, "Sending UDP message failed: %d (%s)\n", errno, g_strerror(errno));
 					return -1;
 				}
 				offset += bytesToSend;

@@ -773,7 +773,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		/* Start with the Janus API web server now */
 		item = janus_config_get(config, config_general, janus_config_type_item, "http");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "HTTP webserver disabled\n");
+			JANUS_LOG(LOG_VERB, "HTTP webserver disabled\n");
 		} else {
 			uint16_t wsport = 8088;
 			item = janus_config_get(config, config_general, janus_config_type_item, "port");
@@ -818,7 +818,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 		item = janus_config_get(config, config_general, janus_config_type_item, "https");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "HTTPS webserver disabled\n");
+			JANUS_LOG(LOG_VERB, "HTTPS webserver disabled\n");
 		} else {
 			if(!server_key || !server_pem) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
@@ -849,7 +849,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		/* Admin/monitor time: start web server, if enabled */
 		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_http");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Admin/monitor HTTP webserver disabled\n");
+			JANUS_LOG(LOG_VERB, "Admin/monitor HTTP webserver disabled\n");
 		} else {
 			uint16_t wsport = 7088;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_port");
@@ -876,7 +876,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		/* Do we also have to provide an HTTPS one? */
 		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_https");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Admin/monitor HTTPS webserver disabled\n");
+			JANUS_LOG(LOG_VERB, "Admin/monitor HTTPS webserver disabled\n");
 		} else {
 			if(!server_key) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
@@ -1051,7 +1051,7 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 			transport = (janus_transport_session *)session->longpolls->data;
 			msg = (janus_http_msg *)(transport ? transport->transport_p : NULL);
 			/* Is this connection ready to send a response back? */
-			if(msg && g_atomic_pointer_compare_and_exchange(&msg->longpoll, session, NULL)) {
+			if(msg && g_atomic_pointer_compare_and_exchange(&msg->longpoll, (volatile void *)session, NULL)) {
 				janus_refcount_increase(&msg->ref);
 				/* Send the events back */
 				if(g_atomic_int_compare_and_exchange(&msg->timeout_flag, 1, 0)) {
@@ -1176,7 +1176,7 @@ void janus_http_session_claimed(janus_transport_session *transport, guint64 sess
 				g_source_unref(msg->timeout);
 			}
 			msg->timeout = NULL;
-			if(g_atomic_pointer_compare_and_exchange(&msg->longpoll, session, NULL)) {
+			if(g_atomic_pointer_compare_and_exchange(&msg->longpoll, (volatile void *)session, NULL)) {
 				/* Return an error on the long poll right away */
 				janus_http_timeout(transport, old_session);
 			}
@@ -1536,21 +1536,23 @@ static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connectio
 		const char *secret = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "apisecret");
 		const char *token = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "token");
 		gboolean secret_authorized = FALSE, token_authorized = FALSE;
-		if(!gateway->is_api_secret_needed(&janus_http_transport) && !gateway->is_auth_token_needed(&janus_http_transport)) {
+		gboolean is_api_secret_needed = gateway->is_api_secret_needed(&janus_http_transport);
+		gboolean is_auth_token_needed = gateway->is_auth_token_needed(&janus_http_transport);
+		if(!is_api_secret_needed && !is_auth_token_needed) {
 			/* Nothing to check */
 			secret_authorized = TRUE;
 			token_authorized = TRUE;
 		} else {
 			if(gateway->is_api_secret_valid(&janus_http_transport, secret)) {
-				/* API secret is valid */
+				/* API secret is valid or disabled */
 				secret_authorized = TRUE;
 			}
 			if(gateway->is_auth_token_valid(&janus_http_transport, token)) {
-				/* Token is valid */
+				/* Token is valid or disabled */
 				token_authorized = TRUE;
 			}
 			/* We consider a request authorized if either the proper API secret or a valid token has been provided */
-			if(!secret_authorized && !token_authorized) {
+			if(!(is_api_secret_needed && secret_authorized) && !(is_auth_token_needed && token_authorized)) {
 				response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 				janus_http_add_cors_headers(msg, response);
 				ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
