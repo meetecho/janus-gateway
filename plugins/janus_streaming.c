@@ -134,7 +134,7 @@ so neither Janus nor the Streaming plugin have access to anything.
 DO NOT SET THIS PROPERTY IF YOU DON'T KNOW WHAT YOU'RE DOING!
 e2ee = true
 
-The following options are only valid for the 'rstp' type:
+The following options are only valid for the 'rtsp' type:
 url = RTSP stream URL
 rtsp_user = RTSP authorization username, if needed
 rtsp_pwd = RTSP authorization password, if needed
@@ -1507,7 +1507,7 @@ static void janus_streaming_rtcp_pli_send(janus_streaming_rtp_source *source) {
 	int sent = 0;
 	if((sent = sendto(source->video_rtcp_fd, rtcp_buf, rtcp_len, 0,
 			(struct sockaddr *)&source->video_rtcp_addr, sizeof(source->video_rtcp_addr))) < 0) {
-		JANUS_LOG(LOG_ERR, "Error in sendto... %d (%s)\n", errno, strerror(errno));
+		JANUS_LOG(LOG_ERR, "Error in sendto... %d (%s)\n", errno, g_strerror(errno));
 	} else {
 		JANUS_LOG(LOG_HUGE, "Sent %d/%d bytes\n", sent, rtcp_len);
 	}
@@ -1532,7 +1532,7 @@ static void janus_streaming_rtcp_remb_send(janus_streaming_rtp_source *source) {
 	int sent = 0;
 	if((sent = sendto(source->video_rtcp_fd, rtcp_buf, rtcp_len, 0,
 			(struct sockaddr *)&source->video_rtcp_addr, sizeof(source->video_rtcp_addr))) < 0) {
-		JANUS_LOG(LOG_ERR, "Error in sendto... %d (%s)\n", errno, strerror(errno));
+		JANUS_LOG(LOG_ERR, "Error in sendto... %d (%s)\n", errno, g_strerror(errno));
 	} else {
 		JANUS_LOG(LOG_HUGE, "Sent %d/%d bytes\n", sent, rtcp_len);
 	}
@@ -1576,7 +1576,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	struct ifaddrs *ifas = NULL;
 	if(getifaddrs(&ifas) == -1) {
 		JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected... %d (%s)\n",
-			errno, strerror(errno));
+			errno, g_strerror(errno));
 	}
 
 	/* Read configuration */
@@ -2661,7 +2661,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 
 		if(getifaddrs(&ifas) == -1) {
 			JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected... %d (%s)\n",
-				errno, strerror(errno));
+				errno, g_strerror(errno));
 		}
 
 		json_t *type = json_object_get(root, "type");
@@ -5416,14 +5416,14 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 				fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 				if(fd < 0) {
 					JANUS_LOG(LOG_ERR, "[%s] Cannot create socket for %s... %d (%s)\n",
-						mountpointname, medianame, errno, strerror(errno));
+						mountpointname, medianame, errno, g_strerror(errno));
 					break;
 				}
 #ifdef IP_MULTICAST_ALL
 				int mc_all = 0;
 				if((setsockopt(fd, IPPROTO_IP, IP_MULTICAST_ALL, (void*) &mc_all, sizeof(mc_all))) < 0) {
 					JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt IP_MULTICAST_ALL failed... %d (%s)\n",
-						mountpointname, listenername, errno, strerror(errno));
+						mountpointname, listenername, errno, g_strerror(errno));
 					close(fd);
 					janus_mutex_unlock(&fd_mutex);
 					return -1;
@@ -5453,7 +5453,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 				}
 				if(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) == -1) {
 					JANUS_LOG(LOG_ERR, "[%s] %s listener IP_ADD_MEMBERSHIP failed... %d (%s)\n",
-						mountpointname, listenername, errno, strerror(errno));
+						mountpointname, listenername, errno, g_strerror(errno));
 					close(fd);
 					janus_mutex_unlock(&fd_mutex);
 					return -1;
@@ -5481,7 +5481,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 			int reuse = 1;
 			if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == -1) {
 				JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt SO_REUSEADDR failed... %d (%s)\n",
-					mountpointname, listenername, errno, strerror(errno));
+					mountpointname, listenername, errno, g_strerror(errno));
 				close(fd);
 				janus_mutex_unlock(&fd_mutex);
 				return -1;
@@ -5518,12 +5518,12 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 			int v6only = 0;
 			if(fd < 0) {
 				JANUS_LOG(LOG_ERR, "[%s] Cannot create socket for %s... %d (%s)\n",
-					mountpointname, medianame, errno, strerror(errno));
+					mountpointname, medianame, errno, g_strerror(errno));
 				break;
 			}
 			if(family != AF_INET && setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 				JANUS_LOG(LOG_ERR, "[%s] setsockopt on socket failed for %s... %d (%s)\n",
-					mountpointname, medianame, errno, strerror(errno));
+					mountpointname, medianame, errno, g_strerror(errno));
 				break;
 			}
 		}
@@ -5533,7 +5533,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 			fd = -1;
 			if(!quiet) {
 				JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (port %d)... %d (%s)\n",
-					mountpointname, medianame, port, errno, strerror(errno));
+					mountpointname, medianame, port, errno, g_strerror(errno));
 			}
 			if(!use_range)	/* Asked for a specific port but it's not available, give up */
 				break;
@@ -7681,10 +7681,10 @@ static void *janus_streaming_relay_thread(void *data) {
 		resfd = poll(fds, num, 1000);
 		if(resfd < 0) {
 			if(errno == EINTR) {
-				JANUS_LOG(LOG_HUGE, "[%s] Got an EINTR (%s), ignoring...\n", name, strerror(errno));
+				JANUS_LOG(LOG_HUGE, "[%s] Got an EINTR (%s), ignoring...\n", name, g_strerror(errno));
 				continue;
 			}
-			JANUS_LOG(LOG_ERR, "[%s] Error polling... %d (%s)\n", name, errno, strerror(errno));
+			JANUS_LOG(LOG_ERR, "[%s] Error polling... %d (%s)\n", name, errno, g_strerror(errno));
 			mountpoint->enabled = FALSE;
 			janus_mutex_lock(&source->rec_mutex);
 			if(source->arc) {
@@ -7719,7 +7719,7 @@ static void *janus_streaming_relay_thread(void *data) {
 			if(fds[i].revents & (POLLERR | POLLHUP)) {
 				/* Socket error? */
 				JANUS_LOG(LOG_ERR, "[%s] Error polling: %s... %d (%s)\n", name,
-					fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP", errno, strerror(errno));
+					fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP", errno, g_strerror(errno));
 				mountpoint->enabled = FALSE;
 				janus_mutex_lock(&source->rec_mutex);
 				if(source->arc) {
@@ -8106,6 +8106,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					JANUS_LOG(LOG_HUGE, "[%s] Got audio RTCP feedback: SSRC %"SCNu32"\n",
 						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
+					packet.is_rtp = FALSE;
 					packet.is_video = FALSE;
 					packet.data = (janus_rtp_header *)buffer;
 					packet.length = bytes;
@@ -8132,6 +8133,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					JANUS_LOG(LOG_HUGE, "[%s] Got video RTCP feedback: SSRC %"SCNu32"\n",
 						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
+					packet.is_rtp = FALSE;
 					packet.is_video = TRUE;
 					packet.data = (janus_rtp_header *)buffer;
 					packet.length = bytes;

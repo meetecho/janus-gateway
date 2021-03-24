@@ -48,6 +48,8 @@ typedef struct janus_recorder {
 	char *codec;
 	/*! \brief Codec-specific info (e.g., H.264 or VP9 profile) */
 	char *fmtp;
+	/*! \brief List of RTP extensions (as a hashtable, indexed by ID) in this recording */
+	GHashTable *extensions;
 	/*! \brief When the recording file has been created and started */
 	gint64 created, started;
 	/*! \brief Media this instance is recording */
@@ -90,6 +92,14 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
  * @param[in] filename Filename to use for the recording
  * @returns A valid janus_recorder instance in case of success, NULL otherwise */
 janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, const char *fmtp, const char *filename);
+/*! \brief Add an RTP extension to this recording
+ * \note This will only be possible BEFORE the first frame is written, as it needs to
+ * be reflected in the .mjr header: doing this after that will return an error.
+ * @param[in] recorder The janus_recorder instance to add the extension to
+ * @param[in] id Numeric ID of the RTP extension
+ * @param[in] extmap Namespace of the RTP extension
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_recorder_add_extmap(janus_recorder *recorder, int id, const char *extmap);
 /*! \brief Mark this recorder as end-to-end encrypted (e.g., via Insertable Streams)
  * \note This will only be possible BEFORE the first frame is written, as it needs to
  * be reflected in the .mjr header: doing this after that will return an error. Also

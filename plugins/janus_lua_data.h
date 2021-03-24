@@ -41,7 +41,7 @@
 
 /* Core pointer and related flags */
 extern volatile gint lua_initialized, lua_stopping;
-extern janus_callbacks *janus_core;
+extern janus_callbacks *lua_janus_core;
 
 /* Lua state: we define state and mutex as extern */
 extern lua_State *lua_state;

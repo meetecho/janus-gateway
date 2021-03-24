@@ -482,7 +482,7 @@ int janus_pidfile_create(const char *file) {
 	/* Write the PID */
 	pid = getpid();
 	if(fprintf(pidf, "%d\n", pid) < 0) {
-		JANUS_LOG(LOG_FATAL, "Error writing PID in file, error %d (%s)\n", errno, strerror(errno));
+		JANUS_LOG(LOG_FATAL, "Error writing PID in file, error %d (%s)\n", errno, g_strerror(errno));
 		fclose(pidf);
 		return -1;
 	}
@@ -528,7 +528,7 @@ gboolean janus_is_folder_protected(const char *path) {
 	resolved[0] = '\0';
 	if(realpath(path, resolved) == NULL && errno != ENOENT) {
 		JANUS_LOG(LOG_ERR, "Error resolving path '%s'... %d (%s)\n",
-			path, errno, strerror(errno));
+			path, errno, g_strerror(errno));
 		return TRUE;
 	}
 	/* Traverse the list of protected folders to see if any match */
