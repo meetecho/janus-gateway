@@ -1778,7 +1778,7 @@ function Janus(gatewayCallbacks) {
 				config.myStream.addTrack(stream.getVideoTracks()[0]);
 				if(Janus.unifiedPlan) {
 					// Use Transceivers
-					Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
+					Janus.log(((media.replaceVideo || media.replaceVideoExternalStream) ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
 					var videoTransceiver = null;
 					var transceivers = config.pc.getTransceivers();
 					if(transceivers && transceivers.length > 0) {
@@ -1796,7 +1796,7 @@ function Janus(gatewayCallbacks) {
 						config.pc.addTrack(stream.getVideoTracks()[0], stream);
 					}
 				} else {
-					Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
+					Janus.log(((media.replaceVideo || media.replaceVideoExternalStream) ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
 					config.pc.addTrack(stream.getVideoTracks()[0], stream);
 				}
 			}
@@ -2200,6 +2200,10 @@ function Janus(gatewayCallbacks) {
 				if(media.addData) {
 					media.data = true;
 				}
+				// Reset external stream flag when replacing MediaStream with user media
+				if(config.streamExternal) {
+					config.streamExternal = false;
+				}
 			}
 			// If we're updating and keeping all tracks, let's skip the getUserMedia part
 			if((isAudioSendEnabled(media) && media.keepAudio) &&
@@ -2210,7 +2214,7 @@ function Janus(gatewayCallbacks) {
 			}
 		}
 		// If we're updating, check if we need to remove/replace one of the tracks
-		if(media.update && !config.streamExternal) {
+		if(media.update && !config.streamExternal || (config.streamExternal && media.replaceVideoExternalStream)) {
 			if(media.removeAudio || media.replaceAudio) {
 				if(config.myStream && config.myStream.getAudioTracks() && config.myStream.getAudioTracks().length) {
 					var at = config.myStream.getAudioTracks()[0];
@@ -2268,12 +2272,10 @@ function Janus(gatewayCallbacks) {
 			Janus.log("MediaStream provided by the application");
 			Janus.debug(stream);
 			// If this is an update, let's check if we need to release the previous stream
-			if(media.update) {
-				if(config.myStream && config.myStream !== callbacks.stream && !config.streamExternal && !media.replaceVideoExternalStream) {
-					// We're replacing a stream we captured ourselves with an external one
-					Janus.stopAllTracks(config.myStream);
-					config.myStream = null;
-				}
+			if(media.update && config.myStream && config.myStream !== callbacks.stream && !config.streamExternal && !media.replaceVideoExternalStream) {
+				// We're replacing a stream we captured ourselves with an external one
+				Janus.stopAllTracks(config.myStream);
+				config.myStream = null;
 			}
 			// Skip the getUserMedia part
 			config.streamExternal = true;
