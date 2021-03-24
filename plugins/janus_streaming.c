@@ -6365,12 +6365,9 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 	return 0;
 }
 
-static inline gint64 janus_min_if(gint64 a, gint64 b)
-{
-	return a > 0
-		? (a > b ? b : a)
-		: b
-	;
+/* Helper function to calculating the minimum value if 'a' is bigger than zero */
+static inline gint64 janus_streaming_min_if(gint64 a, gint64 b) {
+	return a > 0 ? (a > b ? b : a) : b;
 }
 
 /* Static helper to connect to an RTSP server, considering we might do this either
@@ -6618,7 +6615,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 								} else if(is_session) {
 									if(!strcasecmp(name, "timeout")) {
 										/* Take note of the timeout, for keep-alives */
-										source->ka_timeout = janus_min_if(source->session_timeout, atoi(value) / 2 * G_USEC_PER_SEC);
+										source->ka_timeout = janus_streaming_min_if(source->session_timeout, atoi(value) / 2 * G_USEC_PER_SEC);
 										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %lld ms\n", source->ka_timeout / 1000);
 									}
 								}
@@ -6791,7 +6788,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 								} else if(is_session) {
 									if(!strcasecmp(name, "timeout")) {
 										/* Take note of the timeout, for keep-alives */
-										source->ka_timeout = janus_min_if(source->session_timeout, atoi(value) / 2 * G_USEC_PER_SEC);
+										source->ka_timeout = janus_streaming_min_if(source->session_timeout, atoi(value) / 2 * G_USEC_PER_SEC);
 										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %lld ms\n", source->ka_timeout / 1000);
 									}
 								}
