@@ -1084,6 +1084,10 @@ typedef struct janus_streaming_rtp_source {
 	gboolean reconnecting;
 	gint64 reconnect_timer;
 	janus_mutex rtsp_mutex;
+	gint64 reconnect_delay; /* Only relevant for RTSP mountpoints */
+	gint64 session_timeout; /* Only relevant for RTSP mountpoints */
+	int rtsp_timeout; /* Only relevant for RTSP mountpoints */
+	int rtsp_conn_timeout; /* Only relevant for RTSP mountpoints */
 #endif
 	janus_streaming_rtp_keyframe keyframe;
 	gboolean textdata;
@@ -1145,10 +1149,6 @@ typedef struct janus_streaming_mountpoint {
 	gboolean audio, video, data;
 	GList *viewers;
 	int helper_threads;		/* Only relevant for RTP/RTSP mountpoints */
-	gint64 reconnect_delay; /* Only relevant for RTSP mountpoints */
-	gint64 session_timeout; /* Only relevant for RTSP mountpoints */
-	int rtsp_timeout; /* Only relevant for RTSP mountpoints */
-	int rtsp_conn_timeout; /* Only relevant for RTSP mountpoints */
 	GList *threads;			/* Only relevant for RTP/RTSP mountpoints */
 	volatile gint destroyed;
 	janus_mutex mutex;
@@ -5926,8 +5926,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp->audio = doaudio;
 	live_rtp->video = dovideo;
 	live_rtp->data = dodata;
-	live_rtp->reconnect_delay = JANUS_STREAMING_DEFAULT_RECONNECT_DELAY * G_USEC_PER_SEC;
-	live_rtp->session_timeout = 0; /* No overriding */
 	live_rtp->streaming_type = janus_streaming_type_live;
 	live_rtp->streaming_source = janus_streaming_source_rtp;
 	janus_streaming_rtp_source *live_rtp_source = g_malloc0(sizeof(janus_streaming_rtp_source));
@@ -6393,8 +6391,8 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 	curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
 	curl_easy_setopt(curl, CURLOPT_URL, source->rtsp_url);
-	curl_easy_setopt(curl, CURLOPT_TIMEOUT, mp->rtsp_timeout);
-	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, mp->rtsp_conn_timeout);
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, source->rtsp_timeout);
+	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, source->rtsp_conn_timeout);
 	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 0L);
 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 #if CURL_AT_LEAST_VERSION(7, 66, 0)
@@ -6616,7 +6614,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 								} else if(is_session) {
 									if(!strcasecmp(name, "timeout")) {
 										/* Take note of the timeout, for keep-alives */
-										source->ka_timeout = janus_min_if(mp->session_timeout, atoi(value) / 2 * G_USEC_PER_SEC);
+										source->ka_timeout = janus_min_if(source->session_timeout, atoi(value) / 2 * G_USEC_PER_SEC);
 										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %lld ms\n", source->ka_timeout / 1000);
 									}
 								}
@@ -6789,7 +6787,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 								} else if(is_session) {
 									if(!strcasecmp(name, "timeout")) {
 										/* Take note of the timeout, for keep-alives */
-										source->ka_timeout = janus_min_if(mp->session_timeout, atoi(value) / 2 * G_USEC_PER_SEC);
+										source->ka_timeout = janus_min_if(source->session_timeout, atoi(value) / 2 * G_USEC_PER_SEC);
 										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %lld ms\n", source->ka_timeout / 1000);
 									}
 								}
@@ -7068,14 +7066,14 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp_source->keyframe.temp_keyframe = NULL;
 	live_rtsp_source->keyframe.temp_ts = 0;
 	live_rtsp_source->ka_timeout = session_timeout;
+	live_rtsp_source->reconnect_delay = reconnect_delay;
+	live_rtsp_source->session_timeout = session_timeout;
+	live_rtsp_source->rtsp_timeout = rtsp_timeout;
+	live_rtsp_source->rtsp_conn_timeout = rtsp_conn_timeout;
 	janus_mutex_init(&live_rtsp_source->keyframe.mutex);
 	live_rtsp_source->reconnect_timer = 0;
 	janus_mutex_init(&live_rtsp_source->rtsp_mutex);
 	live_rtsp->source = live_rtsp_source;
-	live_rtsp->reconnect_delay = reconnect_delay;
-	live_rtsp->session_timeout = session_timeout;
-	live_rtsp->rtsp_timeout = rtsp_timeout;
-	live_rtsp->rtsp_conn_timeout = rtsp_conn_timeout;
 	live_rtsp->source_destroy = (GDestroyNotify) janus_streaming_rtp_source_free;
 	live_rtsp->viewers = NULL;
 	g_atomic_int_set(&live_rtsp->destroyed, 0);
@@ -7567,7 +7565,7 @@ static void *janus_streaming_relay_thread(void *data) {
 				continue;
 			}
 			now = janus_get_monotonic_time();
-			if(!source->reconnecting && (now - source->reconnect_timer > mountpoint->reconnect_delay)) {
+			if(!source->reconnecting && (now - source->reconnect_timer > source->reconnect_delay)) {
 				/* n seconds passed and no media? Assume the RTSP server has gone and schedule a reconnect */
 				JANUS_LOG(LOG_WARN, "[%s] %"SCNi64"s passed with no media, trying to reconnect the RTSP stream\n",
 					name, (now - source->reconnect_timer)/G_USEC_PER_SEC);
@@ -7640,7 +7638,7 @@ static void *janus_streaming_relay_thread(void *data) {
 		}
 		if(audio_fd < 0 && video_fd[0] < 0 && video_fd[1] < 0 && video_fd[2] < 0 && data_fd < 0) {
 			/* No socket, we may be in the process of reconnecting, or waiting to reconnect */
-			g_usleep(mountpoint->reconnect_delay);
+			g_usleep(source->reconnect_delay);
 			continue;
 		}
 		/* We may also need to occasionally send a OPTIONS request as a keep-alive */
