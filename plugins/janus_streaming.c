@@ -6054,7 +6054,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->textdata = textdata;
 	live_rtp_source->buffermsg = buffermsg;
 	live_rtp_source->last_msg = NULL;
-	live_rtp_source->ka_timeout = 0;
 	janus_mutex_init(&live_rtp_source->buffermsg_mutex);
 	live_rtp->source = live_rtp_source;
 	live_rtp->source_destroy = (GDestroyNotify) janus_streaming_rtp_source_free;
