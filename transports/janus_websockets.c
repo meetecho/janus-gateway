@@ -790,9 +790,9 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.options = 0;
 #ifdef __FreeBSD__
 			if (ipv4_only) {
-                            info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
-                            ipv4_only = 0;
-                        }
+				info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
+				ipv4_only = 0;
+			}
 #endif
 #if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
 			info.options |= LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;

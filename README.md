@@ -209,16 +209,14 @@ You can also selectively enable/disable other features (e.g., specific plugins y
 
 ### Building on FreeBSD
 * *Note*: rtp_forward of streams only works streaming to IPv6,
-because of [2051](https://github.com/meetecho/janus-gateway/issues/2051) and thus the feature
-is not supported on FreeBSD at the moment
+because of #2051 and thus the feature is not supported on FreeBSD at the moment.
 
-
-When building on FreeBSD you can install the depencencies from ports or packages, here only pkg method is used. You also need to use gmake instead of make,
-since it is a GNU makefile. ./configure can be run without arguments since the default prefix is /usr/local which is your default LOCALBASE.
-Note that the configure.ac is coded to use openssl in base. If you wish to use openssl from ports or any other ssl you must change configure.ac accordingly.
+When building on FreeBSD you can install the depencencies from ports or packages, here only pkg method is used. You also need to use `gmake` instead of `make`,
+since it is a GNU makefile. `./configure` can be run without arguments since the default prefix is `/usr/local` which is your default `LOCALBASE`.
+Note that the `configure.ac` is coded to use openssl in base. If you wish to use openssl from ports or any other ssl you must change `configure.ac` accordingly.
 
 	pkg install libsrtp2 libusrsctp jansson libnice libmicrohttpd libwebsockets curl opus sofia-sip libogg jansson libnice libconfig \
-        libtool gmake autoconf autoconf-wrapper glib
+        libtool gmake autoconf autoconf-wrapper glib gengetopt
 
 
 ### Building on MacOS
