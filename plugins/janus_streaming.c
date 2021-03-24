@@ -140,6 +140,14 @@ rtsp_user = RTSP authorization username, if needed
 rtsp_pwd = RTSP authorization password, if needed
 rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=true)
 rtspiface = network interface IP address or device name to listen on when receiving RTSP streams
+rtsp_reconnect_delay = after n seconds passed and no media assumed, the RTSP server has gone and schedule a reconnect (default=5s)
+rtsp_session_timeout = by default the sreaming plugin will check the RTSP connection with an OPTIONS query,
+	the value of the timeout is came from the RTSP session initializer and by default
+	this session timeout is the half of this value In some cases this value is can be too high (for example more than one minute)
+	because of the media server. In that case this plugin will calculate the timeout with this
+	formula: timeout = min(session_timeout, rtsp_session_timeout / 2). (default=0s)
+rtsp_timeout = communication timeout (CURLOPT_TIMEOUT) for cURL call gathering the RTSP information (default=10s)
+rtsp_conn_timeout = connection timeout for cURL (CURLOPT_CONNECTTIMEOUT) call gathering the RTSP information (default=5s)
 \endverbatim
  *
  * \section streamapi Streaming API
@@ -722,10 +730,10 @@ rtspiface = network interface IP address or device name to listen on when receiv
 #include "../ip-utils.h"
 
 /* Default settings */
-#define JANUS_DEFAULT_SESSION_TIMEOUT 0 /* Overwrite the RTSP session timeout. If set to zero, the RTSP timeout is derived from a session. */
-#define JANUS_DEFAULT_RECONNECT_DELAY 5 /* Reconnecting delay in seconds. */
-#define JANUS_DEFAULT_CURL_TIMEOUT 10L /* Communication timeout for cURL. */
-#define JANUS_DEFAULT_CURL_CONNECT_TIMEOUT 5L /* Conection timeout for cURL. */
+#define JANUS_STREAMING_DEFAULT_SESSION_TIMEOUT 0 /* Overwrite the RTSP session timeout. If set to zero, the RTSP timeout is derived from a session. */
+#define JANUS_STREAMING_DEFAULT_RECONNECT_DELAY 5 /* Reconnecting delay in seconds. */
+#define JANUS_STREAMING_DEFAULT_CURL_TIMEOUT 10L /* Communication timeout for cURL. */
+#define JANUS_STREAMING_DEFAULT_CURL_CONNECT_TIMEOUT 5L /* Conection timeout for cURL. */
 
 /* Plugin information */
 #define JANUS_STREAMING_VERSION			8
@@ -1197,10 +1205,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		gboolean doaudio, int audiopt, char *artpmap, char *afmtp,
 		gboolean dovideo, int videopt, char *vrtpmap, char *vfmtp, gboolean bufferkf,
 		const janus_network_address *iface, int threads,
-		gint64 reconnect_delay,
-		gint64 session_timeout,
-		int rtsp_timeout,
-		int rtsp_conn_timeout,
+		gint64 reconnect_delay, gint64 session_timeout, int rtsp_timeout, int rtsp_conn_timeout,
 		gboolean error_on_failure);
 
 typedef struct janus_streaming_message {
@@ -2113,8 +2118,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *iface = janus_config_get(config, cat, janus_config_type_item, "rtspiface");
 				janus_config_item *failerr = janus_config_get(config, cat, janus_config_type_item, "rtsp_failcheck");
 				janus_config_item *threads = janus_config_get(config, cat, janus_config_type_item, "threads");
-				janus_config_item *reconnect_delay = janus_config_get(config, cat, janus_config_type_item, "reconnect_delay");
-				janus_config_item *session_timeout = janus_config_get(config, cat, janus_config_type_item, "session_timeout");
+				janus_config_item *reconnect_delay = janus_config_get(config, cat, janus_config_type_item, "rtsp_reconnect_delay");
+				janus_config_item *session_timeout = janus_config_get(config, cat, janus_config_type_item, "rtsp_session_timeout");
 				janus_config_item *rtsp_timeout = janus_config_get(config, cat, janus_config_type_item, "rtsp_timeout");
 				janus_config_item *rtsp_conn_timeout = janus_config_get(config, cat, janus_config_type_item, "rtsp_conn_timeout");
 				janus_network_address iface_value;
@@ -2169,10 +2174,10 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						bufferkf,
 						iface && iface->value ? &iface_value : NULL,
 						(threads && threads->value) ? atoi(threads->value) : 0,
-						((reconnect_delay && reconnect_delay->value) ? atoi(reconnect_delay->value) : JANUS_DEFAULT_RECONNECT_DELAY) * G_USEC_PER_SEC,
-						((session_timeout && session_timeout->value) ? atoi(session_timeout->value) : JANUS_DEFAULT_SESSION_TIMEOUT) * G_USEC_PER_SEC,
-						((rtsp_timeout && rtsp_timeout->value) ? atoi(rtsp_timeout->value) : JANUS_DEFAULT_CURL_TIMEOUT),
-						((rtsp_conn_timeout && rtsp_conn_timeout->value) ? atoi(rtsp_conn_timeout->value) : JANUS_DEFAULT_CURL_CONNECT_TIMEOUT),
+						((reconnect_delay && reconnect_delay->value) ? atoi(reconnect_delay->value) : JANUS_STREAMING_DEFAULT_RECONNECT_DELAY) * G_USEC_PER_SEC,
+						((session_timeout && session_timeout->value) ? atoi(session_timeout->value) : JANUS_STREAMING_DEFAULT_SESSION_TIMEOUT) * G_USEC_PER_SEC,
+						((rtsp_timeout && rtsp_timeout->value) ? atoi(rtsp_timeout->value) : JANUS_STREAMING_DEFAULT_CURL_TIMEOUT),
+						((rtsp_conn_timeout && rtsp_conn_timeout->value) ? atoi(rtsp_conn_timeout->value) : JANUS_STREAMING_DEFAULT_CURL_CONNECT_TIMEOUT),
 						error_on_failure)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtsp' mountpoint '%s'...\n", cat->name);
 					cl = cl->next;
@@ -3182,8 +3187,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_t *iface = json_object_get(root, "rtspiface");
 			json_t *threads = json_object_get(root, "threads");
 			json_t *failerr = json_object_get(root, "rtsp_failcheck");
-			json_t *reconnect_delay = json_object_get(root, "reconnect_delay");
-			json_t *session_timeout = json_object_get(root, "session_timeout");
+			json_t *reconnect_delay = json_object_get(root, "rtsp_reconnect_delay");
+			json_t *session_timeout = json_object_get(root, "rtsp_session_timeout");
 			json_t *rtsp_timeout = json_object_get(root, "rtsp_timeout");
 			json_t *rtsp_conn_timeout = json_object_get(root, "rtsp_conn_timeout");
 			if(failerr == NULL)	/* For an old typo, we support the legacy syntax too */
@@ -3229,10 +3234,10 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						(char *)json_string_value(videortpmap), (char *)json_string_value(videofmtp),
 						videobufferkf ? json_is_true(videobufferkf) : FALSE,
 					&multicast_iface, (threads ? json_integer_value(threads) : 0),
-					((reconnect_delay ? json_integer_value(reconnect_delay) : JANUS_DEFAULT_RECONNECT_DELAY) * G_USEC_PER_SEC),
-					((session_timeout ? json_integer_value(session_timeout) : JANUS_DEFAULT_SESSION_TIMEOUT) * G_USEC_PER_SEC),
-					(rtsp_timeout ? json_integer_value(rtsp_timeout) : JANUS_DEFAULT_CURL_TIMEOUT),
-					(rtsp_conn_timeout ? json_integer_value(rtsp_conn_timeout) : JANUS_DEFAULT_CURL_CONNECT_TIMEOUT),
+					((reconnect_delay ? json_integer_value(reconnect_delay) : JANUS_STREAMING_DEFAULT_RECONNECT_DELAY) * G_USEC_PER_SEC),
+					((session_timeout ? json_integer_value(session_timeout) : JANUS_STREAMING_DEFAULT_SESSION_TIMEOUT) * G_USEC_PER_SEC),
+					(rtsp_timeout ? json_integer_value(rtsp_timeout) : JANUS_STREAMING_DEFAULT_CURL_TIMEOUT),
+					(rtsp_conn_timeout ? json_integer_value(rtsp_conn_timeout) : JANUS_STREAMING_DEFAULT_CURL_CONNECT_TIMEOUT),
 					error_on_failure);
 			janus_mutex_lock(&mountpoints_mutex);
 			g_hash_table_remove(mountpoints_temp, string_ids ? (gpointer)mpid_str : (gpointer)&mpid);
@@ -5921,7 +5926,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp->audio = doaudio;
 	live_rtp->video = dovideo;
 	live_rtp->data = dodata;
-	live_rtp->reconnect_delay = JANUS_DEFAULT_RECONNECT_DELAY * G_USEC_PER_SEC;
+	live_rtp->reconnect_delay = JANUS_STREAMING_DEFAULT_RECONNECT_DELAY * G_USEC_PER_SEC;
 	live_rtp->session_timeout = 0; /* No overriding */
 	live_rtp->streaming_type = janus_streaming_type_live;
 	live_rtp->streaming_source = janus_streaming_source_rtp;
@@ -6987,10 +6992,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		gboolean doaudio, int acodec, char *artpmap, char *afmtp,
 		gboolean dovideo, int vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
 		const janus_network_address *iface, int threads,
-		gint64 reconnect_delay,
-		gint64 session_timeout,
-		int rtsp_timeout,
-		int rtsp_conn_timeout,
+		gint64 reconnect_delay, gint64 session_timeout, int rtsp_timeout, int rtsp_conn_timeout,
 		gboolean error_on_failure) {
 	char id_num[30];
 	if(!string_ids) {
@@ -7175,10 +7177,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		gboolean doaudio, int acodec, char *audiortpmap, char *audiofmtp,
 		gboolean dovideo, int vcodec, char *videortpmap, char *videofmtp, gboolean bufferkf,
 		const janus_network_address *iface, int threads,
-		gint64 reconnect_delay,
-		gint64 session_timeout,
-		int rtsp_timeout,
-		int rtsp_conn_timeout,
+		gint64 reconnect_delay, gint64 session_timeout, int rtsp_timeout, int rtsp_conn_timeout,
 		gboolean error_on_failure) {
 	JANUS_LOG(LOG_ERR, "RTSP need libcurl\n");
 	return NULL;
