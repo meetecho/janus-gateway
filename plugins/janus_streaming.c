@@ -6616,7 +6616,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 									if(!strcasecmp(name, "timeout")) {
 										/* Take note of the timeout, for keep-alives */
 										source->ka_timeout = janus_streaming_min_if(source->session_timeout, atoi(value) / 2 * G_USEC_PER_SEC);
-										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %lld ms\n", source->ka_timeout / 1000);
+										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %"SCNi64" ms\n", source->ka_timeout / 1000);
 									}
 								}
 							}
@@ -6789,7 +6789,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 									if(!strcasecmp(name, "timeout")) {
 										/* Take note of the timeout, for keep-alives */
 										source->ka_timeout = janus_streaming_min_if(source->session_timeout, atoi(value) / 2 * G_USEC_PER_SEC);
-										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %lld ms\n", source->ka_timeout / 1000);
+										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %"SCNi64" ms\n", source->ka_timeout / 1000);
 									}
 								}
 							}
@@ -7002,6 +7002,23 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream, missing url...\n");
 		return NULL;
 	}
+	if(reconnect_delay < 0) {
+		JANUS_LOG(LOG_ERR, "rtsp_reconnect_delay can't be smaller than zero.\n");
+		return NULL;
+	}
+	if(session_timeout < 0) {
+		JANUS_LOG(LOG_ERR, "rtsp_session_timeout can't be smaller than zero.\n");
+		return NULL;
+	}
+	if(rtsp_timeout < 0) {
+		JANUS_LOG(LOG_ERR, "rtsp_timeout can't be smaller than zero.\n");
+		return NULL;
+	}
+	if(rtsp_conn_timeout < 0) {
+		JANUS_LOG(LOG_ERR, "rtsp_conn_timeout can't be smaller than zero.\n");
+		return NULL;
+	}
+
 	JANUS_LOG(LOG_VERB, "Audio %s, Video %s\n", doaudio ? "enabled" : "NOT enabled", dovideo ? "enabled" : "NOT enabled");
 
 	/* Create an RTP source for the media we'll get */
