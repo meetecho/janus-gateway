@@ -1370,6 +1370,7 @@ typedef struct janus_audiobridge_participant {
 	/* Plain RTP, in case this is not a WebRTC participant */
 	gboolean plainrtp;			/* Whether this is a WebRTC participant, or a plain RTP one */
 	janus_audiobridge_plainrtp_media plainrtp_media;
+	janus_mutex pmutex;
 	/* Opus stuff */
 	OpusEncoder *encoder;		/* Opus encoder instance */
 	OpusDecoder *decoder;		/* Opus decoder instance */
@@ -1442,7 +1443,9 @@ static void janus_audiobridge_participant_free(const janus_refcount *participant
 #ifdef HAVE_LIBOGG
 	janus_audiobridge_file_free(participant->annc);
 #endif
+	janus_mutex_lock(&participant->pmutex);
 	janus_audiobridge_plainrtp_media_cleanup(&participant->plainrtp_media);
+	janus_mutex_unlock(&participant->pmutex);
 	g_free(participant);
 }
 
@@ -5512,6 +5515,7 @@ static void *janus_audiobridge_handler(void *data) {
 				janus_mutex_init(&participant->qmutex);
 				participant->arc = NULL;
 				janus_audiobridge_plainrtp_media_cleanup(&participant->plainrtp_media);
+				janus_mutex_init(&participant->pmutex);
 				janus_mutex_init(&participant->rec_mutex);
 			}
 			participant->session = session;
@@ -5598,7 +5602,6 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			participant->reset = FALSE;
 			/* If this is a plain RTP participant, create the socket */
-			janus_audiobridge_plainrtp_media_cleanup(&participant->plainrtp_media);
 			if(rtp != NULL) {
 				const char *ip = json_string_value(json_object_get(rtp, "ip"));
 				uint16_t port = json_integer_value(json_object_get(rtp, "port"));
@@ -5615,6 +5618,8 @@ static void *janus_audiobridge_handler(void *data) {
 					opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
 				}
 				/* Create the socket */
+				janus_mutex_lock(&participant->pmutex);
+				janus_audiobridge_plainrtp_media_cleanup(&participant->plainrtp_media);
 				if(janus_audiobridge_plainrtp_allocate_port(&participant->plainrtp_media) < 0) {
 					JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Couldn't bind to local port\n", session);
 				} else if(ip != NULL && port > 0) {
@@ -5647,6 +5652,7 @@ static void *janus_audiobridge_handler(void *data) {
 						}
 					}
 				}
+				janus_mutex_unlock(&participant->pmutex);
 			}
 			/* Finally, start the encoding thread if it hasn't already */
 			if(participant->thread == NULL) {
@@ -7492,7 +7498,9 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 	}
 	/* Cleanup the media session */
 	participant->plainrtp_media.thread = NULL;
+	janus_mutex_lock(&participant->pmutex);
 	janus_audiobridge_plainrtp_media_cleanup(&participant->plainrtp_media);
+	janus_mutex_unlock(&participant->pmutex);
 	/* Done */
 	JANUS_LOG(LOG_INFO, "[AudioBridge-%p] Leaving Plain RTP participant thread\n", session);
 	janus_refcount_decrease(&participant->ref);
