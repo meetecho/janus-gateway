@@ -1087,11 +1087,11 @@ typedef struct janus_streaming_rtp_source {
 	char *rtsp_ahost, *rtsp_vhost;
 	gboolean reconnecting;
 	gint64 reconnect_timer;
+	gint64 reconnect_delay;
+	gint64 session_timeout;
+	int rtsp_timeout;
+	int rtsp_conn_timeout;
 	janus_mutex rtsp_mutex;
-	gint64 reconnect_delay; /* Only relevant for RTSP mountpoints */
-	gint64 session_timeout; /* Only relevant for RTSP mountpoints */
-	int rtsp_timeout; /* Only relevant for RTSP mountpoints */
-	int rtsp_conn_timeout; /* Only relevant for RTSP mountpoints */
 #endif
 	janus_streaming_rtp_keyframe keyframe;
 	gboolean textdata;
