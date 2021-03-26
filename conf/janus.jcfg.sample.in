@@ -254,7 +254,7 @@ media: {
 # it should work in ICE-Lite mode (by default it doesn't). If libnice is
 # at least 0.1.15, you can choose which ICE nomination mode to use: valid
 # values are "regular" and "aggressive" (the default depends on the libnice
-# version itself; if we can set it, we set regular nomination). You can
+# version itself; if we can set it, we set aggressive nomination). You can
 # also configure whether to use connectivity checks as keep-alives, which
 # might help detecting when a peer is no longer available (notice that
 # current libnice master is breaking connections after 50 seconds when

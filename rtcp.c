@@ -346,9 +346,15 @@ static void janus_rtcp_rr_update_stats(rtcp_context *ctx, janus_report_block rb)
 	ctx->rr_last_ts = ts;
 	uint32_t total_lost = ntohl(rb.flcnpl) & 0x00FFFFFF;
 	if (ctx->rr_last_ehsnr != 0) {
-		uint32_t sent = g_atomic_int_get(&ctx->sent_packets_since_last_rr);
+		int32_t sent = g_atomic_int_get(&ctx->sent_packets_since_last_rr);
 		uint32_t expect = ntohl(rb.ehsnr) - ctx->rr_last_ehsnr;
 		int32_t nacks = g_atomic_int_get(&ctx->nack_count) - ctx->rr_last_nack_count;
+		/* In case the number of NACKs is higher than the number of sent packets,
+		 * we normalize it and set it to the same value instead, otherwise the
+		 * value of the out link quality will overflow: for details, see
+		 * https://github.com/meetecho/janus-gateway/issues/2579 */
+		if(sent && nacks > sent)
+			nacks = sent;
 		double link_q = !sent ? 0 : 100.0 - (100.0 * nacks / (double)sent);
 		ctx->out_link_quality = janus_rtcp_link_quality_filter(ctx->out_link_quality, link_q);
 		int32_t lost = total_lost - ctx->rr_last_lost;

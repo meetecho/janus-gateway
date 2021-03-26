@@ -688,7 +688,7 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 			janus_network_address_string_buffer ibuf;
 			if(getifaddrs(&ifas) == -1) {
 				JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected... %d (%s)\n",
-					errno, strerror(errno));
+					errno, g_strerror(errno));
 			} else {
 				if(janus_network_lookup_interface(ifas, item->value, &iface) != 0) {
 					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
@@ -1106,7 +1106,7 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pa
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Error sending %s SRTP packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
-							session, video ? "Video" : "Audio", strerror(errno), protected, timestamp, seq);
+							session, video ? "Video" : "Audio", g_strerror(errno), protected, timestamp, seq);
 					}
 				}
 			} else {
@@ -1116,7 +1116,7 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pa
 					guint32 timestamp = ntohl(header->timestamp);
 					guint16 seq = ntohs(header->seq_number);
 					JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Error sending %s RTP packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
-						session, video ? "Video" : "Audio", strerror(errno), len, timestamp, seq);
+						session, video ? "Video" : "Audio", g_strerror(errno), len, timestamp, seq);
 				}
 			}
 		}
@@ -1162,14 +1162,14 @@ void janus_nosip_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *
 					/* Forward the message to the peer */
 					if(send((video ? session->media.video_rtcp_fd : session->media.audio_rtcp_fd), sbuf, protected, 0) < 0) {
 						JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Error sending SRTCP %s packet... %s (len=%d)...\n",
-							session, video ? "Video" : "Audio", strerror(errno), protected);
+							session, video ? "Video" : "Audio", g_strerror(errno), protected);
 					}
 				}
 			} else {
 				/* Forward the message to the peer */
 				if(send((video ? session->media.video_rtcp_fd : session->media.audio_rtcp_fd), buf, len, 0) < 0) {
 					JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Error sending RTCP %s packet... %s (len=%d)...\n",
-						session, video ? "Video" : "Audio", strerror(errno), len);
+						session, video ? "Video" : "Audio", g_strerror(errno), len);
 				}
 			}
 		}
@@ -1965,14 +1965,14 @@ static int janus_nosip_allocate_port_pair(gboolean video, int fds[2], int ports[
 				int ret = setsockopt(rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
 				if(ret < 0) {
 					JANUS_LOG(LOG_WARN, "Error setting IP_TOS %d on audio RTP socket (error=%s)\n",
-						optval, strerror(errno));
+						optval, g_strerror(errno));
 				}
 			} else if(rtp_fd != -1 && video && dscp_video_rtp > 0) {
 				int optval = dscp_video_rtp << 2;
 				int ret = setsockopt(rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
 				if(ret < 0) {
 					JANUS_LOG(LOG_WARN, "Error setting IP_TOS %d on video RTP socket (error=%s)\n",
-						optval, strerror(errno));
+						optval, g_strerror(errno));
 				}
 			}
 		}
@@ -2134,28 +2134,28 @@ static void janus_nosip_connect_sockets(janus_nosip_session *session, struct soc
 		audio_server_addr->sin_port = htons(session->media.remote_audio_rtp_port);
 		if(connect(session->media.audio_rtp_fd, (struct sockaddr *)audio_server_addr, sizeof(struct sockaddr)) == -1) {
 			JANUS_LOG(LOG_ERR, "[NoSIP-%p] Couldn't connect audio RTP? (%s:%d)\n", session, session->media.remote_audio_ip, session->media.remote_audio_rtp_port);
-			JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, errno, strerror(errno));
+			JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, errno, g_strerror(errno));
 		}
 	}
 	if(session->media.remote_audio_rtcp_port && audio_server_addr && session->media.audio_rtcp_fd != -1) {
 		audio_server_addr->sin_port = htons(session->media.remote_audio_rtcp_port);
 		if(connect(session->media.audio_rtcp_fd, (struct sockaddr *)audio_server_addr, sizeof(struct sockaddr)) == -1) {
 			JANUS_LOG(LOG_ERR, "[NoSIP-%p] Couldn't connect audio RTCP? (%s:%d)\n", session, session->media.remote_audio_ip, session->media.remote_audio_rtcp_port);
-			JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, errno, strerror(errno));
+			JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, errno, g_strerror(errno));
 		}
 	}
 	if(session->media.remote_video_rtp_port && video_server_addr && session->media.video_rtp_fd != -1) {
 		video_server_addr->sin_port = htons(session->media.remote_video_rtp_port);
 		if(connect(session->media.video_rtp_fd, (struct sockaddr *)video_server_addr, sizeof(struct sockaddr)) == -1) {
 			JANUS_LOG(LOG_ERR, "[NoSIP-%p] Couldn't connect video RTP? (%s:%d)\n", session, session->media.remote_video_ip, session->media.remote_video_rtp_port);
-			JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, errno, strerror(errno));
+			JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, errno, g_strerror(errno));
 		}
 	}
 	if(session->media.remote_video_rtcp_port && video_server_addr && session->media.video_rtcp_fd != -1) {
 		video_server_addr->sin_port = htons(session->media.remote_video_rtcp_port);
 		if(connect(session->media.video_rtcp_fd, (struct sockaddr *)video_server_addr, sizeof(struct sockaddr)) == -1) {
 			JANUS_LOG(LOG_ERR, "[NoSIP-%p] Couldn't connect video RTCP? (%s:%d)\n", session, session->media.remote_video_ip, session->media.remote_video_rtcp_port);
-			JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, errno, strerror(errno));
+			JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, errno, g_strerror(errno));
 		}
 	}
 
@@ -2321,11 +2321,11 @@ static void *janus_nosip_relay_thread(void *data) {
 		resfd = poll(fds, num, 1000);
 		if(resfd < 0) {
 			if(errno == EINTR) {
-				JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Got an EINTR (%s), ignoring...\n", session, strerror(errno));
+				JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Got an EINTR (%s), ignoring...\n", session, g_strerror(errno));
 				continue;
 			}
 			JANUS_LOG(LOG_ERR, "[NoSIP-%p] Error polling...\n", session);
-			JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, errno, strerror(errno));
+			JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, errno, g_strerror(errno));
 			break;
 		} else if(resfd == 0) {
 			/* No data, keep going */
@@ -2350,12 +2350,12 @@ static void *janus_nosip_relay_thread(void *data) {
 					/* ICMP error? If it's related to RTCP, let's just close the RTCP socket and move on */
 					if(fds[i].fd == session->media.audio_rtcp_fd) {
 						JANUS_LOG(LOG_WARN, "[NoSIP-%p] Got a '%s' on the audio RTCP socket, closing it\n",
-							session, strerror(error));
+							session, g_strerror(error));
 						close(session->media.audio_rtcp_fd);
 						session->media.audio_rtcp_fd = -1;
 					} else if(fds[i].fd == session->media.video_rtcp_fd) {
 						JANUS_LOG(LOG_WARN, "[NoSIP-%p] Got a '%s' on the video RTCP socket, closing it\n",
-							session, strerror(error));
+							session, g_strerror(error));
 						close(session->media.video_rtcp_fd);
 						session->media.video_rtcp_fd = -1;
 					}
@@ -2366,7 +2366,7 @@ static void *janus_nosip_relay_thread(void *data) {
 					continue;
 				JANUS_LOG(LOG_ERR, "[NoSIP-%p] Too many errors polling %d (socket #%d): %s...\n", session,
 					fds[i].fd, i, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
-				JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, error, strerror(error));
+				JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, error, g_strerror(error));
 				/* Can we assume it's pretty much over, after a POLLERR? */
 				goon = FALSE;
 				/* FIXME Close the PeerConnection */

@@ -857,6 +857,10 @@ room-<unique room ID>: {
  */
 
 #include "plugin.h"
+#ifdef __FreeBSD__
+#include <sys/socket.h>
+#include <netinet/in.h>
+#endif
 
 #include <jansson.h>
 #include <opus/opus.h>
@@ -6848,7 +6852,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					size_t addrlen = (forwarder->serv_addr.sin_family == AF_INET ? sizeof(forwarder->serv_addr) : sizeof(forwarder->serv_addr6));
 					if(sendto(audiobridge->rtp_udp_sock, payload, plen, 0, address, addrlen) < 0) {
 						JANUS_LOG(LOG_HUGE, "Error forwarding mixed RTP packet for room %s... %s (len=%d)...\n",
-							audiobridge->room_id_str, strerror(errno), plen);
+							audiobridge->room_id_str, g_strerror(errno), plen);
 					}
 				}
 			}

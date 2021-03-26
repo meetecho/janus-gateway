@@ -61,6 +61,11 @@ clang*)
 		-Wno-cast-align \
 		-Wno-initializer-overrides"
 ;;
+cc*)
+	CFLAGS="$CFLAGS \
+		-Wno-cast-align \
+		-Wno-initializer-overrides"
+;;
 *)
 	# Specific gcc flags
 	CFLAGS="$CFLAGS \
@@ -82,6 +87,12 @@ darwin*)
 	LDFLAGS="$LDFLAGS -Wl,-export_dynamic"
 	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib -L/opt/local/lib -L/usr/local/libsrtp/lib"
 	AM_CONDITIONAL([DARWIN_OS], true)
+;;
+freebsd*)
+	CFLAGS="$CFLAGS -I/usr/include/openssl"
+	LDFLAGS="$LDFLAGS -Xlinker --export-dynamic"
+	LDFLAGS="$LDFLAGS -L/usr/lib/openssl -lcrypto -lssl -L/usr/local/lib"
+	AM_CONDITIONAL([DARWIN_OS], false)
 ;;
 *)
 	LDFLAGS="$LDFLAGS -Wl,--export-dynamic"
@@ -337,17 +348,27 @@ AC_ARG_ENABLE([systemd-sockets],
               [],
               [enable_systemd_sockets=no])
 
-PKG_CHECK_MODULES([JANUS],
-                  [
-                    glib-2.0 >= $glib_version
+case "$host_os" in
+freebsd*)
+	PKGCHECKMODULES="glib-2.0 >= $glib_version
+                    gio-2.0 >= $glib_version
+                    libconfig
+                    nice
+                    jansson >= $jansson_version
+                    zlib"
+;;
+*)
+	PKGCHECKMODULES="glib-2.0 >= $glib_version
                     gio-2.0 >= $glib_version
                     libconfig
                     nice
                     jansson >= $jansson_version
                     libssl >= $ssl_version
                     libcrypto
-                    zlib
-                  ])
+                    zlib"
+esac
+PKG_CHECK_MODULES([JANUS],"$PKGCHECKMODULES")
+
 JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lm"
 AC_SUBST(JANUS_MANUAL_LIBS)
 

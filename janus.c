@@ -125,6 +125,9 @@ static struct janus_json_parameter debug_parameters[] = {
 static struct janus_json_parameter timeout_parameters[] = {
 	{"timeout", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter session_timeout_parameters[] = {
+	{"timeout", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED}
+};
 static struct janus_json_parameter level_parameters[] = {
 	{"level", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
@@ -276,7 +279,7 @@ static json_t *janus_create_message(const char *status, uint64_t session_id, con
  * incurring in unexpected timeouts (when HTTP is used in janus.js, the
  * long poll is used as a keepalive mechanism). */
 #define DEFAULT_SESSION_TIMEOUT		60
-static uint session_timeout = DEFAULT_SESSION_TIMEOUT;
+static uint global_session_timeout = DEFAULT_SESSION_TIMEOUT;
 
 #define DEFAULT_RECLAIM_SESSION_TIMEOUT		0
 static uint reclaim_session_timeout = DEFAULT_RECLAIM_SESSION_TIMEOUT;
@@ -327,7 +330,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "data_channels", json_false());
 #endif
 	json_object_set_new(info, "accepting-new-sessions", accept_new_sessions ? json_true() : json_false());
-	json_object_set_new(info, "session-timeout", json_integer(session_timeout));
+	json_object_set_new(info, "session-timeout", json_integer(global_session_timeout));
 	json_object_set_new(info, "reclaim-session-timeout", json_integer(reclaim_session_timeout));
 	json_object_set_new(info, "candidates-timeout", json_integer(candidates_timeout));
 	json_object_set_new(info, "server-name", json_string(server_name ? server_name : JANUS_SERVER_NAME));
@@ -656,8 +659,6 @@ static void janus_request_unref(janus_request *request) {
 }
 
 static gboolean janus_check_sessions(gpointer user_data) {
-	if(session_timeout < 1 && reclaim_session_timeout < 1)		/* Session timeouts are disabled */
-		return G_SOURCE_CONTINUE;
 	janus_mutex_lock(&sessions_mutex);
 	if(sessions && g_hash_table_size(sessions) > 0) {
 		GHashTableIter iter;
@@ -669,10 +670,15 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				continue;
 			}
 			gint64 now = janus_get_monotonic_time();
-			if ((session_timeout > 0 && (now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC) &&
-					!g_atomic_int_compare_and_exchange(&session->timeout, 0, 1)) ||
+
+			/* Use either session-specific timeout or global. */
+			gint64 timeout = (gint64)session->timeout;
+			if (timeout == -1) timeout = (gint64)global_session_timeout;
+
+			if ((timeout > 0 && (now - session->last_activity >= timeout * G_USEC_PER_SEC) &&
+					!g_atomic_int_compare_and_exchange(&session->timedout, 0, 1)) ||
 					((g_atomic_int_get(&session->transport_gone) && now - session->last_activity >= (gint64)reclaim_session_timeout * G_USEC_PER_SEC) &&
-							!g_atomic_int_compare_and_exchange(&session->timeout, 0, 1))) {
+							!g_atomic_int_compare_and_exchange(&session->timedout, 0, 1))) {
 				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
 				/* Mark the session as over, we'll deal with it later */
 				janus_session_handles_clear(session);
@@ -740,8 +746,9 @@ janus_session *janus_session_create(guint64 session_id) {
 	session->session_id = session_id;
 	janus_refcount_init(&session->ref, janus_session_free);
 	session->source = NULL;
+	session->timeout = -1; /* Negative means rely on global timeout */
 	g_atomic_int_set(&session->destroyed, 0);
-	g_atomic_int_set(&session->timeout, 0);
+	g_atomic_int_set(&session->timedout, 0);
 	g_atomic_int_set(&session->transport_gone, 0);
 	session->last_activity = janus_get_monotonic_time();
 	session->ice_handles = NULL;
@@ -920,7 +927,7 @@ static int janus_request_check_secret(janus_request *request, guint64 session_id
 			}
 		}
 		/* We consider a request authorized if either the proper API secret or a valid token has been provided */
-		if(!secret_authorized && !token_authorized)
+		if(!(api_secret != NULL && secret_authorized) && !(janus_auth_is_enabled() && token_authorized))
 			return JANUS_ERROR_UNAUTHORIZED;
 	}
 	return 0;
@@ -1064,6 +1071,7 @@ int janus_process_incoming_request(janus_request *request) {
 				goto jsondone;
 			}
 		}
+
 		/* Handle it */
 		session = janus_session_create(session_id);
 		if(session == NULL) {
@@ -1984,7 +1992,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_t *status = json_object();
 			json_object_set_new(status, "token_auth", janus_auth_is_enabled() ? json_true() : json_false());
-			json_object_set_new(status, "session_timeout", json_integer(session_timeout));
+			json_object_set_new(status, "session_timeout", json_integer(global_session_timeout));
 			json_object_set_new(status, "reclaim_session_timeout", json_integer(reclaim_session_timeout));
 			json_object_set_new(status, "candidates_timeout", json_integer(candidates_timeout));
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
@@ -2002,7 +2010,6 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			ret = janus_process_success(request, reply);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_session_timeout")) {
-			/* Change the session timeout value */
 			JANUS_VALIDATE_JSON_OBJECT(root, timeout_parameters,
 				error_code, error_cause, FALSE,
 				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
@@ -2016,12 +2023,16 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (timeout should be a positive integer)");
 				goto jsondone;
 			}
-			session_timeout = timeout_num;
+
+			/* Set global session timeout */
+			global_session_timeout = timeout_num;
+
 			/* Prepare JSON reply */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			json_object_set_new(reply, "timeout", json_integer(session_timeout));
+			json_object_set_new(reply, "timeout", json_integer(timeout_num));
+
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -2671,12 +2682,45 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, JANUS_EVENT_SUBTYPE_NONE,
 					session_id, "destroyed", NULL);
 			goto jsondone;
-		}
-		/* If this is not a request to destroy a session, it must be a request to list the handles */
-		if(strcasecmp(message_text, "list_handles")) {
+		} else if (!strcasecmp(message_text, "set_session_timeout")) {
+			/* Specific session timeout setting. */
+			JANUS_VALIDATE_JSON_OBJECT(root, session_timeout_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+
+			/* Positive timeout is seconds, 0 is unlimited, -1 is global session timeout */
+			json_t *timeout = json_object_get(root, "timeout");
+			int timeout_num = json_integer_value(timeout);
+			if(timeout_num < -1) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (timeout should be a non-negative integer or -1)");
+				goto jsondone;
+			}
+
+			/* Set specific session timeout */
+			janus_mutex_lock(&session->mutex);
+			session->timeout = timeout_num;
+			janus_mutex_unlock(&session->mutex);
+
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "timeout", json_integer(timeout_num));
+			json_object_set_new(reply, "session_id", json_integer(session_id));
+
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(strcasecmp(message_text, "list_handles")) {
+			/* If this is not a request to destroy a session, it must be a request to list the handles */
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
+
 		/* List handles */
 		json_t *list = janus_session_handles_list_json(session);
 		/* Prepare JSON reply */
@@ -3232,7 +3276,7 @@ void janus_transport_gone(janus_transport *plugin, janus_transport_session *tran
 		g_hash_table_iter_init(&iter, sessions);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_session *session = (janus_session *) value;
-			if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->timeout) || session->last_activity == 0)
+			if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->timedout) || session->last_activity == 0)
 				continue;
 			if(session->source && session->source->instance == transport) {
 				JANUS_LOG(LOG_VERB, "  -- Session %"SCNu64" will be over if not reclaimed\n", session->session_id);
@@ -4547,7 +4591,7 @@ gint main(int argc, char *argv[])
 		janus_network_address_string_buffer ibuf;
 		if(getifaddrs(&ifas) == -1) {
 			JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected... %d (%s)\n",
-				errno, strerror(errno));
+				errno, g_strerror(errno));
 		} else {
 			if(janus_network_lookup_interface(ifas, item->value, &iface) != 0) {
 				JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
@@ -4580,7 +4624,7 @@ gint main(int argc, char *argv[])
 			if(st == 0) {
 				JANUS_LOG(LOG_WARN, "Session timeouts have been disabled (note, may result in orphaned sessions)\n");
 			}
-			session_timeout = st;
+			global_session_timeout = st;
 		}
 	}
 
