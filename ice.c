@@ -147,6 +147,17 @@ gboolean janus_is_opaqueid_in_api_enabled(void) {
 	return opaqueid_in_api;
 }
 
+/* Since #2295, we support sendmmsg to send multiple packets at the same time
+ * and optimize media delivery; this can disabled at startup, if needed */
+static gboolean use_sendmmsg = TRUE;
+void janus_disable_sendmmsg(void) {
+	JANUS_LOG(LOG_WARN, "Disabling sendmmsg mode, will send one packet at a time\n");
+	use_sendmmsg = FALSE;
+}
+gboolean janus_is_sendmmsg_enabled(void) {
+	return use_sendmmsg;
+}
+
 /* Only needed in case we're using static event loops spawned at startup (disabled by default) */
 typedef struct janus_ice_static_event_loop {
 	int id;
@@ -5118,6 +5129,15 @@ static gboolean janus_ice_send_or_store(janus_ice_handle *handle,
 		janus_ice_component *component, janus_ice_queued_packet *pkt) {
 	if(!handle || !component || !pkt)
 		return FALSE;
+	if(!use_sendmmsg) {
+		/* We're not using sendmmsg, use nice_agent_send right away */
+		int sent = nice_agent_send(handle->agent, component->stream_id,
+			component->component_id, pkt->length, (const gchar *)pkt->data);
+		if(sent < pkt->length) {
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, pkt->length);
+		}
+		return sent == pkt->length;
+	}
 	/* First of all, let's set this packet in the first available NiceOutputMessage */
 	if(component->pending_messages_num == JANUS_MAX_PENDING_MESSAGES) {
 		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Too many packets pending? Dumping this packet...\n", handle->handle_id);

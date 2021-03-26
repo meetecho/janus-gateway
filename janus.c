@@ -373,6 +373,8 @@ static json_t *janus_info(const char *transaction) {
 		json_object_set_new(info, "turn-server", json_string(server));
 	}
 	json_object_set_new(info, "static-event-loops", json_integer(janus_ice_get_static_event_loops()));
+	if(!janus_is_sendmmsg_enabled())
+		json_object_set_new(info, "sendmmsg-enabled", json_false());
 	json_object_set_new(info, "api_secret", api_secret ? json_true() : json_false());
 	json_object_set_new(info, "auth_token", janus_auth_is_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "event_handlers", janus_events_is_enabled() ? json_true() : json_false());
@@ -4835,6 +4837,10 @@ gint main(int argc, char *argv[])
 			loops_api = janus_is_true(item->value);
 		janus_ice_set_static_event_loops(loops, loops_api);
 	}
+	/* Also check if we need to disable the new sendmmsg mode */
+	item = janus_config_get(config, config_general, janus_config_type_item, "disable_sendmmsg");
+	if(item && item->value && janus_is_true(item->value))
+		janus_disable_sendmmsg();
 	/* Initialize the ICE stack now */
 	janus_ice_init(ice_lite, ice_tcp, full_trickle, ignore_mdns, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {

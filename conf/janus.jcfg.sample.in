@@ -105,6 +105,13 @@ general: {
 									# As such, if you want to use this you should
 									# provision the correct value according to the
 									# available resources (e.g., CPUs available).
+	#disable_sendmmsg = true		# By default, Janus tries to take advantage of
+									# sendmmsg to send multiple packets at the same
+									# time and optimize media delivery, by reducing
+									# the number of system calls. If you want to
+									# disable this behaviour and make it work more
+									# like Janus did previously, by sending one
+									# packet at the time, uncomment this property.
 	#allow_loop_indication = true	# In case a static number of event loops is
 									# configured as explained above, by default
 									# new handles will be allocated on one loop or

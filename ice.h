@@ -206,6 +206,11 @@ void janus_enable_opaqueid_in_api(void);
 /*! \brief Method to check whether opaque ID have to be added to Janus API responses/events
  * @returns TRUE if they need to be present, FALSE otherwise */
 gboolean janus_is_opaqueid_in_api_enabled(void);
+/*! \brief Method to disable the new sendmmsg mode */
+void janus_disable_sendmmsg(void);
+/*! \brief Method to check whether the sendmmsg mode is enabled
+ * @returns TRUE if it's enabled (default), FALSE otherwise */
+gboolean janus_is_sendmmsg_enabled(void);
 
 
 /*! \brief Helper method to get a string representation of a libnice ICE state
