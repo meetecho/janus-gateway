@@ -906,8 +906,7 @@ typedef struct ssip_oper_s ssip_oper_t;
 #undef NUA_HMAGIC_T
 #define NUA_HMAGIC_T	ssip_oper_t
 
-typedef struct janus_event_t
-{
+typedef struct janus_event_t {
 	gboolean is_ready;
 	janus_mutex mutex;
 	janus_condition cond;
@@ -1039,8 +1038,7 @@ static GHashTable *masters;
 static GHashTable *transfers;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
-static void janus_event_init(janus_event_t *event)
-{
+static void janus_event_init(janus_event_t *event) {
 	if (event == NULL)
 		return;
 
@@ -1049,8 +1047,7 @@ static void janus_event_init(janus_event_t *event)
 	janus_condition_init(&event->cond);
 }
 
-static void janus_event_destroy(janus_event_t *event)
-{
+static void janus_event_destroy(janus_event_t *event) {
 	if (event == NULL)
 		return;
 
@@ -1059,16 +1056,14 @@ static void janus_event_destroy(janus_event_t *event)
 	janus_mutex_destroy(&event->mutex);
 }
 
-static void janus_event_reset(janus_event_t *event)
-{
+static void janus_event_reset(janus_event_t *event) {
 	if (event == NULL)
 		return;
 
 	event->is_ready = FALSE;
 }
 
-static void janus_event_set(janus_event_t *event)
-{
+static void janus_event_set(janus_event_t *event) {
 	if (event == NULL)
 		return;
 
@@ -1078,8 +1073,7 @@ static void janus_event_set(janus_event_t *event)
 	janus_mutex_unlock(&event->mutex);
 }
 
-static gboolean janus_event_wait_timeout(janus_event_t *event, gint64 timeout)
-{
+static gboolean janus_event_wait_timeout(janus_event_t *event, gint64 timeout) {
 	gboolean sts = FALSE;
 	gint64 end_time = 0;
 
@@ -1088,8 +1082,7 @@ static gboolean janus_event_wait_timeout(janus_event_t *event, gint64 timeout)
 
 	janus_mutex_lock(&event->mutex);
 	end_time = g_get_monotonic_time() + timeout * G_TIME_SPAN_SECOND;
-	while (!event->is_ready)
-	{
+	while (!event->is_ready) {
 		sts = janus_condition_wait_until(&event->cond, &event->mutex, end_time);
 		if (!sts)
 			goto exit; // timeout occured
@@ -3072,13 +3065,13 @@ static void *janus_sip_handler(void *data) {
 				janus_refcount_increase(&session->ref);
 				g_thread_try_new(tname, janus_sip_sofia_thread, session, &error);
 				if(error != NULL) {
+					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP Sofia thread...\n",
 						error->code, error->message ? error->message : "??");
 					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
 					g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the SIP Sofia thread",
 						error->code, error->message ? error->message : "??");
 					g_error_free(error);
-					janus_refcount_decrease(&session->ref);
 					goto error;
 				}
 				long int timeout = 0;
@@ -3104,8 +3097,7 @@ static void *janus_sip_handler(void *data) {
 					nua_get_params(session->stack->s_nua, SIPTAG_FROM_STR(""), TAG_END());
 				janus_mutex_unlock(&session->stack->smutex);
 
-				if (!janus_event_wait_timeout(&session->stack->event, 2))
-				{
+				if (!janus_event_wait_timeout(&session->stack->event, 2)) {
 					const char* err_str = "Unable to obtain 'siptag_from_str': timeout occured!";
 					error_code = JANUS_SIP_ERROR_TIMEOUT;
 					g_snprintf(error_cause, 512, "%s", err_str);
@@ -5296,34 +5288,29 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			 * included in the set of application methods, set by NUTAG_APPL_METHOD(). */
 			break;
 	/* Responses */
-		case nua_r_get_params:
-		{
+		case nua_r_get_params: {
 			const gchar* str = NULL;
 			const gchar* sip_from_str = NULL;
 			const tagi_t* sip_from_tag = NULL;
 
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 
-			if ((status != 200) || ((sip_from_tag = tl_find(tags, siptag_from_str)) == NULL))
-			{
+			if ((status != 200) || ((sip_from_tag = tl_find(tags, siptag_from_str)) == NULL)) {
 				JANUS_LOG(LOG_ERR, "Unable to find 'siptag_from_str' among all the tags\n");
 				break;
 			}
 
-			if ((str = (const gchar *)sip_from_tag->t_value) == NULL)
-			{
+			if ((str = (const gchar *)sip_from_tag->t_value) == NULL) {
 				JANUS_LOG(LOG_ERR, "'siptag_from_str' is NULL!\n");
 				break;
 			}
 
-			if (strlen(str) <= 2)
-			{
+			if (strlen(str) <= 2) {
 				JANUS_LOG(LOG_ERR, "'siptag_from_str' is too short!\n");
 				break;
 			}
 
-			if ((sip_from_str = g_strndup(str + 1, strlen(str) - 2)) == NULL)
-			{
+			if ((sip_from_str = g_strndup(str + 1, strlen(str) - 2)) == NULL) {
 				JANUS_LOG(LOG_ERR, "Unable to duplicate 'siptag_from_str'!\n");
 				break;
 			}
@@ -5331,8 +5318,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "Contact header has been generated from SOFIA's 'siptag_from_str' tag: %s\n", sip_from_str);
 
 			janus_mutex_lock(&ssip->smutex);
-			if (ssip->sip_from_str)
-			{
+			if (ssip->sip_from_str) {
 				g_free((char *)ssip->sip_from_str);
 				ssip->sip_from_str = NULL;
 			}
