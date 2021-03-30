@@ -107,7 +107,8 @@ static struct janus_json_parameter tweak_parameters[] = {
 
 /* WebSockets properties */
 static char *backend = NULL;
-static const char *protocol = NULL, *address = NULL, *path = NULL;
+static const char *protocol = NULL, *address = NULL;
+static char path[256];
 static int port = 0;
 static struct lws_context *context = NULL;
 static gint64 disconnected = 0;
@@ -261,7 +262,8 @@ int janus_wsevh_init(const char *config_path) {
 		JANUS_LOG(LOG_FATAL, "Missing WebSockets backend\n");
 		goto error;
 	}
-	if(lws_parse_uri(backend, &protocol, &address, &port, &path)) {
+	const char *p = NULL;
+	if(lws_parse_uri(backend, &protocol, &address, &port, &p)) {
 		JANUS_LOG(LOG_FATAL, "Error parsing address\n");
 		goto error;
 	}
@@ -269,9 +271,12 @@ int janus_wsevh_init(const char *config_path) {
 		JANUS_LOG(LOG_FATAL, "Invalid address (only ws:// addresses are supported)\n");
 		JANUS_LOG(LOG_FATAL, "  -- Protocol: %s\n", protocol);
 		JANUS_LOG(LOG_FATAL, "  -- Address:  %s\n", address);
-		JANUS_LOG(LOG_FATAL, "  -- Path:     %s\n", path);
+		JANUS_LOG(LOG_FATAL, "  -- Path:     %s\n", p);
 		goto error;
 	}
+	path[0] = '/';
+	if(strlen(p) > 1)
+		g_strlcpy(path + 1, p, sizeof(path)-2);
 	/* Before connecting, let's check if the server expects a subprotocol */
 	item = janus_config_get(config, config_general, janus_config_type_item, "subprotocol");
 	if(item && item->value)
