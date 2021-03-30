@@ -257,7 +257,7 @@ nat: {
 	#stun_port = 3478
 	nice_debug = false
 	#full_trickle = true
-	#ice_nomination = "regular"
+	#ice_nomination = "aggressive"
 	#ice_keepalive_conncheck = true
 	#ice_lite = true
 	#ice_tcp = true
