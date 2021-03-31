@@ -2825,6 +2825,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_t *info = json_object();
 		json_object_set_new(info, "session_id", json_integer(session_id));
 		json_object_set_new(info, "session_last_activity", json_integer(session->last_activity));
+		json_object_set_new(info, "session_timeout", json_integer(session->timeout == -1 ? global_session_timeout : (guint)session->timeout));
 		janus_mutex_lock(&session->mutex);
 		if(session->source && session->source->transport)
 			json_object_set_new(info, "session_transport", json_string(session->source->transport->get_package()));
