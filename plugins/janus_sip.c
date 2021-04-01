@@ -406,14 +406,16 @@
  * and will restore the media direction that was set in the SDP before
  * putting the call on-hold.
  *
- * The \c message request allows you to send a SIP MESSAGE to the peer:
+ * The \c message request allows you to send a SIP MESSAGE to the peer.
+ * By default, it is sent in dialog, during active call.
+ * But, if the user is registered, it might be sent out of dialog also. In that case the uri parameter is required.
  *
 \verbatim
 {
 	"request" : "message",
 	"content_type" : "<content type; optional>"
 	"content" : "<text to send>",
- 	"uri" : "<SIP URI; optional>"
+ 	"uri" : "<SIP URI of the peer; optional; if set, the message will be sent out of dialog>"
 }
 \endverbatim
  *
@@ -4470,8 +4472,8 @@ static void *janus_sip_handler(void *data) {
 		} else if(!strcasecmp(request_text, "message")) {
 			/* Send a SIP MESSAGE request: we'll only need the content and optional payload type */
 			JANUS_VALIDATE_JSON_OBJECT(root, sipmessage_parameters,
-			      	error_code, error_cause, TRUE,
-			      	JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			      error_code, error_cause, TRUE,
+			      JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
 			if(error_code != 0) {
 				goto error;
 			}
