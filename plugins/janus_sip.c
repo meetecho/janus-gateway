@@ -412,7 +412,8 @@
 {
 	"request" : "message",
 	"content_type" : "<content type; optional>"
-	"content" : "<text to send>"
+	"content" : "<text to send>",
+ 	"uri" : "<SIP URI; optional>"
 }
 \endverbatim
  *
@@ -801,7 +802,8 @@ static struct janus_json_parameter info_parameters[] = {
 };
 static struct janus_json_parameter sipmessage_parameters[] = {
 	{"content_type", JSON_STRING, 0},
-	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"uri", JSON_STRING, 0}
 };
 
 /* Useful stuff */
@@ -4467,27 +4469,48 @@ static void *janus_sip_handler(void *data) {
 			json_object_set_new(result, "event", json_string("infosent"));
 		} else if(!strcasecmp(request_text, "message")) {
 			/* Send a SIP MESSAGE request: we'll only need the content and optional payload type */
-			if(!(session->status == janus_sip_call_status_inviting ||
-					janus_sip_call_is_established(session))) {
-				JANUS_LOG(LOG_ERR, "Wrong state (not established? status=%s)\n", janus_sip_call_status_string(session->status));
-				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
-				goto error;
-			}
-			janus_mutex_lock(&session->mutex);
-			if(session->callee == NULL) {
-				janus_mutex_unlock(&session->mutex);
-				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
-				error_code = JANUS_SIP_ERROR_WRONG_STATE;
-				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
-				goto error;
-			}
-			janus_mutex_unlock(&session->mutex);
 			JANUS_VALIDATE_JSON_OBJECT(root, sipmessage_parameters,
-				error_code, error_cause, TRUE,
-				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			      	error_code, error_cause, TRUE,
+			      	JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
 			if(error_code != 0) {
-				janus_mutex_unlock(&session->mutex);
 				goto error;
+			}
+			gboolean in_dialog_message = TRUE;
+			json_t *uri = json_object_get(root, "uri");
+			const char *uri_text = json_string_value(uri);
+			if(uri != NULL)
+				in_dialog_message = FALSE;
+
+			if(in_dialog_message) {
+				if(!(session->status == janus_sip_call_status_inviting || janus_sip_call_is_established(session))) {
+					JANUS_LOG(LOG_ERR, "Wrong state (not established? status=%s)\n", janus_sip_call_status_string(session->status));
+					g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+					goto error;
+				}
+				janus_mutex_lock(&session->mutex);
+				if(session->callee == NULL) {
+					janus_mutex_unlock(&session->mutex);
+					JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
+					error_code = JANUS_SIP_ERROR_WRONG_STATE;
+					g_snprintf(error_cause, 512, "Wrong state (no callee?)");
+					goto error;
+				}
+				janus_mutex_unlock(&session->mutex);
+			} else {
+				if(session->account.registration_status != janus_sip_registration_status_registered &&
+				   session->account.registration_status != janus_sip_registration_status_disabled) {
+					JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
+					error_code = JANUS_SIP_ERROR_WRONG_STATE;
+					g_snprintf(error_cause, 512, "Wrong state (not registered)");
+					goto error;
+				}
+				janus_sip_uri_t target_uri;
+				if(janus_sip_parse_uri(&target_uri, uri_text) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid user address %s\n", uri_text);
+					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
+					g_snprintf(error_cause, 512, "Invalid user address %s\n", uri_text);
+					goto error;
+				}
 			}
 
 			const char *content_type = "text/plain";
@@ -4496,10 +4519,18 @@ static void *janus_sip_handler(void *data) {
 				content_type = json_string_value(content_type_text);
 
 			const char *msg_content = json_string_value(json_object_get(root, "content"));
-			nua_message(session->stack->s_nh_i,
-				SIPTAG_CONTENT_TYPE_STR(content_type),
-				SIPTAG_PAYLOAD_STR(msg_content),
-				TAG_END());
+			if(in_dialog_message) {
+				nua_message(session->stack->s_nh_i,
+					SIPTAG_CONTENT_TYPE_STR(content_type),
+					SIPTAG_PAYLOAD_STR(msg_content),
+					TAG_END());
+			} else {
+				nua_message(session->stack->s_nh_r,
+					SIPTAG_TO_STR(uri_text),
+					SIPTAG_CONTENT_TYPE_STR(content_type),
+					SIPTAG_PAYLOAD_STR(msg_content),
+					TAG_END());
+			}
 			/* Notify the operation */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("messagesent"));
