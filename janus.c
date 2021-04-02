@@ -4119,7 +4119,7 @@ gint main(int argc, char *argv[])
 	if(args_info.disable_stdout_given) {
 		use_stdout = FALSE;
 		janus_config_add(config, config_general, janus_config_item_create("log_to_stdout", "no"));
-	} else {
+	} else if(!args_info.log_stdout_given) {
 		/* Check if the configuration file is saying anything about this */
 		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "log_to_stdout");
 		if(item && item->value && !janus_is_true(item->value))
@@ -4147,12 +4147,8 @@ gint main(int argc, char *argv[])
 			daemonize = TRUE;
 	}
 	/* If we're going to daemonize, make sure logging to stdout is disabled and a log file has been specified */
-	if(daemonize && use_stdout) {
+	if(daemonize && use_stdout && !args_info.log_stdout_given) {
 		use_stdout = FALSE;
-	}
-	if(daemonize && logfile == NULL) {
-		g_print("Running Janus as a daemon but no log file provided, giving up...\n");
-		exit(1);
 	}
 	/* Daemonize now, if we need to */
 	if(daemonize) {
