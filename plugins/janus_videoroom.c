@@ -8412,7 +8412,7 @@ static void *janus_videoroom_handler(void *data) {
 						janus_videoroom_publisher_stream *ps = g_hash_table_lookup(publisher->streams_bymid, mid);
 						janus_mutex_unlock(&publisher->streams_mutex);
 						if(ps == NULL) {
-							JANUS_LOG(LOG_WARN, "No mid '%s' in publisher '%"SCNu64"', not subscribing...\n", mid, feed_id);
+							JANUS_LOG(LOG_WARN, "No mid '%s' in publisher '%s', not subscribing...\n", mid, feed_id_str);
 							continue;
 						}
 						if(ps->disabled) {
@@ -8606,7 +8606,7 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						janus_videoroom_subscriber_stream_remove(stream, NULL, TRUE);
 						changes++;
-					} else if(feed_id > 0) {
+					} else if(feed_id_str != NULL) {
 						janus_mutex_lock(&subscriber->room->mutex);
 						janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants,
 							string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
@@ -8942,8 +8942,16 @@ static void *janus_videoroom_handler(void *data) {
 				if(feeds == NULL || json_array_size(feeds) == 0) {
 					/* For backwards compatibility, we still support the old "feed" property, which means
 					 * "switch to all the feeds from this publisher" (much less sophisticated, though) */
-					guint64 feed_id = json_integer_value(feed);
-					if(feed_id == 0) {
+					guint64 feed_id = 0;
+					char feed_id_num[30], *feed_id_str = NULL;
+					if(!string_ids) {
+						feed_id = json_integer_value(feed);
+						g_snprintf(feed_id_num, sizeof(feed_id_num), "%"SCNu64, feed_id);
+						feed_id_str = feed_id_num;
+					} else {
+						feed_id_str = (char *)json_string_value(feed);
+					}
+					if(feed_id_str == NULL) {
 						JANUS_LOG(LOG_ERR, "At least one between 'streams' and 'feed' must be specified\n");
 						error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
 						g_snprintf(error_cause, 512, "At least one between 'streams' and 'feed' must be specified");
@@ -8951,13 +8959,13 @@ static void *janus_videoroom_handler(void *data) {
 						goto error;
 					}
 					janus_mutex_lock(&subscriber->room->mutex);
-					janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants, &feed_id);
-					janus_mutex_unlock(&subscriber->room->mutex);
+					janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants,
+						string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
 					if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) ||
 							!g_atomic_int_get(&publisher->session->started)) {
-						JANUS_LOG(LOG_ERR, "No such feed (%"SCNu64")\n", feed_id);
+						JANUS_LOG(LOG_ERR, "No such feed (%s)\n", feed_id_str);
 						error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
-						g_snprintf(error_cause, 512, "No such feed (%"SCNu64")", feed_id);
+						g_snprintf(error_cause, 512, "No such feed (%s)", feed_id_str);
 						janus_refcount_decrease(&subscriber->ref);
 						goto error;
 					}
@@ -8979,7 +8987,8 @@ static void *janus_videoroom_handler(void *data) {
 								/* This streams looks right */
 								touched_already = g_list_append(touched_already, stream);
 								json_t *s = json_object();
-								json_object_set_new(s, "feed", json_integer(publisher->user_id));
+								json_object_set_new(s, "feed",  string_ids ?
+									json_string(publisher->user_id_str) : json_integer(publisher->user_id));
 								json_object_set_new(s, "mid", json_string(ps->mid));
 								json_object_set_new(s, "sub_mid", json_string(stream->mid));
 								json_array_append_new(feeds, s);
@@ -9059,9 +9068,9 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_unlock(&subscriber->room->mutex);
 					if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) ||
 							!g_atomic_int_get(&publisher->session->started)) {
-						JANUS_LOG(LOG_ERR, "No such feed (%"SCNu64")\n", feed_id);
+						JANUS_LOG(LOG_ERR, "No such feed (%s)\n", feed_id_str);
 						error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
-						g_snprintf(error_cause, 512, "No such feed (%"SCNu64")", feed_id);
+						g_snprintf(error_cause, 512, "No such feed (%s)", feed_id_str);
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							publisher = (janus_videoroom_publisher *)publishers->data;
@@ -9077,9 +9086,9 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_lock(&publisher->streams_mutex);
 					if(g_hash_table_lookup(publisher->streams_bymid, mid) == NULL) {
 						janus_mutex_unlock(&publisher->streams_mutex);
-						JANUS_LOG(LOG_ERR, "No such mid '%s' in feed (%"SCNu64")\n", mid, feed_id);
+						JANUS_LOG(LOG_ERR, "No such mid '%s' in feed (%s)\n", mid, feed_id_str);
 						error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
-						g_snprintf(error_cause, 512, "No such mid '%s' in feed (%"SCNu64")", mid, feed_id);
+						g_snprintf(error_cause, 512, "No such mid '%s' in feed (%s)", mid, feed_id_str);
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							publisher = (janus_videoroom_publisher *)publishers->data;
