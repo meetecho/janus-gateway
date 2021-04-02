@@ -5826,6 +5826,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 			   is in this function and accessing to this function is synchronized
 			   by sessions_mutex */
 			if(publisher != NULL) {
+				janus_refcount_increase(&publisher->ref);
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
@@ -5838,6 +5839,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 				publisher->subscribers = g_slist_remove(publisher->subscribers, subscriber);
 				janus_videoroom_hangup_subscriber(subscriber);
 				janus_mutex_unlock(&publisher->subscribers_mutex);
+				janus_refcount_decrease(&publisher->ref);
 			}
 			subscriber->e2ee = FALSE;
 		}
