@@ -806,7 +806,8 @@ static struct janus_json_parameter info_parameters[] = {
 static struct janus_json_parameter sipmessage_parameters[] = {
 	{"content_type", JSON_STRING, 0},
 	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"uri", JSON_STRING, 0}
+	{"uri", JSON_STRING, 0},
+	{"headers", JSON_OBJECT, 0}
 };
 
 /* Useful stuff */
@@ -4532,8 +4533,8 @@ static void *janus_sip_handler(void *data) {
 					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 					TAG_END());
 			} else {
+				janus_mutex_lock(&session->stack->smutex);
 				if(session->stack->s_nh_m == NULL) {
-					janus_mutex_lock(&session->stack->smutex);
 					if (session->stack->s_nua == NULL) {
 						janus_mutex_unlock(&session->stack->smutex);
 						JANUS_LOG(LOG_ERR, "NUA destroyed while sending message?\n");
@@ -4542,8 +4543,8 @@ static void *janus_sip_handler(void *data) {
 						goto error;
 					}
 					session->stack->s_nh_m = nua_handle(session->stack->s_nua, session, TAG_END());
-					janus_mutex_unlock(&session->stack->smutex);
 				}
+				janus_mutex_unlock(&session->stack->smutex);
 				nua_message(session->stack->s_nh_m,
 					SIPTAG_TO_STR(uri_text),
 					SIPTAG_CONTENT_TYPE_STR(content_type),
