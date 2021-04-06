@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 
-## [v0.11.0] - 2021-04-06
+## [v0.11.1] - 2021-04-06
 
 - Add new option to configure ICE nomination mode, if libnice is recent enough [[PR-2541](#2541)]
 - Added support for per-session timeout values (thanks @alg!) [[PR-2577](#2577)]
