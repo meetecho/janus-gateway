@@ -929,7 +929,7 @@ static int janus_mqttevh_init(const char *config_path) {
 			item = janus_config_get(config, config_general, janus_config_type_item, "ssl_cacert");
 		}
 		if(item && item->value) {
-			ctx->tls.cacert_file = g_strdup(item->value);
+			ctx->tls.cacert_file = janus_make_absolute_path(config_path, item->value);
 		}
 
 		item = janus_config_get(config, config_general, janus_config_type_item, "tls_client_cert");
@@ -937,14 +937,14 @@ static int janus_mqttevh_init(const char *config_path) {
 			item = janus_config_get(config, config_general, janus_config_type_item, "ssl_client_cert");
 		}
 		if(item && item->value) {
-			ctx->tls.cert_file = g_strdup(item->value);
+			ctx->tls.cert_file = janus_make_absolute_path(config_path, item->value);
 		}
 		item = janus_config_get(config, config_general, janus_config_type_item, "tls_client_key");
 		if(!item) {
 			item = janus_config_get(config, config_general, janus_config_type_item, "ssl_client_key");
 		}
 		if(item && item->value) {
-			ctx->tls.key_file = g_strdup(item->value);
+			ctx->tls.key_file = janus_make_absolute_path(config_path, item->value);
 		}
 		item = janus_config_get(config, config_general, janus_config_type_item, "tls_verify_peer");
 		if(!item) {
