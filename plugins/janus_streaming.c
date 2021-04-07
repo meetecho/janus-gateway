@@ -1159,7 +1159,7 @@ typedef struct janus_streaming_mountpoint {
 	janus_refcount ref;
 } janus_streaming_mountpoint;
 GHashTable *mountpoints = NULL, *mountpoints_temp = NULL;
-janus_mutex mountpoints_mutex;
+janus_mutex mountpoints_mutex = JANUS_MUTEX_INITIALIZER;
 static char *admin_key = NULL;
 
 typedef struct janus_streaming_helper {
