@@ -257,8 +257,8 @@ file-ondemand-sample: {
 	#rtsp_user = "username"
 	#rtsp_pwd = "password"
 	#secret = "adminpwd"
-	#reconnect_delay = 5
-	#session_timeout = 0
-	# rtsp_timeout = 10
-	# rtsp_conn_timeout = 5
+	#rtsp_reconnect_delay = 5
+	#rtsp_session_timeout = 0
+	#rtsp_timeout = 10
+	#rtsp_conn_timeout = 5
 #}
