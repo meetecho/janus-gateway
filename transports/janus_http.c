@@ -1103,6 +1103,11 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 		msg->timeout = NULL;
 		char *response_text = json_dumps(message, json_format);
 		json_decref(message);
+		if(!response_text) {
+			JANUS_LOG(LOG_ERR, "Invalid JSON message...\n");
+			janus_refcount_decrease(&msg->ref);
+			return -1;
+		}
 		msg->response = response_text;
 		msg->resplen = strlen(response_text);
 		MHD_resume_connection(msg->connection);
