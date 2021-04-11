@@ -2133,7 +2133,7 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  *
 \verbatim
 const crypto = require('crypto');
-function getJanusToken(realm, data = [], timeout = 24 * 60 * 60) => {
+function getJanusToken(realm, data = [], timeout = 24 * 60 * 60) {
   const expiry = Math.floor(Date.now() / 1000) + timeout;
 
   const strdata = [expiry.toString(), realm, ...data].join(',');
@@ -2145,7 +2145,7 @@ function getJanusToken(realm, data = [], timeout = 24 * 60 * 60) => {
   return [strdata, hmac.read()].join(':');
 };
 
-const token = getJanusToken('janus', ['janus.plugin.videoroom']),
+const token = getJanusToken('janus', ['janus.plugin.videoroom']);
 \endverbatim
  *
  * The \c janus parameter here is the \c realm of the token. For authenticating the
