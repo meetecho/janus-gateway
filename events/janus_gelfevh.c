@@ -611,6 +611,7 @@ static void *janus_gelfevh_handler(void *data) {
 
 			break;
 		}
+		json_decref(event);
 	}
 	JANUS_LOG(LOG_VERB, "Leaving GELF Event handler thread\n");
 	return NULL;
