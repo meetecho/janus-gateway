@@ -605,7 +605,7 @@ static void *janus_gelfevh_handler(void *data) {
 				JANUS_LOG(LOG_WARN, "Couldn't send event to GELF, reconnect?, or event was null: %s\n", message);
 			}
 			json_decref(output);
-			g_free(message);
+			free(message);
 			message = NULL;
 			output = NULL;
 
