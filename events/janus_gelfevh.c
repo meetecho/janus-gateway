@@ -607,7 +607,6 @@ static void *janus_gelfevh_handler(void *data) {
 			json_decref(output);
 			if(message) {
 				free(message);
-				message = NULL;
 			}
 			output = NULL;
 
