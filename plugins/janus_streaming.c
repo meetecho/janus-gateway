@@ -6101,7 +6101,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		string_ids ? (gpointer)g_strdup(live_rtp->id_str) : (gpointer)janus_uint64_dup(live_rtp->id),
 		live_rtp);
 	g_hash_table_remove(mountpoints_temp, string_ids ? (gpointer)live_rtp->id_str : (gpointer)&live_rtp->id);
-	janus_mutex_unlock(&mountpoints_mutex);
 	/* If we need helper threads, spawn them now */
 	GError *error = NULL;
 	char tname[16];
@@ -6129,6 +6128,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 				janus_refcount_decrease(&helper->ref);
 				/* This extra unref is for the init */
 				janus_refcount_decrease(&helper->ref);
+				janus_mutex_unlock(&mountpoints_mutex);
 				janus_streaming_mountpoint_destroy(live_rtp);
 				return NULL;
 			}
@@ -6136,6 +6136,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			live_rtp->threads = g_list_append(live_rtp->threads, helper);
 		}
 	}
+	janus_mutex_unlock(&mountpoints_mutex);
 	/* Finally, create the mountpoint thread itself */
 	g_snprintf(tname, sizeof(tname), "mp %s", live_rtp->id_str);
 	janus_refcount_increase(&live_rtp->ref);
