@@ -88,7 +88,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
  */
 
 #include <arpa/inet.h>
-#ifdef __MACH__
+#if defined(__MACH__) || defined(__FreeBSD__)
 #include <machine/endian.h>
 #else
 #include <endian.h>
@@ -816,7 +816,7 @@ int main(int argc, char *argv[])
 			rtp_read_n = (rtp->csrccount + rtp->extension)*4;
 			bytes = fread(prebuffer+rtp_header_len, sizeof(char), rtp_read_n, file);
 			if(bytes < rtp_read_n) {
-				JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n",
+				JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %d)\n",
 					rtp_header_len+bytes, rtp_header_len+rtp_read_n);
 				break;
 			} else {
@@ -833,7 +833,7 @@ int main(int argc, char *argv[])
 			skip += 4 + rtp_read_n;
 			bytes = fread(prebuffer+rtp_header_len, sizeof(char), rtp_read_n, file);
 			if(bytes < rtp_read_n) {
-				JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n",
+				JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %d)\n",
 					rtp_header_len+bytes, rtp_header_len+rtp_read_n);
 				break;
 			} else {
