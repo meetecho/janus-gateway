@@ -508,10 +508,11 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 					}
 					case 'b': {
 						if(mline->b_name) {
-							if(error)
-								g_snprintf(error, errlen, "Multiple m-line b= lines: %s", line);
-							success = FALSE;
-							break;
+							JANUS_LOG(LOG_WARN, "Ignoring extra m-line b= line: %s\n", line);
+							if(cr != NULL)
+								*cr = '\r';
+							index++;
+							continue;
 						}
 						line += 2;
 						char *semicolon = strchr(line, ':');
