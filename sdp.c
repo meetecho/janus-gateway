@@ -640,11 +640,11 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 						stream->video_ssrc_rtx = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 				}
 			}
-			if(stream->video_ssrc_peer[1] && stream->video_rtcp_ctx[1] == NULL) {
+			if((stream->video_ssrc_peer[1] || stream->rid[1] != NULL) && stream->video_rtcp_ctx[1] == NULL) {
 				stream->video_rtcp_ctx[1] = g_malloc0(sizeof(rtcp_context));
 				stream->video_rtcp_ctx[1]->tb = 90000;
 			}
-			if(stream->video_ssrc_peer[2] && stream->video_rtcp_ctx[2] == NULL) {
+			if((stream->video_ssrc_peer[2] || stream->rid[rids_hml ? 2 : 0] != NULL) && stream->video_rtcp_ctx[2] == NULL) {
 				stream->video_rtcp_ctx[2] = g_malloc0(sizeof(rtcp_context));
 				stream->video_rtcp_ctx[2]->tb = 90000;
 			}

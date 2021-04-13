@@ -164,14 +164,14 @@ static int janus_gelfevh_connect(void) {
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 		if(res)
 			freeaddrinfo(res);
-		JANUS_LOG(LOG_ERR, "Could not resolve address (%s): %d (%s)\n", backend, errno, strerror(errno));
+		JANUS_LOG(LOG_ERR, "Could not resolve address (%s): %d (%s)\n", backend, errno, g_strerror(errno));
 		return -1;
 	}
 	char *host = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
 	freeaddrinfo(res);
 
 	if((sockfd = socket(AF_INET, transport, 0)) < 0 ) {
-		JANUS_LOG(LOG_ERR, "Socket creation failed: %d (%s)\n", errno, strerror(errno));
+		JANUS_LOG(LOG_ERR, "Socket creation failed: %d (%s)\n", errno, g_strerror(errno));
 		g_free(host);
 		return -1;
 	}
@@ -206,7 +206,7 @@ static int janus_gelfevh_send(char *message) {
 		while(length > 0) {
 			out_bytes = send(sockfd, buffer, length + 1, 0);
 			if(out_bytes <= 0) {
-				JANUS_LOG(LOG_WARN, "Sending TCP message failed, dropping event: %d (%s)\n", errno, strerror(errno));
+				JANUS_LOG(LOG_WARN, "Sending TCP message failed, dropping event: %d (%s)\n", errno, g_strerror(errno));
 				close(sockfd);
 				return -1;
 			}
@@ -240,7 +240,7 @@ static int janus_gelfevh_send(char *message) {
 		if(total == 1) {
 			int n = send(sockfd, buf, len, 0);
 			if(n < 0) {
-				JANUS_LOG(LOG_WARN, "Sending UDP message failed, dropping event: %d (%s)\n", errno, strerror(errno));
+				JANUS_LOG(LOG_WARN, "Sending UDP message failed, dropping event: %d (%s)\n", errno, g_strerror(errno));
 				return -1;
 			}
 			return 0;
@@ -262,7 +262,8 @@ static int janus_gelfevh_send(char *message) {
 				buf += bytesToSend;
 				int n = send(sockfd, head, bytesToSend + 12, 0);
 				if(n < 0) {
-					JANUS_LOG(LOG_WARN, "Sending UDP message failed: %d (%s)\n", errno, strerror(errno));
+					JANUS_LOG(LOG_WARN, "Sending UDP message failed: %d (%s)\n", errno, g_strerror(errno));
+					g_free(rnd);
 					return -1;
 				}
 				offset += bytesToSend;
@@ -589,25 +590,27 @@ static void *janus_gelfevh_handler(void *data) {
 			json_t *microtimestamp = json_object_get(event, "timestamp");
 			if(microtimestamp && json_is_integer(microtimestamp)) {
 				double created_timestamp = (double)json_integer_value(microtimestamp) / 1000000;
-				json_object_set(output, "timestamp", json_real(created_timestamp));
+				json_object_set_new(output, "timestamp", json_real(created_timestamp));
 			} else {
-				json_object_set(output, "timestamp", json_real(janus_get_real_time()));
+				json_object_set_new(output, "timestamp", json_real(janus_get_real_time()));
 			}
 			json_object_set(output, "host", json_object_get(event, "emitter"));
-			json_object_set(output, "version", json_string("1.1"));
+			json_object_set_new(output, "version", json_string("1.1"));
 			json_object_set(output, "level", json_object_get(event, "type"));
-			json_object_set(output, "short_message", json_string(short_message));
+			json_object_set_new(output, "short_message", json_string(short_message));
 			json_object_set(output, "full_message", event);
 
-			if(janus_gelfevh_send(json_dumps(output, json_format)) < 0) {
-				JANUS_LOG(LOG_WARN, "Couldn't send event to GELF, reconnect?, or event was null: %s\n",
-					json_dumps(output, json_format));
+			char *message = json_dumps(output, json_format);
+			if(janus_gelfevh_send(message) < 0) {
+				JANUS_LOG(LOG_WARN, "Couldn't send event to GELF, reconnect?, or event was null: %s\n", message);
 			}
 			json_decref(output);
+			free(message);
 			output = NULL;
 
 			break;
 		}
+		json_decref(event);
 	}
 	JANUS_LOG(LOG_VERB, "Leaving GELF Event handler thread\n");
 	return NULL;
