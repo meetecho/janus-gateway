@@ -5321,12 +5321,12 @@ done:
 			mp->viewers = g_list_append(mp->viewers, session);
 			/* If we're using helper threads, add the viewer to one of those */
 			if(mp->helper_threads > 0) {
-				int viewers = 0;
+				int viewers = -1;
 				janus_streaming_helper *helper = NULL;
 				GList *l = mp->threads;
 				while(l) {
 					janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
-					if(ht->num_viewers == 0 || ht->num_viewers < viewers) {
+					if(viewers == -1 || (helper == NULL && ht->num_viewers == 0) || ht->num_viewers < viewers) {
 						viewers = ht->num_viewers;
 						helper = ht;
 					}
