@@ -80,6 +80,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
                                   the timestamps will be corrected, disabled if
                                   0 (default=0)
   -c, --restamp-packets=count   Number of packets used for calculating moving
+
                                   average latency for timestamp correction
                                   (default=10)
   -n, --restamp-min-th=milliseconds
@@ -1095,7 +1096,7 @@ int main(int argc, char *argv[])
 	while(tmp) {
 		count++;
 		if(!data)
-			JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%.2fs pts=%.2fs diff=%.2fs\n", tmp->offset, tmp->len, tmp->seq, tmp->ts, (double)(tmp->ts-list->ts)/(double)rate, (double)tmp->p_ts/1000, (double)(((double)tmp->p_ts/1000) - ((double)(tmp->ts-list->ts)/(double)rate)));
+			JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%.2fs pts=%.2fs\n", tmp->offset, tmp->len, tmp->seq, tmp->ts, (double)(tmp->ts-list->ts)/(double)rate, (double)tmp->p_ts/1000);
 		else
 			JANUS_LOG(LOG_VERB, "[%10lu][%4d] time=%"SCNu64"s\n", tmp->offset, tmp->len, tmp->ts);
 		tmp = tmp->next;
