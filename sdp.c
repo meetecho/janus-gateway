@@ -545,11 +545,11 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 				}
 			}
 			if(m->type == JANUS_SDP_VIDEO) {
-				if(medium->ssrc_peer[1] && medium->rtcp_ctx[1] == NULL) {
+				if((medium->ssrc_peer[1] || medium->rid[1] != NULL) && medium->rtcp_ctx[1] == NULL) {
 					medium->rtcp_ctx[1] = g_malloc0(sizeof(rtcp_context));
 					medium->rtcp_ctx[1]->tb = 90000;
 				}
-				if(medium->ssrc_peer[2] && medium->rtcp_ctx[2] == NULL) {
+				if((medium->ssrc_peer[2] || medium->rid[rids_hml ? 2 : 0] != NULL) && medium->rtcp_ctx[2] == NULL) {
 					medium->rtcp_ctx[2] = g_malloc0(sizeof(rtcp_context));
 					medium->rtcp_ctx[2]->tb = 90000;
 				}
