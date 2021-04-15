@@ -580,6 +580,7 @@ AC_CHECK_LIB([websockets],
                AS_IF([test "x$enable_websockets_event_handler" != "xno"],
                [
                  AC_DEFINE(HAVE_WSEVH)
+                 WS_MANUAL_LIBS="-lwebsockets"
                  enable_websockets_event_handler=yes
                ])
 			 ],
