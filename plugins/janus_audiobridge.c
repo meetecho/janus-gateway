@@ -857,6 +857,10 @@ room-<unique room ID>: {
  */
 
 #include "plugin.h"
+#ifdef __FreeBSD__
+#include <sys/socket.h>
+#include <netinet/in.h>
+#endif
 
 #include <jansson.h>
 #include <opus/opus.h>
@@ -6659,6 +6663,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				}
 				ps = ps->next;
 			}
+			g_list_free(anncs_list);
 		}
 #endif
 		/* Are we recording the mix? (only do it if there's someone in, though...) */

@@ -480,6 +480,9 @@ room-<unique room ID>: {
 			"display" : "<display name of active publisher #1, if any>",
 			"audio_codec" : "<audio codec used by active publisher #1, if any>",
 			"video_codec" : "<video codec used by active publisher #1, if any>",
+			"audio_moderated" : <set to true if audio has been moderated for this participant>,
+			"video_moderated" : <set to true if video has been moderated for this participant>,
+			"data_moderated" : <set to true if data has been moderated for this participant>,
 			"simulcast" : "<true if the publisher uses simulcast (VP8 and H.264 only)>",
 			"talking" : <true|false, whether the publisher is talking or not (only if audio levels are used)>,
 		},
@@ -598,6 +601,9 @@ room-<unique room ID>: {
 			"display" : "<display name of the new publisher, if any>",
 			"audio_codec" : "<audio codec used the new publisher, if any>",
 			"video_codec" : "<video codec used by the new publisher, if any>",
+			"audio_moderated" : <set to true if audio has been moderated for this participant>,
+			"video_moderated" : <set to true if video has been moderated for this participant>,
+			"data_moderated" : <set to true if data has been moderated for this participant>,
 			"simulcast" : "<true if the publisher uses simulcast (VP8 and H.264 only)>",
 			"talking" : <true|false, whether the publisher is talking or not (only if audio levels are used)>,
 		}
@@ -5098,6 +5104,12 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 				json_object_set_new(pl, "audio_codec", json_string(janus_audiocodec_name(participant->acodec)));
 			if(participant->video)
 				json_object_set_new(pl, "video_codec", json_string(janus_videocodec_name(participant->vcodec)));
+			if(participant->audio_muted)
+				json_object_set_new(pl, "audio_moderated", json_true());
+			if(participant->video_muted)
+				json_object_set_new(pl, "video_moderated", json_true());
+			if(participant->data_muted)
+				json_object_set_new(pl, "data_moderated", json_true());
 			if(participant->ssrc[0] || participant->rid[0])
 				json_object_set_new(pl, "simulcast", json_true());
 			if(participant->audio_level_extmap_id > 0)
@@ -5826,6 +5838,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 			   is in this function and accessing to this function is synchronized
 			   by sessions_mutex */
 			if(publisher != NULL) {
+				janus_refcount_increase(&publisher->ref);
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
@@ -5838,6 +5851,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 				publisher->subscribers = g_slist_remove(publisher->subscribers, subscriber);
 				janus_videoroom_hangup_subscriber(subscriber);
 				janus_mutex_unlock(&publisher->subscribers_mutex);
+				janus_refcount_decrease(&publisher->ref);
 			}
 			subscriber->e2ee = FALSE;
 		}
@@ -6256,6 +6270,12 @@ static void *janus_videoroom_handler(void *data) {
 						json_object_set_new(pl, "audio_codec", json_string(janus_audiocodec_name(p->acodec)));
 					if(p->video)
 						json_object_set_new(pl, "video_codec", json_string(janus_videocodec_name(p->vcodec)));
+					if(p->audio_muted)
+						json_object_set_new(pl, "audio_moderated", json_true());
+					if(p->video_muted)
+						json_object_set_new(pl, "video_moderated", json_true());
+					if(p->data_muted)
+						json_object_set_new(pl, "data_moderated", json_true());
 					if(p->ssrc[0] || p->rid[0])
 						json_object_set_new(pl, "simulcast", json_true());
 					if(p->audio_level_extmap_id > 0)
