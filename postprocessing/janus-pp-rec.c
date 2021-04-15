@@ -1188,13 +1188,6 @@ int main(int argc, char *argv[])
 					/* Calculate new_ts with new offset */
 					uint64_t new_ts = original_ts+restamping_offset;
 
-					/* Checking new_ts against previous ts to avoid converting with wrong timestamps */
-					if(new_ts < tmp->prev->ts) {
-						/* Avoid creating unnecessary large files... */
-						JANUS_LOG(LOG_ERR, "new ts would be smaller than previous ts! new_ts=%.ld prev_ts=%.ld\n", new_ts, tmp->prev->ts);
-						exit(1);
-					}
-
 					/* Update current packet ts with new ts */
 					tmp->ts = new_ts;
 
