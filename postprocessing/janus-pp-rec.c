@@ -1586,7 +1586,7 @@ static double get_latency(const janus_pp_frame_packet *tmp, int rate) {
 
 static double get_moving_average_of_latency(janus_pp_frame_packet *pkt, int rate, int num_of_packets) {
 	/* Get a moving average of packet latency using the get_latency function */
-	if(!pkt) {
+	if(!pkt || num_of_packets == 0) {
 		return 0;
 	}
 
