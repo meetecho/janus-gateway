@@ -5594,6 +5594,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_object_set_new(reging, "register_sent", json_true());
 					json_object_set_new(reging, "master_id", json_integer(session->master_id));
 				}
+				if(session->incoming_header_prefixes) {
+					json_t *headers = janus_sip_get_incoming_headers(sip, session);
+					json_object_set_new(reging, "headers", headers);
+				}
 				json_object_set_new(reg, "result", reging);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, reg, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
