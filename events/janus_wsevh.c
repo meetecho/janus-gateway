@@ -666,6 +666,13 @@ static void *janus_wsevh_handler(void *data) {
 		if(!g_atomic_int_get(&stopping)) {
 			/* Since this a simple plugin, it does the same for all events: so just convert to string... */
 			event_text = json_dumps(output, json_format);
+			if(event_text == NULL) {
+				JANUS_LOG(LOG_WARN, "Failed to stringify event, event lost...\n");
+				/* Nothing we can do... get rid of the event */
+				json_decref(output);
+				output = NULL;
+				continue;
+			}
 			g_async_queue_push(messages, event_text);
 #if (LWS_LIBRARY_VERSION_MAJOR >= 3)
 			if(context != NULL)
@@ -778,7 +785,7 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 							ws_client->bufpending, ws_client->bufoffset);
 					}
 					/* We can get rid of the message */
-					g_free(event);
+					free(event);
 					/* Done for this round, check the next response/notification later */
 					lws_callback_on_writable(wsi);
 					janus_mutex_unlock(&ws_client->mutex);

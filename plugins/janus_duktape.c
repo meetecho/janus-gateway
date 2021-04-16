@@ -2267,6 +2267,10 @@ json_t *janus_duktape_handle_admin_message(json_t *message) {
 	if(!has_handle_admin_message || message == NULL)
 		return NULL;
 	char *message_text = json_dumps(message, JSON_INDENT(0) | JSON_PRESERVE_ORDER);
+	if(message_text == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+		return NULL;
+	}
 	/* Invoke the script function */
 	janus_mutex_lock(&duktape_mutex);
 	duk_idx_t thr_idx = duk_push_thread(duktape_ctx);

@@ -1103,6 +1103,11 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 		msg->timeout = NULL;
 		char *response_text = json_dumps(message, json_format);
 		json_decref(message);
+		if(response_text == NULL) {
+			JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+			janus_refcount_decrease(&msg->ref);
+			return -1;
+		}
 		msg->response = response_text;
 		msg->resplen = strlen(response_text);
 		MHD_resume_connection(msg->connection);
@@ -2117,6 +2122,12 @@ static int janus_http_notifier(janus_http_msg *msg) {
 	}
 	char *payload_text = json_dumps(max_events == 1 ? event : list, json_format);
 	json_decref(max_events == 1 ? event : list);
+	if(payload_text == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+		MHD_resume_connection(msg->connection);
+		janus_refcount_decrease(&session->ref);
+		return -1;
+	}
 	/* Finish the request by sending the response */
 	JANUS_LOG(LOG_HUGE, "We have a message to serve...\n\t%s\n", payload_text);
 	/* Send event back */
@@ -2129,13 +2140,17 @@ static int janus_http_notifier(janus_http_msg *msg) {
 
 /* Helper to quickly send a success response */
 static MHD_Result janus_http_return_success(janus_transport_session *ts, char *payload) {
+	if(!payload) {
+		JANUS_LOG(LOG_ERR, "Invalid payload...\n");
+		return MHD_NO;
+	}
 	if(!ts) {
-		g_free(payload);
+		free(payload);
 		return MHD_NO;
 	}
 	janus_http_msg *msg = (janus_http_msg *)ts->transport_p;
 	if(!msg || !msg->connection) {
-		g_free(payload);
+		free(payload);
 		return MHD_NO;
 	}
 	janus_refcount_increase(&msg->ref);
@@ -2216,6 +2231,13 @@ void janus_http_timeout(janus_transport_session *ts, janus_http_session *session
 		}
 		char *payload_text = json_dumps(event, json_format);
 		json_decref(event);
+		if(payload_text == NULL) {
+			JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+			janus_refcount_decrease(&session->ref);
+			MHD_resume_connection(request->connection);
+			janus_refcount_decrease(&ts->ref);
+			return;
+		}
 		/* Finish the request by sending the response */
 		JANUS_LOG(LOG_HUGE, "We have a message to serve...\n\t%s\n", payload_text);
 		/* Send event back */
