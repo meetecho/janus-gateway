@@ -5794,7 +5794,6 @@ static void janus_videoroom_hangup_subscriber(janus_videoroom_subscriber *s) {
 		}
 		janus_mutex_unlock(&room->mutex);
 	}
-	/* TODO: are we sure this is okay as other handlers use feed directly without synchronization */
 	janus_mutex_lock(&s->session->mutex);
 	if(s->feed)
 		g_clear_pointer(&s->feed, janus_videoroom_publisher_dereference_by_subscriber);
