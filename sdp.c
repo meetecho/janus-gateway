@@ -1182,7 +1182,8 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 		GList *purged_ptypes = NULL;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
-			if(a->value && (strstr(a->value, "red/90000") || strstr(a->value, "ulpfec/90000") || strstr(a->value, "rtx/90000"))) {
+			if(a->value && (strstr(a->value, "red/90000") || strstr(a->value, "ulpfec/90000") ||
+					strstr(a->value, "flexfec-03/90000") || strstr(a->value, "rtx/90000"))) {
 				int ptype = atoi(a->value);
 				if(ptype < 0) {
 					JANUS_LOG(LOG_ERR, "Invalid payload type (%d)\n", ptype);
