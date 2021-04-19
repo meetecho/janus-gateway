@@ -2795,7 +2795,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			janus_refcount_increase(&s->ref);
 		session->participant = NULL;
 		janus_mutex_unlock(&session->mutex);
-		if(s->room) {
+		if(s && s->room) {
 			janus_refcount_decrease(&s->room->ref);
 			janus_refcount_decrease(&s->ref);
 		}
