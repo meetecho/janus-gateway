@@ -1898,7 +1898,7 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 		json_t *simulcast = json_object_get(jsep, "simulcast");
 		if(simulcast != NULL) {
 			janus_rtp_simulcasting_prepare(simulcast,
-				&session->rid_extmap_id, NULL,
+				&session->rid_extmap_id,
 				session->ssrc, session->rid);
 		}
 		const char *sdp_type = json_string_value(json_object_get(jsep, "type"));

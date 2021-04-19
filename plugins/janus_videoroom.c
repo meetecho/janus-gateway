@@ -1623,7 +1623,6 @@ typedef struct janus_videoroom_publisher {
 	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
 	char *rid[3];			/* Only needed if simulcasting is rid-based */
 	int rid_extmap_id;		/* rid extmap ID */
-	int framemarking_ext_id;			/* Frame marking extmap ID */
 	guint8 audio_level_extmap_id;		/* Audio level extmap ID */
 	guint8 video_orient_extmap_id;		/* Video orientation extmap ID */
 	guint8 playout_delay_extmap_id;		/* Playout delay extmap ID */
@@ -7555,7 +7554,6 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
-					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_FRAME_MARKING,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->audiolevel_ext ? JANUS_RTP_EXTMAP_AUDIO_LEVEL : NULL,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->videoorient_ext ? JANUS_RTP_EXTMAP_VIDEO_ORIENTATION : NULL,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->playoutdelay_ext ? JANUS_RTP_EXTMAP_PLAYOUT_DELAY : NULL,
@@ -7680,7 +7678,6 @@ static void *janus_videoroom_handler(void *data) {
 						JANUS_LOG(LOG_VERB, "Publisher is going to do simulcasting\n");
 						janus_rtp_simulcasting_prepare(msg_simulcast,
 							&participant->rid_extmap_id,
-							&participant->framemarking_ext_id,
 							participant->ssrc, participant->rid);
 					} else {
 						/* No simulcasting involved */
