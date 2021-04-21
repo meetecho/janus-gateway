@@ -5629,8 +5629,8 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 				return;
 			}
 			if(g_atomic_int_get(&subscriber->destroyed)) {
-				janus_refcount_decrease(&session->ref);
 				janus_refcount_decrease(&subscriber->ref);
+				janus_refcount_decrease(&session->ref);
 				return;
 			}
 			/* Send an event on the handle to notify the application: it's
