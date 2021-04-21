@@ -649,12 +649,6 @@ janus.attach(
  * - \c replaceVideo: if set, stop capturing the current video (remove the
  * local video track), and capture a new video source.
  *
- * The new object with properties you can pass to \c stream in \c createOffer and
- * \c createAnswer are the following:
- *
- * - \c externalStream: \c MediaStream a MediaStream object you obtained yourself;
- * - \c replaceVideo: if set, stop capturing the current video or stream (remove the local video track), and replace it with the new MediaStream;
- *
  * Notice that these properties are only processed when you're trying a
  * renegotiation, and will be ignored when creating a new PeerConnection.
  *
