@@ -1741,7 +1741,7 @@ function Janus(gatewayCallbacks) {
 		}
 		// We're now capturing the new stream: check if we're updating or if it's a new thing
 		var addTracks = false;
-		if(!config.myStream || !media.update || (config.streamExternal && !media.replaceVideoExternalStream)) {
+		if(!config.myStream || !media.update || (config.streamExternal && !media.replaceAudio && !media.replaceVideo)) {
 			config.myStream = stream;
 			addTracks = true;
 		} else {
@@ -1773,12 +1773,12 @@ function Janus(gatewayCallbacks) {
 					config.pc.addTrack(stream.getAudioTracks()[0], stream);
 				}
 			}
-			if(((!media.update && isVideoSendEnabled(media)) || (media.update && (media.addVideo || media.replaceVideo || media.replaceVideoExternalStream))) &&
+			if(((!media.update && isVideoSendEnabled(media)) || (media.update && (media.addVideo || media.replaceVideo))) &&
 					stream.getVideoTracks() && stream.getVideoTracks().length) {
 				config.myStream.addTrack(stream.getVideoTracks()[0]);
 				if(Janus.unifiedPlan) {
 					// Use Transceivers
-					Janus.log(((media.replaceVideo || media.replaceVideoExternalStream) ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
+					Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
 					var videoTransceiver = null;
 					var transceivers = config.pc.getTransceivers();
 					if(transceivers && transceivers.length > 0) {
@@ -1796,7 +1796,7 @@ function Janus(gatewayCallbacks) {
 						config.pc.addTrack(stream.getVideoTracks()[0], stream);
 					}
 				} else {
-					Janus.log(((media.replaceVideo || media.replaceVideoExternalStream) ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
+					Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
 					config.pc.addTrack(stream.getVideoTracks()[0], stream);
 				}
 			}
@@ -2079,12 +2079,8 @@ function Janus(gatewayCallbacks) {
 			// can go directly to preparing the new SDP offer or answer
 			if(callbacks.stream) {
 				// External stream: is this the same as the one we were using before?
-				var newStream = (callbacks.stream.externalStream ? callbacks.stream.externalStream : callbacks.stream);
-				if(newStream !== config.myStream) {
+				if(callbacks.stream !== config.myStream) {
 					Janus.log("Renegotiation involves a new external stream");
-					if(callbacks.stream.replaceVideo) {
-						media.replaceVideoExternalStream = true;
-					}
 				}
 			} else {
 				// Check if there are changes on audio
@@ -2214,7 +2210,7 @@ function Janus(gatewayCallbacks) {
 			}
 		}
 		// If we're updating, check if we need to remove/replace one of the tracks
-		if(media.update && !config.streamExternal || (config.streamExternal && media.replaceVideoExternalStream)) {
+		if(media.update && !config.streamExternal || (config.streamExternal && (media.replaceAudio || media.replaceVideo))) {
 			if(media.removeAudio || media.replaceAudio) {
 				if(config.myStream && config.myStream.getAudioTracks() && config.myStream.getAudioTracks().length) {
 					var at = config.myStream.getAudioTracks()[0];
@@ -2240,7 +2236,7 @@ function Janus(gatewayCallbacks) {
 					}
 				}
 			}
-			if(media.removeVideo || media.replaceVideo || media.replaceVideoExternalStream) {
+			if(media.removeVideo || media.replaceVideo) {
 				if(config.myStream && config.myStream.getVideoTracks() && config.myStream.getVideoTracks().length) {
 					var vt = config.myStream.getVideoTracks()[0];
 					Janus.log("Removing video track:", vt);
@@ -2268,11 +2264,11 @@ function Janus(gatewayCallbacks) {
 		}
 		// Was a MediaStream object passed, or do we need to take care of that?
 		if(callbacks.stream) {
-			var stream = callbacks.stream.externalStream ? callbacks.stream.externalStream : callbacks.stream;
+			var stream = callbacks.stream;
 			Janus.log("MediaStream provided by the application");
 			Janus.debug(stream);
 			// If this is an update, let's check if we need to release the previous stream
-			if(media.update && config.myStream && config.myStream !== callbacks.stream && !config.streamExternal && !media.replaceVideoExternalStream) {
+			if(media.update && config.myStream && config.myStream !== callbacks.stream && !config.streamExternal && !media.replaceAudio && !media.replaceVideo) {
 				// We're replacing a stream we captured ourselves with an external one
 				Janus.stopAllTracks(config.myStream);
 				config.myStream = null;
