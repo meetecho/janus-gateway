@@ -444,7 +444,8 @@
 {
 	"request" : "info",
 	"type" : "<content type>"
-	"content" : "<message to send>"
+	"content" : "<message to send>",
+  	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP INFO; optional>"
 }
 \endverbatim
  *
@@ -797,11 +798,13 @@ static struct janus_json_parameter recording_parameters[] = {
 };
 static struct janus_json_parameter dtmf_info_parameters[] = {
 	{"digit", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"duration", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"duration", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"headers", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter info_parameters[] = {
 	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"headers", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter sipmessage_parameters[] = {
 	{"content_type", JSON_STRING, 0},
@@ -4464,9 +4467,12 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			const char *info_type = json_string_value(json_object_get(root, "type"));
 			const char *info_content = json_string_value(json_object_get(root, "content"));
+			char custom_headers[2048];
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 			nua_info(session->stack->s_nh_i,
 				SIPTAG_CONTENT_TYPE_STR(info_type),
 				SIPTAG_PAYLOAD_STR(info_content),
+				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				TAG_END());
 			/* Notify the operation */
 			result = json_object();
@@ -4596,9 +4602,12 @@ static void *janus_sip_handler(void *data) {
 			}
 			char payload[64];
 			g_snprintf(payload, sizeof(payload), "Signal=%s\r\nDuration=%d", digit_text, duration_ms);
+			char custom_headers[2048];
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 			nua_info(session->stack->s_nh_i,
 				SIPTAG_CONTENT_TYPE_STR("application/dtmf-relay"),
 				SIPTAG_PAYLOAD_STR(payload),
+				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				TAG_END());
 			/* Notify the result */
 			result = json_object();
