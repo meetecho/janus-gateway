@@ -6250,8 +6250,10 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			session->media.local_video_rtcp_port = rtcp_port;
 		}
 	}
-	/* We need this to quickly interrupt the poll when it's time to update a session or wrap up */
-	pipe(session->media.pipefd);
+	if(!update) {
+		/* We need this to quickly interrupt the poll when it's time to update a session or wrap up */
+		pipe(session->media.pipefd);
+	}
 	return 0;
 }
 
@@ -6351,7 +6353,7 @@ static void *janus_sip_relay_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Starting relay thread (%s <--> %s)\n", session->account.username, session->callee);
 
 	if(!session->callee) {
-		JANUS_LOG(LOG_VERB, "[SIP-%s] Leaving thread, no callee...\n", session->account.username);
+		JANUS_LOG(LOG_WARN, "[SIP-%s] Leaving thread, no callee...\n", session->account.username);
 		janus_refcount_decrease(&session->ref);
 		g_thread_unref(g_thread_self());
 		return NULL;
@@ -6364,6 +6366,14 @@ static void *janus_sip_relay_thread(void *data) {
 	int pipe_fd = session->media.pipefd[0];
 	char buffer[1500];
 	memset(buffer, 0, 1500);
+	if(pipe_fd == -1) {
+		/* If the pipe file descriptor doesn't exist, it means we're done already,
+		 * and/or we may never be notified about sessions being closed, so give up */
+		JANUS_LOG(LOG_WARN, "[SIP-%s] Leaving thread, no pipe file descriptor...\n", session->account.username);
+		janus_refcount_decrease(&session->ref);
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
 	/* Loop */
 	int num = 0;
 	gboolean goon = TRUE;
@@ -6460,12 +6470,16 @@ static void *janus_sip_relay_thread(void *data) {
 			fds[num].revents = 0;
 			num++;
 		}
-		if(pipe_fd != -1) {
-			fds[num].fd = pipe_fd;
-			fds[num].events = POLLIN;
-			fds[num].revents = 0;
-			num++;
+		/* Finally, let's add the pipe */
+		pipe_fd = session->media.pipefd[0];
+		if(pipe_fd == -1) {
+			/* Pipe was closed? Means the call is over */
+			break;
 		}
+		fds[num].fd = pipe_fd;
+		fds[num].events = POLLIN;
+		fds[num].revents = 0;
+		num++;
 		/* Wait for some data */
 		resfd = poll(fds, num, 1000);
 		if(resfd < 0) {
