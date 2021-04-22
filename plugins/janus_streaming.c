@@ -8630,5 +8630,6 @@ static void *janus_streaming_helper_thread(void *data) {
 	JANUS_LOG(LOG_INFO, "[%s/#%d] Leaving Streaming helper thread\n", mp->name, helper->id);
 	janus_refcount_decrease(&helper->ref);
 	janus_refcount_decrease(&mp->ref);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
