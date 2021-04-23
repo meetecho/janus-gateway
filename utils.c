@@ -1148,6 +1148,8 @@ int janus_vp9_parse_svc(char *buffer, int len, gboolean *found, janus_vp9_svc_in
 }
 
 inline guint32 janus_push_bits(guint32 word, size_t num, guint32 val) {
+	if(num == 0)
+		return word;
 	return (word << num) | (val & (0xFFFFFFFF>>(32-num)));
 }
 
