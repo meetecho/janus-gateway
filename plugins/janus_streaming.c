@@ -7277,8 +7277,8 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	char buf[1500];
 	memset(buf, 0, sizeof(buf));
 	/* Set up RTP */
-	gint16 seq = 1;
-	gint32 ts = 0;
+	guint16 seq = 1;
+	guint32 ts = 0;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	header->version = 2;
 	header->markerbit = 1;
@@ -7427,8 +7427,8 @@ static void *janus_streaming_filesource_thread(void *data) {
 	char buf[1500];
 	memset(buf, 0, sizeof(buf));
 	/* Set up RTP */
-	gint16 seq = 1;
-	gint32 ts = 0;
+	guint16 seq = 1;
+	guint32 ts = 0;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	header->version = 2;
 	header->markerbit = 1;
