@@ -449,6 +449,10 @@ int janus_pfunix_send_message(janus_transport_session *transport, void *request_
 	/* Convert to string */
 	char *payload = json_dumps(message, json_format);
 	json_decref(message);
+	if(payload == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+		return -1;
+	}
 	if(client->fd != -1) {
 		/* SOCK_SEQPACKET, enqueue the packet and have poll tell us when it's time to send it */
 		g_async_queue_push(client->messages, payload);

@@ -859,6 +859,10 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 	}
 
 	char *payload = json_dumps(message, json_format);
+	if(payload == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+		return -1;
+	}
 	JANUS_LOG(LOG_HUGE, "Sending %s API message via MQTT: %s\n", admin ? "admin" : "Janus", payload);
 
 	int rc;

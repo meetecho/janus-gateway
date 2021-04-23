@@ -7932,8 +7932,8 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	char buf[1500];
 	memset(buf, 0, sizeof(buf));
 	/* Set up RTP */
-	gint16 seq = 1;
-	gint32 ts = 0;
+	guint16 seq = 1;
+	guint32 ts = 0;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	header->version = 2;
 	header->markerbit = 1;
@@ -8083,8 +8083,8 @@ static void *janus_streaming_filesource_thread(void *data) {
 	char buf[1500];
 	memset(buf, 0, sizeof(buf));
 	/* Set up RTP */
-	gint16 seq = 1;
-	gint32 ts = 0;
+	guint16 seq = 1;
+	guint32 ts = 0;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	header->version = 2;
 	header->markerbit = 1;
@@ -9244,5 +9244,6 @@ static void *janus_streaming_helper_thread(void *data) {
 	JANUS_LOG(LOG_INFO, "[%s/#%d] Leaving Streaming helper thread\n", mp->name, helper->id);
 	janus_refcount_decrease(&helper->ref);
 	janus_refcount_decrease(&mp->ref);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }

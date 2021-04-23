@@ -1142,6 +1142,12 @@ int janus_websockets_send_message(janus_transport_session *transport, void *requ
 	}
 	/* Convert to string and enqueue */
 	char *payload = json_dumps(message, json_format);
+	if(payload == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+		json_decref(message);
+		janus_mutex_unlock(&transport->mutex);
+		return -1;
+	}
 	g_async_queue_push(client->messages, payload);
 #if (LWS_LIBRARY_VERSION_MAJOR >= 3)
 	/* On libwebsockets >= 3.x we use lws_cancel_service */
