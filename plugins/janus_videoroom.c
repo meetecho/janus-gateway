@@ -6884,9 +6884,16 @@ static void *janus_videoroom_handler(void *data) {
 			} else if(!strcasecmp(request_text, "start")) {
 				/* Start/restart receiving the publisher streams */
 				if(subscriber->paused && msg->jsep == NULL) {
+					janus_videoroom_publisher *feed = subscriber->feed;
+
 					/* This is just resuming a paused stream, reset the RTP sequence numbers */
 					subscriber->context.a_seq_reset = TRUE;
 					subscriber->context.v_seq_reset = TRUE;
+
+					if(feed && feed->session && g_atomic_int_get(&feed->session->started)) {
+						/* Send a FIR */
+						janus_videoroom_reqpli(feed, "Subscriber start");
+					}
 				}
 				subscriber->paused = FALSE;
 				event = json_object();
