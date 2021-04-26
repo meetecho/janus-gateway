@@ -394,7 +394,7 @@ $(document).ready(function() {
 										if(!bitrateTimer) {
 											$('#curbitrate').removeClass('hide').show();
 											bitrateTimer = setInterval(function() {
-												if(!$("#peervideo" + mid + ' video').get(0))
+												if(!$("#peervideo" + mid).get(0))
 													return;
 												// Display updated bitrate, if supported
 												var bitrate = echotest.getBitrate();

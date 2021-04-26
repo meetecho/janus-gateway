@@ -455,14 +455,6 @@ $(document).ready(function() {
 										}
 									}
 								},
-								onlocalstream: function(stream) {
-									Janus.debug(" ::: Got a local stream :::", stream);
-									$('#videos').removeClass('hide').show();
-									if($('#myvideo').length === 0)
-										$('#videoleft').append('<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay playsinline muted="muted"/>');
-									Janus.attachMediaStream($('#myvideo').get(0), stream);
-									$("#myvideo").get(0).muted = "muted";
-=======
 								onlocaltrack: function(track, on) {
 									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
 									// We use the track ID as name of the element, but it may contain invalid characters
@@ -529,7 +521,6 @@ $(document).ready(function() {
 										$('#videoleft').append('<video class="rounded centered" id="myvideot' + trackId + '" width="100%" height="100%" autoplay playsinline muted="muted"/>');
 										Janus.attachMediaStream($('#myvideot' + trackId).get(0), stream);
 									}
->>>>>>> b8105ce3... Updated demos and janus.js to use tracks instead of streams
 									if(sipcall.webrtcStuff.pc.iceConnectionState !== "completed" &&
 											sipcall.webrtcStuff.pc.iceConnectionState !== "connected") {
 										$("#videoleft").parent().block({
