@@ -2210,7 +2210,7 @@ function Janus(gatewayCallbacks) {
 			}
 		}
 		// If we're updating, check if we need to remove/replace one of the tracks
-		if(media.update && !config.streamExternal || (config.streamExternal && (media.replaceAudio || media.replaceVideo))) {
+		if(media.update && (!config.streamExternal || (config.streamExternal && (media.replaceAudio || media.replaceVideo)))) {
 			if(media.removeAudio || media.replaceAudio) {
 				if(config.myStream && config.myStream.getAudioTracks() && config.myStream.getAudioTracks().length) {
 					var at = config.myStream.getAudioTracks()[0];
