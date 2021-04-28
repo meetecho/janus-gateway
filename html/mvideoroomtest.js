@@ -481,6 +481,7 @@ function publishOwnFeed(useAudio) {
 			// pass a ?simulcast=true when opening this demo page: it will turn
 			// the following 'simulcast' property to pass to janus.js to true
 			simulcast: doSimulcast,
+			simulcast2: doSimulcast2,
 			success: function(jsep) {
 				Janus.debug("Got publisher SDP!");
 				Janus.debug(jsep);
