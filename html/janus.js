@@ -2196,10 +2196,6 @@ function Janus(gatewayCallbacks) {
 				if(media.addData) {
 					media.data = true;
 				}
-				// Reset external stream flag when replacing MediaStream with user media
-				if(config.streamExternal) {
-					config.streamExternal = false;
-				}
 			}
 			// If we're updating and keeping all tracks, let's skip the getUserMedia part
 			if((isAudioSendEnabled(media) && media.keepAudio) &&
