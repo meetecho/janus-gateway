@@ -9764,6 +9764,8 @@ static void *janus_videoroom_handler(void *data) {
 					/* Add the stream to the list, if it's new */
 					if(new_ps) {
 						participant->streams = g_list_append(participant->streams, ps);
+						if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA)
+							participant->data_mindex = ps->mindex;
 						g_hash_table_insert(participant->streams_byid, GINT_TO_POINTER(ps->mindex), ps);
 						g_hash_table_insert(participant->streams_bymid, g_strdup(ps->mid), ps);
 					}
