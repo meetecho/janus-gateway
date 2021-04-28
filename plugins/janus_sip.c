@@ -2544,7 +2544,9 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	session->media.simulcast_ssrc = 0;
 	/* Do cleanup if media thread has not been created */
 	if(!session->media.ready && !session->relayer_thread) {
+		janus_mutex_lock(&session->mutex);
 		janus_sip_media_cleanup(session);
+		janus_mutex_unlock(&session->mutex);
 	}
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&session->rec_mutex);
@@ -3396,13 +3398,16 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
+			janus_mutex_lock(&session->mutex);
 			if(janus_sip_allocate_local_ports(session, FALSE) < 0) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
 				janus_sdp_destroy(parsed_sdp);
 				error_code = JANUS_SIP_ERROR_IO_ERROR;
 				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 				goto error;
 			}
+			janus_mutex_unlock(&session->mutex);
 			char *sdp = janus_sip_sdp_manipulate(session, parsed_sdp, FALSE);
 			if(sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Error manipulating SDP\n");
@@ -3694,13 +3699,16 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
+			janus_mutex_lock(&session->mutex);
 			if(janus_sip_allocate_local_ports(session, FALSE) < 0) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
 				janus_sdp_destroy(parsed_sdp);
 				error_code = JANUS_SIP_ERROR_IO_ERROR;
 				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 				goto error;
 			}
+			janus_mutex_unlock(&session->mutex);
 			char *sdp = janus_sip_sdp_manipulate(session, parsed_sdp, TRUE);
 			if(sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
@@ -3883,13 +3891,16 @@ static void *janus_sip_handler(void *data) {
 				session->media.has_srtp_local_video = session->media.has_srtp_remote_video;
 			}
 			if(audio_added || video_added) {
+				janus_mutex_lock(&session->mutex);
 				if(janus_sip_allocate_local_ports(session, TRUE) < 0) {
+					janus_mutex_unlock(&session->mutex);
 					JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
 					janus_sdp_destroy(parsed_sdp);
 					error_code = JANUS_SIP_ERROR_IO_ERROR;
 					g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 					goto error;
 				}
+				janus_mutex_unlock(&session->mutex);
 				if(!offer)
 					session->media.updated = TRUE;
 			}
@@ -6252,8 +6263,10 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			session->media.local_video_rtcp_port = rtcp_port;
 		}
 	}
-	/* We need this to quickly interrupt the poll when it's time to update a session or wrap up */
-	pipe(session->media.pipefd);
+	if(!update) {
+		/* We need this to quickly interrupt the poll when it's time to update a session or wrap up */
+		pipe(session->media.pipefd);
+	}
 	return 0;
 }
 
@@ -6353,7 +6366,7 @@ static void *janus_sip_relay_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Starting relay thread (%s <--> %s)\n", session->account.username, session->callee);
 
 	if(!session->callee) {
-		JANUS_LOG(LOG_VERB, "[SIP-%s] Leaving thread, no callee...\n", session->account.username);
+		JANUS_LOG(LOG_WARN, "[SIP-%s] Leaving thread, no callee...\n", session->account.username);
 		janus_refcount_decrease(&session->ref);
 		g_thread_unref(g_thread_self());
 		return NULL;
@@ -6366,6 +6379,14 @@ static void *janus_sip_relay_thread(void *data) {
 	int pipe_fd = session->media.pipefd[0];
 	char buffer[1500];
 	memset(buffer, 0, 1500);
+	if(pipe_fd == -1) {
+		/* If the pipe file descriptor doesn't exist, it means we're done already,
+		 * and/or we may never be notified about sessions being closed, so give up */
+		JANUS_LOG(LOG_WARN, "[SIP-%s] Leaving thread, no pipe file descriptor...\n", session->account.username);
+		janus_refcount_decrease(&session->ref);
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
 	/* Loop */
 	int num = 0;
 	gboolean goon = TRUE;
@@ -6462,12 +6483,16 @@ static void *janus_sip_relay_thread(void *data) {
 			fds[num].revents = 0;
 			num++;
 		}
-		if(pipe_fd != -1) {
-			fds[num].fd = pipe_fd;
-			fds[num].events = POLLIN;
-			fds[num].revents = 0;
-			num++;
+		/* Finally, let's add the pipe */
+		pipe_fd = session->media.pipefd[0];
+		if(pipe_fd == -1) {
+			/* Pipe was closed? Means the call is over */
+			break;
 		}
+		fds[num].fd = pipe_fd;
+		fds[num].events = POLLIN;
+		fds[num].revents = 0;
+		num++;
 		/* Wait for some data */
 		resfd = poll(fds, num, 1000);
 		if(resfd < 0) {
@@ -6504,14 +6529,18 @@ static void *janus_sip_relay_thread(void *data) {
 					if(fds[i].fd == session->media.audio_rtcp_fd) {
 						JANUS_LOG(LOG_WARN, "[SIP-%s] Got a '%s' on the audio RTCP socket, closing it\n",
 							session->account.username, g_strerror(error));
+						janus_mutex_lock(&session->mutex);
 						close(session->media.audio_rtcp_fd);
 						session->media.audio_rtcp_fd = -1;
+						janus_mutex_unlock(&session->mutex);
 						continue;
 					} else if(fds[i].fd == session->media.video_rtcp_fd) {
 						JANUS_LOG(LOG_WARN, "[SIP-%s] Got a '%s' on the video RTCP socket, closing it\n",
 							session->account.username, g_strerror(error));
+						janus_mutex_lock(&session->mutex);
 						close(session->media.video_rtcp_fd);
 						session->media.video_rtcp_fd = -1;
+						janus_mutex_unlock(&session->mutex);
 						continue;
 					}
 				}
@@ -6687,7 +6716,9 @@ static void *janus_sip_relay_thread(void *data) {
 		}
 	}
 	/* Cleanup the media session */
+	janus_mutex_lock(&session->mutex);
 	janus_sip_media_cleanup(session);
+	janus_mutex_unlock(&session->mutex);
 	/* Done */
 	JANUS_LOG(LOG_VERB, "Leaving SIP relay thread\n");
 	session->relayer_thread = NULL;
