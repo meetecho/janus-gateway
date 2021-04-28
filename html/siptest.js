@@ -688,7 +688,7 @@ $(document).ready(function() {
 											// Prevent cursor positioning
 											var text = $(this).val();
 											$(this).focus().val('').val(text);
-										}).live("click", function(event) {
+										}).on("click", function(event) {
 											// Prevent cursor positioning
 											var text = $(this).val();
 											$(this).focus().val('').val(text);
