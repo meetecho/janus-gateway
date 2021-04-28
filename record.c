@@ -150,14 +150,14 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 			if(ENOENT == errno) {
 				/* Directory does not exist, try creating it */
 				if(janus_mkdir(rec_dir, 0755) < 0) {
-					JANUS_LOG(LOG_ERR, "mkdir (%s) error: %d (%s)\n", rec_dir, errno, strerror(errno));
+					JANUS_LOG(LOG_ERR, "mkdir (%s) error: %d (%s)\n", rec_dir, errno, g_strerror(errno));
 					janus_recorder_destroy(rc);
 					g_free(copy_for_parent);
 					g_free(copy_for_base);
 					return NULL;
 				}
 			} else {
-				JANUS_LOG(LOG_ERR, "stat (%s) error: %d (%s)\n", rec_dir, errno, strerror(errno));
+				JANUS_LOG(LOG_ERR, "stat (%s) error: %d (%s)\n", rec_dir, errno, g_strerror(errno));
 				janus_recorder_destroy(rc);
 				g_free(copy_for_parent);
 				g_free(copy_for_base);
@@ -238,7 +238,7 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 	size_t res = fwrite(header, sizeof(char), strlen(header), rc->file);
 	if(res != strlen(header)) {
 		JANUS_LOG(LOG_ERR, "Couldn't write .mjr header (%zu != %zu, %s)\n",
-			res, strlen(header), strerror(errno));
+			res, strlen(header), g_strerror(errno));
 		janus_recorder_destroy(rc);
 		g_free(copy_for_parent);
 		g_free(copy_for_base);
@@ -335,16 +335,21 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 			json_object_set_new(info, "e", json_true());
 		gchar *info_text = json_dumps(info, JSON_PRESERVE_ORDER);
 		json_decref(info);
+		if(info_text == NULL) {
+			JANUS_LOG(LOG_ERR, "Error converting header to text...\n");
+			janus_mutex_unlock_nodebug(&recorder->mutex);
+			return -5;
+		}
 		uint16_t info_bytes = htons(strlen(info_text));
 		size_t res = fwrite(&info_bytes, sizeof(uint16_t), 1, recorder->file);
 		if(res != 1) {
 			JANUS_LOG(LOG_WARN, "Couldn't write size of JSON header in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
-				res, sizeof(uint16_t), strerror(errno));
+				res, sizeof(uint16_t), g_strerror(errno));
 		}
 		res = fwrite(info_text, sizeof(char), strlen(info_text), recorder->file);
 		if(res != strlen(info_text)) {
 			JANUS_LOG(LOG_WARN, "Couldn't write JSON header in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
-				res, strlen(info_text), strerror(errno));
+				res, strlen(info_text), g_strerror(errno));
 		}
 		free(info_text);
 		/* Done */
@@ -355,20 +360,20 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 	size_t res = fwrite(frame_header, sizeof(char), strlen(frame_header), recorder->file);
 	if(res != strlen(frame_header)) {
 		JANUS_LOG(LOG_WARN, "Couldn't write frame header in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
-			res, strlen(frame_header), strerror(errno));
+			res, strlen(frame_header), g_strerror(errno));
 	}
 	uint32_t timestamp = (uint32_t)(now > recorder->started ? ((now - recorder->started)/1000) : 0);
 	timestamp = htonl(timestamp);
 	res = fwrite(&timestamp, sizeof(uint32_t), 1, recorder->file);
 	if(res != 1) {
 		JANUS_LOG(LOG_WARN, "Couldn't write frame timestamp in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
-			res, sizeof(uint32_t), strerror(errno));
+			res, sizeof(uint32_t), g_strerror(errno));
 	}
 	uint16_t header_bytes = htons(recorder->type == JANUS_RECORDER_DATA ? (length+sizeof(gint64)) : length);
 	res = fwrite(&header_bytes, sizeof(uint16_t), 1, recorder->file);
 	if(res != 1) {
 		JANUS_LOG(LOG_WARN, "Couldn't write size of frame in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
-			res, sizeof(uint16_t), strerror(errno));
+			res, sizeof(uint16_t), g_strerror(errno));
 	}
 	if(recorder->type == JANUS_RECORDER_DATA) {
 		/* If it's data, then we need to prepend timing related info, as it's not there by itself */
@@ -376,7 +381,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		res = fwrite(&now, sizeof(gint64), 1, recorder->file);
 		if(res != 1) {
 			JANUS_LOG(LOG_WARN, "Couldn't write data timestamp in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
-				res, sizeof(gint64), strerror(errno));
+				res, sizeof(gint64), g_strerror(errno));
 		}
 	}
 	/* Save packet on file */
@@ -386,7 +391,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		if(temp <= 0) {
 			JANUS_LOG(LOG_ERR, "Error saving frame...\n");
 			janus_mutex_unlock_nodebug(&recorder->mutex);
-			return -5;
+			return -6;
 		}
 		tot -= temp;
 	}

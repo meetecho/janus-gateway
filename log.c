@@ -230,7 +230,7 @@ int janus_log_init(gboolean daemon, gboolean console, const char *logfile) {
 		/* Open a log file for writing (and append) */
 		janus_log_file = fopen(logfile, "awt");
 		if(janus_log_file == NULL) {
-			g_print("Error opening log file %s: %s\n", logfile, strerror(errno));
+			g_print("Error opening log file %s: %s\n", logfile, g_strerror(errno));
 			return -1;
 		}
 		janus_log_filepath = g_strdup(logfile);
@@ -239,7 +239,7 @@ int janus_log_init(gboolean daemon, gboolean console, const char *logfile) {
 		g_print("WARNING: logging completely disabled!\n");
 		g_print("         (no stdout and no logfile, this may not be what you want...)\n");
 	}
-	if(daemon) {
+	if(daemon && !console) {
 		/* Replace the standard file descriptors */
 		if (freopen("/dev/null", "r", stdin) == NULL) {
 			g_print("Error replacing stdin with /dev/null\n");

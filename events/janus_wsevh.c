@@ -104,10 +104,50 @@ static struct janus_json_parameter tweak_parameters[] = {
 #define JANUS_WSEVH_ERROR_INVALID_ELEMENT		413
 #define JANUS_WSEVH_ERROR_UNKNOWN_ERROR			499
 
+/* Logging */
+static int wsevh_log_level = 0;
+static const char *janus_wsevh_get_level_str(int level) {
+	switch(level) {
+		case LLL_ERR:
+			return "ERR";
+		case LLL_WARN:
+			return "WARN";
+		case LLL_NOTICE:
+			return "NOTICE";
+		case LLL_INFO:
+			return "INFO";
+		case LLL_DEBUG:
+			return "DEBUG";
+		case LLL_PARSER:
+			return "PARSER";
+		case LLL_HEADER:
+			return "HEADER";
+		case LLL_EXT:
+			return "EXT";
+		case LLL_CLIENT:
+			return "CLIENT";
+		case LLL_LATENCY:
+			return "LATENCY";
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
+		case LLL_USER:
+			return "USER";
+#endif
+		case LLL_COUNT:
+			return "COUNT";
+		default:
+			return NULL;
+	}
+}
+static void janus_wsevh_log_emit_function(int level, const char *line) {
+	/* FIXME Do we want to use different Janus debug levels according to the level here? */
+	JANUS_LOG(LOG_INFO, "[libwebsockets][wsevh][%s] %s", janus_wsevh_get_level_str(level), line);
+}
+
 
 /* WebSockets properties */
 static char *backend = NULL;
-static const char *protocol = NULL, *address = NULL, *path = NULL;
+static const char *protocol = NULL, *address = NULL;
+static char path[256];
 static int port = 0;
 static struct lws_context *context = NULL;
 static gint64 disconnected = 0;
@@ -243,6 +283,55 @@ int janus_wsevh_init(const char *config_path) {
 		}
 	}
 
+	item = janus_config_get(config, config_general, janus_config_type_item, "ws_logging");
+	if(item && item->value) {
+		/* libwebsockets uses a mask to set log levels, as documented here:
+		 * https://libwebsockets.org/lws-api-doc-master/html/group__log.html */
+		if(strstr(item->value, "none")) {
+			/* Disable libwebsockets logging completely (the default) */
+		} else if(strstr(item->value, "all")) {
+			/* Enable all libwebsockets logging */
+			wsevh_log_level = LLL_ERR | LLL_WARN | LLL_NOTICE | LLL_INFO |
+				LLL_DEBUG | LLL_PARSER | LLL_HEADER | LLL_EXT |
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
+				LLL_CLIENT | LLL_LATENCY | LLL_USER | LLL_COUNT;
+#else
+				LLL_CLIENT | LLL_LATENCY | LLL_COUNT;
+#endif
+		} else {
+			/* Only enable some of the properties */
+			if(strstr(item->value, "err"))
+				wsevh_log_level |= LLL_ERR;
+			if(strstr(item->value, "warn"))
+				wsevh_log_level |= LLL_WARN;
+			if(strstr(item->value, "notice"))
+				wsevh_log_level |= LLL_NOTICE;
+			if(strstr(item->value, "info"))
+				wsevh_log_level |= LLL_INFO;
+			if(strstr(item->value, "debug"))
+				wsevh_log_level |= LLL_DEBUG;
+			if(strstr(item->value, "parser"))
+				wsevh_log_level |= LLL_PARSER;
+			if(strstr(item->value, "header"))
+				wsevh_log_level |= LLL_HEADER;
+			if(strstr(item->value, "ext"))
+				wsevh_log_level |= LLL_EXT;
+			if(strstr(item->value, "client"))
+				wsevh_log_level |= LLL_CLIENT;
+			if(strstr(item->value, "latency"))
+				wsevh_log_level |= LLL_LATENCY;
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
+			if(strstr(item->value, "user"))
+				wsevh_log_level |= LLL_USER;
+#endif
+			if(strstr(item->value, "count"))
+				wsevh_log_level |= LLL_COUNT;
+		}
+	}
+	if(wsevh_log_level > 0)
+		JANUS_LOG(LOG_INFO, "WebSockets event handler libwebsockets logging: %d\n", wsevh_log_level);
+	lws_set_log_level(wsevh_log_level, janus_wsevh_log_emit_function);
+
 	/* Which events should we subscribe to? */
 	item = janus_config_get(config, config_general, janus_config_type_item, "events");
 	if(item && item->value)
@@ -261,17 +350,21 @@ int janus_wsevh_init(const char *config_path) {
 		JANUS_LOG(LOG_FATAL, "Missing WebSockets backend\n");
 		goto error;
 	}
-	if(lws_parse_uri(backend, &protocol, &address, &port, &path)) {
+	const char *p = NULL;
+	if(lws_parse_uri(backend, &protocol, &address, &port, &p)) {
 		JANUS_LOG(LOG_FATAL, "Error parsing address\n");
 		goto error;
 	}
-	if(strcasecmp(protocol, "ws") || !strlen(address)) {
-		JANUS_LOG(LOG_FATAL, "Invalid address (only ws:// addresses are supported)\n");
+	if((strcasecmp(protocol, "ws") && strcasecmp(protocol, "wss")) || !strlen(address)) {
+		JANUS_LOG(LOG_FATAL, "Invalid address (only ws:// and wss:// addresses are supported)\n");
 		JANUS_LOG(LOG_FATAL, "  -- Protocol: %s\n", protocol);
 		JANUS_LOG(LOG_FATAL, "  -- Address:  %s\n", address);
-		JANUS_LOG(LOG_FATAL, "  -- Path:     %s\n", path);
+		JANUS_LOG(LOG_FATAL, "  -- Path:     %s\n", p);
 		goto error;
 	}
+	path[0] = '/';
+	if(strlen(p) > 1)
+		g_strlcpy(path + 1, p, sizeof(path)-2);
 	/* Before connecting, let's check if the server expects a subprotocol */
 	item = janus_config_get(config, config_general, janus_config_type_item, "subprotocol");
 	if(item && item->value)
@@ -279,31 +372,31 @@ int janus_wsevh_init(const char *config_path) {
 
 	/* Connect */
 	JANUS_LOG(LOG_VERB, "WebSocketsEventHandler: Connecting to WebSockets server...\n");
-	struct lws_context_creation_info info;
-	memset(&info, 0, sizeof(info));
+	gboolean secure = !strcasecmp(protocol, "wss");
+	struct lws_context_creation_info info = { 0 };
 	info.port = CONTEXT_PORT_NO_LISTEN;
 	info.protocols = protocols;
 	info.gid = -1;
 	info.uid = -1;
-	info.options = 0;
+	if(secure)
+		info.options |= LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
 	context = lws_create_context(&info);
 	if(context == NULL) {
 		JANUS_LOG(LOG_FATAL, "Creating libwebsocket context failed\n");
 		goto error;
 	}
-	struct lws_client_connect_info i;
-	memset(&i, 0, sizeof(i));
+	struct lws_client_connect_info i = { 0 };
 	i.host = address;
 	i.origin = address;
 	i.address = address;
 	i.port = port;
 	i.path = path;
 	i.context = context;
-	i.ssl_connection = 0;
+	if(secure)
+		i.ssl_connection = 1;
 	i.ietf_version_or_minus_one = -1;
 	i.client_exts = exts;
 	i.protocol = protocols[0].name;
-	i.method = NULL;
 	wsi = lws_client_connect_via_info(&i);
 	if(wsi == NULL) {
 		JANUS_LOG(LOG_FATAL, "Error initializing WebSocket connection\n");
@@ -573,6 +666,13 @@ static void *janus_wsevh_handler(void *data) {
 		if(!g_atomic_int_get(&stopping)) {
 			/* Since this a simple plugin, it does the same for all events: so just convert to string... */
 			event_text = json_dumps(output, json_format);
+			if(event_text == NULL) {
+				JANUS_LOG(LOG_WARN, "Failed to stringify event, event lost...\n");
+				/* Nothing we can do... get rid of the event */
+				json_decref(output);
+				output = NULL;
+				continue;
+			}
 			g_async_queue_push(messages, event_text);
 #if (LWS_LIBRARY_VERSION_MAJOR >= 3)
 			if(context != NULL)
@@ -685,7 +785,7 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 							ws_client->bufpending, ws_client->bufoffset);
 					}
 					/* We can get rid of the message */
-					g_free(event);
+					free(event);
 					/* Done for this round, check the next response/notification later */
 					lws_callback_on_writable(wsi);
 					janus_mutex_unlock(&ws_client->mutex);

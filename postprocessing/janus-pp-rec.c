@@ -75,6 +75,19 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
                                   compensation, disabled if 0 (default=0)
   -C, --silence-distance=count  RTP packets distance used to detect RTP silence
 								  suppression, disabled if 0 (default=100)
+  -r, --restamp=count           If the latency of a packet is bigger than the
+                                  `moving_average_latency * (<restamp>/1000)`
+                                  the timestamps will be corrected, disabled if
+                                  0 (default=0)
+  -c, --restamp-packets=count   Number of packets used for calculating moving
+
+                                  average latency for timestamp correction
+                                  (default=10)
+  -n, --restamp-min-th=milliseconds
+                                Minimum latency of moving average to reach
+                                  before starting to correct timestamps.
+                                  (default=500)
+
 \endverbatim
  *
  * \note This utility does not do any form of transcoding. It just
@@ -88,7 +101,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
  */
 
 #include <arpa/inet.h>
-#ifdef __MACH__
+#if defined(__MACH__) || defined(__FreeBSD__)
 #include <machine/endian.h>
 #else
 #include <endian.h>
@@ -138,6 +151,15 @@ static int audioskew_th = DEFAULT_AUDIO_SKEW_TH;
 #define DEFAULT_SILENCE_DISTANCE 100
 static int silence_distance = DEFAULT_SILENCE_DISTANCE;
 
+#define DEFAULT_RESTAMP_MULTIPLIER 0
+static int restamp_multiplier = DEFAULT_RESTAMP_MULTIPLIER;
+
+#define DEFAULT_RESTAMP_MIN_TH 500
+static int restamp_min_th = DEFAULT_RESTAMP_MIN_TH;
+
+#define DEFAULT_RESTAMP_PACKETS 10
+static int restamp_packets = DEFAULT_RESTAMP_PACKETS;
+
 /* Signal handler */
 static void janus_pp_handle_signal(int signum) {
 	working = 0;
@@ -160,6 +182,10 @@ typedef struct janus_pp_rtp_skew_context {
 	gint16 seq_offset;
 } janus_pp_rtp_skew_context;
 static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_rtp_skew_context *context);
+
+/* Helper methods for timestamp correction (restamp) */
+static double get_latency(const janus_pp_frame_packet *tmp, int rate);
+static double get_moving_average_of_latency(janus_pp_frame_packet *pkt, int rate, int num_of_packets);
 
 /* Main Code */
 int main(int argc, char *argv[])
@@ -233,7 +259,21 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			silence_distance = val;
 	}
-
+	if(args_info.restamp_given || (g_getenv("JANUS_PPREC_RESTAMP") != NULL)) {
+		int val = args_info.restamp_given ? args_info.restamp_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP"));
+		if(val >= 0)
+			restamp_multiplier = val;
+	}
+	if(args_info.restamp_packets_given || (g_getenv("JANUS_PPREC_RESTAMP_PACKETS") != NULL)) {
+		int val = args_info.restamp_packets_given ? args_info.restamp_packets_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP_PACKETS"));
+		if(val >= 0)
+			restamp_packets = val;
+	}
+	if(args_info.restamp_min_th_given || (g_getenv("JANUS_PPREC_RESTAMP_MIN_TH") != NULL)) {
+		int val = args_info.restamp_min_th_given ? args_info.restamp_min_th_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP_MIN_TH"));
+		if(val >= 0)
+			restamp_min_th = val;
+	}
 	/* Evaluate arguments to find source and target */
 	char *source = NULL, *destination = NULL, *setting = NULL;
 	int i=0;
@@ -255,7 +295,10 @@ int main(int argc, char *argv[])
 				(strcmp(setting, "-d")) && (strcmp(setting, "--debug-level")) &&
 				(strcmp(setting, "-f")) && (strcmp(setting, "--format")) &&
 				(strcmp(setting, "-S")) && (strcmp(setting, "--audioskew")) &&
-				(strcmp(setting, "-C")) && (strcmp(setting, "--silence-distance"))
+				(strcmp(setting, "-C")) && (strcmp(setting, "--silence-distance")) &&
+				(strcmp(setting, "-r")) && (strcmp(setting, "--restamp")) &&
+				(strcmp(setting, "-c")) && (strcmp(setting, "--restamp-packets")) &&
+				(strcmp(setting, "-n")) && (strcmp(setting, "--restamp-min-th"))
 		)) {
 			if(source == NULL)
 				source = argv[i];
@@ -1114,6 +1157,50 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	/* Run restamping */
+	if(!video && !data && restamp_multiplier > 0) {
+		tmp = list;
+		uint64_t restamping_offset = 0;
+		double restamp_threshold = (double) restamp_min_th/1000;
+		double restamp_jump_multiplier = (double) restamp_multiplier/1000;
+
+		while(tmp) {
+			uint64_t original_ts = tmp->ts;
+
+			/* Update ts with current offset */
+			if(restamping_offset > 0) {
+				tmp->ts += restamping_offset;
+			}
+
+			/* Calculate diff between time of reception and the rtp timestamp */
+			double current_latency = get_latency(tmp, rate);
+
+			if(current_latency > restamp_threshold) {
+				/* Check for possible jump compared to previous latency values */
+				double moving_avg_latency = get_moving_average_of_latency(tmp->prev, rate, restamp_packets);
+				JANUS_LOG(LOG_VERB, "latency=%.2f mavg=%.2f\n", current_latency, moving_avg_latency);
+
+				/* Found a new jump in latency? */
+				if(current_latency > (moving_avg_latency*restamp_jump_multiplier)) {
+					/* Increase restamping offset with current offset */
+					restamping_offset += (current_latency-moving_avg_latency)*rate;
+
+					/* Calculate new_ts with new offset */
+					uint64_t new_ts = original_ts+restamping_offset;
+
+					/* Update current packet ts with new ts */
+					tmp->ts = new_ts;
+
+					JANUS_LOG(LOG_WARN, "Timestamp gap detected. Restamping packets from here. Seq: %d\n", tmp->seq);
+					JANUS_LOG(LOG_INFO, "latency=%.2f mavg=%.2f original_ts=%.ld new_ts=%.ld offset=%.ld\n", current_latency, moving_avg_latency, original_ts, tmp->ts, restamping_offset);
+				}
+			}
+
+			tmp = tmp->next;
+		}
+	}
+
+	/* Run audioskew */
 	if(!video && !data && audioskew_th > 0) {
 		tmp = list;
 		janus_pp_rtp_skew_context context = {};
@@ -1487,4 +1574,31 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 	pkt->seq = fixed_rtp_seq;
 
 	return exit_status;
+}
+
+static double get_latency(const janus_pp_frame_packet *tmp, int rate) {
+	/* Get latency of packet based on time of arrival (at server side) and the RTP timestamp */
+	double corrected_ts = tmp->ts-list->ts;
+	double rts = corrected_ts/(double) rate;
+	double pts = (double) tmp->p_ts/1000;
+	return pts-rts;
+}
+
+static double get_moving_average_of_latency(janus_pp_frame_packet *pkt, int rate, int num_of_packets) {
+	/* Get a moving average of packet latency using the get_latency function */
+	if(!pkt || num_of_packets == 0) {
+		return 0;
+	}
+
+	int packets = 0;
+	double sum = 0;
+
+	janus_pp_frame_packet *tmp = pkt;
+	while(tmp && packets < num_of_packets) {
+		sum += get_latency(tmp, rate);
+		tmp = tmp->prev;
+		packets++;
+	}
+
+	return sum/packets;
 }

@@ -74,12 +74,20 @@
 # DO NOT SET THIS PROPERTY IF YOU DON'T KNOW WHAT YOU'RE DOING!
 # e2ee = true
 #
-# The following options are only valid for the 'rstp' type:
+# The following options are only valid for the 'rtsp' type:
 # url = RTSP stream URL (only for restreaming RTSP)
 # rtsp_user = RTSP authorization username (only if type=rtsp)
 # rtsp_pwd = RTSP authorization password (only if type=rtsp)
-# rtspiface = network interface or IP address to bind to, if any (binds to all otherwise), when receiving RTSP streams
 # rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=true)
+# rtspiface = network interface or IP address to bind to, if any (binds to all otherwise), when receiving RTSP streams
+# rtsp_reconnect_delay = after n seconds passed and no media assumed, the RTSP server has gone and schedule a reconnect (default=5s)
+# rtsp_session_timeout = by default the streaming plugin will check the RTSP connection with an OPTIONS query,
+# 		the value of the timeout comes from the RTSP session initializer and by default
+# 		this session timeout is the half of this value In some cases this value can be too high (for example more than one minute)
+# 		because of the media server. In that case this plugin will calculate the timeout with this
+# 		formula: timeout = min(session_timeout, rtsp_session_timeout / 2). (default=0s)
+# rtsp_timeout = communication timeout (CURLOPT_TIMEOUT) for cURL call gathering the RTSP information (default=10s)
+# rtsp_conn_timeout = connection timeout for cURL (CURLOPT_CONNECTTIMEOUT) call gathering the RTSP information (default=5s)
 #
 # Notice that, for 'rtsp' mountpoints, normally the plugin uses the exact
 # SDP rtpmap and fmtp attributes the remote camera or RTSP server sent.
@@ -249,4 +257,8 @@ file-ondemand-sample: {
 	#rtsp_user = "username"
 	#rtsp_pwd = "password"
 	#secret = "adminpwd"
+	#rtsp_reconnect_delay = 5
+	#rtsp_session_timeout = 0
+	#rtsp_timeout = 10
+	#rtsp_conn_timeout = 5
 #}

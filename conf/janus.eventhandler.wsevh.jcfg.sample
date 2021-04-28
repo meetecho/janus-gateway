@@ -14,13 +14,18 @@ general: {
 						# (one or more per HTTP POST, JSON array with objects)
 						# The default is 'yes' to limit the number of connections.
 
-						# Address the plugin will send all events to as HTTP POST
-						# requests with an application/json payload. In case
-						# authentication is required to contact the backend, set
-						# the credentials as well (basic authentication only).
 	json = "indented"	# Whether the JSON messages should be indented (default),
 						# plain (no indentation) or compact (no indentation and no spaces)
 
+						# Address the plugin will send all events to as WebSocket
+						# messages. In case authentication is required to contact
+						# the backend, set the credentials as well.
 	backend = "ws://your.websocket.here"
 	# subprotocol = "your-subprotocol"
+
+						# In case you need to debug connection issues, you can configure
+						# the libwebsockets debugging level as a comma separated list of things
+						# to debug, supported values: err, warn, notice, info, debug, parser,
+						# header, ext, client, latency, user, count (plus 'none' and 'all')
+	#ws_logging = "err,warn"
 }
