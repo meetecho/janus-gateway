@@ -148,7 +148,7 @@ typedef struct janus_rabbitmq_client {
 	janus_mutex mutex;						/* Mutex to lock/unlock this session */
 	gint session_timeout:1;					/* Whether a Janus session timeout occurred in the core */
 	gint destroy:1;							/* Flag to trigger a lazy session destruction */
-	gint connected:1;							/* Flag to trigger a lazy session destruction */
+	gint connected:1;							/* Flag to specify whether or not RabbitMQ connection is deemed to be up */
 } janus_rabbitmq_client;
 
 /* RabbitMQ response */
