@@ -33,10 +33,18 @@
 
 #include "transport.h"
 
+/* Latest RabbitMQ-C library changes the library paths from 0.12.0.0 onwards */
+#ifdef HAVE_RABBITMQ_C_AMQP_H
 #include <rabbitmq-c/amqp.h>
 #include <rabbitmq-c/framing.h>
 #include <rabbitmq-c/tcp_socket.h>
 #include <rabbitmq-c/ssl_socket.h>
+#else
+#include <amqp.h>
+#include <amqp_framing.h>
+#include <amqp_tcp_socket.h>
+#include <amqp_ssl_socket.h>
+#endif
 
 #include "../debug.h"
 #include "../apierror.h"

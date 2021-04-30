@@ -605,6 +605,7 @@ AC_CHECK_LIB([rabbitmq],
                  AC_DEFINE(HAVE_RABBITMQEVH)
                  enable_rabbitmq_event_handler=yes
                ])
+               AC_CHECK_HEADERS([rabbitmq-c/amqp.h])
              ],
              [
                AS_IF([test "x$enable_rabbitmq" = "xyes"],
