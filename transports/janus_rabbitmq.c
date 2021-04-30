@@ -81,7 +81,7 @@ void janus_rabbitmq_session_claimed(janus_transport_session *transport, guint64 
 json_t *janus_rabbitmq_query_transport(json_t *request);
 
 /* Internal methods */
-int janus_rabbitmq_connect(void);
+static int janus_rabbitmq_connect(void);
 
 /* Transport setup */
 static janus_transport janus_rabbitmq_transport =
@@ -181,13 +181,11 @@ static char *rmqhost = NULL, *vhost = NULL, *username = NULL, *password = NULL,
 	*ssl_cacert_file = NULL, *ssl_cert_file = NULL, *ssl_key_file = NULL,
 	*to_janus = NULL, *from_janus = NULL, *to_janus_admin = NULL, *from_janus_admin = NULL, *janus_exchange = NULL, *janus_exchange_type = NULL,
 	*queue_name = NULL, *queue_name_admin = NULL;
-
 static uint16_t rmqport = AMQP_PROTOCOL_PORT;
 static gboolean ssl_enabled = FALSE, ssl_verify_peer = FALSE, ssl_verify_hostname = FALSE;
 static gboolean declare_outgoing_queue = FALSE, declare_outgoing_queue_admin = FALSE;
-
-amqp_boolean_t queue_durable = 0, queue_exclusive = 0, queue_autodelete = 0, queue_durable_admin = 0, queue_exclusive_admin = 0, queue_autodelete_admin = 0;
-
+amqp_boolean_t queue_durable = 0, queue_exclusive = 0, queue_autodelete = 0,
+	queue_durable_admin = 0, queue_exclusive_admin = 0, queue_autodelete_admin = 0;
 static uint16_t heartbeat = 0;
 
 /* Transport implementation */
@@ -304,7 +302,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			ssl_verify_hostname = TRUE;
 	}
 
-	/* heartbeat config */
+	/* Heartbeat config */
 	item = janus_config_get(config, config_general, janus_config_type_item, "heartbeat");
 	if(item && item->value && janus_string_to_uint16(item->value, &heartbeat) < 0) {
 		JANUS_LOG(LOG_ERR, "Invalid heartbeat timeout (%s), falling back to default\n", item->value);
@@ -537,22 +535,15 @@ int janus_rabbitmq_connect(void) {
 	amqp_queue_declare_ok_t *declare = NULL;
 	int status;
 	JANUS_LOG(LOG_VERB, "Creating RabbitMQ socket...\n");
-	if (ssl_enabled) {
+	if(ssl_enabled) {
 		socket = amqp_ssl_socket_new(rmq_client->rmq_conn);
 		if(socket == NULL) {
 			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error creating socket...\n");
 			return -1;
 		}
-		if(ssl_verify_peer) {
-			amqp_ssl_socket_set_verify_peer(socket, 1);
-		} else {
-			amqp_ssl_socket_set_verify_peer(socket, 0);
-		}
-		if(ssl_verify_hostname) {
-			amqp_ssl_socket_set_verify_hostname(socket, 1);
-		} else {
-			amqp_ssl_socket_set_verify_hostname(socket, 0);
-		}
+		amqp_ssl_socket_set_verify_peer(socket, ssl_verify_peer);
+		amqp_ssl_socket_set_verify_hostname(socket, ssl_verify_hostname);
+
 		if(ssl_cacert_file) {
 			status = amqp_ssl_socket_set_cacert(socket, ssl_cacert_file);
 			if(status != AMQP_STATUS_OK) {
@@ -943,7 +934,7 @@ void *janus_rmq_in_thread(void *data) {
 
 			rmq_client->connected = 0;
 
-			/* try and reconnect */
+			/* Try and reconnect */
 			if(rmq_client->rmq_conn && rmq_client->rmq_channel) {
 				amqp_channel_close(rmq_client->rmq_conn, rmq_client->rmq_channel, AMQP_REPLY_SUCCESS);
 				amqp_connection_close(rmq_client->rmq_conn, AMQP_REPLY_SUCCESS);
