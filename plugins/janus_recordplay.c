@@ -1821,7 +1821,6 @@ recdone:
 							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
 							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
-							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_FRAME_MARKING,
 							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
 							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION,
 						JANUS_SDP_OA_DONE);
@@ -1848,10 +1847,9 @@ recdone:
 					json_t *s = json_array_get(msg_simulcast, i);
 					int mindex = json_integer_value(json_object_get(s, "mindex"));
 					JANUS_LOG(LOG_VERB, "Recording client is going to do simulcasting (#%d)\n", mindex);
-					int rid_ext_id = -1, framemarking_ext_id = -1;
-					janus_rtp_simulcasting_prepare(s, &rid_ext_id, &framemarking_ext_id, session->ssrc, session->rid);
+					int rid_ext_id = -1;
+					janus_rtp_simulcasting_prepare(s, &rid_ext_id, session->ssrc, session->rid);
 					session->sim_context.rid_ext_id = rid_ext_id;
-					session->sim_context.framemarking_ext_id = framemarking_ext_id;
 					session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
 					session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
 					if(rec->vcodec != JANUS_VIDEOCODEC_VP8 && rec->vcodec != JANUS_VIDEOCODEC_H264) {
@@ -1869,10 +1867,9 @@ recdone:
 			}
 			if(msg_simulcast) {
 				JANUS_LOG(LOG_VERB, "Recording client negotiated simulcasting\n");
-				int rid_ext_id = -1, framemarking_ext_id = -1;
-				janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, &framemarking_ext_id, session->ssrc, session->rid);
+				int rid_ext_id = -1;
+				janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, session->ssrc, session->rid);
 				session->sim_context.rid_ext_id = rid_ext_id;
-				session->sim_context.framemarking_ext_id = framemarking_ext_id;
 				session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
 				session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
 				if(rec->vcodec != JANUS_VIDEOCODEC_VP8 && rec->vcodec != JANUS_VIDEOCODEC_H264) {

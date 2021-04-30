@@ -881,9 +881,8 @@ static void *janus_echotest_handler(void *data) {
 				int mindex = json_integer_value(json_object_get(s, "mindex"));
 				JANUS_LOG(LOG_VERB, "EchoTest client is going to do simulcasting (#%d)\n", mindex);
 				int rid_ext_id = -1, framemarking_ext_id = -1;
-				janus_rtp_simulcasting_prepare(s, &rid_ext_id, &framemarking_ext_id, session->ssrc, session->rid);
+				janus_rtp_simulcasting_prepare(s, &rid_ext_id, session->ssrc, session->rid);
 				session->sim_context.rid_ext_id = rid_ext_id;
-				session->sim_context.framemarking_ext_id = framemarking_ext_id;
 				session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
 				session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
 				/* FIXME We're stopping at the first item, there may be more */
@@ -1105,7 +1104,6 @@ static void *janus_echotest_handler(void *data) {
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION,
-					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_FRAME_MARKING,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
 					JANUS_SDP_OA_DONE);
 				temp = temp->next;

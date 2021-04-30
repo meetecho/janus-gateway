@@ -1482,8 +1482,6 @@ int janus_process_incoming_request(janus_request *request) {
 					handle->pc->audiolevel_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 					/* Check if the video orientation ID extension is being negotiated */
 					handle->pc->videoorientation_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
-					/* Check if the frame marking ID extension is being negotiated */
-					handle->pc->framemarking_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_FRAME_MARKING);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->pc->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -1544,8 +1542,6 @@ int janus_process_incoming_request(janus_request *request) {
 					handle->pc->audiolevel_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 					/* Check if the video orientation ID extension is being negotiated */
 					handle->pc->videoorientation_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
-					/* Check if the frame marking ID extension is being negotiated */
-					handle->pc->framemarking_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_FRAME_MARKING);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->pc->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -1620,8 +1616,6 @@ int janus_process_incoming_request(janus_request *request) {
 							json_array_append_new(ssrcs, json_integer(medium->ssrc_peer[2]));
 						json_object_set_new(msc, "ssrcs", ssrcs);
 					}
-					if(medium->pc && medium->pc->framemarking_ext_id > 0)
-						json_object_set_new(msc, "framemarking-ext", json_integer(medium->pc->framemarking_ext_id));
 					json_array_append_new(simulcast, msc);
 				}
 			}
@@ -3057,8 +3051,6 @@ json_t *janus_admin_peerconnection_summary(janus_ice_peerconnection *pc) {
 		json_object_set_new(se, JANUS_RTP_EXTMAP_REPAIRED_RID, json_integer(pc->ridrtx_ext_id));
 	if(pc->transport_wide_cc_ext_id > 0)
 		json_object_set_new(se, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC, json_integer(pc->transport_wide_cc_ext_id));
-	if(pc->framemarking_ext_id > 0)
-		json_object_set_new(se, JANUS_RTP_EXTMAP_FRAME_MARKING, json_integer(pc->framemarking_ext_id));
 	if(pc->audiolevel_ext_id > 0)
 		json_object_set_new(se, JANUS_RTP_EXTMAP_AUDIO_LEVEL, json_integer(pc->audiolevel_ext_id));
 	if(pc->videoorientation_ext_id > 0)
