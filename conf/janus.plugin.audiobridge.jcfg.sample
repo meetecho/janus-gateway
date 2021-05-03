@@ -12,6 +12,7 @@
 # default_prebuffering = number of packets to buffer before decoding each particiant (default=6)
 # record = true|false (whether this room should be recorded, default=false)
 # record_file = "/path/to/recording.wav" (where to save the recording)
+# groups = optional, non-hierarchical, array of groups to tag participants, for external forwarding purposes only
 #
 #     The following lines are only needed if you want the mixed audio
 #     to be automatically forwarded via plain RTP to an external component
@@ -24,6 +25,7 @@
 # rtp_forward_ssrc = SSRC to use to use when streaming (optional: stream_id used if missing)
 # rtp_forward_codec = opus (default), pcma (A-Law) or pcmu (mu-Law)
 # rtp_forward_ptype = payload type to use when streaming (optional: only read for Opus, 100 used if missing)
+# rtp_forward_group = group of participants to forward, if enabled in the room (optional: forwards full mix if missing)
 # rtp_forward_srtp_suite = length of authentication tag (32 or 80)
 # rtp_forward_srtp_crypto = "<key to use as crypto (base64 encoded key as in SDES)>"
 # rtp_forward_always_on = true|false, whether silence should be forwarded when the room is empty (optional: false used if missing)
