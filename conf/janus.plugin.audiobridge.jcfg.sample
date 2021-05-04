@@ -13,7 +13,7 @@
 # record = true|false (whether this room should be recorded, default=false)
 # record_file = "/path/to/recording.wav" (where to save the recording)
 # allow_rtp_participants = true|false (whether participants should be allowed to join
-#		via plain RTP as well, rather than just WebRTC, default=true)
+#		via plain RTP as well, rather than just WebRTC, default=false)
 #
 #     The following lines are only needed if you want the mixed audio
 #     to be automatically forwarded via plain RTP to an external component

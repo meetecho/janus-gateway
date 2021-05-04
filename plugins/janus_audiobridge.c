@@ -41,7 +41,7 @@ room-<unique room ID>: {
 	record = true|false (whether this room should be recorded, default=false)
 	record_file = /path/to/recording.wav (where to save the recording)
 	allow_rtp_participants = true|false (whether participants should be allowed to join
-		via plain RTP as well, rather than just WebRTC, default=true)
+		via plain RTP as well, rather than just WebRTC, default=false)
 
 		[The following lines are only needed if you want the mixed audio
 		to be automatically forwarded via plain RTP to an external component
@@ -133,7 +133,7 @@ room-<unique room ID>: {
 	"default_prebuffering" : <number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)>,
 	"record" : <true|false, whether to record the room or not, default=false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
-	"allow_rtp_participants" : <true|false, whether participants should be allowed to join via plain RTP as well, default=true>
+	"allow_rtp_participants" : <true|false, whether participants should be allowed to join via plain RTP as well, default=false>
 }
 \endverbatim
  *
@@ -2317,7 +2317,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			if(recfile && recfile->value)
 				audiobridge->record_file = g_strdup(recfile->value);
 			audiobridge->recording = NULL;
-			audiobridge->allow_plainrtp = TRUE;
+			audiobridge->allow_plainrtp = FALSE;
 			if(allowrtp && allowrtp->value)
 				audiobridge->allow_plainrtp = janus_is_true(allowrtp->value);
 			audiobridge->destroy = 0;
@@ -2801,7 +2801,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		if(recfile)
 			audiobridge->record_file = g_strdup(json_string_value(recfile));
 		audiobridge->recording = NULL;
-		audiobridge->allow_plainrtp = TRUE;
+		audiobridge->allow_plainrtp = FALSE;
 		if(allowrtp && json_is_true(allowrtp))
 			audiobridge->allow_plainrtp = TRUE;
 		audiobridge->destroy = 0;
