@@ -6922,22 +6922,37 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						}
 					}
 				} else {
-					/* TODO Volume gain */
 					diff = 50 - p->spatial_position;
 					lgain = 50 + diff;
 					rgain = 50 - diff;
 					for(i=0; i<samples; i++) {
 						if(i%2 == 0) {
 							if(lgain == 100) {
-								buffer[i] += curBuffer[i];
+								if(p->volume_gain == 100) {
+									buffer[i] += curBuffer[i];
+								} else {
+									buffer[i] += (curBuffer[i]*p->volume_gain)/100;
+								}
 							} else {
-								buffer[i] += (curBuffer[i]*lgain)/100;
+								if(p->volume_gain == 100) {
+									buffer[i] += (curBuffer[i]*lgain)/100;
+								} else {
+									buffer[i] += (((curBuffer[i]*lgain)/100)*p->volume_gain)/100;
+								}
 							}
 						} else {
 							if(rgain == 100) {
-								buffer[i] += curBuffer[i];
+								if(p->volume_gain == 100) {
+									buffer[i] += curBuffer[i];
+								} else {
+									buffer[i] += (curBuffer[i]*p->volume_gain)/100;
+								}
 							} else {
-								buffer[i] += (curBuffer[i]*rgain)/100;
+								if(p->volume_gain == 100) {
+									buffer[i] += (curBuffer[i]*rgain)/100;
+								} else {
+									buffer[i] += (((curBuffer[i]*rgain)/100)*p->volume_gain)/100;
+								}
 							}
 						}
 					}
