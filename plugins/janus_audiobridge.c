@@ -2894,6 +2894,12 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
 				}
 			}
+			if(audiobridge->default_prebuffering != DEFAULT_PREBUFFERING) {
+				g_snprintf(value, BUFSIZ, "%d", audiobridge->default_prebuffering);
+				janus_config_add(config, c, janus_config_item_create("default_prebuffering", value));
+			}
+			if(audiobridge->allow_plainrtp)
+				janus_config_add(config, c, janus_config_item_create("allow_rtp_participants", "yes"));
 			if(audiobridge->record_file) {
 				janus_config_add(config, c, janus_config_item_create("record", "yes"));
 				janus_config_add(config, c, janus_config_item_create("record_file", audiobridge->record_file));
@@ -3036,6 +3042,12 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
 				}
 			}
+			if(audiobridge->default_prebuffering != DEFAULT_PREBUFFERING) {
+				g_snprintf(value, BUFSIZ, "%d", audiobridge->default_prebuffering);
+				janus_config_add(config, c, janus_config_item_create("default_prebuffering", value));
+			}
+			if(audiobridge->allow_plainrtp)
+				janus_config_add(config, c, janus_config_item_create("allow_rtp_participants", "yes"));
 			if(audiobridge->record_file) {
 				janus_config_add(config, c, janus_config_item_create("record", "yes"));
 				janus_config_add(config, c, janus_config_item_create("record_file", audiobridge->record_file));
