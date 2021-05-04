@@ -4347,7 +4347,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		/* Setup the opus decoder */
 		int opuserror = 0;
 		p->stereo = audiobridge->spatial_audio;
-		p->spatial_position = 64;
+		p->spatial_position = 50;
 		p->decoder = opus_decoder_create(audiobridge->sampling_rate,
 			audiobridge->spatial_audio ? 2 : 1, &opuserror);
 		if(opuserror != OPUS_OK) {
@@ -5461,7 +5461,7 @@ static void *janus_audiobridge_handler(void *data) {
 					audiobridge->default_prebuffering);
 			}
 			int volume = gain ? json_integer_value(gain) : 100;
-			int spatial_position = spatial ? json_integer_value(spatial) : 64;
+			int spatial_position = spatial ? json_integer_value(spatial) : 50;
 			int complexity = quality ? json_integer_value(quality) : DEFAULT_COMPLEXITY;
 			if(complexity < 1 || complexity > 10) {
 				janus_mutex_unlock(&audiobridge->mutex);
@@ -5569,11 +5569,11 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->volume_gain = volume;
 			participant->opus_complexity = complexity;
 			participant->stereo = audiobridge->spatial_audio;
-			participant->spatial_position = spatial_position;
-			if(participant->spatial_position < 0)
-				participant->spatial_position = 0;
-			else if(participant->spatial_position > 100)
-				participant->spatial_position = 100;
+			if(participant->stereo) {
+				if(spatial_position > 100)
+					spatial_position = 100;
+				participant->spatial_position = spatial_position;
+			}
 			participant->user_audio_active_packets = json_integer_value(user_audio_active_packets);
 			participant->user_audio_level_average = json_integer_value(user_audio_level_average);
 			if(participant->outbuf == NULL)
@@ -5890,13 +5890,6 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			if(gain)
 				participant->volume_gain = json_integer_value(gain);
-			if(spatial) {
-				participant->spatial_position = json_integer_value(spatial);
-				if(participant->spatial_position < 0)
-					participant->spatial_position = 0;
-				else if(participant->spatial_position > 100)
-					participant->spatial_position = 100;
-			}
 			if(quality) {
 				int complexity = json_integer_value(quality);
 				if(complexity < 1 || complexity > 10) {
@@ -5909,7 +5902,7 @@ static void *janus_audiobridge_handler(void *data) {
 				if(participant->encoder)
 					opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
 			}
-			if(muted || display) {
+			if(muted || display || (participant->stereo && spatial)) {
 				if(muted) {
 					participant->muted = json_is_true(muted);
 					JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %s, user %s)\n",
@@ -5940,6 +5933,12 @@ static void *janus_audiobridge_handler(void *data) {
 					g_free(old_display);
 					JANUS_LOG(LOG_VERB, "Setting display property: %s (room %s, user %s)\n",
 						participant->display, participant->room->room_id_str, participant->user_id_str);
+				}
+				if(participant->stereo && spatial) {
+					int spatial_position = json_integer_value(spatial);
+					if(spatial_position > 100)
+						spatial_position = 100;
+					participant->spatial_position = spatial_position;
 				}
 				/* Notify all other participants about the mute/unmute */
 				janus_mutex_lock(&rooms_mutex);
@@ -6231,7 +6230,7 @@ static void *janus_audiobridge_handler(void *data) {
 					old_audiobridge->spatial_audio != audiobridge->spatial_audio) {
 				/* Create a new one that takes into account the sampling rate we want now */
 				participant->stereo = audiobridge->spatial_audio;
-				participant->spatial_position = 64;
+				participant->spatial_position = 50;
 				int error = 0;
 				OpusEncoder *new_encoder = opus_encoder_create(audiobridge->sampling_rate,
 					audiobridge->spatial_audio ? 2 : 1, OPUS_APPLICATION_VOIP, &error);
