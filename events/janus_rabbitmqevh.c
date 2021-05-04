@@ -232,7 +232,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 
 	item = janus_config_get(config, config_general, janus_config_type_item, "heartbeat");
 	if(item && item->value && janus_string_to_uint16(item->value, &heartbeat) < 0) {
-		JANUS_LOG(LOG_ERR, "Invalid heartbeat timeout (%s), falling back to default\n", item->value);
+		JANUS_LOG(LOG_ERR, "Invalid heartbeat timeout (%s), falling back to default (0, disabling heartbeat)\n", item->value);
 		heartbeat = 0;
 	}
 
@@ -454,9 +454,7 @@ void janus_rabbitmqevh_destroy(void) {
 	g_async_queue_unref(events);
 	events = NULL;
 
-	if(rmq_conn && rmq_channel) {
-		amqp_channel_close(rmq_conn, rmq_channel, AMQP_REPLY_SUCCESS);
-		amqp_connection_close(rmq_conn, AMQP_REPLY_SUCCESS);
+	if(rmq_conn) {
 		amqp_destroy_connection(rmq_conn);
 	}
 	if(rmq_exchange.bytes)
@@ -676,9 +674,7 @@ static void *jns_rmqevh_hrtbt(void *data) {
 
 			JANUS_LOG(LOG_VERB, "Error on amqp_simple_wait_frame_noblock: %d (%s)\n", res, amqp_error_string2(res));
 
-			if(rmq_conn && rmq_channel) {
-				amqp_channel_close(rmq_conn, rmq_channel, AMQP_REPLY_SUCCESS);
-				amqp_connection_close(rmq_conn, AMQP_REPLY_SUCCESS);
+			if(rmq_conn) {
 				amqp_destroy_connection(rmq_conn);
 			}
 			if(!g_atomic_int_get(&stopping)) {

@@ -308,7 +308,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	/* Heartbeat config */
 	item = janus_config_get(config, config_general, janus_config_type_item, "heartbeat");
 	if(item && item->value && janus_string_to_uint16(item->value, &heartbeat) < 0) {
-		JANUS_LOG(LOG_ERR, "Invalid heartbeat timeout (%s), falling back to default\n", item->value);
+		JANUS_LOG(LOG_ERR, "Invalid heartbeat timeout (%s), falling back to default (0, disabling heartbeat)\n", item->value);
 		heartbeat = 0;
 	}
 
@@ -730,9 +730,7 @@ void janus_rabbitmq_destroy(void) {
 			g_thread_join(rmq_client->in_thread);
 		if(rmq_client->out_thread)
 			g_thread_join(rmq_client->out_thread);
-		if(rmq_client->rmq_conn && rmq_client->rmq_channel) {
-			amqp_channel_close(rmq_client->rmq_conn, rmq_client->rmq_channel, AMQP_REPLY_SUCCESS);
-			amqp_connection_close(rmq_client->rmq_conn, AMQP_REPLY_SUCCESS);
+		if(rmq_client->rmq_conn) {
 			amqp_destroy_connection(rmq_client->rmq_conn);
 		}
 	}
@@ -941,8 +939,6 @@ void *janus_rmq_in_thread(void *data) {
 
 			/* Try and reconnect */
 			if(rmq_client->rmq_conn && rmq_client->rmq_channel) {
-				amqp_channel_close(rmq_client->rmq_conn, rmq_client->rmq_channel, AMQP_REPLY_SUCCESS);
-				amqp_connection_close(rmq_client->rmq_conn, AMQP_REPLY_SUCCESS);
 				amqp_destroy_connection(rmq_client->rmq_conn);
 			}
 
@@ -953,9 +949,8 @@ void *janus_rmq_in_thread(void *data) {
 					JANUS_LOG(LOG_WARN, "Failed to reconnect to RabbitMQ Server. Retrying in %fs...\n", (gfloat)rmq_reconnect_backoff/1000000);
 					g_usleep(rmq_reconnect_backoff);
 					rmq_reconnect_backoff *= rmq_reconnect_backoff_multiplier;
-					if (rmq_reconnect_backoff >= rmq_reconnect_backoff_max) {
+					if(rmq_reconnect_backoff >= rmq_reconnect_backoff_max)
 						rmq_reconnect_backoff = rmq_reconnect_backoff_max;
-					}
 				} else {
 					rmq_reconnect_backoff = rmq_reconnect_backoff_initial;
 				}
@@ -1038,12 +1033,13 @@ void *janus_rmq_out_thread(void *data) {
 	guint rmq_reconnect_backoff = rmq_reconnect_backoff_initial;
 	while(!rmq_client->destroy && !g_atomic_int_get(&stopping)) {
 
-		while (!rmq_client->connected) {
+		if(!rmq_client->connected) {
 			g_usleep(rmq_reconnect_backoff);
 			rmq_reconnect_backoff *= rmq_reconnect_backoff_multiplier;
-			if (rmq_reconnect_backoff >= rmq_reconnect_backoff_max) {
+			if (rmq_reconnect_backoff >= rmq_reconnect_backoff_max)
 				rmq_reconnect_backoff = rmq_reconnect_backoff_max;
-			}
+
+			continue;
 		}
 
 		rmq_reconnect_backoff = rmq_reconnect_backoff_initial;
