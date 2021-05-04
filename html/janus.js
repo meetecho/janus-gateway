@@ -721,7 +721,6 @@ function Janus(gatewayCallbacks) {
 				// Don't warn here because destroyHandle causes this situation.
 				return;
 			}
-			pluginHandle.detached = true;
 			pluginHandle.ondetached();
 			pluginHandle.detach();
 		} else if(json["janus"] === "media") {
@@ -1679,6 +1678,7 @@ function Janus(gatewayCallbacks) {
 			callbacks.success();
 			return;
 		}
+		pluginHandle.detached = true;
 		if(noRequest) {
 			// We're only removing the handle locally
 			delete pluginHandles[handleId];

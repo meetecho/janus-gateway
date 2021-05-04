@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.11.2] - 2021-05-03
+
+- Added support for relative paths in config files, currently only in MQTT event handler (thanks @RSATom!) [[PR-2623](#2623)]
+- Removed support for now deprecated frame-marking RTP extension [[PR-2640](#2640)]
+- Fixed rare race condition between VideoRoom publisher leaving and subscriber hanging up [[PR-2637](#2637)]
+- Fixed occasional crash when using announcements in AudioBridge
+- Fixed rare crash in Streaming plugin when reconnecting RTSP streams (thanks @lucylu-star!) [[PR-2542](#2542)]
+- Fixed broken switch in Streaming plugin when using helper threads
+- Fixed rare race conditions on socket close in SIP and NoSIP plugins [[PR-2599](#2599)]
+- Added support for out-of-dialog SIP MESSAGE requests (thanks @ihusejnovic!) [[PR-2616](#2616)]
+- Fixed memory leak when using helper threads in Streaming plugin
+- Added support for datachannel label/protocol to Lua and Duktape plugins [[PR-2641](#2641)]
+- Added ability to use WebSockets transport over Unix sockets (thanks @mdevaev!) [[PR-2620](#2620)]
+- Added janus-pp-rec mechanism to correct wrong RTP timestamps in MJR recordings (thanks @tbence94!) [[PR-2573](#2573)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.11.1] - 2021-04-06
 
 - Add new option to configure ICE nomination mode, if libnice is recent enough [[PR-2541](#2541)]
