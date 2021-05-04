@@ -103,11 +103,11 @@ gboolean janus_ice_is_ipv6_enabled(void) {
 
 #ifdef HAVE_ICE_NOMINATION
 /* Since libnice 0.1.15, we can configure the ICE nomination mode: it was
- * always "aggressive" before, we set it to "regular" by default if we can */
-static NiceNominationMode janus_ice_nomination = NICE_NOMINATION_MODE_REGULAR;
+ * always "aggressive" before, so we set it to "aggressive" by default as well */
+static NiceNominationMode janus_ice_nomination = NICE_NOMINATION_MODE_AGGRESSIVE;
 void janus_ice_set_nomination_mode(const char *nomination) {
 	if(nomination == NULL) {
-		JANUS_LOG(LOG_WARN, "Invalid ICE nomination mode, falling back to 'regular'\n");
+		JANUS_LOG(LOG_WARN, "Invalid ICE nomination mode, falling back to 'aggressive'\n");
 	} else if(!strcasecmp(nomination, "regular")) {
 		JANUS_LOG(LOG_INFO, "Configuring Janus to use ICE regular nomination\n");
 		janus_ice_nomination = NICE_NOMINATION_MODE_REGULAR;
@@ -115,7 +115,7 @@ void janus_ice_set_nomination_mode(const char *nomination) {
 		JANUS_LOG(LOG_INFO, "Configuring Janus to use ICE aggressive nomination\n");
 		janus_ice_nomination = NICE_NOMINATION_MODE_AGGRESSIVE;
 	} else {
-		JANUS_LOG(LOG_WARN, "Unsupported ICE nomination mode '%s', falling back to 'regular'\n", nomination);
+		JANUS_LOG(LOG_WARN, "Unsupported ICE nomination mode '%s', falling back to 'aggressive'\n", nomination);
 	}
 }
 const char *janus_ice_get_nomination_mode(void) {
@@ -718,7 +718,7 @@ static void janus_ice_notify_trickle(janus_ice_handle *handle, char *buffer) {
 	janus_session_notify_event(session, event);
 }
 
-static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean up) {
+static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, int substream, gboolean up) {
 	if(handle == NULL)
 		return;
 	/* Prepare JSON event to notify user/application */
@@ -734,6 +734,8 @@ static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gbo
 	if(opaqueid_in_api && handle->opaque_id != NULL)
 		json_object_set_new(event, "opaque_id", json_string(handle->opaque_id));
 	json_object_set_new(event, "type", json_string(video ? "video" : "audio"));
+	if(video && handle->stream && handle->stream->video_rtcp_ctx[1] != NULL)
+		json_object_set_new(event, "substream", json_integer(substream));
 	json_object_set_new(event, "receiving", up ? json_true() : json_false());
 	if(!up && no_media_timer > 1)
 		json_object_set_new(event, "seconds", json_integer(no_media_timer));
@@ -744,6 +746,8 @@ static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gbo
 	if(janus_events_is_enabled()) {
 		json_t *info = json_object();
 		json_object_set_new(info, "media", json_string(video ? "video" : "audio"));
+		if(video && handle->stream && handle->stream->video_rtcp_ctx[1] != NULL)
+			json_object_set_new(info, "substream", json_integer(substream));
 		json_object_set_new(info, "receiving", up ? json_true() : json_false());
 		if(!up && no_media_timer > 1)
 			json_object_set_new(info, "seconds", json_integer(no_media_timer));
@@ -978,7 +982,7 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port,
 		addrlen = sizeof(remote6);
 	}
 	if(bind(fd, address, addrlen) < 0) {
-		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test: %d (%s)\n", errno, g_strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -997,7 +1001,7 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port,
 	timeout.tv_usec = 0;
 	int err = select(fd+1, &readfds, NULL, NULL, &timeout);
 	if(err < 0) {
-		JANUS_LOG(LOG_FATAL, "Error waiting for a response to our STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+		JANUS_LOG(LOG_FATAL, "Error waiting for a response to our STUN BINDING test: %d (%s)\n", errno, g_strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -2671,7 +2675,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						if(component->in_stats.audio.bytes == 0 || component->in_stats.audio.notified_lastsec) {
 							/* We either received our first audio packet, or we started receiving it again after missing more than a second */
 							component->in_stats.audio.notified_lastsec = FALSE;
-							janus_ice_notify_media(handle, FALSE, TRUE);
+							janus_ice_notify_media(handle, FALSE, 0, TRUE);
 						}
 						/* Overall audio data */
 						component->in_stats.audio.packets++;
@@ -2690,7 +2694,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						if(component->in_stats.video[vindex].bytes == 0 || component->in_stats.video[vindex].notified_lastsec) {
 							/* We either received our first video packet, or we started receiving it again after missing more than a second */
 							component->in_stats.video[vindex].notified_lastsec = FALSE;
-							janus_ice_notify_media(handle, TRUE, TRUE);
+							janus_ice_notify_media(handle, TRUE, vindex, TRUE);
 						}
 						/* Overall video data for this SSRC */
 						component->in_stats.video[vindex].packets++;
@@ -3576,7 +3580,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	char host[NI_MAXHOST];
 	if(getifaddrs(&ifaddr) == -1) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error getting list of interfaces... %d (%s)\n",
-			handle->handle_id, errno, strerror(errno));
+			handle->handle_id, errno, g_strerror(errno));
 	} else {
 		for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
 			if(ifa->ifa_addr == NULL)
@@ -4091,17 +4095,20 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 			/* We missed more than no_second_timer seconds of audio! */
 			component->in_stats.audio.notified_lastsec = TRUE;
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio for more than %d seconds...\n", handle->handle_id, no_media_timer);
-			janus_ice_notify_media(handle, FALSE, FALSE);
+			janus_ice_notify_media(handle, FALSE, 0, FALSE);
 		}
 		/* Video */
-		last = component->in_stats.video[0].updated;
-		if(!component->in_stats.video[0].notified_lastsec && last &&
-				!component->in_stats.video[0].bytes_lastsec && !component->in_stats.video[0].bytes_lastsec_temp &&
-					now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
-			/* We missed more than no_second_timer seconds of video! */
-			component->in_stats.video[0].notified_lastsec = TRUE;
-			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than a second...\n", handle->handle_id);
-			janus_ice_notify_media(handle, TRUE, FALSE);
+		int vindex=0;
+		for(vindex=0; vindex<3; vindex++) {
+			last = component->in_stats.video[vindex].updated;
+			if(!component->in_stats.video[vindex].notified_lastsec && last &&
+					!component->in_stats.video[vindex].bytes_lastsec && !component->in_stats.video[vindex].bytes_lastsec_temp &&
+						now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+				/* We missed more than no_second_timer seconds of this video stream! */
+				component->in_stats.video[vindex].notified_lastsec = TRUE;
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video #%d for more than a second...\n", handle->handle_id, vindex);
+				janus_ice_notify_media(handle, TRUE, vindex, FALSE);
+			}
 		}
 	}
 	/* We also send live stats to event handlers every tot-seconds (configurable) */

@@ -137,8 +137,12 @@ Janus.useDefaultDependencies = function (deps) {
 				if(response.ok) {
 					if(typeof(options.success) === typeof(Janus.noop)) {
 						return response.json().then(function(parsed) {
-							options.success(parsed);
-						}).catch(function(error) {
+							try {
+								options.success(parsed);
+							} catch(error) {
+								Janus.error('Unhandled httpAPICall success callback error', error);
+							}
+						}, function(error) {
 							return p.reject({message: 'Failed to parse response body', error: error, response: response});
 						});
 					}
@@ -717,7 +721,6 @@ function Janus(gatewayCallbacks) {
 				// Don't warn here because destroyHandle causes this situation.
 				return;
 			}
-			pluginHandle.detached = true;
 			pluginHandle.ondetached();
 			pluginHandle.detach();
 		} else if(json["janus"] === "media") {
@@ -1675,6 +1678,7 @@ function Janus(gatewayCallbacks) {
 			callbacks.success();
 			return;
 		}
+		pluginHandle.detached = true;
 		if(noRequest) {
 			// We're only removing the handle locally
 			delete pluginHandles[handleId];

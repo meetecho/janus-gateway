@@ -1,4 +1,4 @@
-#Janus-pp-rec 0.11.1 gengetopt file
+#Janus-pp-rec 0.11.3 gengetopt file
 usage "janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]"
 option "json" j "Only print JSON header" flag off
 option "header" H "Only parse .mjr header" flag off
@@ -15,3 +15,6 @@ option "format" f "Specifies the output format (overrides the format from the de
 option "faststart" t "For mp4 files write the MOOV atom at the head of the file" flag off
 option "audioskew" S "Time threshold to trigger an audio skew compensation, disabled if 0 (default=0)" int typestr="milliseconds" optional
 option "silence-distance" C "RTP packets distance used to detect RTP silence suppression, disabled if 0 (default=100)" int typestr="count" optional
+option "restamp" r "If the latency of a packet is bigger than the `moving_average_latency * (<restamp>/1000)` the timestamps will be corrected, disabled if 0 (default=0)" int typestr="count" optional
+option "restamp-packets" c "Number of packets used for calculating moving average latency for timestamp correction (default=10)" int typestr="count" optional
+option "restamp-min-th" n "Minimum latency of moving average to reach before starting to correct timestamps. (default=500)" int typestr="milliseconds" optional

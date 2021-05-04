@@ -19,6 +19,8 @@
 #include <arpa/inet.h>
 #ifdef __MACH__
 #include <machine/endian.h>
+#elif defined(__FreeBSD__)
+#include <sys/endian.h>
 #else
 #include <endian.h>
 #endif
