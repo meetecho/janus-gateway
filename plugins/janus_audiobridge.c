@@ -3544,6 +3544,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				json_object_set_new(pl, "display", json_string(participant->display));
 			json_object_set_new(pl, "setup", g_atomic_int_get(&participant->session->started) ? json_true() : json_false());
 			json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
+			if(audiobridge->spatial_audio)
+				json_object_set_new(pl, "spatial_position", json_integer(participant->spatial_position));
 			json_array_append_new(list, pl);
 			json_t *pub = json_object();
 			json_object_set_new(pub, "audiobridge", json_string("event"));
@@ -3846,6 +3848,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			json_object_set_new(pl, "muted", p->muted ? json_true() : json_false());
 			if(p->extmap_id > 0)
 				json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
+			if(audiobridge->spatial_audio)
+				json_object_set_new(pl, "spatial_position", json_integer(p->spatial_position));
 			json_array_append_new(list, pl);
 		}
 		janus_refcount_decrease(&audiobridge->ref);
@@ -4775,6 +4779,8 @@ void janus_audiobridge_setup_media(janus_plugin_session *handle) {
 		json_object_set_new(pl, "display", json_string(participant->display));
 	json_object_set_new(pl, "setup", json_true());
 	json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
+	if(audiobridge->spatial_audio)
+		json_object_set_new(pl, "spatial_position", json_integer(participant->spatial_position));
 	json_array_append_new(list, pl);
 	json_t *pub = json_object();
 	json_object_set_new(pub, "audiobridge", json_string("event"));
@@ -5762,6 +5768,8 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Clarify we're still waiting for the user to negotiate a PeerConnection */
 			json_object_set_new(pl, "setup", json_false());
 			json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
+			if(audiobridge->spatial_audio)
+				json_object_set_new(pl, "spatial_position", json_integer(participant->spatial_position));
 			json_array_append_new(newuserlist, pl);
 			json_object_set_new(newuser, "participants", newuserlist);
 			GHashTableIter iter;
@@ -5793,6 +5801,8 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(pl, "muted", p->muted ? json_true() : json_false());
 				if(p->extmap_id > 0)
 					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
+				if(audiobridge->spatial_audio)
+					json_object_set_new(pl, "spatial_position", json_integer(p->spatial_position));
 				json_array_append_new(list, pl);
 			}
 			janus_mutex_unlock(&audiobridge->mutex);
@@ -5816,6 +5826,8 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "display", json_string(participant->display));
 				json_object_set_new(info, "setup", g_atomic_int_get(&participant->session->started) ? json_true() : json_false());
 				json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
+				if(participant->stereo)
+					json_object_set_new(info, "spatial_position", json_integer(participant->spatial_position));
 				gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 			}
 			if(user_id_allocated)
@@ -5942,6 +5954,8 @@ static void *janus_audiobridge_handler(void *data) {
 						json_object_set_new(pl, "display", json_string(participant->display));
 					json_object_set_new(pl, "setup", g_atomic_int_get(&participant->session->started) ? json_true() : json_false());
 					json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
+					if(audiobridge->spatial_audio)
+						json_object_set_new(pl, "spatial_position", json_integer(participant->spatial_position));
 					json_array_append_new(list, pl);
 					json_t *pub = json_object();
 					json_object_set_new(pub, "audiobridge", json_string("event"));
@@ -6025,6 +6039,8 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "display", json_string(participant->display));
 				json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
 				json_object_set_new(info, "quality", json_integer(participant->opus_complexity));
+				if(participant->stereo)
+					json_object_set_new(info, "spatial_position", json_integer(participant->spatial_position));
 				gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 			}
 			/* If we need to generate an offer ourselves, do that */
@@ -6367,6 +6383,8 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(pl, "display", json_string(participant->display));
 			json_object_set_new(pl, "setup", g_atomic_int_get(&participant->session->started) ? json_true() : json_false());
 			json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
+			if(audiobridge->spatial_audio)
+				json_object_set_new(pl, "spatial_position", json_integer(participant->spatial_position));
 			json_array_append_new(newuserlist, pl);
 			json_object_set_new(newuser, "participants", newuserlist);
 			g_hash_table_iter_init(&iter, audiobridge->participants);
@@ -6396,6 +6414,8 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(pl, "muted", p->muted ? json_true() : json_false());
 				if(p->extmap_id > 0)
 					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
+				if(audiobridge->spatial_audio)
+					json_object_set_new(pl, "spatial_position", json_integer(p->spatial_position));
 				json_array_append_new(list, pl);
 			}
 			event = json_object();
@@ -6414,6 +6434,8 @@ static void *janus_audiobridge_handler(void *data) {
 					string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
 				json_object_set_new(info, "display", json_string(participant->display));
 				json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
+				if(participant->stereo)
+					json_object_set_new(info, "spatial_position", json_integer(participant->spatial_position));
 				gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 			}
 			if(user_id_allocated)
