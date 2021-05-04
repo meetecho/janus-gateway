@@ -177,22 +177,34 @@ $(document).ready(function() {
 													var display = list[f]["display"];
 													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
+													var spatial = list[f]["spatial_position"];
 													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
-													if($('#rp'+id).length === 0) {
+													if($('#rp' + id).length === 0) {
 														// Add to the participants list
-														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+
+														var slider = '';
+														if(spatial !== null && spatial !== undefined)
+															slider = '<span>[L <input id="sp' + id + '" type="text" style="width: 10%;"/> R] </span>';
+														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
+															slider +
+															display +
 															' <i class="absetup fa fa-chain-broken"></i>' +
 															' <i class="abmuted fa fa-microphone-slash"></i></li>');
-														$('#rp'+id + ' > i').hide();
+														if(spatial !== null && spatial !== undefined) {
+															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
+															$('#position').removeClass('hide').show();
+														}
+														$('#rp' + id + ' > i').hide();
 													}
 													if(muted === true || muted === "true")
-														$('#rp'+id + ' > i.abmuted').removeClass('hide').show();
+														$('#rp' + id + ' > i.abmuted').removeClass('hide').show();
 													else
-														$('#rp'+id + ' > i.abmuted').hide();
+														$('#rp' + id + ' > i.abmuted').hide();
 													if(setup === true || setup === "true")
-														$('#rp'+id + ' > i.absetup').hide();
+														$('#rp' + id + ' > i.absetup').hide();
 													else
-														$('#rp'+id + ' > i.absetup').removeClass('hide').show();
+														$('#rp' + id + ' > i.absetup').removeClass('hide').show();
+													if(spatial !== null && spatial !== undefined)
+														$('#sp' + id).slider('setValue', spatial);
 												}
 											}
 										} else if(event === "roomchanged") {
@@ -209,22 +221,34 @@ $(document).ready(function() {
 													var display = list[f]["display"];
 													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
+													var spatial = list[f]["spatial_position"];
 													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
-													if($('#rp'+id).length === 0) {
+													if($('#rp' + id).length === 0) {
 														// Add to the participants list
-														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+
+														var slider = '';
+														if(spatial !== null && spatial !== undefined)
+															slider = '<span>[L <input id="sp' + id + '" type="text" style="width: 10%;"/> R] </span>';
+														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
+															slider +
+															display +
 															' <i class="absetup fa fa-chain-broken"></i>' +
 															' <i class="abmuted fa fa-microphone-slash"></i></li>');
-														$('#rp'+id + ' > i').hide();
+														if(spatial !== null && spatial !== undefined) {
+															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
+															$('#position').removeClass('hide').show();
+														}
+														$('#rp' + id + ' > i').hide();
 													}
 													if(muted === true || muted === "true")
-														$('#rp'+id + ' > i.abmuted').removeClass('hide').show();
+														$('#rp' + id + ' > i.abmuted').removeClass('hide').show();
 													else
-														$('#rp'+id + ' > i.abmuted').hide();
+														$('#rp' + id + ' > i.abmuted').hide();
 													if(setup === true || setup === "true")
-														$('#rp'+id + ' > i.absetup').hide();
+														$('#rp' + id + ' > i.absetup').hide();
 													else
-														$('#rp'+id + ' > i.absetup').removeClass('hide').show();
+														$('#rp' + id + ' > i.absetup').removeClass('hide').show();
+													if(spatial !== null && spatial !== undefined)
+														$('#sp' + id).slider('setValue', spatial);
 												}
 											}
 										} else if(event === "destroyed") {
@@ -242,22 +266,34 @@ $(document).ready(function() {
 													var display = list[f]["display"];
 													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
+													var spatial = list[f]["spatial_position"];
 													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
-													if($('#rp'+id).length === 0) {
+													if($('#rp' + id).length === 0) {
 														// Add to the participants list
-														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+
+														var slider = '';
+														if(spatial !== null && spatial !== undefined)
+															slider = '<span>[L <input id="sp' + id + '" type="text" style="width: 10%;"/> R] </span>';
+														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
+															slider +
+															display +
 															' <i class="absetup fa fa-chain-broken"></i>' +
 															' <i class="abmuted fa fa-microphone-slash"></i></li>');
-														$('#rp'+id + ' > i').hide();
+														if(spatial !== null && spatial !== undefined) {
+															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
+															$('#position').removeClass('hide').show();
+														}
+														$('#rp' + id + ' > i').hide();
 													}
 													if(muted === true || muted === "true")
-														$('#rp'+id + ' > i.abmuted').removeClass('hide').show();
+														$('#rp' + id + ' > i.abmuted').removeClass('hide').show();
 													else
-														$('#rp'+id + ' > i.abmuted').hide();
+														$('#rp' + id + ' > i.abmuted').hide();
 													if(setup === true || setup === "true")
-														$('#rp'+id + ' > i.absetup').hide();
+														$('#rp' + id + ' > i.absetup').hide();
 													else
-														$('#rp'+id + ' > i.absetup').removeClass('hide').show();
+														$('#rp' + id + ' > i.absetup').removeClass('hide').show();
+													if(spatial !== null && spatial !== undefined)
+														$('#sp' + id).slider('setValue', spatial);
 												}
 											} else if(msg["error"]) {
 												if(msg["error_code"] === 485) {
@@ -315,7 +351,18 @@ $(document).ready(function() {
 												$('#toggleaudio').html("Unmute").removeClass("btn-danger").addClass("btn-success");
 											mixertest.send({ message: { request: "configure", muted: !audioenabled }});
 										}).removeClass('hide').show();
-
+									// Spatial position, if enabled
+									$('#position').click(
+										function() {
+											bootbox.prompt("Insert new spatial position: [0-100] (0=left, 50=center, 100=right)", function(result) {
+												var spatial = parseInt(result);
+												if(isNaN(spatial) || spatial < 0 || spatial > 100) {
+													bootbox.alert("Invalid value");
+													return;
+												}
+												mixertest.send({ message: { request: "configure", spatial_position: spatial }});
+											});
+										});
 								},
 								oncleanup: function() {
 									webrtcUp = false;
