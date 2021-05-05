@@ -6026,7 +6026,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *record = json_object_get(root, "record");
 			json_t *recfile = json_object_get(root, "filename");
 			json_t *display = json_object_get(root, "display");
-			json_t *group = json_object_get(root, "grpup");
+			json_t *group = json_object_get(root, "group");
 			json_t *gen_offer = json_object_get(root, "generate_offer");
 			json_t *update = json_object_get(root, "update");
 			if(prebuffer) {
