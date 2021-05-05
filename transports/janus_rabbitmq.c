@@ -938,7 +938,7 @@ void *janus_rmq_in_thread(void *data) {
 			rmq_client->connected = 0;
 
 			/* Try and reconnect */
-			if(rmq_client->rmq_conn && rmq_client->rmq_channel) {
+			if(rmq_client->rmq_conn) {
 				amqp_destroy_connection(rmq_client->rmq_conn);
 			}
 
