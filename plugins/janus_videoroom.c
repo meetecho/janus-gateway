@@ -3133,7 +3133,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->acodec[4] = JANUS_AUDIOCODEC_NONE;
 			/* Check if we're forcing a different single codec, or allowing more than one */
 			if(audiocodec && audiocodec->value) {
-				gchar **list = g_strsplit(audiocodec->value, ",", 4);
+				gchar **list = g_strsplit(audiocodec->value, ",", 6);
 				gchar *codec = list[0];
 				if(codec != NULL) {
 					int i=0;
@@ -3158,7 +3158,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->vcodec[4] = JANUS_VIDEOCODEC_NONE;
 			/* Check if we're forcing a different single codec, or allowing more than one */
 			if(videocodec && videocodec->value) {
-				gchar **list = g_strsplit(videocodec->value, ",", 4);
+				gchar **list = g_strsplit(videocodec->value, ",", 6);
 				gchar *codec = list[0];
 				if(codec != NULL) {
 					int i=0;
@@ -3898,7 +3898,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *audiocodec = json_object_get(root, "audiocodec");
 		if(audiocodec) {
 			const char *audiocodec_value = json_string_value(audiocodec);
-			gchar **list = g_strsplit(audiocodec_value, ",", 4);
+			gchar **list = g_strsplit(audiocodec_value, ",", 6);
 			gchar *codec = list[0];
 			if(codec != NULL) {
 				int i=0;
@@ -3921,7 +3921,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *videocodec = json_object_get(root, "videocodec");
 		if(videocodec) {
 			const char *videocodec_value = json_string_value(videocodec);
-			gchar **list = g_strsplit(videocodec_value, ",", 4);
+			gchar **list = g_strsplit(videocodec_value, ",", 6);
 			gchar *codec = list[0];
 			if(codec != NULL) {
 				int i=0;
@@ -4076,7 +4076,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		/* Check if we're forcing a different single codec, or allowing more than one */
 		if(audiocodec) {
 			const char *audiocodec_value = json_string_value(audiocodec);
-			gchar **list = g_strsplit(audiocodec_value, ",", 4);
+			gchar **list = g_strsplit(audiocodec_value, ",", 6);
 			gchar *codec = list[0];
 			if(codec != NULL) {
 				int i=0;
@@ -4102,7 +4102,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		/* Check if we're forcing a different single codec, or allowing more than one */
 		if(videocodec) {
 			const char *videocodec_value = json_string_value(videocodec);
-			gchar **list = g_strsplit(videocodec_value, ",", 4);
+			gchar **list = g_strsplit(videocodec_value, ",", 6);
 			gchar *codec = list[0];
 			if(codec != NULL) {
 				int i=0;
