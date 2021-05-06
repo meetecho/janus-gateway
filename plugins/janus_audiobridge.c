@@ -7404,7 +7404,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						/* This is an Opus forwarder, check if we have a version for that already */
 						if(!have_opus[forwarder->group]) {
 							/* We don't, encode now */
-							OpusEncoder *rtp_encoder = (forwarder->group == 0 ? audiobridge->rtp_encoder : groupEncoders[forwarder->group]);
+							OpusEncoder *rtp_encoder = (forwarder->group == 0 ? audiobridge->rtp_encoder : groupEncoders[forwarder->group-1]);
 							length = opus_encode(rtp_encoder, outBuffer, samples, rtpbuffer + forwarder->group*1500 + 12, 1500-12);
 							if(length < 0) {
 								JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error encoding the Opus frame: %d (%s)\n", length, opus_strerror(length));
