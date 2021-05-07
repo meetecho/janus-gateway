@@ -430,6 +430,7 @@ room-<unique room ID>: {
 {
 	"audiobridge" : "success",
 	"room" : <unique numeric ID, same as request>,
+	"group" : "<group to forward, same as request if provided>",
 	"stream_id" : <unique numeric ID assigned to the new RTP forwarder>,
 	"host" : "<host this forwarder is streaming to, same as request if not resolved>",
 	"port" : <audio port this forwarder is streaming to, same as request>
@@ -478,6 +479,7 @@ room-<unique room ID>: {
 	"rtp_forwarders" : [		// Array of RTP forwarder objects
 		{	// RTP forwarder #1
 			"stream_id" : <unique numeric ID of the forwarder>,
+			"group" : "<group that is being forwarded, if available>",
 			"ip" : "<IP this forwarder is streaming to>",
 			"port" : <port this forwarder is streaming to>,
 			"ssrc" : <SSRC this forwarder is using, if any>,
@@ -1180,6 +1182,7 @@ typedef struct janus_audiobridge_room {
 	janus_mutex mutex;			/* Mutex to lock this room instance */
 	/* RTP forwarders for this room's mix */
 	GHashTable *groups;			/* Forwarding groups supported in this room, indexed by name */
+	GHashTable *groups_byid;	/* Forwarding groups supported in this room, indexed by numeric ID */
 	GHashTable *rtp_forwarders;	/* RTP forwarders list (as a hashmap) */
 	OpusEncoder *rtp_encoder;	/* Opus encoder instance to use for all RTP forwarders */
 	janus_mutex rtp_mutex;		/* Mutex to lock the RTP forwarders list */
@@ -1532,6 +1535,8 @@ static void janus_audiobridge_room_free(const janus_refcount *audiobridge_ref) {
 	g_hash_table_destroy(audiobridge->rtp_forwarders);
 	if(audiobridge->groups)
 		g_hash_table_destroy(audiobridge->groups);
+	if(audiobridge->groups_byid)
+		g_hash_table_destroy(audiobridge->groups_byid);
 	g_free(audiobridge);
 }
 
@@ -2397,6 +2402,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				}
 				int count = 0;
 				audiobridge->groups = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
+				audiobridge->groups_byid = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_free);
 				while(gl) {
 					janus_config_item *g = (janus_config_item *)gl->data;
 					if(g == NULL || g->type != janus_config_type_item || g->name != NULL || g->value == NULL) {
@@ -2410,13 +2416,16 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 					} else {
 						count++;
 						g_hash_table_insert(audiobridge->groups, g_strdup(name), GUINT_TO_POINTER(count));
+						g_hash_table_insert(audiobridge->groups_byid, GUINT_TO_POINTER(count), g_strdup(name));
 					}
 					gl = gl->next;
 				}
 				if(count == 0) {
 					JANUS_LOG(LOG_WARN, "Empty or invalid groups array provided, groups will be disabled in '%s'...\n", cat->name);
 					g_hash_table_destroy(audiobridge->groups);
+					g_hash_table_destroy(audiobridge->groups_byid);
 					audiobridge->groups = NULL;
+					audiobridge->groups_byid = NULL;
 				}
 			}
 			g_atomic_int_set(&audiobridge->destroyed, 0);
@@ -2638,6 +2647,11 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 			json_object_set_new(info, "room", string_ids ? json_string(room->room_id_str) : json_integer(room->room_id));
 		janus_mutex_unlock(&rooms_mutex);
 		json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+		if(participant->group > 0 && room->groups_byid != NULL) {
+			char *name = g_hash_table_lookup(room->groups_byid, GUINT_TO_POINTER(participant->group));
+			if(name != NULL)
+				json_object_set_new(info, "group", json_string(name));
+		}
 		if(participant->display)
 			json_object_set_new(info, "display", json_string(participant->display));
 		if(participant->admin)
@@ -2946,6 +2960,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		if(groups != NULL && json_array_size(groups) > 0) {
 			/* Populate the group hashtable, and create the related indexes */
 			audiobridge->groups = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
+			audiobridge->groups_byid = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_free);
 			size_t i = 0;
 			int count = 0;
 			for(i=0; i<json_array_size(groups); i++) {
@@ -2955,12 +2970,15 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				} else {
 					count++;
 					g_hash_table_insert(audiobridge->groups, g_strdup(name), GUINT_TO_POINTER(count));
+					g_hash_table_insert(audiobridge->groups_byid, GUINT_TO_POINTER(count), g_strdup(name));
 				}
 			}
 			if(count == 0) {
 				JANUS_LOG(LOG_WARN, "Empty or invalid groups array provided, groups will be disabled\n");
 				g_hash_table_destroy(audiobridge->groups);
+				g_hash_table_destroy(audiobridge->groups_byid);
 				audiobridge->groups = NULL;
+				audiobridge->groups_byid = NULL;
 			}
 		}
 		audiobridge->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_audiobridge_rtp_forwarder_destroy);
@@ -4160,8 +4178,9 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 		/* If this room uses groups, check if a valid group name was provided */
 		uint group = 0;
+		const char *group_name = NULL;
 		if(audiobridge->groups != NULL) {
-			const char *group_name = json_string_value(json_object_get(root, "group"));
+			group_name = json_string_value(json_object_get(root, "group"));
 			if(group_name != NULL) {
 				group = GPOINTER_TO_UINT(g_hash_table_lookup(audiobridge->groups, group_name));
 				if(group == 0) {
@@ -4199,6 +4218,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		response = json_object();
 		json_object_set_new(response, "audiobridge", json_string("success"));
 		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
+		if(group_name != NULL)
+			json_object_set_new(response, "group", json_string(group_name));
 		json_object_set_new(response, "stream_id", json_integer(stream_id));
 		json_object_set_new(response, "host", json_string(host));
 		json_object_set_new(response, "port", json_integer(port));
@@ -4339,6 +4360,11 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			janus_audiobridge_rtp_forwarder *rf = (janus_audiobridge_rtp_forwarder *)value;
 			json_t *fl = json_object();
 			json_object_set_new(fl, "stream_id", json_integer(stream_id));
+			if(rf->group > 0 && audiobridge->groups_byid != NULL) {
+				char *name = g_hash_table_lookup(audiobridge->groups_byid, GUINT_TO_POINTER(rf->group));
+				if(name != NULL)
+					json_object_set_new(fl, "group", json_string(name));
+			}
 			char address[100];
 			if(rf->serv_addr.sin_family == AF_INET) {
 				json_object_set_new(fl, "ip", json_string(
