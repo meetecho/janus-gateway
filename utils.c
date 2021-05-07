@@ -296,6 +296,16 @@ int janus_mkdir(const char *dir, mode_t mode) {
 	return 0;
 }
 
+gchar *janus_make_absolute_path(const gchar *base_dir, const gchar *path) {
+	if(!path)
+		return NULL;
+	if(g_path_is_absolute(path))
+		return g_strdup(path);
+	if(!base_dir)
+		return NULL;
+	return g_build_filename(base_dir, path, NULL);
+}
+
 int janus_get_codec_pt(const char *sdp, const char *codec) {
 	if(!sdp || !codec)
 		return -1;
@@ -1138,6 +1148,8 @@ int janus_vp9_parse_svc(char *buffer, int len, gboolean *found, janus_vp9_svc_in
 }
 
 inline guint32 janus_push_bits(guint32 word, size_t num, guint32 val) {
+	if(num == 0)
+		return word;
 	return (word << num) | (val & (0xFFFFFFFF>>(32-num)));
 }
 

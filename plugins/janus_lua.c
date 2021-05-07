@@ -1035,12 +1035,11 @@ static int janus_lua_method_relayrtcp(lua_State *s) {
 static int janus_lua_method_relaytextdata(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
-	if(n != 3) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 3)\n", n);
+	if(n < 3 || n > 5) {
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 3-5)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
-	/* FIXME We should add support for labels, here */
 	guint32 id = lua_tonumber(s, 1);
 	const char *payload = lua_tostring(s, 2);
 	int len = lua_tonumber(s, 3);
@@ -1048,6 +1047,13 @@ static int janus_lua_method_relaytextdata(lua_State *s) {
 		JANUS_LOG(LOG_ERR, "Invalid data\n");
 		lua_pushnumber(s, -1);
 		return 1;
+	}
+	/* Check if label and/or protocol were provided as well */
+	const char *label = NULL, *protocol = NULL;
+	if(n > 3) {
+		label = lua_tostring(s, 4);
+		if(n > 4)
+			protocol = lua_tostring(s, 5);
 	}
 	/* Find the session */
 	janus_mutex_lock(&lua_sessions_mutex);
@@ -1067,8 +1073,8 @@ static int janus_lua_method_relaytextdata(lua_State *s) {
 	}
 	/* Send the data */
 	janus_plugin_data data = {
-		.label = NULL,
-		.protocol = NULL,
+		.label = (char *)label,
+		.protocol = (char *)protocol,
 		.binary = FALSE,
 		.buffer = (char *)payload,
 		.length = len
@@ -1082,19 +1088,25 @@ static int janus_lua_method_relaytextdata(lua_State *s) {
 static int janus_lua_method_relaybinarydata(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
-	if(n != 3) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 3)\n", n);
+	if(n < 3 || n > 5) {
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 3-5)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	guint32 id = lua_tonumber(s, 1);
-	/* FIXME We should add support for labels, here */
 	const char *payload = lua_tostring(s, 2);
 	int len = lua_tonumber(s, 3);
 	if(!payload || len < 1) {
 		JANUS_LOG(LOG_ERR, "Invalid data\n");
 		lua_pushnumber(s, -1);
 		return 1;
+	}
+	/* Check if label and/or protocol were provided as well */
+	const char *label = NULL, *protocol = NULL;
+	if(n > 3) {
+		label = lua_tostring(s, 4);
+		if(n > 4)
+			protocol = lua_tostring(s, 5);
 	}
 	/* Find the session */
 	janus_mutex_lock(&lua_sessions_mutex);
@@ -1114,8 +1126,8 @@ static int janus_lua_method_relaybinarydata(lua_State *s) {
 	}
 	/* Send the data */
 	janus_plugin_data data = {
-		.label = NULL,
-		.protocol = NULL,
+		.label = (char *)label,
+		.protocol = (char *)protocol,
 		.binary = TRUE,
 		.buffer = (char *)payload,
 		.length = len
@@ -1898,7 +1910,7 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 		json_t *simulcast = json_object_get(jsep, "simulcast");
 		if(simulcast != NULL) {
 			janus_rtp_simulcasting_prepare(simulcast,
-				&session->rid_extmap_id, NULL,
+				&session->rid_extmap_id,
 				session->ssrc, session->rid);
 		}
 		const char *sdp_type = json_string_value(json_object_get(jsep, "type"));
@@ -1976,6 +1988,10 @@ json_t *janus_lua_handle_admin_message(json_t *message) {
 	if(!has_handle_admin_message || message == NULL)
 		return NULL;
 	char *message_text = json_dumps(message, JSON_INDENT(0) | JSON_PRESERVE_ORDER);
+	if(message_text == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+		return NULL;
+	}
 	/* Invoke the script function */
 	janus_mutex_lock(&lua_mutex);
 	lua_State *t = lua_newthread(lua_state);
@@ -2204,6 +2220,8 @@ void janus_lua_incoming_data(janus_plugin_session *handle, janus_plugin_data *pa
 		return;
 	char *buf = packet->buffer;
 	uint16_t len = packet->length;
+	char *label = packet->label;
+	char *protocol = packet->protocol;
 	/* Are we recording? */
 	janus_recorder_save_frame(session->drc, buf, len);
 	/* Check if the Lua script wants to handle/manipulate data channel packets itself */
@@ -2218,7 +2236,9 @@ void janus_lua_incoming_data(janus_plugin_session *handle, janus_plugin_data *pa
 		/* We use a string for both text and binary data */
 		lua_pushlstring(t, buf, len);
 		lua_pushnumber(t, len);
-		lua_call(t, 3, 0);
+		lua_pushlstring(t, label, label ? strlen(label) : 0);
+		lua_pushlstring(t, protocol, protocol ? strlen(protocol) : 0);
+		lua_call(t, 5, 0);
 		lua_pop(lua_state, 1);
 		janus_mutex_unlock(&lua_mutex);
 		return;

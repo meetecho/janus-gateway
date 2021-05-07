@@ -778,6 +778,11 @@ int janus_rabbitmq_send_message(janus_transport_session *transport, void *reques
 	response->admin = admin;
 	response->payload = json_dumps(message, json_format);
 	json_decref(message);
+	if(response->payload == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+		g_free(response);
+		return -1;
+	}
 	response->correlation_id = (char *)request_id;
 	g_async_queue_push(rmq_client->messages, response);
 	return 0;

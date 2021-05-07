@@ -59,14 +59,26 @@ For mp4 files write the MOOV atom at the head of the file  (default=off)
 .TP
 .BR \-S ", " \-\-audioskew=milliseconds
 Time threshold to trigger an audio skew compensation, disabled if 0 (default=0)
+.TP
 .BR \-C ", " \-\-silence-distance=count
 RTP packets distance used to detect RTP silence suppression, disabled if 0 (default=100)
+.TP
+.BR \-r ", " \-\-restamp=count
+If the latency of a packet is bigger than the `moving_average_latency * (<restamp>/1000)` the timestamps will be corrected, disabled if 0 (default=0)
+.TP
+.BR \-c ", " \-\-restamp\-packets=count
+Number of packets used for calculating moving average latency for timestamp correction. (default=10)
+.TP
+.BR \-n ", " \-\-restamp\-min\-th=milliseconds
+Minimum latency of moving average to reach before starting to correct timestamps. If the current latency is below this threshold the timestamps will not be changed. Below the threshold we ignore the moving average. (default=500)
 .SH EXAMPLES
 \fBjanus-pp-rec \-\-header rec1234.mjr\fR \- Parse the recordings header (shows metadata info)
 .TP
 \fBjanus-pp-rec \-\-parse rec1234.mjr\fR \- Parse the recordings packets without processing them
 .TP
 \fBjanus-pp-rec rec1234.mjr rec1234.webm\fR \- Convert a VP8 .mjr recording to a .webm file
+.TP
+\fBjanus-pp-rec \-\-restamp=1500 rec1234.mjr rec1234.opus\fR \- Convert audio .mjr recording to .opus while RTP correcting timestamps based on moving average latency
 .SH BUGS
 .TP
 If you think you found a bug or want to contribute a feature, you can issue or a pull request on https://github.com/meetecho/janus-gateway/issues.
