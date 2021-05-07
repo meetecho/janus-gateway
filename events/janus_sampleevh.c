@@ -709,6 +709,13 @@ static void *janus_sampleevh_handler(void *data) {
 
 			/* Since this a simple plugin, it does the same for all events: so just convert to string... */
 			event_text = json_dumps(output, json_format);
+			if(event_text == NULL) {
+				JANUS_LOG(LOG_WARN, "Failed to stringify event, event lost...\n");
+				/* Nothing we can do... get rid of the event */
+				json_decref(output);
+				output = NULL;
+				continue;
+			}
 		}
 		/* Whether we just prepared the event or this is a retransmission, send it via HTTP POST */
 		CURLcode res;
@@ -734,7 +741,7 @@ static void *janus_sampleevh_handler(void *data) {
 			if(compressed_len == 0) {
 				JANUS_LOG(LOG_ERR, "Failed to compress event (%zu bytes)...\n", strlen(event_text));
 				/* Nothing we can do... get rid of the event */
-				g_free(event_text);
+				free(event_text);
 				json_decref(output);
 				output = NULL;
 				continue;
@@ -778,7 +785,7 @@ done:
 		if(headers)
 			curl_slist_free_all(headers);
 		if(!retransmit)
-			g_free(event_text);
+			free(event_text);
 
 		/* Done, let's unref the event */
 		json_decref(output);

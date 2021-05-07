@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.11.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.11.3],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -61,6 +61,11 @@ clang*)
 		-Wno-cast-align \
 		-Wno-initializer-overrides"
 ;;
+cc*)
+	CFLAGS="$CFLAGS \
+		-Wno-cast-align \
+		-Wno-initializer-overrides"
+;;
 *)
 	# Specific gcc flags
 	CFLAGS="$CFLAGS \
@@ -70,9 +75,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=111
+JANUS_VERSION=113
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.11.1"
+JANUS_VERSION_STRING="0.11.3"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -82,6 +87,12 @@ darwin*)
 	LDFLAGS="$LDFLAGS -Wl,-export_dynamic"
 	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib -L/opt/local/lib -L/usr/local/libsrtp/lib"
 	AM_CONDITIONAL([DARWIN_OS], true)
+;;
+freebsd*)
+	CFLAGS="$CFLAGS -I/usr/include/openssl"
+	LDFLAGS="$LDFLAGS -Xlinker --export-dynamic"
+	LDFLAGS="$LDFLAGS -L/usr/lib/openssl -lcrypto -lssl -L/usr/local/lib"
+	AM_CONDITIONAL([DARWIN_OS], false)
 ;;
 *)
 	LDFLAGS="$LDFLAGS -Wl,--export-dynamic"
@@ -337,17 +348,27 @@ AC_ARG_ENABLE([systemd-sockets],
               [],
               [enable_systemd_sockets=no])
 
-PKG_CHECK_MODULES([JANUS],
-                  [
-                    glib-2.0 >= $glib_version
+case "$host_os" in
+freebsd*)
+	PKGCHECKMODULES="glib-2.0 >= $glib_version
+                    gio-2.0 >= $glib_version
+                    libconfig
+                    nice
+                    jansson >= $jansson_version
+                    zlib"
+;;
+*)
+	PKGCHECKMODULES="glib-2.0 >= $glib_version
                     gio-2.0 >= $glib_version
                     libconfig
                     nice
                     jansson >= $jansson_version
                     libssl >= $ssl_version
                     libcrypto
-                    zlib
-                  ])
+                    zlib"
+esac
+PKG_CHECK_MODULES([JANUS],"$PKGCHECKMODULES")
+
 JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lm"
 AC_SUBST(JANUS_MANUAL_LIBS)
 
@@ -559,6 +580,7 @@ AC_CHECK_LIB([websockets],
                AS_IF([test "x$enable_websockets_event_handler" != "xno"],
                [
                  AC_DEFINE(HAVE_WSEVH)
+                 WS_MANUAL_LIBS="-lwebsockets"
                  enable_websockets_event_handler=yes
                ])
 			 ],

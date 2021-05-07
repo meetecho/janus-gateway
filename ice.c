@@ -718,7 +718,7 @@ static void janus_ice_notify_trickle(janus_ice_handle *handle, char *buffer) {
 	janus_session_notify_event(session, event);
 }
 
-static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean up) {
+static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, int substream, gboolean up) {
 	if(handle == NULL)
 		return;
 	/* Prepare JSON event to notify user/application */
@@ -734,6 +734,8 @@ static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gbo
 	if(opaqueid_in_api && handle->opaque_id != NULL)
 		json_object_set_new(event, "opaque_id", json_string(handle->opaque_id));
 	json_object_set_new(event, "type", json_string(video ? "video" : "audio"));
+	if(video && handle->stream && handle->stream->video_rtcp_ctx[1] != NULL)
+		json_object_set_new(event, "substream", json_integer(substream));
 	json_object_set_new(event, "receiving", up ? json_true() : json_false());
 	if(!up && no_media_timer > 1)
 		json_object_set_new(event, "seconds", json_integer(no_media_timer));
@@ -744,6 +746,8 @@ static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gbo
 	if(janus_events_is_enabled()) {
 		json_t *info = json_object();
 		json_object_set_new(info, "media", json_string(video ? "video" : "audio"));
+		if(video && handle->stream && handle->stream->video_rtcp_ctx[1] != NULL)
+			json_object_set_new(info, "substream", json_integer(substream));
 		json_object_set_new(info, "receiving", up ? json_true() : json_false());
 		if(!up && no_media_timer > 1)
 			json_object_set_new(info, "seconds", json_integer(no_media_timer));
@@ -1492,8 +1496,17 @@ static void janus_ice_webrtc_free(janus_ice_handle *handle) {
 			handle->stream_id = 0;
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Closing nice agent %p\n", handle->handle_id, handle->agent);
 			janus_refcount_increase(&handle->ref);
-			g_source_ref(handle->rtp_source);
-			nice_agent_close_async(handle->agent, janus_ice_cb_agent_closed, handle->rtp_source);
+			if(handle->rtp_source != NULL) {
+				/* Destroy the agent asynchronously */
+				g_source_ref(handle->rtp_source);
+				nice_agent_close_async(handle->agent, janus_ice_cb_agent_closed, handle->rtp_source);
+			} else {
+				/* No traffic source, destroy it right away */
+				if(G_IS_OBJECT(handle->agent))
+					g_object_unref(handle->agent);
+				handle->agent = NULL;
+				janus_refcount_decrease(&handle->ref);
+			}
 		}
 #else
 		if(G_IS_OBJECT(handle->agent))
@@ -2671,7 +2684,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						if(component->in_stats.audio.bytes == 0 || component->in_stats.audio.notified_lastsec) {
 							/* We either received our first audio packet, or we started receiving it again after missing more than a second */
 							component->in_stats.audio.notified_lastsec = FALSE;
-							janus_ice_notify_media(handle, FALSE, TRUE);
+							janus_ice_notify_media(handle, FALSE, 0, TRUE);
 						}
 						/* Overall audio data */
 						component->in_stats.audio.packets++;
@@ -2690,7 +2703,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						if(component->in_stats.video[vindex].bytes == 0 || component->in_stats.video[vindex].notified_lastsec) {
 							/* We either received our first video packet, or we started receiving it again after missing more than a second */
 							component->in_stats.video[vindex].notified_lastsec = FALSE;
-							janus_ice_notify_media(handle, TRUE, TRUE);
+							janus_ice_notify_media(handle, TRUE, vindex, TRUE);
 						}
 						/* Overall video data for this SSRC */
 						component->in_stats.video[vindex].packets++;
@@ -4091,17 +4104,20 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 			/* We missed more than no_second_timer seconds of audio! */
 			component->in_stats.audio.notified_lastsec = TRUE;
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio for more than %d seconds...\n", handle->handle_id, no_media_timer);
-			janus_ice_notify_media(handle, FALSE, FALSE);
+			janus_ice_notify_media(handle, FALSE, 0, FALSE);
 		}
 		/* Video */
-		last = component->in_stats.video[0].updated;
-		if(!component->in_stats.video[0].notified_lastsec && last &&
-				!component->in_stats.video[0].bytes_lastsec && !component->in_stats.video[0].bytes_lastsec_temp &&
-					now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
-			/* We missed more than no_second_timer seconds of video! */
-			component->in_stats.video[0].notified_lastsec = TRUE;
-			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than a second...\n", handle->handle_id);
-			janus_ice_notify_media(handle, TRUE, FALSE);
+		int vindex=0;
+		for(vindex=0; vindex<3; vindex++) {
+			last = component->in_stats.video[vindex].updated;
+			if(!component->in_stats.video[vindex].notified_lastsec && last &&
+					!component->in_stats.video[vindex].bytes_lastsec && !component->in_stats.video[vindex].bytes_lastsec_temp &&
+						now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+				/* We missed more than no_second_timer seconds of this video stream! */
+				component->in_stats.video[vindex].notified_lastsec = TRUE;
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video #%d for more than a second...\n", handle->handle_id, vindex);
+				janus_ice_notify_media(handle, TRUE, vindex, FALSE);
+			}
 		}
 	}
 	/* We also send live stats to event handlers every tot-seconds (configurable) */

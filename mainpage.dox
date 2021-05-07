@@ -2133,7 +2133,7 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  *
 \verbatim
 const crypto = require('crypto');
-function getJanusToken(realm, data = [], timeout = 24 * 60 * 60) => {
+function getJanusToken(realm, data = [], timeout = 24 * 60 * 60) {
   const expiry = Math.floor(Date.now() / 1000) + timeout;
 
   const strdata = [expiry.toString(), realm, ...data].join(',');
@@ -2145,7 +2145,7 @@ function getJanusToken(realm, data = [], timeout = 24 * 60 * 60) => {
   return [strdata, hmac.read()].join(':');
 };
 
-const token = getJanusToken('janus', ['janus.plugin.videoroom']),
+const token = getJanusToken('janus', ['janus.plugin.videoroom']);
 \endverbatim
  *
  * The \c janus parameter here is the \c realm of the token. For authenticating the
@@ -2276,7 +2276,7 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * \subsection adminreqc Configuration-related requests
  * - \c get_status: returns the current value for the settings that can be
  * modified at runtime via the Admin API (see below);
- * - \c set_session_timeout: change the session timeout value in Janus;
+ * - \c set_session_timeout: change global session timeout value in Janus;
  * - \c set_log_level: change the log level in Janus;
  * - \c set_log_timestamps: selectively enable/disable adding a timestamp
  * to all log lines Janus writes on the console and/or to file;
@@ -2306,6 +2306,7 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * you want to stop accepting new sessions because you're draining this instance;
  * - \c list_sessions: list all the sessions currently active in Janus
  * (returns an array of session identifiers);
+ * - \c set_session_timeout: change session timeout value in Janus;
  * - \c destroy_session: destroy a specific session; this behaves exactly
  * as the \c destroy request does in the Janus API.
  *
@@ -3927,6 +3928,7 @@ ldd janus | grep asan
  *    - Presentation on using Janus for Virtual Events at <a href="https://www.youtube.com/watch?v=oSZw90guaUw">CommCon 2020</a>;
  *    - Workshop on Janus (lesson/tutorial) at <a href="https://www.youtube.com/watch?v=Ga_7lukslxw">ClueCon 2020</a>;
  *    - Presentation on E2EE (end-to-end encryption) and Insertable Streams at <a href="https://youtu.be/SmN8-6ZFuOo?t=2004">ClueCon 2020</a>;
+ *    - Workshop on Janus and SIP (lesson/tutorial) at <a href="https://youtu.be/fv9KwrguR-4?t=3544">OpenSIPS 2020</a>;
  *    - Presentation on SFUs and MCUs at <a href="https://www.youtube.com/watch?v=0ldgX_0w5QU">IIT RTC 2020</a>;
  *    - Presentation on using Janus for IETF Virtual Participation at the <a href="https://youtu.be/WeoKtWfmxnU?t=286">MOPS WG session (IETF109)</a>;
  *    - Presentation on WebRTC (and Janus) as a way to help musicians at <a href="https://fosdem.org/2021/schedule/event/webrtc_musicians/">FOSDEM 2021</a>;
