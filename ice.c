@@ -1496,8 +1496,17 @@ static void janus_ice_webrtc_free(janus_ice_handle *handle) {
 			handle->stream_id = 0;
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Closing nice agent %p\n", handle->handle_id, handle->agent);
 			janus_refcount_increase(&handle->ref);
-			g_source_ref(handle->rtp_source);
-			nice_agent_close_async(handle->agent, janus_ice_cb_agent_closed, handle->rtp_source);
+			if(handle->rtp_source != NULL) {
+				/* Destroy the agent asynchronously */
+				g_source_ref(handle->rtp_source);
+				nice_agent_close_async(handle->agent, janus_ice_cb_agent_closed, handle->rtp_source);
+			} else {
+				/* No traffic source, destroy it right away */
+				if(G_IS_OBJECT(handle->agent))
+					g_object_unref(handle->agent);
+				handle->agent = NULL;
+				janus_refcount_decrease(&handle->ref);
+			}
 		}
 #else
 		if(G_IS_OBJECT(handle->agent))
