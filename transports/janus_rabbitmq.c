@@ -715,6 +715,8 @@ int janus_rabbitmq_connect(void) {
 
 	rmq_client->connected = 1;
 
+	JANUS_LOG(LOG_INFO, "RabbitMQ Connected successfully");
+
 	return 0;
 }
 
