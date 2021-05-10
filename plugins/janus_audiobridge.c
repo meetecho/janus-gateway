@@ -6775,8 +6775,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	time_t passed, d_s, d_us;
 
 	/* RTP */
-	gint16 seq = 0;
-	gint32 ts = 0;
+	guint16 seq = 0;
+	guint32 ts = 0;
 	/* SRTP buffer, if needed */
 	char sbuf[1500];
 
