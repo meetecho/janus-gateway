@@ -122,8 +122,9 @@
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
 	"contact_params" : "<array of key/value objects, to specify custom Contact URI params to add to the SIP REGISTER; optional>",
 	"incoming_header_prefixes" : "<array of strings, to specify custom (non-standard) headers to read on incoming SIP events; optional>",
-	"refresh" : <true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
-	"master_id" : <ID of an already registered account, if this is an helper for multiple calls (more on that later); optional>
+	"refresh" : "<true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
+	"master_id" : "<ID of an already registered account, if this is an helper for multiple calls (more on that later); optional>",
+ 	"register_ttl" : "<integer; number of seconds after which the registration should expire; optional>"
 }
 \endverbatim
  *
@@ -475,7 +476,8 @@
 	"request" : "subscribe",
 	"event" : "<the event to subscribe to, e.g., 'message-summary'; mandatory>",
 	"accept" : "<what should be put in the Accept header; optional>",
-	"to" : "<who should be the SUBSCRIBE addressed to; optional, will use the user's identity if missing>"
+	"to" : "<who should be the SUBSCRIBE addressed to; optional, will use the user's identity if missing>",
+	"subscribe_ttl" : "<integer; number of seconds after which the subscription should expire; optional>"
 }
 \endverbatim
  *
@@ -747,12 +749,14 @@ static struct janus_json_parameter register_parameters[] = {
 	{"contact_params", JSON_OBJECT, 0},
 	{"master_id", JANUS_JSON_INTEGER, 0},
 	{"refresh", JANUS_JSON_BOOL, 0},
-	{"incoming_header_prefixes", JSON_ARRAY, 0}
+	{"incoming_header_prefixes", JSON_ARRAY, 0},
+	{"register_ttl", JANUS_JSON_INTEGER, 0}
 };
 static struct janus_json_parameter subscribe_parameters[] = {
 	{"to", JSON_STRING, 0},
 	{"event", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"accept", JSON_STRING, 0}
+	{"accept", JSON_STRING, 0},
+	{"subscribe_ttl", JANUS_JSON_INTEGER, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
 	{"proxy", JSON_STRING, 0},
@@ -824,6 +828,8 @@ static gboolean behind_nat = FALSE;
 static char *user_agent;
 #define JANUS_DEFAULT_REGISTER_TTL	3600
 static int register_ttl = JANUS_DEFAULT_REGISTER_TTL;
+#define JANUS_DEFAULT_SUBSCRIBE_TTL 3600
+static int subscribe_ttl = JANUS_DEFAULT_SUBSCRIBE_TTL;
 static uint16_t rtp_range_min = 10000;
 static uint16_t rtp_range_max = 60000;
 static int dscp_audio_rtp = 0;
@@ -3162,6 +3168,17 @@ static void *janus_sip_handler(void *data) {
 				to = session->account.identity;
 			const char *event_type = json_string_value(json_object_get(root, "event"));
 			const char *accept = json_string_value(json_object_get(root, "accept"));
+
+			/* TTL */
+			int ttl = subscribe_ttl;
+			json_t *sub_ttl = json_object_get(root, "subscribe_ttl");
+			if(sub_ttl && json_is_integer(sub_ttl))
+				ttl = json_integer_value(sub_ttl);
+			if(ttl <= 0)
+				ttl = JANUS_DEFAULT_SUBSCRIBE_TTL;
+			char ttl_text[20];
+			g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
+
 			/* Do we have a handle for this subscription already? */
 			janus_mutex_lock(&session->stack->smutex);
 			nua_handle_t *nh = NULL;
@@ -3209,6 +3226,7 @@ static void *janus_sip_handler(void *data) {
 				SIPTAG_TO_STR(to),
 				SIPTAG_EVENT_STR(event_type),
 				SIPTAG_ACCEPT_STR(accept),
+				SIPTAG_EXPIRES_STR(ttl_text),
 				NUTAG_PROXY(session->helper && session->master ?
 					session->master->account.outbound_proxy : session->account.outbound_proxy),
 				TAG_END());
@@ -5778,6 +5796,8 @@ auth_failed:
 					json_t *headers = janus_sip_get_incoming_headers(sip, session);
 					json_object_set_new(result, "headers", headers);
 				}
+				if (sip->sip_expires)
+					json_object_set_new(result, "expires", json_integer(sip->sip_expires->ex_delta));
 				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
 				json_object_set_new(event, "result", result);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, event, NULL);
