@@ -747,7 +747,8 @@ static struct janus_json_parameter register_parameters[] = {
 	{"contact_params", JSON_OBJECT, 0},
 	{"master_id", JANUS_JSON_INTEGER, 0},
 	{"refresh", JANUS_JSON_BOOL, 0},
-	{"incoming_header_prefixes", JSON_ARRAY, 0}
+	{"incoming_header_prefixes", JSON_ARRAY, 0},
+	{"register_ttl", JANUS_JSON_INTEGER, 0}
 };
 static struct janus_json_parameter subscribe_parameters[] = {
 	{"to", JSON_STRING, 0},
