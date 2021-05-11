@@ -753,7 +753,7 @@ static struct janus_json_parameter subscribe_parameters[] = {
 	{"to", JSON_STRING, 0},
 	{"event", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"accept", JSON_STRING, 0},
-    {"subscribe_ttl", JANUS_JSON_INTEGER, 0}
+	{"subscribe_ttl", JANUS_JSON_INTEGER, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
 	{"proxy", JSON_STRING, 0},
