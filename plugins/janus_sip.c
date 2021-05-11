@@ -752,7 +752,8 @@ static struct janus_json_parameter register_parameters[] = {
 static struct janus_json_parameter subscribe_parameters[] = {
 	{"to", JSON_STRING, 0},
 	{"event", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"accept", JSON_STRING, 0}
+	{"accept", JSON_STRING, 0},
+	{"subscribe_ttl", JANUS_JSON_INTEGER, JANUS_DEFAULT_SUBSCRIBE_TTL}
 };
 static struct janus_json_parameter proxy_parameters[] = {
 	{"proxy", JSON_STRING, 0},
@@ -5792,9 +5793,8 @@ auth_failed:
 					json_t *headers = janus_sip_get_incoming_headers(sip, session);
 					json_object_set_new(result, "headers", headers);
 				}
-				if (sip->sip_expires) {
+				if (sip->sip_expires)
 					json_object_set_new(result, "expires", json_integer(sip->sip_expires->ex_delta));
-				}
 				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
 				json_object_set_new(event, "result", result);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, event, NULL);
