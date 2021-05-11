@@ -122,8 +122,9 @@
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
 	"contact_params" : "<array of key/value objects, to specify custom Contact URI params to add to the SIP REGISTER; optional>",
 	"incoming_header_prefixes" : "<array of strings, to specify custom (non-standard) headers to read on incoming SIP events; optional>",
-	"refresh" : <true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
-	"master_id" : <ID of an already registered account, if this is an helper for multiple calls (more on that later); optional>
+	"refresh" : "<true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
+	"master_id" : "<ID of an already registered account, if this is an helper for multiple calls (more on that later); optional>",
+ 	"register_ttl" : "<integer; number of seconds after which the registration should expire; optional>"
 }
 \endverbatim
  *
@@ -475,7 +476,8 @@
 	"request" : "subscribe",
 	"event" : "<the event to subscribe to, e.g., 'message-summary'; mandatory>",
 	"accept" : "<what should be put in the Accept header; optional>",
-	"to" : "<who should be the SUBSCRIBE addressed to; optional, will use the user's identity if missing>"
+	"to" : "<who should be the SUBSCRIBE addressed to; optional, will use the user's identity if missing>",
+	"subscribe_ttl" : "<integer; number of seconds after which the subscription should expire; optional>"
 }
 \endverbatim
  *
