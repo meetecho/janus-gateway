@@ -824,6 +824,8 @@ static gboolean behind_nat = FALSE;
 static char *user_agent;
 #define JANUS_DEFAULT_REGISTER_TTL	3600
 static int register_ttl = JANUS_DEFAULT_REGISTER_TTL;
+#define JANUS_DEFAULT_SUBSCRIBE_TTL 3600
+static int subscribe_ttl = JANUS_DEFAULT_SUBSCRIBE_TTL;
 static uint16_t rtp_range_min = 10000;
 static uint16_t rtp_range_max = 60000;
 static int dscp_audio_rtp = 0;
@@ -3162,6 +3164,17 @@ static void *janus_sip_handler(void *data) {
 				to = session->account.identity;
 			const char *event_type = json_string_value(json_object_get(root, "event"));
 			const char *accept = json_string_value(json_object_get(root, "accept"));
+
+			/* TTL */
+			int ttl = subscribe_ttl;
+			json_t *sub_ttl = json_object_get(root, "subscribe_ttl");
+			if(sub_ttl && json_is_integer(sub_ttl))
+				ttl = json_integer_value(sub_ttl);
+			if(ttl <= 0)
+				ttl = JANUS_DEFAULT_SUBSCRIBE_TTL;
+			char ttl_text[20];
+			g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
+
 			/* Do we have a handle for this subscription already? */
 			janus_mutex_lock(&session->stack->smutex);
 			nua_handle_t *nh = NULL;
@@ -3209,6 +3222,7 @@ static void *janus_sip_handler(void *data) {
 				SIPTAG_TO_STR(to),
 				SIPTAG_EVENT_STR(event_type),
 				SIPTAG_ACCEPT_STR(accept),
+				SIPTAG_EXPIRES_STR(ttl_text),
 				NUTAG_PROXY(session->helper && session->master ?
 					session->master->account.outbound_proxy : session->account.outbound_proxy),
 				TAG_END());
@@ -5777,6 +5791,9 @@ auth_failed:
 				if(session->incoming_header_prefixes) {
 					json_t *headers = janus_sip_get_incoming_headers(sip, session);
 					json_object_set_new(result, "headers", headers);
+				}
+				if (sip->sip_expires) {
+					json_object_set_new(result, "expires", json_integer(sip->sip_expires->ex_delta));
 				}
 				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
 				json_object_set_new(event, "result", result);
