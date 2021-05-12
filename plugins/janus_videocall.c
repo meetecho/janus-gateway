@@ -1490,8 +1490,10 @@ static void *janus_videocall_handler(void *data) {
 			}
 			if(substream) {
 				session->sim_context.substream_target = json_integer_value(substream);
-				JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
-					session->ssrc[session->sim_context.substream], session->sim_context.substream_target, session->sim_context.substream);
+				if(session->sim_context.substream_target >= 0 && session->sim_context.substream_target <= 2) {
+					JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
+						session->ssrc[session->sim_context.substream_target], session->sim_context.substream_target, session->sim_context.substream);
+				}
 				if(session->sim_context.substream_target == session->sim_context.substream) {
 					/* No need to do anything, we're already getting the right substream, so notify the user */
 					json_t *event = json_object();

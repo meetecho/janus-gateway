@@ -7019,10 +7019,12 @@ static void *janus_videoroom_handler(void *data) {
 					/* Check if a simulcasting-related request is involved */
 					if(sc_substream && (publisher->ssrc[0] != 0 || publisher->rid[0] != NULL)) {
 						subscriber->sim_context.substream_target = json_integer_value(sc_substream);
-						JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
-							publisher->ssrc[subscriber->sim_context.substream],
-							subscriber->sim_context.substream_target,
-							subscriber->sim_context.substream);
+						if(subscriber->sim_context.substream_target >= 0 && subscriber->sim_context.substream_target <= 2) {
+							JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
+								publisher->ssrc[subscriber->sim_context.substream_target],
+								subscriber->sim_context.substream_target,
+								subscriber->sim_context.substream);
+						}
 						if(subscriber->sim_context.substream_target == subscriber->sim_context.substream) {
 							/* No need to do anything, we're already getting the right substream, so notify the user */
 							json_t *event = json_object();
