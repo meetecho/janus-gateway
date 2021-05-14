@@ -474,6 +474,7 @@
 \verbatim
 {
 	"request" : "subscribe",
+	"call_id" : "<user-defined value of Call-ID SIP header used in all SIP requests throughout the subscription; optional>",
 	"event" : "<the event to subscribe to, e.g., 'message-summary'; mandatory>",
 	"accept" : "<what should be put in the Accept header; optional>",
 	"to" : "<who should be the SUBSCRIBE addressed to; optional, will use the user's identity if missing>",
@@ -488,6 +489,7 @@
 \verbatim
 {
 	"sip" : "event",
+	"call_id" : "<value of SIP Call-ID header for related subscription>",
 	"result" : {
 		"event" : "notify",
 		"notify" : "<name of the event that the user is subscribed to, e.g., 'message-summary'>",
@@ -756,7 +758,8 @@ static struct janus_json_parameter subscribe_parameters[] = {
 	{"to", JSON_STRING, 0},
 	{"event", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"accept", JSON_STRING, 0},
-	{"subscribe_ttl", JANUS_JSON_INTEGER, 0}
+	{"subscribe_ttl", JANUS_JSON_INTEGER, 0},
+	{"call_id", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
 	{"proxy", JSON_STRING, 0},
@@ -3179,6 +3182,12 @@ static void *janus_sip_handler(void *data) {
 			char ttl_text[20];
 			g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
 
+			/* Take call-id from request, if it exists */
+			char *callid = NULL;
+			json_t *request_callid = json_object_get(root, "call_id");
+			if (request_callid)
+				callid = json_string_value(request_callid);
+
 			/* Do we have a handle for this subscription already? */
 			janus_mutex_lock(&session->stack->smutex);
 			nua_handle_t *nh = NULL;
@@ -3225,6 +3234,7 @@ static void *janus_sip_handler(void *data) {
 			nua_subscribe(nh,
 				SIPTAG_TO_STR(to),
 				SIPTAG_EVENT_STR(event_type),
+				SIPTAG_CALL_ID_STR(callid),
 				SIPTAG_ACCEPT_STR(accept),
 				SIPTAG_EXPIRES_STR(ttl_text),
 				NUTAG_PROXY(session->helper && session->master ?
@@ -3232,6 +3242,8 @@ static void *janus_sip_handler(void *data) {
 				TAG_END());
 			result = json_object();
 			json_object_set_new(result, "event", json_string("subscribing"));
+			if (callid)
+				json_object_set_new(result, "call_id", json_string(callid));
 		} else if(!strcasecmp(request_text, "unsubscribe")) {
 			/* Unsubscribe from some SIP events */
 			JANUS_VALIDATE_JSON_OBJECT(root, subscribe_parameters,
@@ -5252,6 +5264,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			/* Notify the application */
 			json_t *notify = json_object();
 			json_object_set_new(notify, "sip", json_string("event"));
+			json_object_set_new(notify, "call_id", json_string(sip->sip_call_id->i_id));
 			json_t *result = json_object();
 			json_object_set_new(result, "event", json_string("notify"));
 			if(sip->sip_event != NULL)
@@ -5789,6 +5802,7 @@ auth_failed:
 				/* Success */
 				json_t *event = json_object();
 				json_object_set_new(event, "sip", json_string("event"));
+				json_object_set_new(event, "call_id", json_string(sip->sip_call_id->i_id));
 				json_t *result = json_object();
 				json_object_set_new(result, "event", json_string("subscribe_succeeded"));
 				json_object_set_new(result, "code", json_integer(status));
@@ -5860,6 +5874,7 @@ auth_failed:
 				JANUS_LOG(LOG_WARN, "[%s] SUBSCRIBE failed: %d %s\n", session->account.username, status, phrase ? phrase : "");
 				json_t *event = json_object();
 				json_object_set_new(event, "sip", json_string("event"));
+				json_object_set_new(event, "call_id", json_string(sip->sip_call_id->i_id));
 				json_t *result = json_object();
 				json_object_set_new(result, "event", json_string("subscribe_failed"));
 				json_object_set_new(result, "code", json_integer(status));
