@@ -9436,6 +9436,10 @@ static void *janus_videoroom_handler(void *data) {
 				json_decref(event);
 				/* Take note of the fact we got our answer */
 				janus_videoroom_subscriber *subscriber = (janus_videoroom_subscriber *)session->participant;
+				if(subscriber == NULL) {
+					/* Shouldn't happen? */
+					continue;
+				}
 				janus_mutex_lock(&subscriber->streams_mutex);
 				/* Mark all streams that were answered to as ready */
 				char error_str[512];
