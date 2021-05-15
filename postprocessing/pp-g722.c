@@ -19,22 +19,10 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
 
+#include "pp-avformat.h"
 #include "pp-g722.h"
 #include "../debug.h"
-
-
-#define LIBAVCODEC_VER_AT_LEAST(major, minor) \
-	(LIBAVCODEC_VERSION_MAJOR > major || \
-	 (LIBAVCODEC_VERSION_MAJOR == major && \
-	  LIBAVCODEC_VERSION_MINOR >= minor))
-
-#if LIBAVCODEC_VER_AT_LEAST(57, 14)
-#define USE_CODECPAR
-#endif
-
 
 /* G.722 decoder */
 static AVCodec *dec_codec;			/* FFmpeg decoding codec */
@@ -63,17 +51,7 @@ static FILE *wav_file = NULL;
 int janus_pp_g722_create(char *destination, char *metadata) {
 	if(destination == NULL)
 		return -1;
-	/* Setup FFmpeg */
-#if ( LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100) )
-	av_register_all();
-#endif
-	/* Adjust logging to match the postprocessor's */
-	av_log_set_level(janus_log_level <= LOG_NONE ? AV_LOG_QUIET :
-		(janus_log_level == LOG_FATAL ? AV_LOG_FATAL :
-			(janus_log_level == LOG_ERR ? AV_LOG_ERROR :
-				(janus_log_level == LOG_WARN ? AV_LOG_WARNING :
-					(janus_log_level == LOG_INFO ? AV_LOG_INFO :
-						(janus_log_level == LOG_VERB ? AV_LOG_VERBOSE : AV_LOG_DEBUG))))));
+	janus_pp_setup_avformat();
 	/* Create decoding context */
 #if LIBAVCODEC_VER_AT_LEAST(53, 21)
 	int codec = AV_CODEC_ID_ADPCM_G722;

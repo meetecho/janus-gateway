@@ -19,35 +19,9 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-
+#include "pp-avformat.h"
 #include "pp-h264.h"
 #include "../debug.h"
-
-
-#define LIBAVCODEC_VER_AT_LEAST(major, minor) \
-	(LIBAVCODEC_VERSION_MAJOR > major || \
-	 (LIBAVCODEC_VERSION_MAJOR == major && \
-	  LIBAVCODEC_VERSION_MINOR >= minor))
-
-#if LIBAVCODEC_VER_AT_LEAST(51, 42)
-#define PIX_FMT_YUV420P AV_PIX_FMT_YUV420P
-#endif
-
-#if LIBAVCODEC_VER_AT_LEAST(56, 56)
-#ifndef CODEC_FLAG_GLOBAL_HEADER
-#define CODEC_FLAG_GLOBAL_HEADER AV_CODEC_FLAG_GLOBAL_HEADER
-#endif
-#ifndef FF_INPUT_BUFFER_PADDING_SIZE
-#define FF_INPUT_BUFFER_PADDING_SIZE AV_INPUT_BUFFER_PADDING_SIZE
-#endif
-#endif
-
-#if LIBAVCODEC_VER_AT_LEAST(57, 14)
-#define USE_CODECPAR
-#endif
-
 
 /* MP4 output */
 static AVFormatContext *fctx;
@@ -61,17 +35,9 @@ static int max_width = 0, max_height = 0, fps = 0;
 int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart) {
 	if(destination == NULL)
 		return -1;
-	/* Setup FFmpeg */
-#if ( LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100) )
-	av_register_all();
-#endif
-	/* Adjust logging to match the postprocessor's */
-	av_log_set_level(janus_log_level <= LOG_NONE ? AV_LOG_QUIET :
-		(janus_log_level == LOG_FATAL ? AV_LOG_FATAL :
-			(janus_log_level == LOG_ERR ? AV_LOG_ERROR :
-				(janus_log_level == LOG_WARN ? AV_LOG_WARNING :
-					(janus_log_level == LOG_INFO ? AV_LOG_INFO :
-						(janus_log_level == LOG_VERB ? AV_LOG_VERBOSE : AV_LOG_DEBUG))))));
+
+	janus_pp_setup_avformat();
+
 	/* MP4 output */
 	fctx = avformat_alloc_context();
 	if(fctx == NULL) {
