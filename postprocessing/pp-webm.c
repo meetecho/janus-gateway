@@ -36,9 +36,6 @@
 /* WebM output */
 static AVFormatContext *fctx;
 static AVStream *vStream;
-#ifdef USE_CODECPAR
-static AVCodecContext *vEncoder;
-#endif
 static int max_width = 0, max_height = 0, fps = 0;
 
 int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
@@ -67,60 +64,32 @@ int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 	}
     char filename[1024];
 	snprintf(filename, sizeof(filename), "%s", destination);
-#ifdef USE_CODECPAR
-	AVCodec *codec = avcodec_find_encoder(vp8 ? AV_CODEC_ID_VP8 : AV_CODEC_ID_VP9);
-	if(!codec) {
-		/* Error opening video codec */
-		JANUS_LOG(LOG_ERR, "Encoder not available\n");
-		return -1;
-	}
-	fctx->video_codec = codec;
-	fctx->oformat->video_codec = codec->id;
-	vStream = avformat_new_stream(fctx, codec);
-	vStream->id = fctx->nb_streams-1;
-	vEncoder = avcodec_alloc_context3(codec);
-	vEncoder->width = max_width;
-	vEncoder->height = max_height;
-	vEncoder->time_base = (AVRational){ 1, fps };
-	vEncoder->pix_fmt = AV_PIX_FMT_YUV420P;
-	vEncoder->flags |= CODEC_FLAG_GLOBAL_HEADER;
-	if(avcodec_open2(vEncoder, codec, NULL) < 0) {
-		/* Error opening video codec */
-		JANUS_LOG(LOG_ERR, "Encoder error\n");
-		return -1;
-	}
-	avcodec_parameters_from_context(vStream->codecpar, vEncoder);
-#else
-	//~ vStream = av_new_stream(fctx, 0);
+
 	vStream = avformat_new_stream(fctx, 0);
 	if(vStream == NULL) {
 		JANUS_LOG(LOG_ERR, "Error adding stream\n");
 		return -1;
 	}
-	//~ avcodec_get_context_defaults2(vStream->codec, CODEC_TYPE_VIDEO);
-#if LIBAVCODEC_VER_AT_LEAST(53, 21)
-	avcodec_get_context_defaults3(vStream->codec, AVMEDIA_TYPE_VIDEO);
+
+#ifdef USE_CODECPAR
+	AVCodecParameters *c = vStream->codecpar;
 #else
-	avcodec_get_context_defaults2(vStream->codec, AVMEDIA_TYPE_VIDEO);
+	AVCodecContext *c = vStream->codec;
 #endif
+
 #if LIBAVCODEC_VER_AT_LEAST(54, 25)
 	#if LIBAVCODEC_VERSION_MAJOR >= 55
-	vStream->codec->codec_id = vp8 ? AV_CODEC_ID_VP8 : AV_CODEC_ID_VP9;
+	c->codec_id = vp8 ? AV_CODEC_ID_VP8 : AV_CODEC_ID_VP9;
 	#else
-	vStream->codec->codec_id = AV_CODEC_ID_VP8;
+	c->codec_id = AV_CODEC_ID_VP8;
 	#endif
 #else
-	vStream->codec->codec_id = CODEC_ID_VP8;
+	c->codec_id = CODEC_ID_VP8;
 #endif
-	//~ vStream->codec->codec_type = CODEC_TYPE_VIDEO;
-	vStream->codec->codec_type = AVMEDIA_TYPE_VIDEO;
-	vStream->codec->time_base = (AVRational){1, fps};
-	vStream->codec->width = max_width;
-	vStream->codec->height = max_height;
-	vStream->codec->pix_fmt = PIX_FMT_YUV420P;
-	if (fctx->flags & AVFMT_GLOBALHEADER)
-		vStream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
-#endif
+	c->codec_type = AVMEDIA_TYPE_VIDEO;
+	c->width = max_width;
+	c->height = max_height;
+
 	int res = avio_open(&fctx->pb, filename, AVIO_FLAG_WRITE);
 	if(res < 0) {
 		JANUS_LOG(LOG_ERR, "Error opening file for output (%d)\n", res);
@@ -604,24 +573,9 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 
 /* Close WebM file */
 void janus_pp_webm_close(void) {
-	if(fctx != NULL)
-		av_write_trailer(fctx);
-#ifdef USE_CODECPAR
-	if(vEncoder != NULL)
-		avcodec_close(vEncoder);
-#else
-	if(vStream != NULL && vStream->codec != NULL)
-		avcodec_close(vStream->codec);
-#endif
-	if(fctx != NULL && fctx->streams[0] != NULL) {
-#ifndef USE_CODECPAR
-		av_free(fctx->streams[0]->codec);
-#endif
-		av_free(fctx->streams[0]);
-	}
 	if(fctx != NULL) {
-		//~ url_fclose(fctx->pb);
+		av_write_trailer(fctx);
 		avio_close(fctx->pb);
-		av_free(fctx);
+		avformat_free_context(fctx);
 	}
 }
