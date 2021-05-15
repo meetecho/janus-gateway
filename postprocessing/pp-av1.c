@@ -386,6 +386,7 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 	int len = 0, frameLen = 0, total = 0, dataLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
+	AVPacket *packet = av_packet_alloc();
 
 	while(*working && tmp != NULL) {
 		keyFrame = 0;
@@ -506,21 +507,20 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 			total += frameLen;
 			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Saving frame: %d (tot=%d)\n", tmp->ts, frameLen, total);
 
-			AVPacket packet;
-			av_init_packet(&packet);
-			packet.stream_index = 0;
-			packet.data = received_frame;
-			packet.size = frameLen;
+			av_packet_unref(packet);
+			packet->stream_index = 0;
+			packet->data = received_frame;
+			packet->size = frameLen;
 			if(keyFrame)
-				packet.flags |= AV_PKT_FLAG_KEY;
+				packet->flags |= AV_PKT_FLAG_KEY;
 
 			/* First we save to the file... */
-			packet.dts = tmp->ts-list->ts;
-			packet.pts = tmp->ts-list->ts;
+			packet->dts = tmp->ts-list->ts;
+			packet->pts = tmp->ts-list->ts;
 			JANUS_LOG(LOG_HUGE, "%"SCNu64" - %"SCNu64" --> %"SCNu64"\n",
-				tmp->ts, list->ts, packet.pts);
+				tmp->ts, list->ts, packet->pts);
 			if(fctx) {
-				int res = av_write_frame(fctx, &packet);
+				int res = av_write_frame(fctx, packet);
 				if(res < 0) {
 					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d)\n", res);
 				}
@@ -528,6 +528,7 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 		}
 		tmp = tmp->next;
 	}
+	av_packet_free(&packet);
 	g_free(received_frame);
 	g_free(obu_data);
 	g_free(start);

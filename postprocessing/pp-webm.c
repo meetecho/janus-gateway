@@ -339,6 +339,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
+	AVPacket *packet = av_packet_alloc();
 
 	while(*working && tmp != NULL) {
 		keyFrame = 0;
@@ -574,28 +575,28 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 		if(frameLen > 0) {
 			memset(received_frame + frameLen, 0, FF_INPUT_BUFFER_PADDING_SIZE);
 
-			AVPacket packet;
-			av_init_packet(&packet);
-			packet.stream_index = 0;
-			packet.data = received_frame;
-			packet.size = frameLen;
+			av_packet_unref(packet);
+			packet->stream_index = 0;
+			packet->data = received_frame;
+			packet->size = frameLen;
 			if(keyFrame)
 				//~ packet.flags |= PKT_FLAG_KEY;
-				packet.flags |= AV_PKT_FLAG_KEY;
+				packet->flags |= AV_PKT_FLAG_KEY;
 
 			/* First we save to the file... */
 			//~ packet.dts = AV_NOPTS_VALUE;
 			//~ packet.pts = AV_NOPTS_VALUE;
-			packet.dts = (tmp->ts-list->ts)/90;
-			packet.pts = (tmp->ts-list->ts)/90;
+			packet->dts = (tmp->ts-list->ts)/90;
+			packet->pts = (tmp->ts-list->ts)/90;
 			if(fctx) {
-				if(av_write_frame(fctx, &packet) < 0) {
+				if(av_write_frame(fctx, packet) < 0) {
 					JANUS_LOG(LOG_ERR, "Error writing video frame to file...\n");
 				}
 			}
 		}
 		tmp = tmp->next;
 	}
+	av_packet_free(&packet);
 	g_free(received_frame);
 	g_free(start);
 	return 0;

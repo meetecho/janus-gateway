@@ -170,10 +170,9 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		JANUS_LOG(LOG_VERB, "Writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
 			bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/8000);
 		/* Decode and save to wav */
-		AVPacket avpacket;
-		av_init_packet(&avpacket);
-		avpacket.data = (uint8_t *)buffer;
-		avpacket.size = bytes;
+		AVPacket *avpacket = av_packet_alloc();
+		avpacket->data = (uint8_t *)buffer;
+		avpacket->size = bytes;
 		int err = 0;
 #if LIBAVCODEC_VER_AT_LEAST(55,28)
 		AVFrame *frame = av_frame_alloc();
@@ -181,7 +180,7 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		AVFrame *frame = avcodec_alloc_frame();
 #endif
 #ifdef USE_CODECPAR
-		err = avcodec_send_packet(dec_ctx, &avpacket);
+		err = avcodec_send_packet(dec_ctx, avpacket);
 		if(err < 0) {
 			JANUS_LOG(LOG_ERR, "Error decoding audio frame... (%d)\n", err);
 		} else {
@@ -190,7 +189,7 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		if(err > -1) {
 #else
 		int got_frame = 0;
-		err = avcodec_decode_audio4(dec_ctx, frame, &got_frame, &avpacket);
+		err = avcodec_decode_audio4(dec_ctx, frame, &got_frame, avpacket);
 		if(err < 0 || !got_frame) {
 			JANUS_LOG(LOG_ERR, "Error decoding audio frame... (%d)\n", err);
 		} else {
@@ -211,6 +210,7 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 #else
 		avcodec_free_frame(&frame);
 #endif
+		av_packet_free(&avpacket);
 		tmp = tmp->next;
 	}
 	g_free(buffer);
