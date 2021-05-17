@@ -50,5 +50,22 @@ static inline void janus_pp_setup_avformat(void) {
 
 }
 
+static inline AVStream *janus_pp_new_video_avstream(AVFormatContext *fctx, int codec_id, int width, int height) {
+	AVStream *st = avformat_new_stream(fctx, NULL);
+	if(!st)
+		return NULL;
+
+#ifdef USE_CODECPAR
+	AVCodecParameters *c = st->codecpar;
+#else
+	AVCodecContext *c = st->codec;
+#endif
+	c->codec_id = codec_id;
+	c->codec_type = AVMEDIA_TYPE_VIDEO;
+	c->width = width;
+	c->height = height;
+
+	return st;
+}
 
 #endif

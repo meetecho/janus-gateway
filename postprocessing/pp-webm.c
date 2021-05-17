@@ -65,30 +65,22 @@ int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
     char filename[1024];
 	snprintf(filename, sizeof(filename), "%s", destination);
 
-	vStream = avformat_new_stream(fctx, 0);
+	int codec_id;
+#if LIBAVCODEC_VER_AT_LEAST(54, 25)
+	#if LIBAVCODEC_VERSION_MAJOR >= 55
+	codec_id = vp8 ? AV_CODEC_ID_VP8 : AV_CODEC_ID_VP9;
+	#else
+	codec_id = AV_CODEC_ID_VP8;
+	#endif
+#else
+	codec_id = CODEC_ID_VP8;
+#endif
+
+	vStream = janus_pp_new_video_avstream(fctx, codec_id, max_width, max_height);
 	if(vStream == NULL) {
 		JANUS_LOG(LOG_ERR, "Error adding stream\n");
 		return -1;
 	}
-
-#ifdef USE_CODECPAR
-	AVCodecParameters *c = vStream->codecpar;
-#else
-	AVCodecContext *c = vStream->codec;
-#endif
-
-#if LIBAVCODEC_VER_AT_LEAST(54, 25)
-	#if LIBAVCODEC_VERSION_MAJOR >= 55
-	c->codec_id = vp8 ? AV_CODEC_ID_VP8 : AV_CODEC_ID_VP9;
-	#else
-	c->codec_id = AV_CODEC_ID_VP8;
-	#endif
-#else
-	c->codec_id = CODEC_ID_VP8;
-#endif
-	c->codec_type = AVMEDIA_TYPE_VIDEO;
-	c->width = max_width;
-	c->height = max_height;
 
 	int res = avio_open(&fctx->pb, filename, AVIO_FLAG_WRITE);
 	if(res < 0) {
