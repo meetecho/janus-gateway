@@ -62,8 +62,6 @@ int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 		JANUS_LOG(LOG_ERR, "Error guessing format\n");
 		return -1;
 	}
-    char filename[1024];
-	snprintf(filename, sizeof(filename), "%s", destination);
 
 	int codec_id;
 #if LIBAVCODEC_VER_AT_LEAST(54, 25)
@@ -82,7 +80,7 @@ int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 		return -1;
 	}
 
-	int res = avio_open(&fctx->pb, filename, AVIO_FLAG_WRITE);
+	int res = avio_open(&fctx->pb, destination, AVIO_FLAG_WRITE);
 	if(res < 0) {
 		JANUS_LOG(LOG_ERR, "Error opening file for output (%d)\n", res);
 		return -1;
