@@ -38,34 +38,6 @@ static AVFormatContext *fctx;
 static AVStream *vStream;
 static int max_width = 0, max_height = 0, fps = 0;
 
-static AVFormatContext *janus_pp_create_avformatcontext(const char *format, const char *metadata, const char *destination) {
-	janus_pp_setup_avformat();
-
-	AVFormatContext *ctx = avformat_alloc_context();
-	if(!ctx)
-		return NULL;
-
-	/* We save the metadata part as a comment (see #1189) */
-        if(metadata)
-                av_dict_set(&ctx->metadata, "comment", metadata, 0);
-
-	ctx->oformat = av_guess_format(format, NULL, NULL);
-        if(ctx->oformat == NULL) {
-                JANUS_LOG(LOG_ERR, "Error guessing format\n");
-		avformat_free_context(ctx);
-                return NULL;
-        }
-
-	int res = avio_open(&ctx->pb, destination, AVIO_FLAG_WRITE);
-	if(res < 0) {
-		JANUS_LOG(LOG_ERR, "Error opening file for output (%d)\n", res);
-		avformat_free_context(ctx);
-		return NULL;
-	}
-
-	return ctx;
-}
-
 int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 	if(destination == NULL)
 		return -1;

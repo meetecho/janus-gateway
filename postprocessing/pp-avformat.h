@@ -1,4 +1,4 @@
-/*! \file    pp-webm.h
+/*! \file    pp-avformat.h
  * \copyright GNU General Public License v3
  *
  * \ingroup postprocessing
@@ -35,37 +35,11 @@
 #define USE_CODECPAR
 #endif
 
-static inline void janus_pp_setup_avformat(void) {
-	/* Setup FFmpeg */
-#if ( LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100) )
-	av_register_all();
-#endif
-	/* Adjust logging to match the postprocessor's */
-	av_log_set_level(janus_log_level <= LOG_NONE ? AV_LOG_QUIET :
-		(janus_log_level == LOG_FATAL ? AV_LOG_FATAL :
-			(janus_log_level == LOG_ERR ? AV_LOG_ERROR :
-				(janus_log_level == LOG_WARN ? AV_LOG_WARNING :
-					(janus_log_level == LOG_INFO ? AV_LOG_INFO :
-						(janus_log_level == LOG_VERB ? AV_LOG_VERBOSE : AV_LOG_DEBUG))))));
+void janus_pp_setup_avformat(void);
 
-}
+AVFormatContext *janus_pp_create_avformatcontext(const char *format, const char *metadata, const char *destination);
 
-static inline AVStream *janus_pp_new_video_avstream(AVFormatContext *fctx, int codec_id, int width, int height) {
-	AVStream *st = avformat_new_stream(fctx, NULL);
-	if(!st)
-		return NULL;
+AVStream *janus_pp_new_video_avstream(AVFormatContext *fctx, int codec_id, int width, int height);
 
-#ifdef USE_CODECPAR
-	AVCodecParameters *c = st->codecpar;
-#else
-	AVCodecContext *c = st->codec;
-#endif
-	c->codec_id = codec_id;
-	c->codec_type = AVMEDIA_TYPE_VIDEO;
-	c->width = width;
-	c->height = height;
-
-	return st;
-}
 
 #endif
