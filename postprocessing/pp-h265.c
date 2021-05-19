@@ -390,6 +390,7 @@ int janus_pp_h265_preprocess(FILE *file, janus_pp_frame_packet *list) {
 						break;
 					case 34:
 						JANUS_LOG(LOG_HUGE, "[PPS] %u/%u/%u/%u\n", fbit, type, lid, tid);
+						break;
 					default:
 						break;
 				}
