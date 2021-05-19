@@ -26,9 +26,6 @@
 /* MP4 output */
 static AVFormatContext *fctx;
 static AVStream *vStream;
-#ifdef USE_CODECPAR
-static AVCodecContext *vEncoder;
-#endif
 static uint16_t max_width = 0, max_height = 0;
 int fps = 0;
 
@@ -39,88 +36,30 @@ int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart) {
 #if !LIBAVCODEC_VER_AT_LEAST(57, 25)
 	JANUS_LOG(LOG_ERR, "This version of libavcodec doesn't support AV1...\n");
 	return -1;
-#endif
-	janus_pp_setup_avformat();
+#else
 	/* MP4 output */
-	fctx = avformat_alloc_context();
+	fctx = janus_pp_create_avformatcontext("mp4", metadata, destination);
 	if(fctx == NULL) {
 		JANUS_LOG(LOG_ERR, "Error allocating context\n");
 		return -1;
 	}
-	/* We save the metadata part as a comment (see #1189) */
-	if(metadata)
-		av_dict_set(&fctx->metadata, "comment", metadata, 0);
-	fctx->oformat = av_guess_format("mp4", NULL, NULL);
-	if(fctx->oformat == NULL) {
-		JANUS_LOG(LOG_ERR, "Error guessing format\n");
-		return -1;
-	}
-    char filename[1024];
-	snprintf(filename, sizeof(filename), "%s", destination);
-#ifdef USE_CODECPAR
-#if LIBAVCODEC_VER_AT_LEAST(57, 25)
-	AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_AV1);
-#else
-	if(!codec) {
-		/* Error opening video codec */
-		JANUS_LOG(LOG_ERR, "Encoder not available\n");
-		return -1;
-	}
-#endif
-	fctx->video_codec = codec;
-	fctx->oformat->video_codec = codec->id;
-	vStream = avformat_new_stream(fctx, codec);
-	vStream->id = fctx->nb_streams-1;
-	vEncoder = avcodec_alloc_context3(codec);
-	vEncoder->width = max_width;
-	vEncoder->height = max_height;
-	vEncoder->time_base = (AVRational){ 1, fps };
-	vEncoder->pix_fmt = AV_PIX_FMT_YUV420P;
-	vEncoder->flags |= CODEC_FLAG_GLOBAL_HEADER;
-	vEncoder->strict_std_compliance = -2;
-	if(avcodec_open2(vEncoder, codec, NULL) < 0) {
-		/* Error opening video codec */
-		JANUS_LOG(LOG_ERR, "Encoder error\n");
-		return -1;
-	}
-	avcodec_parameters_from_context(vStream->codecpar, vEncoder);
-#else
-	vStream = avformat_new_stream(fctx, 0);
+
+	vStream = janus_pp_new_video_avstream(fctx, AV_CODEC_ID_AV1, max_width, max_height);
 	if(vStream == NULL) {
 		JANUS_LOG(LOG_ERR, "Error adding stream\n");
 		return -1;
 	}
-#if LIBAVCODEC_VER_AT_LEAST(53, 21)
-	avcodec_get_context_defaults3(vStream->codec, AVMEDIA_TYPE_VIDEO);
-#else
-	avcodec_get_context_defaults2(vStream->codec, AVMEDIA_TYPE_VIDEO);
-#endif
-#if LIBAVCODEC_VER_AT_LEAST(57, 25)
-	vStream->codec->codec_id = AV_CODEC_ID_AV1;
-#endif
-	vStream->codec->codec_type = AVMEDIA_TYPE_VIDEO;
-	vStream->codec->time_base = (AVRational){1, fps};
-	vStream->time_base = (AVRational){1, 90000};
-	vStream->codec->width = max_width;
-	vStream->codec->height = max_height;
-	vStream->codec->pix_fmt = PIX_FMT_YUV420P;
-	//~ if (fctx->flags & AVFMT_GLOBALHEADER)
-		vStream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
-#endif
+
 	AVDictionary *options = NULL;
 	if(faststart)
 		av_dict_set(&options, "movflags", "+faststart", 0);
 
-	int res = avio_open2(&fctx->pb, filename, AVIO_FLAG_WRITE, NULL, &options);
-	if(res < 0) {
-		JANUS_LOG(LOG_ERR, "Error opening file for output (%d)\n", res);
-		return -1;
-	}
 	if(avformat_write_header(fctx, &options) < 0) {
 		JANUS_LOG(LOG_ERR, "Error writing header\n");
 		return -1;
 	}
 	return 0;
+#endif
 }
 
 /* Helper to decode a leb128 integer  */
@@ -537,23 +476,9 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 
 /* Close MP4 file */
 void janus_pp_av1_close(void) {
-	if(fctx != NULL)
-		av_write_trailer(fctx);
-#ifdef USE_CODECPAR
-	if(vEncoder != NULL)
-		avcodec_close(vEncoder);
-#else
-	if(vStream != NULL && vStream->codec != NULL)
-		avcodec_close(vStream->codec);
-#endif
-	if(fctx != NULL && fctx->streams[0] != NULL) {
-#ifndef USE_CODECPAR
-		av_free(fctx->streams[0]->codec);
-#endif
-		av_free(fctx->streams[0]);
-	}
 	if(fctx != NULL) {
+		av_write_trailer(fctx);
 		avio_close(fctx->pb);
-		av_free(fctx);
+		avformat_free_context(fctx);
 	}
 }
