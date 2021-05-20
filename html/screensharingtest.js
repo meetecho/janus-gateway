@@ -145,7 +145,7 @@ $(document).ready(function() {
 								},
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
-									$("#screencapture").parent().unblock();
+									$("#screencapture").parent().parent().unblock();
 									if(on) {
 										bootbox.alert("Your screen sharing session just started: pass the <b>" + room + "</b> session identifier to those who want to attend.");
 									} else {
@@ -289,6 +289,7 @@ $(document).ready(function() {
 										return;
 									}
 									$('#screenmenu').hide();
+									$('#room').removeClass('hide').show();
 									if(track.kind === "audio") {
 										// We ignore local audio tracks, they'd generate echo anyway
 										if(localVideos === 0) {
@@ -501,7 +502,7 @@ function newRemoteFeed(id, display) {
 				var listen = {
 					request: "join",
 					room: room,
-					ptype: "listener",
+					ptype: "subscriber",
 					feed: id
 				};
 				remoteFeed.send({ message: listen });
