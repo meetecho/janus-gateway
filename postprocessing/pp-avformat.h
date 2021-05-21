@@ -40,6 +40,7 @@ void janus_pp_setup_avformat(void);
 AVFormatContext *janus_pp_create_avformatcontext(const char *format, const char *metadata, const char *destination);
 
 AVStream *janus_pp_new_video_avstream(AVFormatContext *fctx, int codec_id, int width, int height);
+AVStream *janus_pp_new_audio_avstream(AVFormatContext *fctx, int codec_id, int samplerate, int channels, const uint8_t *extradata, int size);
 
 
 #endif

@@ -50,6 +50,28 @@ AVFormatContext *janus_pp_create_avformatcontext(const char *format, const char 
 	return ctx;
 }
 
+AVStream *janus_pp_new_audio_avstream(AVFormatContext *fctx, int codec_id, int samplerate, int channels, const uint8_t *extradata, int size) {
+	AVStream *st = avformat_new_stream(fctx, NULL);
+	if(!st)
+		return NULL;
+
+#ifdef USE_CODECPAR
+	AVCodecParameters *c = st->codecpar;
+#else
+	AVCodecContext *c = st->codec;
+#endif
+	c->codec_id = codec_id;
+	c->codec_type = AVMEDIA_TYPE_AUDIO;
+	c->sample_rate = samplerate;
+	c->channels = channels;
+	if(extradata) {
+		c->extradata_size = size;
+		c->extradata = av_memdup(extradata, size);
+	}
+
+	return st;
+}
+
 AVStream *janus_pp_new_video_avstream(AVFormatContext *fctx, int codec_id, int width, int height) {
 	AVStream *st = avformat_new_stream(fctx, NULL);
 	if(!st)
