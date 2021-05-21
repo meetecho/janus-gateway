@@ -3006,6 +3006,7 @@ function Janus(gatewayCallbacks) {
 		Janus.debug(mediaConstraints);
 		// Check if this is Firefox and we've been asked to do simulcasting
 		var sendVideo = isVideoSendEnabled(media);
+		var recvVideo = isVideoRecvEnabled(media);
 		if(sendVideo && simulcast && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
 			// FIXME Based on https://gist.github.com/voluntas/088bc3cc62094730647b
 			Janus.log("Enabling Simulcasting for Firefox (RID)");
@@ -3033,13 +3034,12 @@ function Janus(gatewayCallbacks) {
 				callbacks.customizeSdp(jsep);
 				answer.sdp = jsep.sdp;
 				Janus.log("Setting local description");
-				if(sendVideo && simulcast) {
+				if((sendVideo && simulcast) || (recvVideo && simulcast)) {   //luchange
 					// This SDP munging only works with Chrome
 					if(Janus.webRTCAdapter.browserDetails.browser === "chrome") {
 						// FIXME Apparently trying to simulcast when answering breaks video in Chrome...
-						//~ Janus.log("Enabling Simulcasting for Chrome (SDP munging)");
-						//~ answer.sdp = mungeSdpForSimulcasting(answer.sdp);
-						Janus.warn("simulcast=true, but this is an answer, and video breaks in Chrome if we enable it");
+						Janus.log("Enabling Simulcasting for Chrome (SDP munging)");
+						answer.sdp = mungeSdpForSimulcasting(answer.sdp);
 					} else if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
 						Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
 					}
