@@ -872,7 +872,7 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 					/* Try to detect the retransmissions */
 					/* TODO We have to accomplish this in a smarter way */
 					int32_t rtp_diff = ntohl(rtp->timestamp) - ctx->rtp_last_inorder_ts;
-					int32_t ms_diff = (abs(rtp_diff) * 1000) / ctx->tb;
+					int64_t ms_diff = ((int64_t)abs(rtp_diff) * 1000) / ctx->tb;
 					if (ms_diff > 120)
 						ctx->retransmitted++;
 					else

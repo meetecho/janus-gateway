@@ -632,11 +632,25 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				}
 				ip = iface;
 			}
+			item = janus_config_get(config, config_general, janus_config_type_item, "ws_unix");
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+			char *unixpath = NULL;
+			if(item && item->value)
+				unixpath = (char *)item->value;
+#else
+			if(item && item->value)
+				JANUS_LOG(LOG_WARN, "WebSockets option 'ws_unix' is not supported because libwebsockets compiled without UNIX sockets\n");
+#endif
 			/* Prepare context */
 			struct lws_context_creation_info info;
 			memset(&info, 0, sizeof info);
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+			info.port = unixpath ? 0 : wsport;
+			info.iface = unixpath ? unixpath : (ip ? ip : interface);
+#else
 			info.port = wsport;
 			info.iface = ip ? ip : interface;
+#endif
 			info.protocols = ws_protocols;
 			info.extensions = NULL;
 			info.ssl_cert_filepath = NULL;
@@ -651,6 +665,10 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				ipv4_only = 0;
 			}
 #endif
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+			if (unixpath)
+				info.options |= LWS_SERVER_OPTION_UNIX_SOCK;
+#endif
 #if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
 			info.options |= LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
 
@@ -659,6 +677,10 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			wss = lws_create_vhost(wsc, &info);
 			if(wss == NULL) {
 				JANUS_LOG(LOG_FATAL, "Error creating vhost for WebSockets server...\n");
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+			} else if (unixpath) {
+				JANUS_LOG(LOG_INFO, "WebSockets server started (UNIX socket %s)...\n", unixpath);
+#endif
 			} else {
 				JANUS_LOG(LOG_INFO, "WebSockets server started (port %d)...\n", wsport);
 			}
@@ -693,6 +715,15 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				}
 				ip = iface;
 			}
+			item = janus_config_get(config, config_general, janus_config_type_item, "wss_unix");
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+			char *unixpath = NULL;
+			if(item && item->value)
+				unixpath = (char *)item->value;
+#else
+			if(item && item->value)
+				JANUS_LOG(LOG_WARN, "WebSockets option 'wss_unix' is not supported because libwebsockets compiled without UNIX sockets\n");
+#endif
 			item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pem");
 			if(!item || !item->value) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
@@ -714,8 +745,13 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				/* Prepare secure context */
 				struct lws_context_creation_info info;
 				memset(&info, 0, sizeof info);
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+				info.port = unixpath ? 0 : wsport;
+				info.iface = unixpath ? unixpath : (ip ? ip : interface);
+#else
 				info.port = wsport;
 				info.iface = ip ? ip : interface;
+#endif
 				info.protocols = sws_protocols;
 				info.extensions = NULL;
 				info.ssl_cert_filepath = server_pem;
@@ -735,10 +771,18 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 					ipv4_only = 0;
 				}
 #endif
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+				if(unixpath)
+					info.options |= LWS_SERVER_OPTION_UNIX_SOCK;
+#endif
 				/* Create the secure WebSocket context */
 				swss = lws_create_vhost(wsc, &info);
 				if(swss == NULL) {
 					JANUS_LOG(LOG_FATAL, "Error creating vhost for Secure WebSockets server...\n");
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+				} else if (unixpath) {
+					JANUS_LOG(LOG_INFO, "Secure WebSockets server started (UNIX socket %s)...\n", unixpath);
+#endif
 				} else {
 					JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
 				}
@@ -775,11 +819,25 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				}
 				ip = iface;
 			}
+			item = janus_config_get(config, config_general, janus_config_type_item, "admin_ws_unix");
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+			char *unixpath = NULL;
+			if(item && item->value)
+				unixpath = (char *)item->value;
+#else
+			if(item && item->value)
+				JANUS_LOG(LOG_WARN, "WebSockets option 'admin_ws_unix' is not supported because libwebsockets compiled without UNIX sockets\n");
+#endif
 			/* Prepare context */
 			struct lws_context_creation_info info;
 			memset(&info, 0, sizeof info);
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+			info.port = unixpath ? 0 : wsport;
+			info.iface = unixpath ? unixpath : (ip ? ip : interface);
+#else
 			info.port = wsport;
 			info.iface = ip ? ip : interface;
+#endif
 			info.protocols = admin_ws_protocols;
 			info.extensions = NULL;
 			info.ssl_cert_filepath = NULL;
@@ -802,6 +860,10 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			admin_wss = lws_create_vhost(wsc, &info);
 			if(admin_wss == NULL) {
 				JANUS_LOG(LOG_FATAL, "Error creating vhost for Admin WebSockets server...\n");
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+			} else if (unixpath) {
+				JANUS_LOG(LOG_INFO, "Admin WebSockets server started (UNIX socket %s)...\n", unixpath);
+#endif
 			} else {
 				JANUS_LOG(LOG_INFO, "Admin WebSockets server started (port %d)...\n", wsport);
 			}
@@ -836,6 +898,15 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				}
 				ip = iface;
 			}
+			item = janus_config_get(config, config_general, janus_config_type_item, "admin_wss_unix");
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+			char *unixpath = NULL;
+			if(item && item->value)
+				unixpath = (char *)item->value;
+#else
+			if(item && item->value)
+				JANUS_LOG(LOG_WARN, "WebSockets option 'admin_wss_unix' is not supported because libwebsockets compiled without UNIX sockets\n");
+#endif
 			item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pem");
 			if(!item || !item->value) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
@@ -857,8 +928,13 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				/* Prepare secure context */
 				struct lws_context_creation_info info;
 				memset(&info, 0, sizeof info);
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+				info.port = unixpath ? 0 : wsport;
+				info.iface = unixpath ? unixpath : (ip ? ip : interface);
+#else
 				info.port = wsport;
 				info.iface = ip ? ip : interface;
+#endif
 				info.protocols = admin_sws_protocols;
 				info.extensions = NULL;
 				info.ssl_cert_filepath = server_pem;
@@ -878,10 +954,18 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 					ipv4_only = 0;
 				}
 #endif
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+				if (unixpath)
+					info.options |= LWS_SERVER_OPTION_UNIX_SOCK;
+#endif
 				/* Create the secure WebSocket context */
 				admin_swss = lws_create_vhost(wsc, &info);
 				if(admin_swss == NULL) {
 					JANUS_LOG(LOG_FATAL, "Error creating vhost for Secure Admin WebSockets server...\n");
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+				} else if (unixpath) {
+					JANUS_LOG(LOG_INFO, "Secure Admin WebSockets server started (UNIX socket %s)...\n", unixpath);
+#endif
 				} else {
 					JANUS_LOG(LOG_INFO, "Secure Admin WebSockets server started (port %d)...\n", wsport);
 				}
@@ -1058,6 +1142,12 @@ int janus_websockets_send_message(janus_transport_session *transport, void *requ
 	}
 	/* Convert to string and enqueue */
 	char *payload = json_dumps(message, json_format);
+	if(payload == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+		json_decref(message);
+		janus_mutex_unlock(&transport->mutex);
+		return -1;
+	}
 	g_async_queue_push(client->messages, payload);
 #if (LWS_LIBRARY_VERSION_MAJOR >= 3)
 	/* On libwebsockets >= 3.x we use lws_cancel_service */

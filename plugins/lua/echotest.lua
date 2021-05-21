@@ -171,16 +171,16 @@ function hangupMedia(id)
 	end
 end
 
-function incomingTextData(id, buf, len)
+function incomingTextData(id, buf, len, label, protocol)
 	-- Relaying RTP/RTCP in Lua makes no sense, but just for fun
 	-- we handle text data channel messages ourselves to manipulate them
 	local edit = "[" .. name .. "] --> " .. buf
-	relayTextData(id, edit, string.len(edit));
+	relayTextData(id, edit, string.len(edit), label, protocol);
 end
 
-function incomingBinaryData(id, buf, len)
+function incomingBinaryData(id, buf, len, label, protocol)
 	-- If the data we're getting is binary, send it back as it is
-	relayBinaryData(id, buf, len);
+	relayBinaryData(id, buf, len, label, protocol);
 end
 
 function dataReady(id)

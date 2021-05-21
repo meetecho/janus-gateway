@@ -338,6 +338,63 @@ int janus_pp_h265_preprocess(FILE *file, janus_pp_frame_packet *list) {
 		} else if(type == 34) {
 			/* PPS */
 			JANUS_LOG(LOG_HUGE, "[PPS] %u/%u/%u/%u\n", fbit, type, lid, tid);
+		} else if(type == 48) {
+			/* AP */
+			JANUS_LOG(LOG_HUGE, "[AP] %u/%u/%u/%u\n", fbit, type, lid, tid);
+			uint8_t *end = (uint8_t*)prebuffer + len;
+			uint16_t payload_len;
+			for (uint8_t *p = (uint8_t*)prebuffer + 2; p < end - 2; p += payload_len) {
+				payload_len = (p[0] << 8 | p[1]);
+				p += 2;
+
+				uint16_t unit = 0;
+				memcpy(&unit, p, sizeof(uint16_t));
+				unit = ntohs(unit);
+				uint8_t fbit = (unit & 0x8000) >> 15;
+				uint8_t type = (unit & 0x7E00) >> 9;
+				uint8_t lid = (unit & 0x01F8) >> 3;
+				uint8_t tid = (unit & 0x0007);
+
+				switch(type) {
+					case 32:
+						JANUS_LOG(LOG_HUGE, "[VPS] %u/%u/%u/%u\n", fbit, type, lid, tid);
+						break;
+					case 33:
+						JANUS_LOG(LOG_HUGE, "[SPS] %u/%u/%u/%u\n", fbit, type, lid, tid);
+						/* Get rid of the Emulation Prevention code, if present */
+						int i = 0, j = 0, zeros = 0;
+						for(i=0; i<payload_len; i++) {
+							if(zeros == 2 && p[i] == 0x03) {
+								/* Found, get rid of it */
+								i++;
+								zeros = 0;
+							}
+							/* Update the content of the buffer as we go along */
+							p[j] = p[i];
+							if(p[i] == 0x00) {
+								/* Found a zero, may be part of a start code */
+								zeros++;
+							} else {
+								/* Not a zero, so not the beginning of a start code */
+								zeros = 0;
+							}
+							j++;
+						}
+						/* Parse to get width/height */
+						int width = 0, height = 0;
+						janus_pp_h265_parse_sps((char*)p, &width, &height);
+						if(width*height > max_width*max_height) {
+							max_width = width;
+							max_height = height;
+						}
+						break;
+					case 34:
+						JANUS_LOG(LOG_HUGE, "[PPS] %u/%u/%u/%u\n", fbit, type, lid, tid);
+						break;
+					default:
+						break;
+				}
+			}
 		} else if(type == 49) {
 			/* FU */
 			uint8_t fuh = prebuffer[2];
@@ -450,8 +507,38 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				memset(temp + 1, 0x00, 1);
 				memset(temp + 2, 0x01, 1);
 				frameLen += 3;
-			}
-			if(type == 49) {
+			} else if(type == 48) {
+				/* AP */
+				uint8_t *end = buffer + len;
+				uint16_t payload_len;
+				for (uint8_t *p = buffer + 2; p < end - 2; p += payload_len) {
+					payload_len = (p[0] << 8 | p[1]);
+					p += 2;
+					uint8_t *temp = received_frame + frameLen;
+					temp[0] = 0;
+					temp[1] = 0;
+					temp[2] = 1;
+					memcpy(temp + 3, p, payload_len);
+					switch(p[0] >> 1) {
+						case 32:
+						case 33:
+						case 34:
+							keyFrame = 1;
+							if(!keyframe_found) {
+								keyframe_found = TRUE;
+								JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
+							}
+							break;
+						default:
+							break;
+					}
+					frameLen += 3 + payload_len;
+				}
+				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+					break;
+				tmp = tmp->next;
+				continue;
+			} else if(type == 49) {
 				/* Check if this is the beginning of the FU */
 				uint8_t fuh = *(buffer+2);
 				uint8_t startbit = (fuh & 0x80) >> 7;

@@ -5199,7 +5199,7 @@ done:
 			janus_mutex_lock(&mountpoints_mutex);
 			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints,
 				string_ids ? (gpointer)id_value_str : (gpointer)&id_value);
-			if(mp == NULL) {
+			if(mp == NULL || g_atomic_int_get(&mp->destroyed)) {
 				janus_mutex_unlock(&mountpoints_mutex);
 				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_VERB, "No such mountpoint/stream %s\n", id_value_str);
@@ -5207,7 +5207,7 @@ done:
 				g_snprintf(error_cause, 512, "No such mountpoint/stream %s", id_value_str);
 				goto error;
 			}
-			janus_refcount_increase(&mp->ref);	/* If the switch succeeds, we don't decrease this now */
+			janus_refcount_increase(&mp->ref);
 			if(mp->streaming_type != janus_streaming_type_live ||
 					mp->streaming_source != janus_streaming_source_rtp) {
 				janus_refcount_decrease(&oldmp->ref);
@@ -5317,15 +5317,16 @@ done:
 			/* Subscribe to the new one */
 			janus_mutex_lock(&mp->mutex);
 			janus_mutex_lock(&session->mutex);
+			janus_refcount_increase(&mp->ref);
 			mp->viewers = g_list_append(mp->viewers, session);
 			/* If we're using helper threads, add the viewer to one of those */
 			if(mp->helper_threads > 0) {
-				int viewers = 0;
+				int viewers = -1;
 				janus_streaming_helper *helper = NULL;
 				GList *l = mp->threads;
 				while(l) {
 					janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
-					if(ht->num_viewers == 0 || ht->num_viewers < viewers) {
+					if(viewers == -1 || (helper == NULL && ht->num_viewers == 0) || ht->num_viewers < viewers) {
 						viewers = ht->num_viewers;
 						helper = ht;
 					}
@@ -5343,8 +5344,9 @@ done:
 			g_atomic_int_set(&session->paused, 0);
 			janus_mutex_unlock(&session->mutex);
 			janus_mutex_unlock(&mp->mutex);
-			/* Done */
-			janus_refcount_decrease(&oldmp->ref);	/* This is for the request being done with it */
+			/* Done with the request, remove the references we took for that */
+			janus_refcount_decrease(&oldmp->ref);
+			janus_refcount_decrease(&mp->ref);
 			result = json_object();
 			json_object_set_new(result, "switched", json_string("ok"));
 			json_object_set_new(result, "id", string_ids ? json_string(id_value_str) : json_integer(id_value));
@@ -6099,7 +6101,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		string_ids ? (gpointer)g_strdup(live_rtp->id_str) : (gpointer)janus_uint64_dup(live_rtp->id),
 		live_rtp);
 	g_hash_table_remove(mountpoints_temp, string_ids ? (gpointer)live_rtp->id_str : (gpointer)&live_rtp->id);
-	janus_mutex_unlock(&mountpoints_mutex);
 	/* If we need helper threads, spawn them now */
 	GError *error = NULL;
 	char tname[16];
@@ -6127,6 +6128,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 				janus_refcount_decrease(&helper->ref);
 				/* This extra unref is for the init */
 				janus_refcount_decrease(&helper->ref);
+				janus_mutex_unlock(&mountpoints_mutex);
 				janus_streaming_mountpoint_destroy(live_rtp);
 				return NULL;
 			}
@@ -6134,6 +6136,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			live_rtp->threads = g_list_append(live_rtp->threads, helper);
 		}
 	}
+	janus_mutex_unlock(&mountpoints_mutex);
 	/* Finally, create the mountpoint thread itself */
 	g_snprintf(tname, sizeof(tname), "mp %s", live_rtp->id_str);
 	janus_refcount_increase(&live_rtp->ref);
@@ -7274,8 +7277,8 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	char buf[1500];
 	memset(buf, 0, sizeof(buf));
 	/* Set up RTP */
-	gint16 seq = 1;
-	gint32 ts = 0;
+	guint16 seq = 1;
+	guint32 ts = 0;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	header->version = 2;
 	header->markerbit = 1;
@@ -7424,8 +7427,8 @@ static void *janus_streaming_filesource_thread(void *data) {
 	char buf[1500];
 	memset(buf, 0, sizeof(buf));
 	/* Set up RTP */
-	gint16 seq = 1;
-	gint32 ts = 0;
+	guint16 seq = 1;
+	guint32 ts = 0;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	header->version = 2;
 	header->markerbit = 1;
@@ -8627,5 +8630,6 @@ static void *janus_streaming_helper_thread(void *data) {
 	JANUS_LOG(LOG_INFO, "[%s/#%d] Leaving Streaming helper thread\n", mp->name, helper->id);
 	janus_refcount_decrease(&helper->ref);
 	janus_refcount_decrease(&mp->ref);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }

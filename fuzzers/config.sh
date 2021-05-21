@@ -16,7 +16,7 @@ DEFAULT_CC="clang"
 DEFAULT_CCLD=$DEFAULT_CC
 DEFAULT_CFLAGS="-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope -fno-sanitize-recover=undefined -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"
 DEFAULT_LDFLAGS="-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fno-sanitize-recover=undefined -fsanitize-address-use-after-scope"
-COVERAGE_CFLAGS="-O1 -fno-omit-frame-pointer -g -ggdb3 -fprofile-instr-generate -fcoverage-mapping -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"
+COVERAGE_CFLAGS="-O1 -fno-omit-frame-pointer -g -ggdb3 -fprofile-instr-generate -fcoverage-mapping -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"
 COVERAGE_LDFLAGS="-O1 -fno-omit-frame-pointer -g -ggdb3 -fprofile-instr-generate -fcoverage-mapping -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"
 
 # Janus configure flags
