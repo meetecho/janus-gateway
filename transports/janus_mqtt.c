@@ -1373,7 +1373,7 @@ void janus_mqtt_client_disconnect_failure_impl(void *context, int rc) {
 	JANUS_LOG(LOG_ERR, "Can't disconnect from MQTT broker, return code: %d\n", rc);
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
 	janus_mutex_lock(&ctx->disconnect.mutex);
-	g_cond_signal(&ctx->disconnect.cond);
+	janus_condition_signal(&ctx->disconnect.cond);
 	janus_mutex_unlock(&ctx->disconnect.mutex);
 }
 
