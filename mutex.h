@@ -49,7 +49,13 @@ typedef pthread_cond_t janus_condition;
 /*! \brief Janus condition wait */
 #define janus_condition_wait(a, b) pthread_cond_wait(a, b);
 /*! \brief Janus condition timed wait */
-#define janus_condition_timedwait(a, b, c) pthread_cond_timedwait(a, b, c);
+#define janus_condition_wait_until(a, b, c) { \
+	const struct timespec jct = { \
+		.tv_sec = c / G_USEC_PER_SEC, \
+		.tv_nsec = (c % G_USEC_PER_SEC)*1000 \
+	}; \
+	pthread_cond_timedwait(a, b, &jct); \
+}
 /*! \brief Janus condition signal */
 #define janus_condition_signal(a) pthread_cond_signal(a);
 /*! \brief Janus condition broadcast */
