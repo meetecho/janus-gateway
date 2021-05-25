@@ -1357,10 +1357,7 @@ static void *janus_videocall_handler(void *data) {
 			/* Check if this user will simulcast */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast && janus_get_codec_pt(msg_sdp, "vp8") > 0) {
-				JANUS_LOG(LOG_VERB, "VideoCall callee (%s) is going to do simulcasting\n", session->username);
-		        int rid_ext_id = -1;
-				janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, session->ssrc, session->rid);
-				session->sim_context.rid_ext_id = rid_ext_id;
+				JANUS_LOG(LOG_VERB, "VideoCall callee (%s) cannot do simulcast.\n", session->username);
 			} else {
 				int i=0;
 				for(i=0; i<3; i++) {
