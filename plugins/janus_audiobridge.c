@@ -7109,7 +7109,6 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						sumBuffer[i] = buffer[i] - (curBuffer ? (curBuffer[i]*p->volume_gain)/100 : 0);
 				}
 			} else {
-				/* TODO Volume gain */
 				diff = 50 - p->spatial_position;
 				lgain = 50 + diff;
 				rgain = 50 - diff;
@@ -7614,7 +7613,7 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 				JANUS_LOG(LOG_ERR, "[AudioBridge-%p]   -- %d (%s)\n", session, error, strerror(error));
 				/* Can we assume it's pretty much over, after a POLLERR? */
 				goon = FALSE;
-				/* TODO Close the channel */
+				/* Close the channel */
 				janus_audiobridge_hangup_media(session->handle);
 				break;
 			} else if(fds[i].revents & POLLIN) {
@@ -7646,7 +7645,7 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 				rtp_header *header = (rtp_header *)buffer;
 				if(participant->plainrtp_media.audio_ssrc_peer != ntohl(header->ssrc)) {
 					participant->plainrtp_media.audio_ssrc_peer = ntohl(header->ssrc);
-					JANUS_LOG(LOG_VERB, "[AudioBridge-%p] Got SIP peer audio SSRC: %"SCNu32"\n",
+					JANUS_LOG(LOG_VERB, "[AudioBridge-%p] Got peer audio SSRC: %"SCNu32"\n",
 						session, participant->plainrtp_media.audio_ssrc_peer);
 				}
 				/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
