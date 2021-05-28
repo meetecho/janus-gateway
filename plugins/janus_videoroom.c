@@ -9739,6 +9739,8 @@ static void *janus_videoroom_handler(void *data) {
 								}
 							}
 							mdir = (ps->vcodec != JANUS_VIDEOCODEC_NONE ? JANUS_SDP_RECVONLY : JANUS_SDP_INACTIVE);
+						} else if(m->type == JANUS_SDP_APPLICATION) {
+							mdir = JANUS_SDP_RECVONLY;
 						}
 					}
 					ps->disabled = (mdir == JANUS_SDP_INACTIVE);
