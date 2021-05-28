@@ -880,7 +880,7 @@ static void *janus_echotest_handler(void *data) {
 				json_t *s = json_array_get(msg_simulcast, i);
 				int mindex = json_integer_value(json_object_get(s, "mindex"));
 				JANUS_LOG(LOG_VERB, "EchoTest client is going to do simulcasting (#%d)\n", mindex);
-				int rid_ext_id = -1, framemarking_ext_id = -1;
+				int rid_ext_id = -1;
 				janus_rtp_simulcasting_prepare(s, &rid_ext_id, session->ssrc, session->rid);
 				session->sim_context.rid_ext_id = rid_ext_id;
 				session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
