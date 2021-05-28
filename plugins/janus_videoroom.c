@@ -5145,10 +5145,13 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 			json_object_set_new(pub, "videoroom", json_string("event"));
 			json_object_set_new(pub, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
 			json_object_set_new(pub, "publishers", list);
-			if (participant->room) {
-				janus_mutex_lock(&participant->room->mutex);
+			janus_videoroom *room = participant->room;
+			if(room && !g_atomic_int_get(&room->destroyed)) {
+				janus_refcount_increase(&room->ref);
+				janus_mutex_lock(&room->mutex);
 				janus_videoroom_notify_participants(participant, pub, FALSE);
-				janus_mutex_unlock(&participant->room->mutex);
+				janus_mutex_unlock(&room->mutex);
+				janus_refcount_decrease(&room->ref);
 			}
 			json_decref(pub);
 			/* Also notify event handlers */
