@@ -10219,8 +10219,8 @@ static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data)
 			!g_atomic_int_get(&stream->subscriber->session->started) ||
 			!g_atomic_int_get(&stream->subscriber->session->dataready))
 		return;
-	janus_videoroom_publisher_stream *ps = stream->publisher_streams->data;
-	if(ps != packet->source || ps->publisher == NULL)
+	janus_videoroom_publisher_stream *ps = packet->source;
+	if(ps->publisher == NULL || g_slist_find(stream->publisher_streams, ps) == NULL)
 		return;
 	janus_videoroom_subscriber *subscriber = stream->subscriber;
 	janus_videoroom_session *session = subscriber->session;
