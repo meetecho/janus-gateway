@@ -1012,7 +1012,7 @@ room-<unique room ID>: {
 	"private_id" : <unique ID of the publisher that originated this request; optional, unless mandated by the room configuration>,
 	"streams" : [
 		{
-			"feed_id" : <unique ID of publisher owning the stream to subscribe to>,
+			"feed" : <unique ID of publisher owning the stream to subscribe to>,
 			"mid" : "<unique mid of the publisher stream to subscribe to; optional>"
 			// Optionally, simulcast or SVC targets (defaults if missing)
 		},
@@ -1126,7 +1126,7 @@ room-<unique room ID>: {
 	"request" : "subscribe",
 	"streams" : [
 		{
-			"feed_id" : <unique ID of publisher owning the new stream to subscribe to>,
+			"feed" : <unique ID of publisher owning the new stream to subscribe to>,
 			"mid" : "<unique mid of the publisher stream to subscribe to; optional>"
 			// Optionally, simulcast or SVC targets (defaults if missing)
 		},
@@ -1179,7 +1179,7 @@ room-<unique room ID>: {
 	"request" : "unsubscribe",
 	"streams" : [
 		{
-			"feed_id" : <unique ID of publisher owning the new stream to unsubscribe from; optional>,
+			"feed" : <unique ID of publisher owning the new stream to unsubscribe from; optional>,
 			"mid" : "<unique mid of the publisher stream to unsubscribe from; optional>"
 			"sub_mid" : "<unique mid of the subscriber stream to unsubscribe; optional>"
 		},
