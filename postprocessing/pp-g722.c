@@ -29,7 +29,7 @@ static AVCodec *dec_codec;			/* FFmpeg decoding codec */
 static AVCodecContext *dec_ctx;		/* FFmpeg decoding context */
 
 /* WAV header */
-typedef struct janus_pp_g711_wav {
+typedef struct janus_pp_g722_wav {
 	char riff[4];
 	uint32_t len;
 	char wave[4];
@@ -43,9 +43,25 @@ typedef struct janus_pp_g711_wav {
 	uint16_t channelbits;
 	char data[4];
 	uint32_t blocksize;
-} janus_pp_g711_wav;
+} janus_pp_g722_wav;
 static FILE *wav_file = NULL;
 
+/* Supported target formats */
+static const char *janus_pp_g722_formats[] = {
+	"wav"
+};
+static uint janus_pp_g722_formats_size = sizeof(janus_pp_g722_formats)/sizeof(*janus_pp_g722_formats);
+gboolean janus_pp_g722_formats_check(const char *extension) {
+	if(extension == NULL)
+		return FALSE;
+	uint i;
+	for(i=0; i<janus_pp_g722_formats_size; i++) {
+		if(!strcasecmp(extension, janus_pp_g722_formats[i]))
+			return TRUE;
+	}
+	/* If we got here, we don't support this target format for this codec (yet) */
+	return FALSE;
+}
 
 /* Processing methods */
 int janus_pp_g722_create(char *destination, char *metadata) {
@@ -83,7 +99,7 @@ int janus_pp_g722_create(char *destination, char *metadata) {
 	}
 	/* Add header */
 	JANUS_LOG(LOG_INFO, "Writing .wav file header\n");
-	janus_pp_g711_wav header = {
+	janus_pp_g722_wav header = {
 		{'R', 'I', 'F', 'F'},
 		0,
 		{'W', 'A', 'V', 'E'},

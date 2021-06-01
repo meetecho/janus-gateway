@@ -38,7 +38,7 @@ AVFormatContext *janus_pp_create_avformatcontext(const char *format, const char 
 		JANUS_LOG(LOG_ERR, "Error guessing format\n");
 		avformat_free_context(ctx);
 		return NULL;
-        }
+	}
 
 	int res = avio_open(&ctx->pb, destination, AVIO_FLAG_WRITE);
 	if(res < 0) {

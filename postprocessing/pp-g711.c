@@ -116,6 +116,22 @@ int16_t janus_pp_g711_alaw_table[256] =
       944,   912,  1008,   976,   816,   784,   880,   848
 };
 
+/* Supported target formats */
+static const char *janus_pp_g711_formats[] = {
+	"wav"
+};
+static uint janus_pp_g711_formats_size = sizeof(janus_pp_g711_formats)/sizeof(*janus_pp_g711_formats);
+gboolean janus_pp_g711_formats_check(const char *extension) {
+	if(extension == NULL)
+		return FALSE;
+	uint i;
+	for(i=0; i<janus_pp_g711_formats_size; i++) {
+		if(!strcasecmp(extension, janus_pp_g711_formats[i]))
+			return TRUE;
+	}
+	/* If we got here, we don't support this target format for this codec (yet) */
+	return FALSE;
+}
 
 /* Processing methods */
 int janus_pp_g711_create(char *destination, char *metadata) {

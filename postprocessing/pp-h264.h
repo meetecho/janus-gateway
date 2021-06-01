@@ -17,6 +17,7 @@
 #include "pp-rtp.h"
 
 /* H.264 stuff */
+gboolean janus_pp_h264_formats_check(const char *extension);
 int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart);
 int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list);
 int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working);

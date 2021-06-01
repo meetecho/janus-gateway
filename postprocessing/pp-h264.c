@@ -31,7 +31,24 @@ static AVCodecContext *vEncoder;
 #endif
 static int max_width = 0, max_height = 0, fps = 0;
 
+/* Supported target formats */
+static const char *janus_pp_h264_formats[] = {
+	"mp4"
+};
+static uint janus_pp_h264_formats_size = sizeof(janus_pp_h264_formats)/sizeof(*janus_pp_h264_formats);
+gboolean janus_pp_h264_formats_check(const char *extension) {
+	if(extension == NULL)
+		return FALSE;
+	uint i;
+	for(i=0; i<janus_pp_h264_formats_size; i++) {
+		if(!strcasecmp(extension, janus_pp_h264_formats[i]))
+			return TRUE;
+	}
+	/* If we got here, we don't support this target format for this codec (yet) */
+	return FALSE;
+}
 
+/* Processing methods */
 int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart) {
 	if(destination == NULL)
 		return -1;

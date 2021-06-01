@@ -34,12 +34,37 @@ static const uint8_t opus_extradata[19] = {
 	0, 0, 0, 0, 0,
 };
 
-int janus_pp_opus_create(char *destination, char *metadata) {
+/* Supported target formats */
+static const char *janus_pp_opus_formats[] = {
+	"opus", "ogg", "mka"
+};
+static uint janus_pp_opus_formats_size = sizeof(janus_pp_opus_formats)/sizeof(*janus_pp_opus_formats);
+gboolean janus_pp_opus_formats_check(const char *extension) {
+	if(extension == NULL)
+		return FALSE;
+	uint i;
+	for(i=0; i<janus_pp_opus_formats_size; i++) {
+		if(!strcasecmp(extension, janus_pp_opus_formats[i]))
+			return TRUE;
+	}
+	/* If we got here, we don't support this target format for this codec (yet) */
+	return FALSE;
+}
+
+/* Processing methods */
+int janus_pp_opus_create(char *destination, char *metadata, const char *extension) {
 	if(destination == NULL)
 		return -1;
 
-	/* WebM output */
-	fctx = janus_pp_create_avformatcontext("ogg", metadata, destination);
+	/* .opus and .ogg are the same thing */
+	if(!strcasecmp(extension, "opus"))
+		extension = "ogg";
+	/* .mka is Matroska audio */
+	if(!strcasecmp(extension, "mka"))
+		extension = "matroska";
+
+	/* Audio output */
+	fctx = janus_pp_create_avformatcontext(extension, metadata, destination);
 	if(fctx == NULL) {
 		JANUS_LOG(LOG_ERR, "Error allocating context\n");
 		return -1;

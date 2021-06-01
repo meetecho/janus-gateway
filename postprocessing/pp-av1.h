@@ -17,6 +17,7 @@
 #include "pp-rtp.h"
 
 /* AV1 stuff */
+gboolean janus_pp_av1_formats_check(const char *extension);
 int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart);
 int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list);
 int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working);
