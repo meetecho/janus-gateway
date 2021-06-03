@@ -7174,7 +7174,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		/* Create separate encoders */
 		for(index=0; index<groups_num; index++) {
 			int error = 0;
-			OpusEncoder *rtp_encoder = opus_encoder_create(audiobridge->sampling_rate, 1, OPUS_APPLICATION_VOIP, &error);
+			OpusEncoder *rtp_encoder = opus_encoder_create(audiobridge->sampling_rate,
+				audiobridge->spatial_audio ? 2 : 1, OPUS_APPLICATION_VOIP, &error);
 			if(audiobridge->sampling_rate == 8000) {
 				opus_encoder_ctl(rtp_encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_NARROWBAND));
 			} else if(audiobridge->sampling_rate == 12000) {
