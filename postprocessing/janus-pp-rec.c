@@ -13,8 +13,8 @@
  * files. This utility allows you to process those files, in order to
  * get a working media file you can playout with an external player.
  * The tool will generate a .webm/.mkv if the recording includes VP8 frames,
- * an .opus/.ogg/.mka if the recording includes Opus frames, an .mp4 if the recording
- * includes H.264 frames, and a .wav file if the recording includes
+ * an .opus/.ogg/.mka if the recording includes Opus frames, an .mp4/.mkv if the
+ * recording includes H.264/H.265/AV1 frames, and a .wav file if the recording includes
  * G.711 (mu-law or a-law) frames. In case the recording contains text
  * frames as received via data channels, instead, a .srt file will be
  * generated with the text content and the related timing information.
@@ -1274,19 +1274,19 @@ int main(int argc, char *argv[])
 				exit(1);
 			}
 		} else if(h264) {
-			if(janus_pp_h264_create(destination, metadata, janus_faststart) < 0) {
+			if(janus_pp_h264_create(destination, metadata, janus_faststart, extension) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
 		} else if(av1) {
-			if(janus_pp_av1_create(destination, metadata, janus_faststart) < 0) {
+			if(janus_pp_av1_create(destination, metadata, janus_faststart, extension) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
 		} else if(h265) {
-			if(janus_pp_h265_create(destination, metadata, janus_faststart) < 0) {
+			if(janus_pp_h265_create(destination, metadata, janus_faststart, extension) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);

@@ -307,6 +307,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
 	AVPacket *packet = av_packet_alloc();
+	AVRational timebase = {1, 90000};
 
 	while(*working && tmp != NULL) {
 		keyFrame = 0;
@@ -551,10 +552,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 				packet->flags |= AV_PKT_FLAG_KEY;
 
 			/* First we save to the file... */
-			//~ packet.dts = AV_NOPTS_VALUE;
-			//~ packet.pts = AV_NOPTS_VALUE;
-			packet->dts = (tmp->ts-list->ts)/90;
-			packet->pts = (tmp->ts-list->ts)/90;
+			packet->pts = packet->dts = av_rescale_q(tmp->ts-list->ts, timebase, fctx->streams[0]->time_base);
 			if(fctx) {
 				if(av_write_frame(fctx, packet) < 0) {
 					JANUS_LOG(LOG_ERR, "Error writing video frame to file...\n");

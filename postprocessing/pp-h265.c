@@ -33,7 +33,7 @@ static int max_width = 0, max_height = 0, fps = 0;
 
 /* Supported target formats */
 static const char *janus_pp_h265_formats[] = {
-	"mp4"
+	"mp4", "mkv"
 };
 static uint janus_pp_h265_formats_size = sizeof(janus_pp_h265_formats)/sizeof(*janus_pp_h265_formats);
 gboolean janus_pp_h265_formats_check(const char *extension) {
@@ -49,13 +49,17 @@ gboolean janus_pp_h265_formats_check(const char *extension) {
 }
 
 /* Processing methods */
-int janus_pp_h265_create(char *destination, char *metadata, gboolean faststart) {
+int janus_pp_h265_create(char *destination, char *metadata, gboolean faststart, const char *extension) {
 	if(destination == NULL)
 		return -1;
 
 	janus_pp_setup_avformat();
 
-	/* MP4 output */
+	/* .mkv is Matroska video */
+	if(!strcasecmp(extension, "mkv"))
+		extension = "matroska";
+
+	/* Video output */
 	fctx = avformat_alloc_context();
 	if(fctx == NULL) {
 		JANUS_LOG(LOG_ERR, "Error allocating context\n");
@@ -64,7 +68,7 @@ int janus_pp_h265_create(char *destination, char *metadata, gboolean faststart) 
 	/* We save the metadata part as a comment (see #1189) */
 	if(metadata)
 		av_dict_set(&fctx->metadata, "comment", metadata, 0);
-	fctx->oformat = av_guess_format("mp4", NULL, NULL);
+	fctx->oformat = av_guess_format(extension, NULL, NULL);
 	if(fctx->oformat == NULL) {
 		JANUS_LOG(LOG_ERR, "Error guessing format\n");
 		return -1;
@@ -433,6 +437,7 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
 	AVPacket *packet = av_packet_alloc();
+	AVRational timebase = {1, 90000};
 
 	while(*working && tmp != NULL) {
 		keyFrame = 0;
@@ -569,8 +574,7 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				packet->flags |= AV_PKT_FLAG_KEY;
 
 			/* First we save to the file... */
-			packet->dts = tmp->ts-list->ts;
-			packet->pts = tmp->ts-list->ts;
+			packet->pts = packet->dts = av_rescale_q(tmp->ts-list->ts, timebase, fctx->streams[0]->time_base);
 			JANUS_LOG(LOG_HUGE, "%"SCNu64" - %"SCNu64" --> %"SCNu64"\n",
 				tmp->ts, list->ts, packet->pts);
 			if(fctx) {
