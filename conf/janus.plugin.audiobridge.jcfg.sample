@@ -4,6 +4,7 @@
 # secret = "<optional password needed for manipulating (e.g. destroying) the room>"
 # pin = "<optional password needed for joining the room>"
 # sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
+# spatial_audio = true|false (if true, the mix will be stereo to spatially place users, default=false)
 # audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must
 #		be negotiated/used or not for new joins, default=true)
 # audiolevel_event = true|false (whether to emit event to other users or not, default=false)

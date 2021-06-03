@@ -268,9 +268,9 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 		} else {
 			/* Status vector */
 			ss = (chunk & 0x4000) >> 14;
-			length = (s ? 7 : 14);
-			JANUS_LOG(LOG_HUGE, "  [%"SCNu16"] t=status-vector, ss=%s, l=%"SCNu8"\n", num,
-				s ? "2-bit" : "bit", length);
+			length = (ss ? 7 : 14);
+			JANUS_LOG(LOG_HUGE, "  [%"SCNu16"] t=status-vector, ss=%ss, l=%"SCNu8"\n", num,
+				ss ? "2-bit" : "bit", length);
 			while(length > 0 && psc > 0) {
 				if(!ss)
 					s = (chunk & (1 << (length-1))) ? janus_rtp_packet_status_smalldelta : janus_rtp_packet_status_notreceived;

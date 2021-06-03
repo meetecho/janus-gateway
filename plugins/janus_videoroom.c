@@ -5145,10 +5145,13 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 			json_object_set_new(pub, "videoroom", json_string("event"));
 			json_object_set_new(pub, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
 			json_object_set_new(pub, "publishers", list);
-			if (participant->room) {
-				janus_mutex_lock(&participant->room->mutex);
+			janus_videoroom *room = participant->room;
+			if(room && !g_atomic_int_get(&room->destroyed)) {
+				janus_refcount_increase(&room->ref);
+				janus_mutex_lock(&room->mutex);
 				janus_videoroom_notify_participants(participant, pub, FALSE);
-				janus_mutex_unlock(&participant->room->mutex);
+				janus_mutex_unlock(&room->mutex);
+				janus_refcount_decrease(&room->ref);
 			}
 			json_decref(pub);
 			/* Also notify event handlers */
@@ -7019,10 +7022,12 @@ static void *janus_videoroom_handler(void *data) {
 					/* Check if a simulcasting-related request is involved */
 					if(sc_substream && (publisher->ssrc[0] != 0 || publisher->rid[0] != NULL)) {
 						subscriber->sim_context.substream_target = json_integer_value(sc_substream);
-						JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
-							publisher->ssrc[subscriber->sim_context.substream],
-							subscriber->sim_context.substream_target,
-							subscriber->sim_context.substream);
+						if(subscriber->sim_context.substream_target >= 0 && subscriber->sim_context.substream_target <= 2) {
+							JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
+								publisher->ssrc[subscriber->sim_context.substream_target],
+								subscriber->sim_context.substream_target,
+								subscriber->sim_context.substream);
+						}
 						if(subscriber->sim_context.substream_target == subscriber->sim_context.substream) {
 							/* No need to do anything, we're already getting the right substream, so notify the user */
 							json_t *event = json_object();
