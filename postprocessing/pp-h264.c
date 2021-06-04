@@ -19,35 +19,9 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-
+#include "pp-avformat.h"
 #include "pp-h264.h"
 #include "../debug.h"
-
-
-#define LIBAVCODEC_VER_AT_LEAST(major, minor) \
-	(LIBAVCODEC_VERSION_MAJOR > major || \
-	 (LIBAVCODEC_VERSION_MAJOR == major && \
-	  LIBAVCODEC_VERSION_MINOR >= minor))
-
-#if LIBAVCODEC_VER_AT_LEAST(51, 42)
-#define PIX_FMT_YUV420P AV_PIX_FMT_YUV420P
-#endif
-
-#if LIBAVCODEC_VER_AT_LEAST(56, 56)
-#ifndef CODEC_FLAG_GLOBAL_HEADER
-#define CODEC_FLAG_GLOBAL_HEADER AV_CODEC_FLAG_GLOBAL_HEADER
-#endif
-#ifndef FF_INPUT_BUFFER_PADDING_SIZE
-#define FF_INPUT_BUFFER_PADDING_SIZE AV_INPUT_BUFFER_PADDING_SIZE
-#endif
-#endif
-
-#if LIBAVCODEC_VER_AT_LEAST(57, 14)
-#define USE_CODECPAR
-#endif
-
 
 /* MP4 output */
 static AVFormatContext *fctx;
@@ -61,17 +35,9 @@ static int max_width = 0, max_height = 0, fps = 0;
 int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart) {
 	if(destination == NULL)
 		return -1;
-	/* Setup FFmpeg */
-#if ( LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100) )
-	av_register_all();
-#endif
-	/* Adjust logging to match the postprocessor's */
-	av_log_set_level(janus_log_level <= LOG_NONE ? AV_LOG_QUIET :
-		(janus_log_level == LOG_FATAL ? AV_LOG_FATAL :
-			(janus_log_level == LOG_ERR ? AV_LOG_ERROR :
-				(janus_log_level == LOG_WARN ? AV_LOG_WARNING :
-					(janus_log_level == LOG_INFO ? AV_LOG_INFO :
-						(janus_log_level == LOG_VERB ? AV_LOG_VERBOSE : AV_LOG_DEBUG))))));
+
+	janus_pp_setup_avformat();
+
 	/* MP4 output */
 	fctx = avformat_alloc_context();
 	if(fctx == NULL) {
@@ -365,6 +331,7 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
+	AVPacket *packet = av_packet_alloc();
 
 	while(*working && tmp != NULL) {
 		keyFrame = 0;
@@ -487,21 +454,20 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			/* Save the frame */
 			memset(received_frame + frameLen, 0, FF_INPUT_BUFFER_PADDING_SIZE);
 
-			AVPacket packet;
-			av_init_packet(&packet);
-			packet.stream_index = 0;
-			packet.data = received_frame;
-			packet.size = frameLen;
+			av_packet_unref(packet);
+			packet->stream_index = 0;
+			packet->data = received_frame;
+			packet->size = frameLen;
 			if(keyFrame)
-				packet.flags |= AV_PKT_FLAG_KEY;
+				packet->flags |= AV_PKT_FLAG_KEY;
 
 			/* First we save to the file... */
-			packet.dts = tmp->ts-list->ts;
-			packet.pts = tmp->ts-list->ts;
+			packet->dts = tmp->ts-list->ts;
+			packet->pts = tmp->ts-list->ts;
 			JANUS_LOG(LOG_HUGE, "%"SCNu64" - %"SCNu64" --> %"SCNu64"\n",
-				tmp->ts, list->ts, packet.pts);
+				tmp->ts, list->ts, packet->pts);
 			if(fctx) {
-				int res = av_write_frame(fctx, &packet);
+				int res = av_write_frame(fctx, packet);
 				if(res < 0) {
 					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d)\n", res);
 				}
@@ -509,6 +475,7 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		}
 		tmp = tmp->next;
 	}
+	av_packet_free(&packet);
 	g_free(received_frame);
 	g_free(start);
 	return 0;
