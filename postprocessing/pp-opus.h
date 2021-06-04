@@ -16,7 +16,7 @@
 
 #include "pp-rtp.h"
 
-int janus_pp_opus_create(char *destination, char *metadata);
+int janus_pp_opus_create(char *destination, char *metadata, int opusred_pt);
 int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working);
 void janus_pp_opus_close(void);
 

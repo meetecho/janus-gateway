@@ -3032,6 +3032,8 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 			json_object_set_new(sc, "audio-pt", json_integer(stream->audio_payload_type));
 		if(stream->audio_codec != NULL)
 			json_object_set_new(sc, "audio-codec", json_string(stream->audio_codec));
+		if(stream->opusred_pt > 0)
+			json_object_set_new(sc, "opus-red-pt", json_integer(stream->opusred_pt));
 		if(stream->video_payload_type > -1)
 			json_object_set_new(sc, "video-pt", json_integer(stream->video_payload_type));
 		if(stream->video_rtx_payload_type > -1)
@@ -3649,6 +3651,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		}
 		/* Make sure we don't send the rid/repaired-rid attributes when offering ourselves */
 		int mid_ext_id = 0, transport_wide_cc_ext_id = 0, audiolevel_ext_id = 0, videoorientation_ext_id = 0;
+		int opusred_pt = 0;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -3656,24 +3659,31 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			while(tempA) {
 				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 				if(a->name && a->value) {
-					if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
-						mid_ext_id = atoi(a->value);
-					else if(strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
-						transport_wide_cc_ext_id = atoi(a->value);
-					else if(strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL))
-						audiolevel_ext_id = atoi(a->value);
-					else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
-						videoorientation_ext_id = atoi(a->value);
-					else if(strstr(a->value, JANUS_RTP_EXTMAP_RID) ||
-							strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID)) {
-						m->attributes = g_list_remove(m->attributes, a);
-						tempA = m->attributes;
-						janus_sdp_attribute_destroy(a);
-						continue;
+					if(!strcasecmp(a->name, "extmap")) {
+						if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
+							mid_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
+							transport_wide_cc_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL))
+							audiolevel_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
+							videoorientation_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_RID) ||
+								strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID)) {
+							m->attributes = g_list_remove(m->attributes, a);
+							tempA = m->attributes;
+							janus_sdp_attribute_destroy(a);
+							continue;
+						}
+					} else if(m->type == JANUS_SDP_AUDIO && !strcasecmp(a->name, "rtpmap") &&
+							strstr(a->value, "red/48000/2")) {
+						opusred_pt = atoi(a->value);
 					}
 				}
 				tempA = tempA->next;
 			}
+			/* If the plugin offered RED, take note of it */
+			ice_handle->stream->opusred_pt = opusred_pt;
 			temp = temp->next;
 		}
 		if(ice_handle->stream && ice_handle->stream->mid_ext_id != mid_ext_id)
@@ -3687,8 +3697,9 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		if(ice_handle->stream && ice_handle->stream->videoorientation_ext_id != videoorientation_ext_id)
 			ice_handle->stream->videoorientation_ext_id = videoorientation_ext_id;
 	} else {
-		/* Check if the answer does contain the mid/rid/repaired-rid attributes */
+		/* Check if the answer does contain the mid/rid/repaired-rid and/or RED attributes */
 		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE;
+		int opusred_pt = -1;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -3696,15 +3707,23 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			while(tempA) {
 				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 				if(a->name && a->value) {
-					if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
-						do_mid = TRUE;
-					else if(strstr(a->value, JANUS_RTP_EXTMAP_RID))
-						do_rid = TRUE;
-					else if(strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID))
-						do_repaired_rid = TRUE;
+					if(!strcasecmp(a->name, "extmap")) {
+						if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
+							do_mid = TRUE;
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_RID))
+							do_rid = TRUE;
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID))
+							do_repaired_rid = TRUE;
+					} else if(m->type == JANUS_SDP_AUDIO && ice_handle->stream->opusred_pt > 0 &&
+							!strcasecmp(a->name, "rtpmap") && strstr(a->value, "red/48000/2")) {
+						opusred_pt = atoi(a->value);
+					}
 				}
 				tempA = tempA->next;
 			}
+			/* If the user offered RED but the plugin rejected it, disable it */
+			if(ice_handle->stream->opusred_pt > 0 && opusred_pt < 0)
+				ice_handle->stream->opusred_pt = 0;
 			temp = temp->next;
 		}
 		if(!do_mid && ice_handle->stream)

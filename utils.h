@@ -349,6 +349,26 @@ typedef struct janus_vp9_svc_info {
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_vp9_parse_svc(char *buffer, int len, gboolean *found, janus_vp9_svc_info *info);
 
+/*! \brief Helper struct to address a specific RED block */
+typedef struct janus_red_block {
+	uint8_t pt;
+	uint32_t ts_offset;
+	uint8_t *data;
+	uint16_t length;
+} janus_red_block;
+/*! \brief Helper method to parse an RTP payload to return a list of RED blocks
+ * \note The returned list is owned by the caller, and must be freed
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns An allocated GList of janus_red_block, if successful, NULL otherwise */
+GList *janus_red_parse_blocks(char *buffer, int len);
+/*! \brief Helper method to pack multiple buffers in a RED payload
+ * @param[in] buffer The RTP payload to write to
+ * @param[in] len The size of the RTP payload buffer
+ * @param[in] blocks Linked list of janus_red_block instances to add to the payload
+ * @returns The size of the RED payload in case of success, a negative integer otherwise */
+int janus_red_pack_blocks(char *buffer, int len, GList *blocks);
+
 /*! \brief Helper method to push individual bits at the end of a word
  * @param[in] word Initial value of word
  * @param[in] num Number of bits to push

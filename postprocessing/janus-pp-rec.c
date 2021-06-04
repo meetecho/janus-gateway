@@ -384,6 +384,7 @@ int main(int argc, char *argv[])
 	gboolean video = FALSE, data = FALSE, textdata = FALSE;
 	gboolean opus = FALSE, g711 = FALSE, g722 = FALSE,
 		vp8 = FALSE, vp9 = FALSE, h264 = FALSE, av1 = FALSE, h265 = FALSE;
+	int opusred_pt = 0;
 	gboolean e2ee = FALSE;
 	gint64 c_time = 0, w_time = 0;
 	int bytes = 0, skip = 0;
@@ -636,6 +637,9 @@ int main(int argc, char *argv[])
 				}
 				/* Any codec-specific info? (just informational) */
 				const char *f = json_string_value(json_object_get(info, "f"));
+				/* Is RED in use for audio? */
+				if(!video && !data)
+					opusred_pt = json_integer_value(json_object_get(info, "or"));
 				/* Check if there are RTP extensions */
 				json_t *exts = json_object_get(info, "x");
 				if(exts != NULL) {
@@ -699,6 +703,8 @@ int main(int argc, char *argv[])
 					JANUS_LOG(LOG_INFO, "  -- -- fmtp: %s\n", f);
 				JANUS_LOG(LOG_INFO, "  -- Created: %"SCNi64"\n", c_time);
 				JANUS_LOG(LOG_INFO, "  -- Written: %"SCNi64"\n", w_time);
+				if(opusred_pt > 0)
+					JANUS_LOG(LOG_INFO, "  -- Audio recording contains RED packets\n");
 				if(e2ee)
 					JANUS_LOG(LOG_INFO, "  -- Recording is end-to-end encrypted\n");
 				/* Save the original string as a metadata to save in the media container, if possible */
@@ -1231,7 +1237,7 @@ int main(int argc, char *argv[])
 
 	if(!video && !data) {
 		if(opus) {
-			if(janus_pp_opus_create(destination, metadata) < 0) {
+			if(janus_pp_opus_create(destination, metadata, opusred_pt) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .opus file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);

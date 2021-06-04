@@ -571,6 +571,9 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 									if(stream->clock_rates == NULL)
 										stream->clock_rates = g_hash_table_new(NULL, NULL);
 									g_hash_table_insert(stream->clock_rates, GINT_TO_POINTER(ptype), GUINT_TO_POINTER(clock_rate));
+									/* Check if opus/red  is negotiated */
+									if(strstr(a->value, "red/48000/2"))
+										stream->opusred_pt = ptype;
 								}
 							}
 						}

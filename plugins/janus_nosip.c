@@ -296,7 +296,7 @@ typedef struct janus_nosip_media {
 	int local_audio_rtp_port, remote_audio_rtp_port;
 	int local_audio_rtcp_port, remote_audio_rtcp_port;
 	guint32 audio_ssrc, audio_ssrc_peer;
-	int audio_pt;
+	int audio_pt, opusred_pt;
 	const char *audio_pt_name;
 	srtp_t audio_srtp_in, audio_srtp_out;
 	srtp_policy_t audio_remote_policy, audio_local_policy;
@@ -618,6 +618,7 @@ void janus_nosip_media_reset(janus_nosip_session *session) {
 	session->media.require_srtp = FALSE;
 	session->media.has_audio = 0;
 	session->media.audio_pt = -1;
+	session->media.opusred_pt = -1;
 	session->media.audio_pt_name = NULL;	/* Immutable string, no need to free*/
 	session->media.audio_send = TRUE;
 	session->media.has_video = 0;
@@ -900,6 +901,7 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.audio_ssrc = 0;
 	session->media.audio_ssrc_peer = 0;
 	session->media.audio_pt = -1;
+	session->media.opusred_pt = -1;
 	session->media.audio_pt_name = NULL;
 	session->media.audio_send = TRUE;
 	session->media.has_video = 0;
@@ -1595,6 +1597,7 @@ static void *janus_nosip_handler(void *data) {
 			janus_mutex_lock(&session->rec_mutex);
 			if(!strcasecmp(action_text, "start")) {
 				/* Start recording something */
+				janus_recorder *rc = NULL;
 				char filename[255];
 				gint64 now = janus_get_real_time();
 				if(record_peer_audio || record_peer_video) {
@@ -1607,20 +1610,21 @@ static void *janus_nosip_handler(void *data) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-peer-audio", recording_base);
 							/* FIXME This only works if offer/answer happened */
-							session->arc_peer = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
-							if(session->arc_peer == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
-							}
+							rc = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
 						} else {
 							/* Build a filename */
 							g_snprintf(filename, 255, "nosip-%p-%"SCNi64"-peer-audio", session, now);
 							/* FIXME This only works if offer/answer happened */
-							session->arc_peer = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
-							if(session->arc_peer == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
-							}
+							rc = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
+						}
+						if(rc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
+						} else {
+							/* If RED is in use, take note of it */
+							if(session->media.opusred_pt > 0)
+								janus_recorder_opusred(rc, session->media.opusred_pt);
+							session->arc_peer = rc;
 						}
 					}
 					if(record_peer_video) {
@@ -1629,22 +1633,20 @@ static void *janus_nosip_handler(void *data) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-peer-video", recording_base);
 							/* FIXME This only works if offer/answer happened */
-							session->vrc_peer = janus_recorder_create(NULL, session->media.video_pt_name, filename);
-							if(session->vrc_peer == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this peer!\n");
-							}
+							rc = janus_recorder_create(NULL, session->media.video_pt_name, filename);
 						} else {
 							/* Build a filename */
 							g_snprintf(filename, 255, "nosip-%p-%"SCNi64"-peer-video", session, now);
 							/* FIXME This only works if offer/answer happened */
-							session->vrc_peer = janus_recorder_create(NULL, session->media.video_pt_name, filename);
-							if(session->vrc_peer == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this peer!\n");
-							}
+							rc = janus_recorder_create(NULL, session->media.video_pt_name, filename);
 						}
 						/* TODO We should send a FIR/PLI to this peer... */
+						if(rc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this peer!\n");
+						} else {
+							session->vrc_peer = rc;
+						}
 					}
 				}
 				if(record_audio || record_video) {
@@ -1657,20 +1659,21 @@ static void *janus_nosip_handler(void *data) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-user-audio", recording_base);
 							/* FIXME This only works if offer/answer happened */
-							session->arc = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
-							if(session->arc == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
-							}
+							rc = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
 						} else {
 							/* Build a filename */
 							g_snprintf(filename, 255, "nosip-%p-%"SCNi64"-own-audio", session, now);
 							/* FIXME This only works if offer/answer happened */
-							session->arc = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
-							if(session->arc == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
-							}
+							rc = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
+						}
+						if(rc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this user!\n");
+						} else {
+							/* If RED is in use, take note of it */
+							if(session->media.opusred_pt > 0)
+								janus_recorder_opusred(rc, session->media.opusred_pt);
+							session->arc = rc;
 						}
 					}
 					if(record_video) {
@@ -1679,20 +1682,18 @@ static void *janus_nosip_handler(void *data) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-user-video", recording_base);
 							/* FIXME This only works if offer/answer happened */
-							session->vrc = janus_recorder_create(NULL, session->media.video_pt_name, filename);
-							if(session->vrc == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this user!\n");
-							}
+							rc = janus_recorder_create(NULL, session->media.video_pt_name, filename);
 						} else {
 							/* Build a filename */
 							g_snprintf(filename, 255, "nosip-%p-%"SCNi64"-own-video", session, now);
 							/* FIXME This only works if offer/answer happened */
-							session->vrc = janus_recorder_create(NULL, session->media.video_pt_name, filename);
-							if(session->vrc == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this user!\n");
-							}
+							rc = janus_recorder_create(NULL, session->media.video_pt_name, filename);
+						}
+						if(rc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open a video recording file for this user!\n");
+						} else {
+							session->vrc = rc;
 						}
 						/* Send a PLI */
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
@@ -1749,6 +1750,7 @@ void janus_nosip_sdp_process(janus_nosip_session *session, janus_sdp *sdp, gbool
 	if(!session || !sdp)
 		return;
 	/* c= */
+	int opusred_pt = answer ? janus_sdp_get_opusred_pt(sdp) : -1;
 	if(sdp->c_addr) {
 		if(update) {
 			if (changed && (!session->media.remote_audio_ip || strcmp(sdp->c_addr, session->media.remote_audio_ip)))
@@ -1862,7 +1864,12 @@ void janus_nosip_sdp_process(janus_nosip_session *session, janus_sdp *sdp, gbool
 				pt = GPOINTER_TO_INT(m->ptypes->data);
 			if(pt > -1) {
 				if(m->type == JANUS_SDP_AUDIO) {
-					session->media.audio_pt = pt;
+					if(pt == opusred_pt) {
+						session->media.opusred_pt = pt;
+						session->media.audio_pt = m->ptypes->next ? GPOINTER_TO_INT(m->ptypes->next->data) : -1;
+					} else {
+						session->media.audio_pt = pt;
+					}
 				} else {
 					session->media.video_pt = pt;
 				}
@@ -1892,6 +1899,7 @@ char *janus_nosip_sdp_manipulate(janus_nosip_session *session, janus_sdp *sdp, g
 		g_free(sdp->c_addr);
 		sdp->c_addr = g_strdup(sdp_ip ? sdp_ip : local_ip);
 	}
+	int opusred_pt = answer ? janus_sdp_get_opusred_pt(sdp) : -1;
 	GList *temp = sdp->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -1925,7 +1933,12 @@ char *janus_nosip_sdp_manipulate(janus_nosip_session *session, janus_sdp *sdp, g
 				pt = GPOINTER_TO_INT(m->ptypes->data);
 			if(pt > -1) {
 				if(m->type == JANUS_SDP_AUDIO) {
-					session->media.audio_pt = pt;
+					if(pt == opusred_pt) {
+						session->media.opusred_pt = pt;
+						session->media.audio_pt = m->ptypes->next ? GPOINTER_TO_INT(m->ptypes->next->data) : -1;
+					} else {
+						session->media.audio_pt = pt;
+					}
 				} else {
 					session->media.video_pt = pt;
 				}
