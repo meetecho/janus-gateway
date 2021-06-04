@@ -7264,7 +7264,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
-		gboolean doaudio, int acodec, char *audiortpmap, char *audiofmtp,
+		gboolean doaudio, int acodec, char *audiortpmap, char *audiofmtp, int ared,
 		gboolean dovideo, int vcodec, char *videortpmap, char *videofmtp, gboolean bufferkf,
 		const janus_network_address *iface, int threads,
 		gint64 reconnect_delay, gint64 session_timeout, int rtsp_timeout, int rtsp_conn_timeout,
