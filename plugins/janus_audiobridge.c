@@ -786,7 +786,7 @@ room-<unique room ID>: {
 	"display" : "<display name to have in the room; optional>",
 	"token" : "<invitation token, in case the new room has an ACL; optional>",
 	"muted" : <true|false, whether to start unmuted or muted>,
-	"quality" : <0-10, Opus-related complexity to use, lower is higher quality; optional, default is 4>
+	"quality" : <0-10, Opus-related complexity to use, higher is higher quality; optional, default is 4>
 }
 \endverbatim
  *
