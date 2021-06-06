@@ -267,7 +267,7 @@ janus_plugin *create(void) {
 
 /* Useful stuff */
 volatile gint lua_initialized = 0, lua_stopping = 0;
-janus_callbacks *janus_core = NULL;
+janus_callbacks *lua_janus_core = NULL;
 
 /* Lua stuff */
 lua_State *lua_state = NULL;
@@ -401,7 +401,7 @@ static void *janus_lua_async_event_helper(void *data) {
 		return NULL;
 	if(asev->type == janus_lua_async_event_type_pushevent) {
 		/* Send the event */
-		janus_core->push_event(asev->session->handle, &janus_lua_plugin, asev->transaction, asev->event, asev->jsep);
+		lua_janus_core->push_event(asev->session->handle, &janus_lua_plugin, asev->transaction, asev->event, asev->jsep);
 	}
 	json_decref(asev->event);
 	json_decref(asev->jsep);
@@ -571,7 +571,7 @@ static int janus_lua_method_pushevent(lua_State *s) {
 		return 1;
 	}
 	/* No SDP, send the event now */
-	int res = janus_core->push_event(session->handle, &janus_lua_plugin, transaction, event, NULL);
+	int res = lua_janus_core->push_event(session->handle, &janus_lua_plugin, transaction, event, NULL);
 	janus_refcount_decrease(&session->ref);
 	json_decref(event);
 	lua_pushnumber(s, res);
@@ -586,7 +586,7 @@ static int janus_lua_method_notifyevent(lua_State *s) {
 		lua_pushnumber(s, -1);
 		return 1;
 	}
-	if(!janus_core->events_is_enabled()) {
+	if(!lua_janus_core->events_is_enabled()) {
 		/* Event handlers are disabled in the core, ignoring */
 		lua_pushnumber(s, 0);
 		return 1;
@@ -608,7 +608,7 @@ static int janus_lua_method_notifyevent(lua_State *s) {
 		janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Notify the event */
-	janus_core->notify_event(&janus_lua_plugin, session ? session->handle : NULL, event);
+	lua_janus_core->notify_event(&janus_lua_plugin, session ? session->handle : NULL, event);
 	if(session != NULL)
 		janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
@@ -624,7 +624,7 @@ static int janus_lua_method_eventsisenabled(lua_State *s) {
 		return 1;
 	}
 	/* Event handlers are disabled in the core, ignoring */
-	lua_pushnumber(s, janus_core->events_is_enabled());
+	lua_pushnumber(s, lua_janus_core->events_is_enabled());
 	return 1;
 }
 
@@ -648,7 +648,7 @@ static int janus_lua_method_closepc(lua_State *s) {
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Close the PeerConnection */
-	janus_core->close_pc(session->handle);
+	lua_janus_core->close_pc(session->handle);
 	lua_pushnumber(s, 0);
 	return 1;
 }
@@ -673,7 +673,7 @@ static int janus_lua_method_endsession(lua_State *s) {
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Close the plugin handle */
-	janus_core->end_session(session->handle);
+	lua_janus_core->end_session(session->handle);
 	lua_pushnumber(s, 0);
 	return 1;
 }
@@ -845,7 +845,7 @@ static int janus_lua_method_setbitrate(lua_State *s) {
 	/* Send a REMB right away too, if the PeerConnection is up */
 	if(g_atomic_int_get(&session->started)) {
 		/* No limit ~= 10000000 */
-		janus_core->send_remb(session->handle, session->bitrate ? session->bitrate : 10000000);
+		lua_janus_core->send_remb(session->handle, session->bitrate ? session->bitrate : 10000000);
 	}
 	/* Done */
 	janus_refcount_decrease(&session->ref);
@@ -958,7 +958,7 @@ static int janus_lua_method_sendpli(lua_State *s) {
 	/* Send a PLI */
 	session->pli_latest = janus_get_monotonic_time();
 	JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->id);
-	janus_core->send_pli(session->handle);
+	lua_janus_core->send_pli(session->handle);
 	/* Done */
 	janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
@@ -994,7 +994,7 @@ static int janus_lua_method_relayrtp(lua_State *s) {
 	/* Send the RTP packet */
 	janus_plugin_rtp rtp = { .video = is_video, .buffer = (char *)payload, .length = len };
 	janus_plugin_rtp_extensions_reset(&rtp.extensions);
-	janus_core->relay_rtp(session->handle, &rtp);
+	lua_janus_core->relay_rtp(session->handle, &rtp);
 	lua_pushnumber(s, 0);
 	return 1;
 }
@@ -1027,7 +1027,7 @@ static int janus_lua_method_relayrtcp(lua_State *s) {
 	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Send the RTCP packet */
 	janus_plugin_rtcp rtcp = { .video = is_video, .buffer = (char *)payload, .length = len };
-	janus_core->relay_rtcp(session->handle, &rtcp);
+	lua_janus_core->relay_rtcp(session->handle, &rtcp);
 	lua_pushnumber(s, 0);
 	return 1;
 }
@@ -1035,12 +1035,11 @@ static int janus_lua_method_relayrtcp(lua_State *s) {
 static int janus_lua_method_relaytextdata(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
-	if(n != 3) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 3)\n", n);
+	if(n < 3 || n > 5) {
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 3-5)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
-	/* FIXME We should add support for labels, here */
 	guint32 id = lua_tonumber(s, 1);
 	const char *payload = lua_tostring(s, 2);
 	int len = lua_tonumber(s, 3);
@@ -1048,6 +1047,13 @@ static int janus_lua_method_relaytextdata(lua_State *s) {
 		JANUS_LOG(LOG_ERR, "Invalid data\n");
 		lua_pushnumber(s, -1);
 		return 1;
+	}
+	/* Check if label and/or protocol were provided as well */
+	const char *label = NULL, *protocol = NULL;
+	if(n > 3) {
+		label = lua_tostring(s, 4);
+		if(n > 4)
+			protocol = lua_tostring(s, 5);
 	}
 	/* Find the session */
 	janus_mutex_lock(&lua_sessions_mutex);
@@ -1067,13 +1073,13 @@ static int janus_lua_method_relaytextdata(lua_State *s) {
 	}
 	/* Send the data */
 	janus_plugin_data data = {
-		.label = NULL,
-		.protocol = NULL,
+		.label = (char *)label,
+		.protocol = (char *)protocol,
 		.binary = FALSE,
 		.buffer = (char *)payload,
 		.length = len
 	};
-	janus_core->relay_data(session->handle, &data);
+	lua_janus_core->relay_data(session->handle, &data);
 	janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
 	return 1;
@@ -1082,19 +1088,25 @@ static int janus_lua_method_relaytextdata(lua_State *s) {
 static int janus_lua_method_relaybinarydata(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
-	if(n != 3) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 3)\n", n);
+	if(n < 3 || n > 5) {
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 3-5)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	guint32 id = lua_tonumber(s, 1);
-	/* FIXME We should add support for labels, here */
 	const char *payload = lua_tostring(s, 2);
 	int len = lua_tonumber(s, 3);
 	if(!payload || len < 1) {
 		JANUS_LOG(LOG_ERR, "Invalid data\n");
 		lua_pushnumber(s, -1);
 		return 1;
+	}
+	/* Check if label and/or protocol were provided as well */
+	const char *label = NULL, *protocol = NULL;
+	if(n > 3) {
+		label = lua_tostring(s, 4);
+		if(n > 4)
+			protocol = lua_tostring(s, 5);
 	}
 	/* Find the session */
 	janus_mutex_lock(&lua_sessions_mutex);
@@ -1114,13 +1126,13 @@ static int janus_lua_method_relaybinarydata(lua_State *s) {
 	}
 	/* Send the data */
 	janus_plugin_data data = {
-		.label = NULL,
-		.protocol = NULL,
+		.label = (char *)label,
+		.protocol = (char *)protocol,
 		.binary = TRUE,
 		.buffer = (char *)payload,
 		.length = len
 	};
-	janus_core->relay_data(session->handle, &data);
+	lua_janus_core->relay_data(session->handle, &data);
 	janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
 	return 1;
@@ -1229,7 +1241,7 @@ static int janus_lua_method_startrecording(lua_State *s) {
 		/* Also send a keyframe request */
 		session->pli_latest = janus_get_monotonic_time();
 		JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->id);
-		janus_core->send_pli(session->handle);
+		lua_janus_core->send_pli(session->handle);
 	}
 	if(drc) {
 		session->drc = drc;
@@ -1521,7 +1533,7 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	}
 
 	/* This is the callback we'll need to invoke to contact the Janus core */
-	janus_core = callback;
+	lua_janus_core = callback;
 
 	/* Init the Lua script, in case it's needed */
 	lua_getglobal(lua_state, "init");
@@ -1898,7 +1910,7 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 		json_t *simulcast = json_object_get(jsep, "simulcast");
 		if(simulcast != NULL) {
 			janus_rtp_simulcasting_prepare(simulcast,
-				&session->rid_extmap_id, NULL,
+				&session->rid_extmap_id,
 				session->ssrc, session->rid);
 		}
 		const char *sdp_type = json_string_value(json_object_get(jsep, "type"));
@@ -1976,6 +1988,10 @@ json_t *janus_lua_handle_admin_message(json_t *message) {
 	if(!has_handle_admin_message || message == NULL)
 		return NULL;
 	char *message_text = json_dumps(message, JSON_INDENT(0) | JSON_PRESERVE_ORDER);
+	if(message_text == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+		return NULL;
+	}
 	/* Invoke the script function */
 	janus_mutex_lock(&lua_mutex);
 	lua_State *t = lua_newthread(lua_state);
@@ -2140,7 +2156,7 @@ void janus_lua_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *rtp_
 		if((now-session->pli_latest) >= ((gint64)session->pli_freq*G_USEC_PER_SEC)) {
 			session->pli_latest = now;
 			JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->id);
-			janus_core->send_pli(handle);
+			lua_janus_core->send_pli(handle);
 		}
 	}
 }
@@ -2177,7 +2193,7 @@ void janus_lua_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *pa
 	guint32 bitrate = janus_rtcp_get_remb(buf, len);
 	if(bitrate > 0) {
 		/* No limit ~= 10000000 */
-		janus_core->send_remb(handle, session->bitrate ? session->bitrate : 10000000);
+		lua_janus_core->send_remb(handle, session->bitrate ? session->bitrate : 10000000);
 	}
 	/* If there's an incoming PLI, instead, relay it to the source of the media if any */
 	if(janus_rtcp_has_pli(buf, len)) {
@@ -2186,7 +2202,7 @@ void janus_lua_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *pa
 			/* Send a PLI */
 			session->sender->pli_latest = janus_get_monotonic_time();
 			JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->sender->id);
-			janus_core->send_pli(session->sender->handle);
+			lua_janus_core->send_pli(session->sender->handle);
 			janus_mutex_unlock_nodebug(&session->sender->recipients_mutex);
 		}
 	}
@@ -2204,6 +2220,8 @@ void janus_lua_incoming_data(janus_plugin_session *handle, janus_plugin_data *pa
 		return;
 	char *buf = packet->buffer;
 	uint16_t len = packet->length;
+	char *label = packet->label;
+	char *protocol = packet->protocol;
 	/* Are we recording? */
 	janus_recorder_save_frame(session->drc, buf, len);
 	/* Check if the Lua script wants to handle/manipulate data channel packets itself */
@@ -2218,7 +2236,9 @@ void janus_lua_incoming_data(janus_plugin_session *handle, janus_plugin_data *pa
 		/* We use a string for both text and binary data */
 		lua_pushlstring(t, buf, len);
 		lua_pushnumber(t, len);
-		lua_call(t, 3, 0);
+		lua_pushlstring(t, label, label ? strlen(label) : 0);
+		lua_pushlstring(t, protocol, protocol ? strlen(protocol) : 0);
+		lua_call(t, 5, 0);
 		lua_pop(lua_state, 1);
 		janus_mutex_unlock(&lua_mutex);
 		return;
@@ -2398,7 +2418,7 @@ static void janus_lua_relay_rtp_packet(gpointer data, gpointer user_data) {
 		if(session->sim_context.need_pli && sender->handle) {
 			/* Send a PLI */
 			JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
-			janus_core->send_pli(sender->handle);
+			lua_janus_core->send_pli(sender->handle);
 		}
 		/* Do we need to drop this? */
 		if(!relay)
@@ -2440,10 +2460,10 @@ static void janus_lua_relay_rtp_packet(gpointer data, gpointer user_data) {
 				session->sim_context.changed_substream);
 		}
 		/* Send the packet */
-		if(janus_core != NULL) {
+		if(lua_janus_core != NULL) {
 			janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
 			janus_plugin_rtp_extensions_reset(&rtp.extensions);
-			janus_core->relay_rtp(session->handle, &rtp);
+			lua_janus_core->relay_rtp(session->handle, &rtp);
 		}
 		/* Restore the timestamp and sequence number to what the publisher set them to */
 		packet->data->timestamp = htonl(packet->timestamp);
@@ -2456,10 +2476,10 @@ static void janus_lua_relay_rtp_packet(gpointer data, gpointer user_data) {
 		/* Fix sequence number and timestamp (publisher switching may be involved) */
 		janus_rtp_header_update(packet->data, &session->rtpctx, packet->is_video, 0);
 		/* Send the packet */
-		if(janus_core != NULL) {
+		if(lua_janus_core != NULL) {
 			janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
 			janus_plugin_rtp_extensions_reset(&rtp.extensions);
-			janus_core->relay_rtp(session->handle, &rtp);
+			lua_janus_core->relay_rtp(session->handle, &rtp);
 		}
 		/* Restore the timestamp and sequence number to what the publisher set them to */
 		packet->data->timestamp = htonl(packet->timestamp);
@@ -2480,7 +2500,7 @@ static void janus_lua_relay_data_packet(gpointer data, gpointer user_data) {
 			!session->accept_data || !g_atomic_int_get(&session->dataready)) {
 		return;
 	}
-	if(janus_core != NULL) {
+	if(lua_janus_core != NULL) {
 		JANUS_LOG(LOG_VERB, "Forwarding %s DataChannel message (%d bytes) to session %"SCNu32"\n",
 			packet->textdata ? "text" : "binary", packet->length, session->id);
 		janus_plugin_data data = {
@@ -2490,7 +2510,7 @@ static void janus_lua_relay_data_packet(gpointer data, gpointer user_data) {
 			.buffer = (char *)packet->data,
 			.length = packet->length
 		};
-		janus_core->relay_data(session->handle, &data);
+		lua_janus_core->relay_data(session->handle, &data);
 	}
 	return;
 }

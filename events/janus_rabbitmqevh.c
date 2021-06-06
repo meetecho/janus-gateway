@@ -12,10 +12,18 @@
 
 #include <math.h>
 
+/* Latest RabbitMQ-C library changes the library paths from 0.12.0.0 onwards */
+#ifdef HAVE_RABBITMQ_C_AMQP_H
+#include <rabbitmq-c/amqp.h>
+#include <rabbitmq-c/framing.h>
+#include <rabbitmq-c/tcp_socket.h>
+#include <rabbitmq-c/ssl_socket.h>
+#else
 #include <amqp.h>
 #include <amqp_framing.h>
 #include <amqp_tcp_socket.h>
 #include <amqp_ssl_socket.h>
+#endif
 
 #include "../debug.h"
 #include "../config.h"
@@ -100,7 +108,6 @@ static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 static amqp_connection_state_t rmq_conn;
 static amqp_channel_t rmq_channel = 0;
 static amqp_bytes_t rmq_exchange;
-static amqp_bytes_t rmq_route_key;
 
 static janus_mutex mutex;
 
@@ -115,6 +122,7 @@ static gboolean ssl_verify_hostname = FALSE;
 static const char *route_key = NULL, *exchange = NULL, *exchange_type = NULL ;
 static uint16_t heartbeat = 0;
 static uint16_t rmqport = AMQP_PROTOCOL_PORT;
+static gboolean declare_outgoing_queue = TRUE;
 
 /* Parameter validation (for tweaking via Admin API) */
 static struct janus_json_parameter request_parameters[] = {
@@ -177,7 +185,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 			/* Compact, so no spaces between separators */
 			json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 		} else {
-			JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
+			JANUS_LOG(LOG_WARN, "RabbitMQEventHandler: Unsupported JSON format option '%s', using default (indented)\n", item->value);
 			json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 		}
 	}
@@ -224,7 +232,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 
 	item = janus_config_get(config, config_general, janus_config_type_item, "heartbeat");
 	if(item && item->value && janus_string_to_uint16(item->value, &heartbeat) < 0) {
-		JANUS_LOG(LOG_ERR, "Invalid heartbeat timeout (%s), falling back to default\n", item->value);
+		JANUS_LOG(LOG_ERR, "RabbitMQEventHandler: Invalid heartbeat timeout (%s), falling back to default (0, disabling heartbeat)\n", item->value);
 		heartbeat = 0;
 	}
 
@@ -266,6 +274,12 @@ int janus_rabbitmqevh_init(const char *config_path) {
 		exchange_type = g_strdup(item->value);
 	}
 
+	/* By default we *DO* declare the outgoing queue */
+	item = janus_config_get(config, config_general, janus_config_type_item, "declare_outgoing_queue");
+	if(item && item->value && !janus_is_true(item->value)) {
+		declare_outgoing_queue = FALSE;
+	}
+
 	item = janus_config_get(config, config_general, janus_config_type_item, "exchange");
 	if(!item || !item->value) {
 		JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: Missing name of outgoing exchange for RabbitMQ, using default\n");
@@ -273,9 +287,9 @@ int janus_rabbitmqevh_init(const char *config_path) {
 		exchange = g_strdup(item->value);
 	}
 	if (exchange == NULL) {
-		JANUS_LOG(LOG_INFO, "RabbitMQ event handler enabled, %s:%d (%s) exchange_type:%s\n", rmqhost, rmqport, route_key,exchange_type);
+		JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: enabled, %s:%d (%s) exchange_type:%s\n", rmqhost, rmqport, route_key,exchange_type);
 	} else {
-		JANUS_LOG(LOG_INFO, "RabbitMQ event handler enabled, %s:%d (%s) exch: (%s) exchange_type:%s\n", rmqhost, rmqport, route_key, exchange,exchange_type);
+		JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: enabled, %s:%d (%s) exch: (%s) exchange_type:%s\n", rmqhost, rmqport, route_key, exchange,exchange_type);
 	}
 
 	/* Connect */
@@ -294,7 +308,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	handler_thread = g_thread_try_new("janus rabbitmqevh handler", jns_rmqevh_hdlr, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQEventHandler handler thread...\n",
+		JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Got error %d (%s) trying to launch the RabbitMQEventHandler handler thread...\n",
 			error->code, error->message ? error->message : "??");
 		g_error_free(error);
 		goto error;
@@ -303,7 +317,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 		in_thread = g_thread_try_new("janus rabbitmqevh heartbeat handler", jns_rmqevh_hrtbt, NULL, &error);
 		if(error != NULL) {
 			g_atomic_int_set(&initialized, 0);
-			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQEventHandler heartbeat thread...\n",
+			JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Got error %d (%s) trying to launch the RabbitMQEventHandler heartbeat thread...\n",
 				error->code, error->message ? error->message : "??");
 			g_error_free(error);
 			goto error;
@@ -344,16 +358,10 @@ int janus_rabbitmqevh_connect(void) {
 			JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error creating socket...\n");
 			return -1;
 		}
-		if(ssl_verify_peer) {
-			amqp_ssl_socket_set_verify_peer(socket, 1);
-		} else {
-			amqp_ssl_socket_set_verify_peer(socket, 0);
-		}
-		if(ssl_verify_hostname) {
-			amqp_ssl_socket_set_verify_hostname(socket, 1);
-		} else {
-			amqp_ssl_socket_set_verify_hostname(socket, 0);
-		}
+
+		amqp_ssl_socket_set_verify_peer(socket, ssl_verify_peer);
+		amqp_ssl_socket_set_verify_hostname(socket, ssl_verify_hostname);
+
 		if(ssl_cacert_file) {
 			status = amqp_ssl_socket_set_cacert(socket, ssl_cacert_file);
 			if(status != AMQP_STATUS_OK) {
@@ -379,7 +387,7 @@ int janus_rabbitmqevh_connect(void) {
 	JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Connecting to RabbitMQ server...\n");
 	status = amqp_socket_open(socket, rmqhost, rmqport);
 	if(status != AMQP_STATUS_OK) {
-		JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error opening socket... (%s)\n", amqp_error_string2(status));
+		JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error opening socket... (%s)\n", amqp_error_string2(status));
 		return -1;
 	}
 	JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Logging in...\n");
@@ -404,18 +412,23 @@ int janus_rabbitmqevh_connect(void) {
 		amqp_exchange_declare(rmq_conn, rmq_channel, rmq_exchange, amqp_cstring_bytes(exchange_type), 0, 0, 0, 0, amqp_empty_table);
 		result = amqp_get_rpc_reply(rmq_conn);
 		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
-			JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error diclaring exchange... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+			JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error declaring exchange... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
 			return -1;
 		}
 	}
-	JANUS_LOG(LOG_VERB, "Declaring outgoing queue... (%s)\n", route_key);
-	rmq_route_key = amqp_cstring_bytes(route_key);
-	amqp_queue_declare(rmq_conn, rmq_channel, rmq_route_key, 0, 0, 0, 0, amqp_empty_table);
-	result = amqp_get_rpc_reply(rmq_conn);
-	if(result.reply_type != AMQP_RESPONSE_NORMAL) {
-		JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error declaring queue... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
-		return -1;
+
+	if (declare_outgoing_queue) {
+		JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Declaring outgoing queue... (%s)\n", route_key);
+		amqp_queue_declare(rmq_conn, rmq_channel, amqp_cstring_bytes(route_key), 0, 0, 0, 0, amqp_empty_table);
+		result = amqp_get_rpc_reply(rmq_conn);
+		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
+			JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error declaring queue... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+			return -1;
+		}
 	}
+
+	JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: Connected successfully");
+
 	return 0;
 }
 
@@ -437,15 +450,11 @@ void janus_rabbitmqevh_destroy(void) {
 	g_async_queue_unref(events);
 	events = NULL;
 
-	if(rmq_conn && rmq_channel) {
-		amqp_channel_close(rmq_conn, rmq_channel, AMQP_REPLY_SUCCESS);
-		amqp_connection_close(rmq_conn, AMQP_REPLY_SUCCESS);
+	if(rmq_conn) {
 		amqp_destroy_connection(rmq_conn);
 	}
 	if(rmq_exchange.bytes)
 		g_free((char *)rmq_exchange.bytes);
-	if(rmq_route_key.bytes)
-		g_free((char *)rmq_route_key.bytes);
 	if(rmqhost)
 		g_free((char *)rmqhost);
 	if(vhost)
@@ -541,7 +550,7 @@ json_t *janus_rabbitmqevh_handle_request(json_t *request) {
 		if(json_object_get(request, "grouping"))
 			group_events = json_is_true(json_object_get(request, "grouping"));
 	} else {
-		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
+		JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Unknown request '%s'\n", request_text);
 		error_code = JANUS_RABBITMQEVH_ERROR_INVALID_REQUEST;
 		g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
 	}
@@ -563,7 +572,7 @@ plugin_response:
 
 /* Thread to handle incoming events */
 static void *jns_rmqevh_hdlr(void *data) {
-	JANUS_LOG(LOG_VERB, "Joining RabbitMQEventHandler handler thread\n");
+	JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: joining handler thread\n");
 	json_t *event = NULL, *output = NULL;
 	char *event_text = NULL;
 	int count = 0, max = group_events ? 100 : 1;
@@ -582,7 +591,7 @@ static void *jns_rmqevh_hdlr(void *data) {
 			if(created && json_is_integer(created)) {
 				gint64 then = json_integer_value(created);
 				gint64 now = janus_get_monotonic_time();
-				JANUS_LOG(LOG_DBG, "Handled event after %"SCNu64" us\n", now-then);
+				JANUS_LOG(LOG_DBG, "RabbitMQEventHandler: Handled event after %"SCNu64" us\n", now-then);
 			}
 			if(!group_events) {
 				/* We're done here, we just need a single event */
@@ -605,13 +614,20 @@ static void *jns_rmqevh_hdlr(void *data) {
 		if(!g_atomic_int_get(&stopping)) {
 			/* Since this a simple plugin, it does the same for all events: so just convert to string... */
 			event_text = json_dumps(output, json_format);
+			if(event_text == NULL) {
+				JANUS_LOG(LOG_WARN, "RabbitMQEventHandler: Failed to stringify event, event lost...\n");
+				/* Nothing we can do... get rid of the event */
+				json_decref(output);
+				output = NULL;
+				continue;
+			}
 			amqp_basic_properties_t props;
 			props._flags = 0;
 			props._flags |= AMQP_BASIC_CONTENT_TYPE_FLAG;
 			props.content_type = amqp_cstring_bytes("application/json");
 			amqp_bytes_t message = amqp_cstring_bytes(event_text);
 			janus_mutex_lock(&mutex);
-			int status = amqp_basic_publish(rmq_conn, rmq_channel, rmq_exchange, rmq_route_key, 0, 0, &props, message);
+			int status = amqp_basic_publish(rmq_conn, rmq_channel, rmq_exchange, amqp_cstring_bytes(route_key), 0, 0, &props, message);
 			if(status != AMQP_STATUS_OK) {
 				JANUS_LOG(LOG_ERR, "RabbitMQEventHandler: Error publishing... %d, %s\n", status, amqp_error_string2(status));
 			}
@@ -624,14 +640,14 @@ static void *jns_rmqevh_hdlr(void *data) {
 		json_decref(output);
 		output = NULL;
 	}
-	JANUS_LOG(LOG_VERB, "Leaving RabbitMQEventHandler handler thread\n");
+	JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: leaving handler thread\n");
 	return NULL;
 }
 
 
 /* Thread to handle heartbeats */
 static void *jns_rmqevh_hrtbt(void *data) {
-	JANUS_LOG(LOG_VERB, "Monitoring RabbitMQ HeartBeat\n");
+	JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Monitoring RabbitMQ Heartbeat\n");
 	int waiting_usec = (heartbeat/2) * 1000000;
 	struct timeval timeout;
 	timeout.tv_sec = 0;
@@ -652,15 +668,13 @@ static void *jns_rmqevh_hrtbt(void *data) {
 				continue;
 			}
 
-			JANUS_LOG(LOG_VERB, "Error on amqp_simple_wait_frame_noblock: %d (%s)\n", res, amqp_error_string2(res));
+			JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Error on amqp_simple_wait_frame_noblock: %d (%s)\n", res, amqp_error_string2(res));
 
-			if(rmq_conn && rmq_channel) {
-				amqp_channel_close(rmq_conn, rmq_channel, AMQP_REPLY_SUCCESS);
-				amqp_connection_close(rmq_conn, AMQP_REPLY_SUCCESS);
+			if(rmq_conn) {
 				amqp_destroy_connection(rmq_conn);
 			}
 			if(!g_atomic_int_get(&stopping)) {
-				JANUS_LOG(LOG_VERB, "Trying to reconnect with RabbitMQ Server\n");
+				JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Trying to reconnect\n");
 				int result = janus_rabbitmqevh_connect();
 				if(result < 0) {
 					g_usleep(5000000);
@@ -674,6 +688,6 @@ static void *jns_rmqevh_hrtbt(void *data) {
 		}
 	}
 
-	JANUS_LOG(LOG_VERB, "Leaving RabbitMQEventHandler HeartBeat thread\n");
+	JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Leaving HeartBeat thread\n");
 	return NULL;
 }

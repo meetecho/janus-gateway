@@ -188,7 +188,7 @@ static int janus_pfunix_create_socket(char *pfname, gboolean use_dgram) {
 	int flags = use_dgram ? SOCK_DGRAM | SOCK_NONBLOCK : SOCK_SEQPACKET | SOCK_NONBLOCK;
 	fd = socket(use_dgram ? AF_UNIX : PF_UNIX, flags, 0);
 	if(fd < 0) {
-		JANUS_LOG(LOG_FATAL, "Unix Sockets %s creation failed: %d, %s\n", pfname, errno, strerror(errno));
+		JANUS_LOG(LOG_FATAL, "Unix Sockets %s creation failed: %d, %s\n", pfname, errno, g_strerror(errno));
 	} else {
 		/* Unlink before binding */
 		unlink(pfname);
@@ -199,7 +199,7 @@ static int janus_pfunix_create_socket(char *pfname, gboolean use_dgram) {
 		g_snprintf(address.sun_path, UNIX_PATH_MAX, "%s", pfname);
 		JANUS_LOG(LOG_VERB, "Binding Unix Socket %s... (Janus API)\n", pfname);
 		if(bind(fd, (struct sockaddr *)&address, sizeof(address)) != 0) {
-			JANUS_LOG(LOG_FATAL, "Bind for Unix Socket %s failed: %d, %s\n", pfname, errno, strerror(errno));
+			JANUS_LOG(LOG_FATAL, "Bind for Unix Socket %s failed: %d, %s\n", pfname, errno, g_strerror(errno));
 			close(fd);
 			fd = -1;
 			return fd;
@@ -207,7 +207,7 @@ static int janus_pfunix_create_socket(char *pfname, gboolean use_dgram) {
 		if(!use_dgram) {
 			JANUS_LOG(LOG_VERB, "Listening on Unix Socket %s...\n", pfname);
 			if(listen(fd, 128) != 0) {
-				JANUS_LOG(LOG_FATAL, "Listening on Unix Socket %s failed: %d, %s\n", pfname, errno, strerror(errno));
+				JANUS_LOG(LOG_FATAL, "Listening on Unix Socket %s failed: %d, %s\n", pfname, errno, g_strerror(errno));
 				close(fd);
 				fd = -1;
 			}
@@ -275,7 +275,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 
 		/* First of all, initialize the socketpair for writeable notifications */
 		if(socketpair(PF_LOCAL, SOCK_STREAM, 0, write_fd) < 0) {
-			JANUS_LOG(LOG_FATAL, "Error creating socket pair for writeable events: %d, %s\n", errno, strerror(errno));
+			JANUS_LOG(LOG_FATAL, "Error creating socket pair for writeable events: %d, %s\n", errno, g_strerror(errno));
 			return -1;
 		}
 
@@ -449,6 +449,10 @@ int janus_pfunix_send_message(janus_transport_session *transport, void *request_
 	/* Convert to string */
 	char *payload = json_dumps(message, json_format);
 	json_decref(message);
+	if(payload == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+		return -1;
+	}
 	if(client->fd != -1) {
 		/* SOCK_SEQPACKET, enqueue the packet and have poll tell us when it's time to send it */
 		g_async_queue_push(client->messages, payload);
@@ -636,10 +640,10 @@ void *janus_pfunix_thread(void *data) {
 			continue;
 		if(res < 0) {
 			if(errno == EINTR) {
-				JANUS_LOG(LOG_HUGE, "Got an EINTR (%s) polling the Unix Sockets descriptors, ignoring...\n", strerror(errno));
+				JANUS_LOG(LOG_HUGE, "Got an EINTR (%s) polling the Unix Sockets descriptors, ignoring...\n", g_strerror(errno));
 				continue;
 			}
-			JANUS_LOG(LOG_ERR, "poll() failed: %d (%s)\n", errno, strerror(errno));
+			JANUS_LOG(LOG_ERR, "poll() failed: %d (%s)\n", errno, g_strerror(errno));
 			break;
 		}
 		int i = 0;
@@ -655,7 +659,7 @@ void *janus_pfunix_thread(void *data) {
 					close(write_fd[1]);
 					write_fd[1] = -1;
 					if(socketpair(PF_LOCAL, SOCK_STREAM, 0, write_fd) < 0) {
-						JANUS_LOG(LOG_FATAL, "Error creating socket pair for writeable events: %d, %s\n", errno, strerror(errno));
+						JANUS_LOG(LOG_FATAL, "Error creating socket pair for writeable events: %d, %s\n", errno, g_strerror(errno));
 						continue;
 					}
 				} else if(poll_fds[i].fd == pfd) {

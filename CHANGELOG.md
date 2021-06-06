@@ -3,6 +3,57 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.11.2] - 2021-05-03
+
+- Added support for relative paths in config files, currently only in MQTT event handler (thanks @RSATom!) [[PR-2623](#2623)]
+- Removed support for now deprecated frame-marking RTP extension [[PR-2640](#2640)]
+- Fixed rare race condition between VideoRoom publisher leaving and subscriber hanging up [[PR-2637](#2637)]
+- Fixed occasional crash when using announcements in AudioBridge
+- Fixed rare crash in Streaming plugin when reconnecting RTSP streams (thanks @lucylu-star!) [[PR-2542](#2542)]
+- Fixed broken switch in Streaming plugin when using helper threads
+- Fixed rare race conditions on socket close in SIP and NoSIP plugins [[PR-2599](#2599)]
+- Added support for out-of-dialog SIP MESSAGE requests (thanks @ihusejnovic!) [[PR-2616](#2616)]
+- Fixed memory leak when using helper threads in Streaming plugin
+- Added support for datachannel label/protocol to Lua and Duktape plugins [[PR-2641](#2641)]
+- Added ability to use WebSockets transport over Unix sockets (thanks @mdevaev!) [[PR-2620](#2620)]
+- Added janus-pp-rec mechanism to correct wrong RTP timestamps in MJR recordings (thanks @tbence94!) [[PR-2573](#2573)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+## [v0.11.1] - 2021-04-06
+
+- Add new option to configure ICE nomination mode, if libnice is recent enough [[PR-2541](#2541)]
+- Added support for per-session timeout values (thanks @alg!) [[PR-2577](#2577)]
+- Added support for compilation on FreeBSD (thanks @jsm222!) [[PR-2508](#2508)]
+- Fixed occasional auth errors when using both API secret and stored tokens (thanks @deep9!) [[PR-2581](#2581)]
+- Added support for stdout logging to daemon-mode as well (thanks @mtorromeo!) [[PR-2591](#2591)]
+- Fixed odr-violation issue between Lua and Duktape plugins [[PR-2540](#2540)]
+- Fixed missing simulcast stats in Admin API and Event Handlers when using rid [[Issue-2610](#2610)]
+- Fixed VideoRoom recording not stopped for participants entering after global recording was started [[PR-2550](#2550)]
+- Fixed 'audiocodec'/'videocodec' being ignored when joining a VideoRoom via 'joinandconfigure'
+- Added content type support to MESSAGE in SIP plugin (thanks @tijmenNL!) [[PR-2567](#2567)]
+- Made RTSP timeouts configurable in Streaming plugin (thanks @pontscho!) [[PR-2598](#2598)]
+- Fixed incorrect parsing of backend URL in WebSockets event handler [[Issue-2603](#2603)]
+- Added support for secure connections and lws debugging to WebSockets event handler
+- Fixed occasionally broken AV1 recordings post-processing
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+## [v0.10.10] - 2021-02-06
+
+- Reduced verbosity of a few LOG_WARN messages at startup
+- Close libnice agent resources asynchronously when hanging up PeerConnections (thanks @fbellet!) [[PR-2492](#2492)]
+- Fixed broken parsing of SDP when trying to match specific codec profiles [[PR-2549](#2549)]
+- Added muting/moderation API to the VideoRoom plugin [[PR-2513](#2513)]
+- Fixed a few race conditions in VideoRoom plugin that could lead to crashes [[PR-2539](#2539)]
+- Send 480 instead of BYE when hanging up calls in early dialog in the SIP plugin (thanks @zayim!) [[PR-2521](#2521)]
+- Added configurable media direction when putting calls on-hold in the SIP plugin [[PR-2525](#2525)]
+- Fixed rare race condition in AudioBridge when using "changeroom" (thanks @JeckLabs!) [[PR-2535](#2535)]
+- Fixed broken API secret management in HTTP long polls (thanks @remvst!) [[PR-2524](#2524)]
+- Report failure if binding to a socket fails in WebSockets transport plugin (thanks @Symbiatch!) [[PR-2534](#2534)]
+- Updated RabbitMQ logic in both transport and event handler (thanks @chriswiggins!) [[PR-2430](#2430)]
+- Fixed segfault in WebSocket event handler when backend was unreachable
+- Added TLS support to MQTT event handler (thanks @RSATom!) [[PR-2517](#2517)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.10.9] - 2020-12-23
 
 - Replaced Travis CI with GitHub Actions [[PR-2486](#2486)]

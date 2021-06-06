@@ -268,9 +268,9 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 		} else {
 			/* Status vector */
 			ss = (chunk & 0x4000) >> 14;
-			length = (s ? 7 : 14);
-			JANUS_LOG(LOG_HUGE, "  [%"SCNu16"] t=status-vector, ss=%s, l=%"SCNu8"\n", num,
-				s ? "2-bit" : "bit", length);
+			length = (ss ? 7 : 14);
+			JANUS_LOG(LOG_HUGE, "  [%"SCNu16"] t=status-vector, ss=%ss, l=%"SCNu8"\n", num,
+				ss ? "2-bit" : "bit", length);
 			while(length > 0 && psc > 0) {
 				if(!ss)
 					s = (chunk & (1 << (length-1))) ? janus_rtp_packet_status_smalldelta : janus_rtp_packet_status_notreceived;
@@ -316,7 +316,7 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 		}
 		delta_us = delta*250;
 		/* Print summary */
-		JANUS_LOG(LOG_HUGE, "  [%02"SCNu16"][%"SCNu16"] %s (%"SCNu32"us)\n", num, base_seq+num-1,
+		JANUS_LOG(LOG_HUGE, "  [%02"SCNu16"][%"SCNu16"] %s (%"SCNu32"us)\n", num, (uint16_t)(base_seq+num-1),
 			janus_rtp_packet_status_description(s), delta_us);
 		iter = iter->next;
 	}
@@ -346,9 +346,15 @@ static void janus_rtcp_rr_update_stats(rtcp_context *ctx, janus_report_block rb)
 	ctx->rr_last_ts = ts;
 	uint32_t total_lost = ntohl(rb.flcnpl) & 0x00FFFFFF;
 	if (ctx->rr_last_ehsnr != 0) {
-		uint32_t sent = g_atomic_int_get(&ctx->sent_packets_since_last_rr);
+		int32_t sent = g_atomic_int_get(&ctx->sent_packets_since_last_rr);
 		uint32_t expect = ntohl(rb.ehsnr) - ctx->rr_last_ehsnr;
 		int32_t nacks = g_atomic_int_get(&ctx->nack_count) - ctx->rr_last_nack_count;
+		/* In case the number of NACKs is higher than the number of sent packets,
+		 * we normalize it and set it to the same value instead, otherwise the
+		 * value of the out link quality will overflow: for details, see
+		 * https://github.com/meetecho/janus-gateway/issues/2579 */
+		if(sent && nacks > sent)
+			nacks = sent;
 		double link_q = !sent ? 0 : 100.0 - (100.0 * nacks / (double)sent);
 		ctx->out_link_quality = janus_rtcp_link_quality_filter(ctx->out_link_quality, link_q);
 		int32_t lost = total_lost - ctx->rr_last_lost;
@@ -866,7 +872,7 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 					/* Try to detect the retransmissions */
 					/* TODO We have to accomplish this in a smarter way */
 					int32_t rtp_diff = ntohl(rtp->timestamp) - ctx->rtp_last_inorder_ts;
-					int32_t ms_diff = (abs(rtp_diff) * 1000) / ctx->tb;
+					int64_t ms_diff = ((int64_t)abs(rtp_diff) * 1000) / ctx->tb;
 					if (ms_diff > 120)
 						ctx->retransmitted++;
 					else

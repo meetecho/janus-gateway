@@ -13,7 +13,7 @@
 #ifndef JANUS_PP_RTP
 #define JANUS_PP_RTP
 
-#ifdef __MACH__
+#if defined(__MACH__) || defined(__FreeBSD__)
 #include <machine/endian.h>
 #define __BYTE_ORDER BYTE_ORDER
 #define __BIG_ENDIAN BIG_ENDIAN
@@ -23,6 +23,9 @@
 #endif
 
 #include <glib.h>
+
+#define JANUS_PP_RTP_EXTMAP_AUDIO_LEVEL			"urn:ietf:params:rtp-hdrext:ssrc-audio-level"
+#define JANUS_PP_RTP_EXTMAP_VIDEO_ORIENTATION	"urn:3gpp:video-orientation"
 
 typedef struct janus_pp_rtp_header
 {
