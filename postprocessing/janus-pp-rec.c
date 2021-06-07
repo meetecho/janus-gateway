@@ -51,6 +51,8 @@ Usage: janus-pp-rec [OPTIONS] source.mjr
 
   -h, --help                    Print help and exit
   -V, --version                 Print version and exit
+  -F, --file-extensions         Only print the supported target file extensions
+                                  per codec  (default=off)
   -j, --json                    Only print JSON header  (default=off)
   -H, --header                  Only parse .mjr header  (default=off)
   -p, --parse                   Only parse and re-order packets  (default=off)
@@ -227,6 +229,27 @@ int main(int argc, char *argv[])
 
 	janus_log_init(FALSE, TRUE, NULL);
 	atexit(janus_log_destroy);
+
+	/* Check if we only need to print the supported extensions for all codecs */
+	if(args_info.file_extensions_given) {
+		JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
+		JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
+		JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
+		JANUS_LOG(LOG_INFO, "Supported file extensions:\n");
+		char supported[100];
+		JANUS_LOG(LOG_INFO, "  -- Opus:   %s\n", janus_pp_extensions_string(janus_pp_opus_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- G.711:  %s\n", janus_pp_extensions_string(janus_pp_g711_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- G.722:  %s\n", janus_pp_extensions_string(janus_pp_g722_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- VP8:    %s\n", janus_pp_extensions_string(janus_pp_webm_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- VP9:    %s\n", janus_pp_extensions_string(janus_pp_webm_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- H.264:  %s\n", janus_pp_extensions_string(janus_pp_h264_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- AV1:    %s\n", janus_pp_extensions_string(janus_pp_av1_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- H.265:  %s\n", janus_pp_extensions_string(janus_pp_h265_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- Text:   %s\n", janus_pp_extensions_string(janus_pp_srt_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- Binary: any\n");
+		cmdline_parser_free(&args_info);
+		exit(0);
+	}
 
 	/* If we're asked to print the JSON header as it is, we must not print anything else */
 	gboolean jsonheader_only = FALSE, header_only = FALSE, parse_only = FALSE;
