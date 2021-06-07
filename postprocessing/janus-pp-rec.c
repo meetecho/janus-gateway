@@ -188,6 +188,35 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 static double get_latency(const janus_pp_frame_packet *tmp, int rate);
 static double get_moving_average_of_latency(janus_pp_frame_packet *pkt, int rate, int num_of_packets);
 
+/* Helper method to check whether a processor accepts a specific extension */
+static gboolean janus_pp_extension_check(const char *extension, const char **allowed) {
+	if(allowed == NULL || extension == NULL)
+		return FALSE;
+	const char **ext = allowed;
+	while(*ext != NULL) {
+		if(!strcasecmp(extension, *ext))
+			return TRUE;
+		ext++;
+	}
+	/* If we got here, we don't support this target format for this codec (yet) */
+	return FALSE;
+}
+static char *janus_pp_extensions_string(const char **allowed, char *supported, size_t suplen) {
+	if(allowed == NULL || supported == NULL || suplen == 0)
+		return NULL;
+	supported[0] = '\0';
+	g_strlcat(supported, "[", suplen);
+	const char **ext = allowed;
+	while(*ext != NULL) {
+		if(strlen(supported) > 1)
+			g_strlcat(supported, ", ", suplen);
+		g_strlcat(supported, *ext, suplen);
+		ext++;
+	}
+	g_strlcat(supported, "]", suplen);
+	return supported;
+}
+
 /* Main Code */
 int main(int argc, char *argv[])
 {
@@ -537,43 +566,49 @@ int main(int argc, char *argv[])
 					exit(1);
 				}
 				const char *c = json_string_value(codec);
+				char supported[100];
 				if(video) {
 					if(!strcasecmp(c, "vp8")) {
 						vp8 = TRUE;
-						if(extension && !janus_pp_webm_formats_check(extension)) {
-							JANUS_LOG(LOG_ERR, "VP8 RTP packets cannot be converted to this target file, at the moment\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_webm_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "VP8 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_webm_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "vp9")) {
 						vp9 = TRUE;
-						if(extension && !janus_pp_webm_formats_check(extension)) {
-							JANUS_LOG(LOG_ERR, "VP9 RTP packets cannot be converted to this target file, at the moment\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_webm_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "VP9 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_webm_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "h264")) {
 						h264 = TRUE;
-						if(extension && !janus_pp_h264_formats_check(extension)) {
-							JANUS_LOG(LOG_ERR, "H.264 RTP packets cannot be converted to this target file, at the moment\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_h264_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "H.264 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_h264_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "av1")) {
 						av1 = TRUE;
-						if(extension && !janus_pp_av1_formats_check(extension)) {
-							JANUS_LOG(LOG_ERR, "AV1 RTP packets cannot be converted to this target file, at the moment\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_av1_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "AV1 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_av1_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "h265")) {
 						h265 = TRUE;
-						if(extension && !janus_pp_h265_formats_check(extension)) {
-							JANUS_LOG(LOG_ERR, "H.265 RTP packets cannot be converted to this target file, at the moment\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_h265_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "H.265 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_h265_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
@@ -587,8 +622,9 @@ int main(int argc, char *argv[])
 				} else if(!video && !data) {
 					if(!strcasecmp(c, "opus")) {
 						opus = TRUE;
-						if(extension && !janus_pp_opus_formats_check(extension)) {
-							JANUS_LOG(LOG_ERR, "Opus RTP packets cannot be converted to this target file, at the moment\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_opus_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "Opus RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_opus_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
@@ -600,16 +636,18 @@ int main(int argc, char *argv[])
 						exit(1);
 					} else if(!strcasecmp(c, "g711") || !strcasecmp(c, "pcmu") || !strcasecmp(c, "pcma")) {
 						g711 = TRUE;
-						if(extension && !janus_pp_g711_formats_check(extension)) {
-							JANUS_LOG(LOG_ERR, "G.711 RTP packets cannot be converted to this target file, at the moment\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_g711_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "G.711 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_g711_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "g722")) {
 						g722 = TRUE;
-						if(extension && !janus_pp_g722_formats_check(extension)) {
-							JANUS_LOG(LOG_ERR, "G.722 RTP packets cannot be converted to this target file, at the moment\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_g722_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "G.722 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_g722_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
@@ -628,8 +666,9 @@ int main(int argc, char *argv[])
 						exit(1);
 					}
 					textdata = !strcasecmp(c, "text");
-					if(textdata && extension && !janus_pp_srt_formats_check(extension)) {
-						JANUS_LOG(LOG_ERR, "Text data channel packets cannot be converted to this target file, at the moment\n");
+					if(textdata && extension && !janus_pp_extension_check(extension, janus_pp_srt_get_extensions())) {
+						JANUS_LOG(LOG_ERR, "Text data channel packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+							janus_pp_extensions_string(janus_pp_srt_get_extensions(), supported, sizeof(supported)));
 						json_decref(info);
 						cmdline_parser_free(&args_info);
 						exit(1);

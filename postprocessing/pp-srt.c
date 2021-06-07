@@ -38,19 +38,10 @@ static void janus_pp_srt_format_time(char *buffer, int len, guint64 when) {
 
 /* Supported target formats */
 static const char *janus_pp_srt_formats[] = {
-	"srt"
+	"srt", NULL
 };
-static uint janus_pp_srt_formats_size = sizeof(janus_pp_srt_formats)/sizeof(*janus_pp_srt_formats);
-gboolean janus_pp_srt_formats_check(const char *extension) {
-	if(extension == NULL)
-		return FALSE;
-	uint i;
-	for(i=0; i<janus_pp_srt_formats_size; i++) {
-		if(!strcasecmp(extension, janus_pp_srt_formats[i]))
-			return TRUE;
-	}
-	/* If we got here, we don't support this target format for this codec (yet) */
-	return FALSE;
+const char **janus_pp_srt_get_extensions(void) {
+	return janus_pp_srt_formats;
 }
 
 /* Processing methods */

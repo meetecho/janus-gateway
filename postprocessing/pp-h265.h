@@ -17,7 +17,7 @@
 #include "pp-rtp.h"
 
 /* H.265 stuff */
-gboolean janus_pp_h265_formats_check(const char *extension);
+const char **janus_pp_h265_get_extensions(void);
 int janus_pp_h265_create(char *destination, char *metadata, gboolean faststart, const char *extension);
 int janus_pp_h265_preprocess(FILE *file, janus_pp_frame_packet *list);
 int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working);

@@ -17,7 +17,7 @@
 #include "pp-rtp.h"
 
 /* SRT stuff */
-gboolean janus_pp_srt_formats_check(const char *extension);
+const char **janus_pp_srt_get_extensions(void);
 int janus_pp_srt_create(char *destination, char *metadata);
 int janus_pp_srt_process(FILE *file, janus_pp_frame_packet *list, int *working);
 void janus_pp_srt_close(void);

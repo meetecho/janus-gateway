@@ -31,19 +31,10 @@ static int fps = 0;
 
 /* Supported target formats */
 static const char *janus_pp_av1_formats[] = {
-	"mp4", "mkv"
+	"mp4", "mkv", NULL
 };
-static uint janus_pp_av1_formats_size = sizeof(janus_pp_av1_formats)/sizeof(*janus_pp_av1_formats);
-gboolean janus_pp_av1_formats_check(const char *extension) {
-	if(extension == NULL)
-		return FALSE;
-	uint i;
-	for(i=0; i<janus_pp_av1_formats_size; i++) {
-		if(!strcasecmp(extension, janus_pp_av1_formats[i]))
-			return TRUE;
-	}
-	/* If we got here, we don't support this target format for this codec (yet) */
-	return FALSE;
+const char **janus_pp_av1_get_extensions(void) {
+	return janus_pp_av1_formats;
 }
 
 /* Processing methods */

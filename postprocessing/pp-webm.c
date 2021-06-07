@@ -40,19 +40,10 @@ static int max_width = 0, max_height = 0, fps = 0;
 
 /* Supported target formats */
 static const char *janus_pp_webm_formats[] = {
-	"webm", "mkv"
+	"webm", "mkv", NULL
 };
-static uint janus_pp_webm_formats_size = sizeof(janus_pp_webm_formats)/sizeof(*janus_pp_webm_formats);
-gboolean janus_pp_webm_formats_check(const char *extension) {
-	if(extension == NULL)
-		return FALSE;
-	uint i;
-	for(i=0; i<janus_pp_webm_formats_size; i++) {
-		if(!strcasecmp(extension, janus_pp_webm_formats[i]))
-			return TRUE;
-	}
-	/* If we got here, we don't support this target format for this codec (yet) */
-	return FALSE;
+const char **janus_pp_webm_get_extensions(void) {
+	return janus_pp_webm_formats;
 }
 
 /* Processing methods */
