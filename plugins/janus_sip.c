@@ -399,8 +399,7 @@
  *
 \verbatim
 {
-	"request" : "hold",
-	"direction" : "<sendonly, recvonly or inactive>"
+	"request" : "unhold"
 }
 \endverbatim
  *
