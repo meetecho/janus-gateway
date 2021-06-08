@@ -3656,7 +3656,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				tempA = tempA->next;
 			}
 			if(!have_rid) {
-				janus_ice_peerconnection_medium *medium = g_hash_table_lookup(ice_handle->pc->media, GUINT_TO_POINTER(mindex));
+				janus_ice_peerconnection_medium *medium = ice_handle->pc ?
+					g_hash_table_lookup(ice_handle->pc->media, GUINT_TO_POINTER(mindex)) : NULL;
 				if(medium != NULL) {
 					g_free(medium->rid[0]);
 					medium->rid[0] = NULL;
