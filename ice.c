@@ -97,8 +97,13 @@ gboolean janus_ice_is_mdns_enabled(void) {
 
 /* IPv6 support */
 static gboolean janus_ipv6_enabled;
+static gboolean janus_ipv6_linklocal_enabled;
 gboolean janus_ice_is_ipv6_enabled(void) {
 	return janus_ipv6_enabled;
+}
+static gboolean janus_ipv6_linklocal_enabled;
+gboolean janus_ice_is_ipv6_linklocal_enabled(void) {
+	return janus_ipv6_linklocal_enabled;
 }
 
 #ifdef HAVE_ICE_NOMINATION
@@ -875,12 +880,14 @@ void janus_ice_trickle_destroy(janus_ice_trickle *trickle) {
 
 /* libnice initialization */
 void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ignore_mdns,
-		gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port) {
+		gboolean ipv6, gboolean ipv6_linklocal, uint16_t rtp_min_port, uint16_t rtp_max_port) {
 	janus_ice_lite_enabled = ice_lite;
 	janus_ice_tcp_enabled = ice_tcp;
 	janus_full_trickle_enabled = full_trickle;
 	janus_mdns_enabled = !ignore_mdns;
 	janus_ipv6_enabled = ipv6;
+	if(ipv6)
+		janus_ipv6_linklocal_enabled = ipv6_linklocal;
 	JANUS_LOG(LOG_INFO, "Initializing ICE stuff (%s mode, ICE-TCP candidates %s, %s-trickle, IPv6 support %s)\n",
 		janus_ice_lite_enabled ? "Lite" : "Full",
 		janus_ice_tcp_enabled ? "enabled" : "disabled",
@@ -3616,8 +3623,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] getnameinfo() failed: %s\n", handle->handle_id, gai_strerror(s));
 				continue;
 			}
-			/* Skip 0.0.0.0, :: and local scoped addresses  */
-			if(!strcmp(host, "0.0.0.0") || !strcmp(host, "::") || !strncmp(host, "fe80:", 5))
+			/* Skip 0.0.0.0, :: and, unless otherwise configured, local scoped addresses  */
+			if(!strcmp(host, "0.0.0.0") || !strcmp(host, "::") || (!janus_ipv6_linklocal_enabled && !strncmp(host, "fe80:", 5)))
 				continue;
 			/* Check if this IP address is in the ignore/enforce list, now: the enforce list has the precedence */
 			if(janus_ice_enforce_list != NULL) {

@@ -283,6 +283,8 @@ or on the command line:
                                   vmnet,192.168., default=vmnet)
 	-6, --ipv6-candidates         Whether to enable IPv6 candidates or not
                                   (experimental)  (default=off)
+	-O, --ipv6-link-local         Whether IPv6 link-local candidates should be
+                                  gathered as well  (default=off)
 	-l, --libnice-debug           Whether to enable libnice debugging or not
                                   (default=off)
 	-f, --full-trickle            Do full-trickle instead of half-trickle
