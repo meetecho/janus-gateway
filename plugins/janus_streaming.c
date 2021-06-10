@@ -4174,8 +4174,11 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			JANUS_VALIDATE_JSON_OBJECT(root, disable_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
-			if(error_code != 0)
+			if(error_code != 0) {
+				janus_refcount_decrease(&mp->ref);
+				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
+			}
 			mp->enabled = FALSE;
 			gboolean stop_recording = TRUE;
 			json_t *stop_rec = json_object_get(root, "stop_recording");
