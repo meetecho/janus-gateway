@@ -368,6 +368,12 @@ GList *janus_red_parse_blocks(char *buffer, int len);
  * @param[in] blocks Linked list of janus_red_block instances to add to the payload
  * @returns The size of the RED payload in case of success, a negative integer otherwise */
 int janus_red_pack_blocks(char *buffer, int len, GList *blocks);
+/*! \brief Helper method to overwrite all RTP payload types in RED blocks
+ * @param[in] buffer The RED block payload to update
+ * @param[in] len The size of the payload buffer
+ * @param[in] pt The RTP payload type to set in all blocks
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_red_replace_block_pt(char *buffer, int len, int pt);
 
 /*! \brief Helper method to push individual bits at the end of a word
  * @param[in] word Initial value of word

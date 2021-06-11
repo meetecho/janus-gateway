@@ -1276,6 +1276,29 @@ int janus_red_pack_blocks(char *buffer, int len, GList *blocks) {
 	}
 	return written;
 }
+int janus_red_replace_block_pt(char *buffer, int len, int pt) {
+	if(buffer == NULL || len < 0 || pt < 0 || pt > 127)
+		return -1;
+	/* TODO This whole method should be fuzzed */
+	char *payload = buffer;
+	int plen = len;
+	uint8_t follow = 0;
+	/* Parse the header */
+	while(payload != NULL && plen > 0) {
+		/* Go through the block headers */
+		follow = ((*payload) & 0x80) >> 7;
+		*payload = (0x80 & (follow << 7)) + (0x7F & pt);
+		if(follow && plen > 3) {
+			/* Move to the next block header */
+			payload += 4;
+			plen -= 4;
+		} else {
+			/* We're done */
+			break;
+		}
+	}
+	return 0;
+}
 
 /* Bit manipulation (mostly for TWCC) */
 inline guint32 janus_push_bits(guint32 word, size_t num, guint32 val) {
