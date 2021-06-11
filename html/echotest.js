@@ -115,7 +115,6 @@ $(document).ready(function() {
 									// We can force RED for audio too, if supported by the browser
 									if(doOpusred)
 										body["opusred"] = true;
-									body["record"] = true;
 									Janus.debug("Sending message:", body);
 									echotest.send({ message: body });
 									Janus.debug("Trying a createOffer too (audio/video sendrecv)");
