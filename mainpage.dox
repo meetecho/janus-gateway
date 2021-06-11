@@ -213,8 +213,8 @@ Janus.init({
    debug: true,
    dependencies: Janus.useDefaultDependencies(), // or: Janus.useOldDependencies() to get the behaviour of previous Janus versions
    callback: function() {
-	   // Done!
-   };
+       // Done!
+   }
 });
  \endverbatim
  *
@@ -264,18 +264,19 @@ Janus.init({
  *
  \verbatim
 var janus = new Janus(
-	{
-		server: 'http://yourserver:8088/janus',
-		success: function() {
-			// Done! attach to plugin XYZ
-		},
-		error: function(cause) {
-			// Error, can't go on...
-		},
-		destroyed: function() {
-			// I should get rid of this
-		}
-	});
+    {
+        server: 'http://yourserver:8088/janus',
+        success: function () {
+            // Done! attach to plugin XYZ
+        },
+        error: function (cause) {
+            // Error, can't go on...
+        },
+        destroyed: function () {
+            // I should get rid of this
+        }
+    }
+);
  \endverbatim
  *
  * As anticipated, the server may be a specific address, e.g.:
@@ -373,36 +374,37 @@ var janus = new Janus(
  \verbatim
 // Attach to echo test plugin, using the previously created janus instance
 janus.attach(
-	{
-		plugin: "janus.plugin.echotest",
-		success: function(pluginHandle) {
-			// Plugin attached! 'pluginHandle' is our handle
-		},
-		error: function(cause) {
-			// Couldn't attach to the plugin
-		},
-		consentDialog: function(on) {
-			// e.g., Darken the screen if on=true (getUserMedia incoming), restore it otherwise
-		},
-		onmessage: function(msg, jsep) {
-			// We got a message/event (msg) from the plugin
-			// If jsep is not null, this involves a WebRTC negotiation
-		},
-		onlocalstream: function(stream) {
-			// We have a local stream (getUserMedia worked!) to display
-		},
-		onremotestream: function(stream) {
-			// We have a remote stream (working PeerConnection!) to display
-		},
-		oncleanup: function() {
-			// PeerConnection with the plugin closed, clean the UI
-			// The plugin handle is still valid so we can create a new one
-		},
-		detached: function() {
-			// Connection with the plugin closed, get rid of its features
-			// The plugin handle is not valid anymore
-		}
-	});
+    {
+        plugin: "janus.plugin.echotest",
+        success: function (pluginHandle) {
+            // Plugin attached! 'pluginHandle' is our handle
+        },
+        error: function (cause) {
+            // Couldn't attach to the plugin
+        },
+        consentDialog: function (on) {
+            // e.g., Darken the screen if on=true (getUserMedia incoming), restore it otherwise
+        },
+        onmessage: function (msg, jsep) {
+            // We got a message/event (msg) from the plugin
+            // If jsep is not null, this involves a WebRTC negotiation
+        },
+        onlocalstream: function (stream) {
+            // We have a local stream (getUserMedia worked!) to display
+        },
+        onremotestream: function (stream) {
+            // We have a remote stream (working PeerConnection!) to display
+        },
+        oncleanup: function () {
+            // PeerConnection with the plugin closed, clean the UI
+            // The plugin handle is still valid so we can create a new one
+        },
+        detached: function () {
+            // Connection with the plugin closed, get rid of its features
+            // The plugin handle is not valid anymore
+        }
+    }
+);
  \endverbatim
  *
  * So the \c attach() method allows you to attach to a plugin, and specify
@@ -683,14 +685,15 @@ janus.attach(
 echotest.createOffer(
     {
         media: { removeVideo: true },
-        success: function(jsep) {
+        success: function (jsep) {
             Janus.debug(jsep);
-            echotest.send({message: {audio: true, video: true}, "jsep": jsep});
+            echotest.send({ message: { audio: true, video: true }, "jsep": jsep });
         },
-        error: function(error) {
+        error: function (error) {
             bootbox.alert("WebRTC error... " + JSON.stringify(error));
         }
-    });
+    }
+);
  \endverbatim
  *
  * This other example shows how you can add a new video stream to an-audio
@@ -701,14 +704,15 @@ echotest.createOffer(
 echotest.createOffer(
     {
         media: { addVideo: true },
-        success: function(jsep) {
+        success: function (jsep) {
             Janus.debug(jsep);
-            echotest.send({message: {audio: true, video: true}, "jsep": jsep});
+            echotest.send({ message: { audio: true, video: true }, "jsep": jsep });
         },
-        error: function(error) {
+        error: function (error) {
             bootbox.alert("WebRTC error... " + JSON.stringify(error));
         }
-    });
+    }
+);
  \endverbatim
  *
  * Finally, this example shows how you can replace the video track, by
@@ -725,14 +729,15 @@ echotest.createOffer(
             },
             replaceVideo: true
         },
-        success: function(jsep) {
+        success: function (jsep) {
             Janus.debug(jsep);
-            echotest.send({message: {audio: true, video: true}, "jsep": jsep});
+            echotest.send({ message: { audio: true, video: true }, "jsep": jsep });
         },
-        error: function(error) {
+        error: function (error) {
             bootbox.alert("WebRTC error... " + JSON.stringify(error));
         }
-    });
+    }
+);
  \endverbatim
  *
  * Notice that renegotiations involving media changes (both local and remote)
@@ -758,9 +763,9 @@ echotest.createOffer(
 echotest.createOffer({
     iceRestart: true,
     media: { data: true },
-    success: function(jsep) {
-        echotest.send({message: {audio: true, video: true}, jsep: jsep});
-	}
+    success: function (jsep) {
+        echotest.send({ message: { audio: true, video: true }, jsep: jsep });
+    }
 });
  \endverbatim
  *
@@ -881,14 +886,14 @@ echotest.createOffer({
  \verbatim
  const webpack = require('webpack');
 
- module.exports = {
-   plugins: [
-     // janus.js does not use 'import' to access to the functionality of webrtc-adapter,
-     // instead it expects a global object called 'adapter' for that.
-     // Let's make that object available.
-     new webpack.ProvidePlugin({ adapter: ['webrtc-adapter', 'default'] })
-   ]
- }
+module.exports = {
+    plugins: [
+        // janus.js does not use 'import' to access to the functionality of webrtc-adapter,
+        // instead it expects a global object called 'adapter' for that.
+        // Let's make that object available.
+        new webpack.ProvidePlugin({ adapter: ['webrtc-adapter', 'default'] })
+    ]
+};
  \endverbatim
  *
  * On the other hand, \c janus.js defines the \c Janus object globally. So a small tweak is also
@@ -896,22 +901,22 @@ echotest.createOffer({
  * <a href="https://webpack.js.org/loaders/exports-loader/">exports-loader</a> and adding this to
  * \c webpack.config.js
  \verbatim
- module.exports = {
-   module: {
-     rules: [
-       // janus.js does not use 'export' to provide its functionality to others, instead
-       // it creates a global variable called 'Janus' and expects consumers to use it.
-       // Let's use 'exports-loader' to simulate it uses 'export'.
-       {
-         test: require.resolve('janus-gateway'),
-         loader: 'exports-loader',
-          options: {
-            exports: 'Janus',
-          },
-       }
-     ]
-   }
- }
+module.exports = {
+    module: {
+        rules: [
+            // janus.js does not use 'export' to provide its functionality to others, instead
+            // it creates a global variable called 'Janus' and expects consumers to use it.
+            // Let's use 'exports-loader' to simulate it uses 'export'.
+            {
+                test: require.resolve('janus-gateway'),
+                loader: 'exports-loader',
+                options: {
+                    exports: 'Janus',
+                },
+            }
+        ]
+    }
+};
  \endverbatim
  *
  * With that extra configuration, the official \c janus.js can be used directly in any modular
@@ -969,11 +974,11 @@ echotest.createOffer({
  *
  * Example:
 \verbatim
-	var customDependencies = Janus.useDefaultDependencies({
-		fetch: myCustomFetchImplementation // myCustomFetchImplementation should provide a compatible fetch() API
-	});
+var customDependencies = Janus.useDefaultDependencies({
+    fetch: myCustomFetchImplementation // myCustomFetchImplementation should provide a compatible fetch() API
+});
 
-	var relyingOnGlobalsEntirely = Janus.useDefaultDependencies();
+var relyingOnGlobalsEntirely = Janus.useDefaultDependencies();
 \endverbatim
  *
  * Being able to passe dependencies like this is especially useful in the context of modern ES modules:
@@ -983,11 +988,11 @@ import adapter from 'webrtc-adapter';
 //  other imports elided
 
 const setupDeps = () => Janus.useDefaultDependencies({
-	adapter,
-	// other dependencies elided
+    adapter,
+    // other dependencies elided
 });
 
-export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps()});
+export const initialiseJanusLibrary = () => Janus.init({ dependencies: setupDeps() });
 \endverbatim
  *
  * \section js-old-deps Janus.useOldDependencies
@@ -1186,6 +1191,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
 		},
 		[..]	// Other plugins
 	}
+}
 \endverbatim
  *
  * You can use this information to selectively enable or disable features
@@ -1274,7 +1280,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
 			"echotest" : "event",
 			"result" : "ok"
 		}
-	},
+	}
 }
 \endverbatim
  *
@@ -2134,17 +2140,18 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  *
 \verbatim
 const crypto = require('crypto');
+
 function getJanusToken(realm, data = [], timeout = 24 * 60 * 60) {
-  const expiry = Math.floor(Date.now() / 1000) + timeout;
+    const expiry = Math.floor(Date.now() / 1000) + timeout;
+    const strdata = [expiry.toString(), realm, ...data].join(',');
+    const hmac = crypto.createHmac('sha1', secret);
 
-  const strdata = [expiry.toString(), realm, ...data].join(',');
-  const hmac = crypto.createHmac('sha1', secret);
-  hmac.setEncoding('base64');
-  hmac.write(strdata);
-  hmac.end();
+    hmac.setEncoding('base64');
+    hmac.write(strdata);
+    hmac.end();
 
-  return [strdata, hmac.read()].join(':');
-};
+    return [strdata, hmac.read()].join(':');
+}
 
 const token = getJanusToken('janus', ['janus.plugin.videoroom']);
 \endverbatim
@@ -3218,19 +3225,19 @@ ldd janus | grep asan
  * would look like:
  *
 \verbatim
-    {
-        "emitter": "MyJanusInstance",
-        "type": 1,
-        "timestamp": 1582211094846980,
-        "session_id": 3439056127855429,
-        "event": {
-            "name": "created",
-            "transport": {
-                "transport": "janus.transport.http",
-                "id": "0x60400002c2d0"
-            }
+{
+    "emitter": "MyJanusInstance",
+    "type": 1,
+    "timestamp": 1582211094846980,
+    "session_id": 3439056127855429,
+    "event": {
+        "name": "created",
+        "transport": {
+            "transport": "janus.transport.http",
+            "id": "0x60400002c2d0"
         }
     }
+}
 \endverbatim
  *
  * Since \c type \c 1 is related to session events, this event basically
