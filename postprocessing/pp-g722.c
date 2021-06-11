@@ -29,7 +29,7 @@ static AVCodec *dec_codec;			/* FFmpeg decoding codec */
 static AVCodecContext *dec_ctx;		/* FFmpeg decoding context */
 
 /* WAV header */
-typedef struct janus_pp_g711_wav {
+typedef struct janus_pp_g722_wav {
 	char riff[4];
 	uint32_t len;
 	char wave[4];
@@ -43,9 +43,16 @@ typedef struct janus_pp_g711_wav {
 	uint16_t channelbits;
 	char data[4];
 	uint32_t blocksize;
-} janus_pp_g711_wav;
+} janus_pp_g722_wav;
 static FILE *wav_file = NULL;
 
+/* Supported target formats */
+static const char *janus_pp_g722_formats[] = {
+	"wav", NULL
+};
+const char **janus_pp_g722_get_extensions(void) {
+	return janus_pp_g722_formats;
+}
 
 /* Processing methods */
 int janus_pp_g722_create(char *destination, char *metadata) {
@@ -83,7 +90,7 @@ int janus_pp_g722_create(char *destination, char *metadata) {
 	}
 	/* Add header */
 	JANUS_LOG(LOG_INFO, "Writing .wav file header\n");
-	janus_pp_g711_wav header = {
+	janus_pp_g722_wav header = {
 		{'R', 'I', 'F', 'F'},
 		0,
 		{'W', 'A', 'V', 'E'},

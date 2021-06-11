@@ -27,18 +27,30 @@
 static AVFormatContext *fctx;
 static AVStream *vStream;
 static uint16_t max_width = 0, max_height = 0;
-int fps = 0;
+static int fps = 0;
 
+/* Supported target formats */
+static const char *janus_pp_av1_formats[] = {
+	"mp4", "mkv", NULL
+};
+const char **janus_pp_av1_get_extensions(void) {
+	return janus_pp_av1_formats;
+}
 
-int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart) {
+/* Processing methods */
+int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart, const char *extension) {
 	if(destination == NULL)
 		return -1;
 #if !LIBAVCODEC_VER_AT_LEAST(57, 25)
 	JANUS_LOG(LOG_ERR, "This version of libavcodec doesn't support AV1...\n");
 	return -1;
 #else
-	/* MP4 output */
-	fctx = janus_pp_create_avformatcontext("mp4", metadata, destination);
+	/* .mkv is Matroska video */
+	if(!strcasecmp(extension, "mkv"))
+		extension = "matroska";
+
+	/* Video output */
+	fctx = janus_pp_create_avformatcontext(extension, metadata, destination);
 	if(fctx == NULL) {
 		JANUS_LOG(LOG_ERR, "Error allocating context\n");
 		return -1;
@@ -326,6 +338,7 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
 	AVPacket *packet = av_packet_alloc();
+	AVRational timebase = {1, 90000};
 
 	while(*working && tmp != NULL) {
 		keyFrame = 0;
@@ -454,8 +467,7 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 				packet->flags |= AV_PKT_FLAG_KEY;
 
 			/* First we save to the file... */
-			packet->dts = tmp->ts-list->ts;
-			packet->pts = tmp->ts-list->ts;
+			packet->pts = packet->dts = av_rescale_q(tmp->ts-list->ts, timebase, fctx->streams[0]->time_base);
 			JANUS_LOG(LOG_HUGE, "%"SCNu64" - %"SCNu64" --> %"SCNu64"\n",
 				tmp->ts, list->ts, packet->pts);
 			if(fctx) {
