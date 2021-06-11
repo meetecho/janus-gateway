@@ -197,7 +197,8 @@ Janus.init({
    dependencies: Janus.useDefaultDependencies(), // or: Janus.useOldDependencies() to get the behaviour of previous Janus versions
    callback: function() {
 	   // Done!
-   });
+   }
+});
  \endverbatim
  *
  * \note When using one of the JavaScript module variants of \c janus.js, you
