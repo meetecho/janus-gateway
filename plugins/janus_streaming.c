@@ -1022,14 +1022,12 @@ typedef struct janus_streaming_rtp_relay_packet {
 	int substream;
 	uint32_t timestamp;
 	uint16_t seq_number;
-	/* The following are only relevant for VP9 SVC*/
+	/* The following are only relevant for VP9 SVC */
 	gboolean svc;
 	janus_vp9_svc_info svc_info;
 	/* In case this is audio and there's a RED version of this packet */
 	janus_rtp_header *red_data;
 	gint red_length;
-	uint32_t red_timestamp;
-	uint16_t red_seq_number;
 	/* The following is only relevant for datachannels */
 	gboolean textdata;
 } janus_streaming_rtp_relay_packet;
@@ -8662,8 +8660,8 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 			packet->data->timestamp = htonl(packet->timestamp);
 			packet->data->seq_number = htons(packet->seq_number);
 			if(packet->red_data) {
-				packet->red_data->timestamp = htonl(packet->red_timestamp);
-				packet->red_data->seq_number = htons(packet->red_seq_number);
+				packet->red_data->timestamp = htonl(packet->timestamp);
+				packet->red_data->seq_number = htons(packet->seq_number);
 			}
 		}
 	} else {
