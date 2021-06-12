@@ -244,6 +244,7 @@ room-<unique room ID>: {
 	"room" : <unique numeric ID of the room>,
 	"secret" : "<room secret; mandatory if configured>"
 	"record" : <true|false, whether this room should be automatically recorded or not>,
+	"record_file" : "<file where audio recording is saved (optional)>"
 }
 \endverbatim 
  *
@@ -3298,6 +3299,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		if(error_code != 0)
 			goto prepare_response;
 		json_t *record = json_object_get(root, "record");
+		json_t *recfile = json_object_get(root, "record_file");
 		gboolean recording_active = json_is_true(record);
 		/* Lookup room */
 		janus_mutex_lock(&rooms_mutex);
@@ -3315,6 +3317,11 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			/* Room recording state has changed */
 			JANUS_LOG(LOG_VERB, "Recording status changed: prev=%d, curr = %d\n", g_atomic_int_get(&audiobridge->record), recording_active);
 			g_atomic_int_set(&audiobridge->record, room_prev_recording_active);
+			if(recfile && recording_active) {
+				g_free(audiobridge->record_file);
+				audiobridge->record_file = g_strdup(json_string_value(recfile));
+				JANUS_LOG(LOG_VERB, "Recording file path: %s\n", audiobridge->record_file);
+			}
 		}
 		response = json_object();
 		json_object_set_new(response, "audiobridge", json_string("success"));
