@@ -6489,14 +6489,18 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	int asport = 0, asport_rtcp = 0;
 	multiple_fds audio_fds = {-1, -1};
 
-	if(g_atomic_int_get(&mp->destroyed)) {
-		curl_easy_cleanup(curl);
-		g_free(curldata->buffer);
-		g_free(curldata);
-		return -8;
+	while (!janus_mutex_trylock(&mountpoints_mutex)) {
+		if(g_atomic_int_get(&mp->destroyed)) {
+			JANUS_LOG(LOG_WARN, "[%s] Destroying mountpoint while trying to reconnect, aborting\n", mp->name);
+			curl_easy_cleanup(curl);
+			g_free(curldata->buffer);
+			g_free(curldata);
+			return -8;
+		}
+
+		g_usleep(1000);
 	}
 
-	janus_mutex_lock(&mountpoints_mutex);
 	/* Parse both video and audio first before proceed to setup as curldata will be reused */
 	int vresult = -1;
 	if(dovideo) {
