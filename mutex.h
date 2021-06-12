@@ -33,6 +33,12 @@ typedef pthread_mutex_t janus_mutex;
 #define janus_mutex_lock_debug(a) { JANUS_PRINT("[%s:%s:%d:lock] %p\n", __FILE__, __FUNCTION__, __LINE__, a); pthread_mutex_lock(a); }
 /*! \brief Janus mutex lock wrapper (selective locking debug) */
 #define janus_mutex_lock(a) { if(!lock_debug) { janus_mutex_lock_nodebug(a); } else { janus_mutex_lock_debug(a); } }
+/*! \brief Janus mutex try lock without debug */
+#define janus_mutex_trylock_nodebug(a) { ret = pthread_mutex_trylock(a); }
+/*! \brief Janus mutex try lock with debug (prints the line that tried to lock a mutex) */
+#define janus_mutex_trylock_debug(a) { JANUS_PRINT("[%s:%s:%d:trylock] %p\n", __FILE__, __FUNCTION__, __LINE__, a); ret = pthread_mutex_trylock(a); }
+/*! \brief Janus mutex try lock wrapper (selective locking debug) */
+#define janus_mutex_trylock(a) ({ int ret; if(!lock_debug) { janus_mutex_trylock_nodebug(a); } else { janus_mutex_trylock_debug(a); } ret; })
 /*! \brief Janus mutex unlock without debug */
 #define janus_mutex_unlock_nodebug(a) pthread_mutex_unlock(a)
 /*! \brief Janus mutex unlock with debug (prints the line that unlocked a mutex) */
@@ -77,6 +83,12 @@ typedef GMutex janus_mutex;
 #define janus_mutex_lock_debug(a) { JANUS_PRINT("[%s:%s:%d:lock] %p\n", __FILE__, __FUNCTION__, __LINE__, a); g_mutex_lock(a); }
 /*! \brief Janus mutex lock wrapper (selective locking debug) */
 #define janus_mutex_lock(a) { if(!lock_debug) { janus_mutex_lock_nodebug(a); } else { janus_mutex_lock_debug(a); } }
+/*! \brief Janus mutex try lock without debug */
+#define janus_mutex_trylock_nodebug(a) { ret = g_mutex_trylock(a); }
+/*! \brief Janus mutex try lock with debug (prints the line that tried to lock a mutex) */
+#define janus_mutex_trylock_debug(a) { JANUS_PRINT("[%s:%s:%d:trylock] %p\n", __FILE__, __FUNCTION__, __LINE__, a); ret = g_mutex_trylock(a); }
+/*! \brief Janus mutex try lock wrapper (selective locking debug) */
+#define janus_mutex_trylock(a) ({ gboolean ret; if(!lock_debug) { janus_mutex_trylock_nodebug(a); } else { janus_mutex_trylock_debug(a); } ret; })
 /*! \brief Janus mutex unlock without debug */
 #define janus_mutex_unlock_nodebug(a) g_mutex_unlock(a)
 /*! \brief Janus mutex unlock with debug (prints the line that unlocked a mutex) */
