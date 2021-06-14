@@ -214,7 +214,7 @@ Janus.init({
    dependencies: Janus.useDefaultDependencies(), // or: Janus.useOldDependencies() to get the behaviour of previous Janus versions
    callback: function() {
 	   // Done!
-   };
+   }
 });
  \endverbatim
  *
@@ -888,7 +888,7 @@ echotest.createOffer({
      // Let's make that object available.
      new webpack.ProvidePlugin({ adapter: ['webrtc-adapter', 'default'] })
    ]
- }
+ };
  \endverbatim
  *
  * On the other hand, \c janus.js defines the \c Janus object globally. So a small tweak is also
@@ -911,7 +911,7 @@ echotest.createOffer({
        }
      ]
    }
- }
+ };
  \endverbatim
  *
  * With that extra configuration, the official \c janus.js can be used directly in any modular
@@ -1274,7 +1274,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
 			"echotest" : "event",
 			"result" : "ok"
 		}
-	},
+	}
 }
 \endverbatim
  *
