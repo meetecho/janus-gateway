@@ -4928,7 +4928,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				char *callee_text = url_as_string(session->stack->s_home, sip->sip_to->a_url);
 				json_object_set_new(result, "callee", json_string(callee_text));
 				json_object_set_new(missed, "result", result);
-				json_object_set_new(missed, "callid", json_string(sip->sip_call_id->i_id));
+				json_object_set_new(missed, "call_id", json_string(sip->sip_call_id->i_id));
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(missed);
