@@ -234,6 +234,21 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
+ * To enable or disable recording of mixed audio stream while the conference
+ * is in progress, you can make use of the \c enable_recording request,
+ * which has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "enable_recording",
+	"room" : <unique numeric ID of the room>,
+	"secret" : "<room secret; mandatory if configured>"
+	"record" : <true|false, whether this room should be automatically recorded or not>,
+	"record_file" : "<file where audio recording is saved (optional)>"
+}
+\endverbatim 
+ *
+ *
  * You can check whether a room exists using the \c exists request,
  * which has to be formatted as follows:
  *
@@ -1047,6 +1062,9 @@ static struct janus_json_parameter join_parameters[] = {
 	{"rtp", JSON_OBJECT, 0},
 	{"secret", JSON_STRING, 0}
 };
+static struct janus_json_parameter record_parameters[] = {
+	{"record", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
+};
 static struct janus_json_parameter rtp_parameters[] = {
 	{"ip", JSON_STRING, 0},
 	{"port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1144,10 +1162,12 @@ typedef struct janus_audiobridge_room {
 	uint default_prebuffering;	/* Number of packets to buffer before decoding each participant */
 	int audio_active_packets;	/* Amount of packets with audio level for checkup */
 	int audio_level_average;	/* Average audio level */
-	gboolean record;			/* Whether this room has to be recorded or not */
+	volatile gint record;		/* Whether this room has to be recorded or not */
 	gchar *record_file;			/* Path of the recording file */
 	FILE *recording;			/* File to record the room into */
 	gint64 record_lastupdate;	/* Time when we last updated the wav header */
+	volatile gint wav_header_added;	/* If wav header is added in recording file */
+	gint64 rec_start_time;		/* Time when recording started for generating file name */
 	gboolean allow_plainrtp;	/* Whether plain RTP participants are allowed*/
 	gboolean destroy;			/* Value to flag the room for destruction */
 	GHashTable *participants;	/* Map of participants */
@@ -2334,9 +2354,9 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			if(pin != NULL && pin->value != NULL) {
 				audiobridge->room_pin = g_strdup(pin->value);
 			}
-			audiobridge->record = FALSE;
+			g_atomic_int_set(&audiobridge->record, 0);
 			if(record && record->value && janus_is_true(record->value))
-				audiobridge->record = TRUE;
+				g_atomic_int_set(&audiobridge->record, 1);
 			if(recfile && recfile->value)
 				audiobridge->record_file = g_strdup(recfile->value);
 			audiobridge->recording = NULL;
@@ -2401,7 +2421,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 	while(g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_audiobridge_room *ar = value;
 		JANUS_LOG(LOG_VERB, "  ::: [%s][%s] %"SCNu32" (%s be recorded)\n",
-			ar->room_id_str, ar->room_name, ar->sampling_rate, ar->record ? "will" : "will NOT");
+			ar->room_id_str, ar->room_name, ar->sampling_rate, g_atomic_int_get(&ar->record) ? "will" : "will NOT");
 	}
 	janus_mutex_unlock(&rooms_mutex);
 
@@ -2622,6 +2642,48 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 	return info;
 }
 
+static int janus_audiobridge_access_room(json_t *root, gboolean check_modify, janus_audiobridge_room **audiobridge, char *error_cause, int error_cause_size) {
+	/* rooms_mutex has to be locked */
+	int error_code = 0;
+	json_t *room = json_object_get(root, "room");
+	guint64 room_id = 0;
+	char room_id_num[30], *room_id_str = NULL;
+	if(!string_ids) {
+		room_id = json_integer_value(room);
+		g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+		room_id_str = room_id_num;
+	} else {
+		room_id_str = (char *)json_string_value(room);
+	}
+	*audiobridge = g_hash_table_lookup(rooms,
+		string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
+	if(*audiobridge == NULL) {
+		JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
+		error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
+		if(error_cause)
+			g_snprintf(error_cause, error_cause_size, "No such room (%s)", room_id_str);
+		return error_code;
+	}
+	if(g_atomic_int_get(&((*audiobridge)->destroyed))) {
+		JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
+		error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
+		if(error_cause)
+			g_snprintf(error_cause, error_cause_size, "No such room (%s)", room_id_str);
+		return error_code;
+	}
+	if(check_modify) {
+		char error_cause2[100];
+		JANUS_CHECK_SECRET((*audiobridge)->room_secret, root, "secret", error_code, error_cause2,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			g_strlcpy(error_cause, error_cause2, error_cause_size);
+			return error_code;
+		}
+	}
+	return 0;
+}
+
+
 /* Helper method to process synchronous requests */
 static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_session *session, json_t *message) {
 	json_t *request = json_object_get(message, "request");
@@ -2822,9 +2884,9 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				goto prepare_response;
 		}
 		audiobridge->room_ssrc = janus_random_uint32();
-		audiobridge->record = FALSE;
+		g_atomic_int_set(&audiobridge->record, 0);
 		if(record && json_is_true(record))
-			audiobridge->record = TRUE;
+			g_atomic_int_set(&audiobridge->record, 1);
 		if(recfile)
 			audiobridge->record_file = g_strdup(json_string_value(recfile));
 		audiobridge->recording = NULL;
@@ -3230,9 +3292,44 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_object_set_new(response, "permanent", save ? json_true() : json_false());
 		JANUS_LOG(LOG_VERB, "Audiobridge room destroyed\n");
 		goto prepare_response;
+	} else if(!strcasecmp(request_text, "enable_recording")) {
+		JANUS_VALIDATE_JSON_OBJECT(root, record_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		json_t *record = json_object_get(root, "record");
+		json_t *recfile = json_object_get(root, "record_file");
+		gboolean recording_active = json_is_true(record);
+		/* Lookup room */
+		janus_mutex_lock(&rooms_mutex);
+		janus_audiobridge_room *audiobridge = NULL;
+		error_code = janus_audiobridge_access_room(root, TRUE, &audiobridge, error_cause, sizeof(error_cause));
+		if(error_code != 0) {
+			JANUS_LOG(LOG_ERR, "Failed to access audiobridge\n");
+			janus_mutex_unlock(&rooms_mutex);
+			goto prepare_response;
+		}
+		janus_mutex_unlock(&rooms_mutex);
+		/* Set recording status */
+		gint room_prev_recording_active = recording_active ? 1 : 0;
+		if (room_prev_recording_active != g_atomic_int_get(&audiobridge->record)) {
+			/* Room recording state has changed */
+			JANUS_LOG(LOG_VERB, "Recording status changed: prev=%d, curr = %d\n", g_atomic_int_get(&audiobridge->record), recording_active);
+			g_atomic_int_set(&audiobridge->record, room_prev_recording_active);
+			if(recfile && recording_active) {
+				g_free(audiobridge->record_file);
+				audiobridge->record_file = g_strdup(json_string_value(recfile));
+				JANUS_LOG(LOG_VERB, "Recording file path: %s\n", audiobridge->record_file);
+			}
+		}
+		response = json_object();
+		json_object_set_new(response, "audiobridge", json_string("success"));
+		json_object_set_new(response, "record", json_boolean(g_atomic_int_get(&audiobridge->record)));
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "list")) {
 		/* List all rooms (but private ones) and their details (except for the secret, of course...) */
-		JANUS_LOG(LOG_VERB, "Request for the list for all video rooms\n");
+		JANUS_LOG(LOG_VERB, "Request for the list for all audiobridge rooms\n");
 		gboolean lock_room_list = TRUE;
 		if(admin_key != NULL) {
 			json_t *admin_key_json = json_object_get(root, "admin_key");
@@ -3269,7 +3366,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			json_object_set_new(rl, "sampling_rate", json_integer(room->sampling_rate));
 			json_object_set_new(rl, "spatial_audio", room->spatial_audio ? json_true() : json_false());
 			json_object_set_new(rl, "pin_required", room->room_pin ? json_true() : json_false());
-			json_object_set_new(rl, "record", room->record ? json_true() : json_false());
+			json_object_set_new(rl, "record", g_atomic_int_get(&room->record) ? json_true() : json_false());
 			json_object_set_new(rl, "muted", room->muted ? json_true() : json_false());
 			json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
 			json_array_append_new(list, rl);
@@ -6819,6 +6916,99 @@ error:
 	JANUS_LOG(LOG_VERB, "Leaving AudioBridge handler thread\n");
 	return NULL;
 }
+static void janus_audiobridge_rec_add_wav_header(janus_audiobridge_room *audiobridge) {
+
+	/* Do we need to record the mix? */
+	char filename[255];
+	gint64 now = janus_get_real_time();
+	audiobridge->rec_start_time = now;
+	if(audiobridge->record_file) {
+		g_snprintf(filename, 255, "%s-%"SCNi64"%s%s", audiobridge->record_file,
+			now, rec_tempext ? "." : "", rec_tempext ? rec_tempext : "");
+	} else {
+		g_snprintf(filename, 255, "janus-audioroom-%s-%"SCNi64".wav%s%s", audiobridge->room_id_str,
+			now, rec_tempext ? "." : "", rec_tempext ? rec_tempext : "");
+	}
+	audiobridge->recording = fopen(filename, "wb");
+	if(audiobridge->recording == NULL) {
+		JANUS_LOG(LOG_WARN, "Recording requested, but could NOT open file %s for writing...\n", filename);
+	} else {
+		JANUS_LOG(LOG_VERB, "Recording requested, opened file %s for writing\n", filename);
+		/* Write WAV header */
+		wav_header header = {
+			{'R', 'I', 'F', 'F'},
+			0,
+			{'W', 'A', 'V', 'E'},
+			{'f', 'm', 't', ' '},
+			16,
+			1,
+			audiobridge->spatial_audio ? 2 : 1,
+			audiobridge->sampling_rate,
+			audiobridge->sampling_rate * 2,
+			2,
+			16,
+			{'d', 'a', 't', 'a'},
+			0
+		};
+		if(fwrite(&header, 1, sizeof(header), audiobridge->recording) != sizeof(header)) {
+			JANUS_LOG(LOG_ERR, "Error writing WAV header...\n");
+		}
+		fflush(audiobridge->recording);
+		audiobridge->record_lastupdate = janus_get_monotonic_time();
+		g_atomic_int_set(&audiobridge->wav_header_added, 1);
+	}
+}
+static void janus_audiobridge_update_wav_header(janus_audiobridge_room *audiobridge) {
+
+	/* Update the length in the header */
+	fseek(audiobridge->recording, 0, SEEK_END);
+	long int size = ftell(audiobridge->recording);
+	if(size >= 8) {
+		size -= 8;
+		fseek(audiobridge->recording, 4, SEEK_SET);
+		fwrite(&size, sizeof(uint32_t), 1, audiobridge->recording);
+		size += 8;
+		fseek(audiobridge->recording, 40, SEEK_SET);
+		fwrite(&size, sizeof(uint32_t), 1, audiobridge->recording);
+		fflush(audiobridge->recording);
+	}
+	fclose(audiobridge->recording);
+	audiobridge->recording = NULL;
+	g_atomic_int_set(&audiobridge->wav_header_added, 0);
+
+	char filename[255];
+	if(audiobridge->record_file) {
+		g_snprintf(filename, 255, "%s-%"SCNi64, audiobridge->record_file,audiobridge->rec_start_time);
+	} else {
+		g_snprintf(filename, 255, "janus-audioroom-%s-%"SCNi64".wav", audiobridge->room_id_str,
+			audiobridge->rec_start_time);
+	}
+	if(rec_tempext) {
+		/* We need to rename the file, to remove the temporary extension */
+		char extfilename[255];
+		if(audiobridge->record_file) {
+			g_snprintf(extfilename, 255, "%s-%"SCNi64".%s", audiobridge->record_file, 
+				audiobridge->rec_start_time,rec_tempext);
+		} else {
+			g_snprintf(extfilename, 255, "janus-audioroom-%s-%"SCNi64".wav.%s", audiobridge->room_id_str,
+				audiobridge->rec_start_time, rec_tempext);
+		}
+		if(rename(extfilename, filename) != 0) {
+			JANUS_LOG(LOG_ERR, "Error renaming %s to %s...\n", extfilename, filename);
+		} else {
+			JANUS_LOG(LOG_INFO, "Recording renamed: %s\n", filename);
+		}
+	}
+	/* Also notify event handlers */
+	if(notify_events && gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("recordingdone"));
+		json_object_set_new(info, "room",
+			string_ids ? json_string(audiobridge->room_id_str) : json_integer(audiobridge->room_id));
+		json_object_set_new(info, "record_file", json_string(filename));
+		gateway->notify_event(&janus_audiobridge_plugin, NULL, info);
+	}
+}
 
 /* Thread to mix the contributions from all participants */
 static void *janus_audiobridge_mixer_thread(void *data) {
@@ -6830,45 +7020,6 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	}
 	JANUS_LOG(LOG_VERB, "Thread is for mixing room %s (%s) at rate %"SCNu32"...\n",
 		audiobridge->room_id_str, audiobridge->room_name, audiobridge->sampling_rate);
-
-	/* Do we need to record the mix? */
-	if(audiobridge->record) {
-		char filename[255];
-		if(audiobridge->record_file) {
-			g_snprintf(filename, 255, "%s%s%s", audiobridge->record_file,
-				rec_tempext ? "." : "", rec_tempext ? rec_tempext : "");
-		} else {
-			g_snprintf(filename, 255, "janus-audioroom-%s.wav%s%s", audiobridge->room_id_str,
-				rec_tempext ? "." : "", rec_tempext ? rec_tempext : "");
-		}
-		audiobridge->recording = fopen(filename, "wb");
-		if(audiobridge->recording == NULL) {
-			JANUS_LOG(LOG_WARN, "Recording requested, but could NOT open file %s for writing...\n", filename);
-		} else {
-			JANUS_LOG(LOG_VERB, "Recording requested, opened file %s for writing\n", filename);
-			/* Write WAV header */
-			wav_header header = {
-				{'R', 'I', 'F', 'F'},
-				0,
-				{'W', 'A', 'V', 'E'},
-				{'f', 'm', 't', ' '},
-				16,
-				1,
-				audiobridge->spatial_audio ? 2 : 1,
-				audiobridge->sampling_rate,
-				audiobridge->sampling_rate * 2,
-				2,
-				16,
-				{'d', 'a', 't', 'a'},
-				0
-			};
-			if(fwrite(&header, 1, sizeof(header), audiobridge->recording) != sizeof(header)) {
-				JANUS_LOG(LOG_ERR, "Error writing WAV header...\n");
-			}
-			fflush(audiobridge->recording);
-			audiobridge->record_lastupdate = janus_get_monotonic_time();
-		}
-	}
 
 	/* Buffer (we allocate assuming 48kHz, although we'll likely use less than that) */
 	int samples = audiobridge->sampling_rate/50;
@@ -6903,6 +7054,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	/* SRTP buffer, if needed */
 	char sbuf[1500];
 
+	g_atomic_int_set(&audiobridge->wav_header_added, 0);
 	/* Loop */
 	int i=0;
 	int count = 0, rf_count = 0, pf_count = 0, prev_count = 0;
@@ -7115,6 +7267,14 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			g_list_free_full(anncs_list, (GDestroyNotify)janus_audiobridge_participant_unref);
 		}
 #endif
+		if(g_atomic_int_get(&audiobridge->record) && !g_atomic_int_get(&audiobridge->wav_header_added)) {
+			JANUS_LOG(LOG_VERB, "Add wave header for recording %s (%s)...\n", audiobridge->room_id_str, audiobridge->room_name);
+			janus_audiobridge_rec_add_wav_header(audiobridge);
+		}
+		if(!g_atomic_int_get(&audiobridge->record) && g_atomic_int_get(&audiobridge->wav_header_added)) {
+			JANUS_LOG(LOG_VERB, "Update wave header for recording %s (%s)...\n", audiobridge->room_id_str, audiobridge->room_name);
+			janus_audiobridge_update_wav_header(audiobridge);
+		}
 		/* Are we recording the mix? (only do it if there's someone in, though...) */
 		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) {
 			for(i=0; i<samples; i++) {
@@ -7331,50 +7491,11 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		}
 		janus_mutex_unlock(&audiobridge->rtp_mutex);
 	}
-	if(audiobridge->recording) {
-		/* Update the length in the header */
-		fseek(audiobridge->recording, 0, SEEK_END);
-		long int size = ftell(audiobridge->recording);
-		if(size >= 8) {
-			size -= 8;
-			fseek(audiobridge->recording, 4, SEEK_SET);
-			fwrite(&size, sizeof(uint32_t), 1, audiobridge->recording);
-			size += 8;
-			fseek(audiobridge->recording, 40, SEEK_SET);
-			fwrite(&size, sizeof(uint32_t), 1, audiobridge->recording);
-			fflush(audiobridge->recording);
-		}
-		fclose(audiobridge->recording);
-		char filename[255];
-		if(audiobridge->record_file) {
-			g_snprintf(filename, 255, "%s", audiobridge->record_file);
-		} else {
-			g_snprintf(filename, 255, "janus-audioroom-%s.wav", audiobridge->room_id_str);
-		}
-		if(rec_tempext) {
-			/* We need to rename the file, to remove the temporary extension */
-			char extfilename[255];
-			if(audiobridge->record_file) {
-				g_snprintf(extfilename, 255, "%s.%s", audiobridge->record_file, rec_tempext);
-			} else {
-				g_snprintf(extfilename, 255, "janus-audioroom-%s.wav.%s", audiobridge->room_id_str, rec_tempext);
-			}
-			if(rename(extfilename, filename) != 0) {
-				JANUS_LOG(LOG_ERR, "Error renaming %s to %s...\n", extfilename, filename);
-			} else {
-				JANUS_LOG(LOG_INFO, "Recording renamed: %s\n", filename);
-			}
-		}
-		/* Also notify event handlers */
-		if(notify_events && gateway->events_is_enabled()) {
-			json_t *info = json_object();
-			json_object_set_new(info, "event", json_string("recordingdone"));
-			json_object_set_new(info, "room",
-				string_ids ? json_string(audiobridge->room_id_str) : json_integer(audiobridge->room_id));
-			json_object_set_new(info, "record_file", json_string(filename));
-			gateway->notify_event(&janus_audiobridge_plugin, NULL, info);
-		}
+	if(audiobridge->recording != NULL && g_atomic_int_get(&audiobridge->wav_header_added)) {
+		JANUS_LOG(LOG_VERB, "Update wave header for recording %s (%s)...\n", audiobridge->room_id_str, audiobridge->room_name);
+		janus_audiobridge_update_wav_header(audiobridge);
 	}
+	/* close the recording file here */
 	g_free(rtpbuffer);
 	JANUS_LOG(LOG_VERB, "Leaving mixer thread for room %s (%s)...\n", audiobridge->room_id_str, audiobridge->room_name);
 
@@ -7489,11 +7610,11 @@ static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data
 	}
 	janus_audiobridge_session *session = (janus_audiobridge_session *)data;
 	if(!session || !session->handle) {
-		// JANUS_LOG(LOG_ERR, "Invalid session...\n");
+		/* JANUS_LOG(LOG_ERR, "Invalid session...\n"); */
 		return;
 	}
 	if(!g_atomic_int_get(&session->started)) {
-		// JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
+		/* JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n"); */
 		return;
 	}
 	janus_audiobridge_participant *participant = session->participant;
