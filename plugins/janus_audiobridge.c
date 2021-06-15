@@ -3314,9 +3314,9 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		janus_mutex_unlock(&rooms_mutex);
 		/* Set recording status */
 		gint room_prev_recording_active = recording_active ? 1 : 0;
-		if (room_prev_recording_active != g_atomic_int_get(&audiobridge->record)) {
+		if(room_prev_recording_active != g_atomic_int_get(&audiobridge->record)) {
 			/* Room recording state has changed */
-			JANUS_LOG(LOG_VERB, "Recording status changed: prev=%d, curr = %d\n", g_atomic_int_get(&audiobridge->record), recording_active);
+			JANUS_LOG(LOG_VERB, "Recording status changed: prev=%d, curr=%d\n", g_atomic_int_get(&audiobridge->record), recording_active);
 			g_atomic_int_set(&audiobridge->record, room_prev_recording_active);
 			if(recfile && recording_active) {
 				g_free(audiobridge->record_file);
@@ -7071,6 +7071,15 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			g_usleep(5000);
 			continue;
 		}
+		/* If we're recording to a wav file, update the info */
+		if(g_atomic_int_get(&audiobridge->record) && !g_atomic_int_get(&audiobridge->wav_header_added)) {
+			JANUS_LOG(LOG_VERB, "Adding WAV header for recording %s (%s)...\n", audiobridge->room_id_str, audiobridge->room_name);
+			janus_audiobridge_rec_add_wav_header(audiobridge);
+		}
+		if(!g_atomic_int_get(&audiobridge->record) && g_atomic_int_get(&audiobridge->wav_header_added)) {
+			JANUS_LOG(LOG_VERB, "Updating WAV header for recording %s (%s)...\n", audiobridge->room_id_str, audiobridge->room_name);
+			janus_audiobridge_update_wav_header(audiobridge);
+		}
 		/* Update the reference time */
 		before.tv_usec += 20000;
 		if(before.tv_usec > 1000000) {
@@ -7265,14 +7274,6 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			g_list_free_full(anncs_list, (GDestroyNotify)janus_audiobridge_participant_unref);
 		}
 #endif
-		if(g_atomic_int_get(&audiobridge->record) && !g_atomic_int_get(&audiobridge->wav_header_added)) {
-			JANUS_LOG(LOG_VERB, "Add wave header for recording %s (%s)...\n", audiobridge->room_id_str, audiobridge->room_name);
-			janus_audiobridge_rec_add_wav_header(audiobridge);
-		}
-		if(!g_atomic_int_get(&audiobridge->record) && g_atomic_int_get(&audiobridge->wav_header_added)) {
-			JANUS_LOG(LOG_VERB, "Update wave header for recording %s (%s)...\n", audiobridge->room_id_str, audiobridge->room_name);
-			janus_audiobridge_update_wav_header(audiobridge);
-		}
 		/* Are we recording the mix? (only do it if there's someone in, though...) */
 		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) {
 			for(i=0; i<samples; i++) {
@@ -7489,11 +7490,11 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		}
 		janus_mutex_unlock(&audiobridge->rtp_mutex);
 	}
+	/* Close the recording file */
 	if(audiobridge->recording != NULL && g_atomic_int_get(&audiobridge->wav_header_added)) {
 		JANUS_LOG(LOG_VERB, "Update wave header for recording %s (%s)...\n", audiobridge->room_id_str, audiobridge->room_name);
 		janus_audiobridge_update_wav_header(audiobridge);
 	}
-	/* close the recording file here */
 	g_free(rtpbuffer);
 	JANUS_LOG(LOG_VERB, "Leaving mixer thread for room %s (%s)...\n", audiobridge->room_id_str, audiobridge->room_name);
 
