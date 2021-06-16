@@ -3771,6 +3771,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	janus_ice_stream *stream = ice_handle->stream;
 	if (stream == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error stream not found\n", ice_handle->handle_id);
+		janus_sdp_destroy(parsed_sdp);
 		janus_mutex_unlock(&ice_handle->mutex);
 		return NULL;
 	}

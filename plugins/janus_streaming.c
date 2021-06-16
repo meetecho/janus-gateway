@@ -6644,7 +6644,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 								} else if(is_session) {
 									if(!strcasecmp(name, "timeout")) {
 										/* Take note of the timeout, for keep-alives */
-										source->ka_timeout = janus_streaming_min_if(source->session_timeout, atoi(value) / 2 * G_USEC_PER_SEC);
+										source->ka_timeout = janus_streaming_min_if(source->session_timeout, (gint64)atoi(value) / 2 * G_USEC_PER_SEC);
 										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %"SCNi64" ms\n", source->ka_timeout / 1000);
 									}
 								}
@@ -6817,7 +6817,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 								} else if(is_session) {
 									if(!strcasecmp(name, "timeout")) {
 										/* Take note of the timeout, for keep-alives */
-										source->ka_timeout = janus_streaming_min_if(source->session_timeout, atoi(value) / 2 * G_USEC_PER_SEC);
+										source->ka_timeout = janus_streaming_min_if(source->session_timeout, (gint64)atoi(value) / 2 * G_USEC_PER_SEC);
 										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %"SCNi64" ms\n", source->ka_timeout / 1000);
 									}
 								}

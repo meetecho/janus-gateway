@@ -2155,7 +2155,7 @@ static MHD_Result janus_http_return_success(janus_transport_session *ts, char *p
 	}
 	janus_refcount_increase(&msg->ref);
 	struct MHD_Response *response = MHD_create_response_from_buffer(
-		payload ? strlen(payload) : 0,
+		strlen(payload),
 		(void*)payload,
 		MHD_RESPMEM_MUST_FREE);
 	MHD_add_response_header(response, "Content-Type", "application/json");

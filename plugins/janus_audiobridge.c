@@ -2260,6 +2260,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			}
 			/* Create the AudioBridge room */
 			janus_audiobridge_room *audiobridge = g_malloc0(sizeof(janus_audiobridge_room));
+			janus_refcount_init(&audiobridge->ref, janus_audiobridge_room_free);
 			const char *room_num = cat->name;
 			if(strstr(room_num, "room-") == room_num)
 				room_num += 5;
@@ -2267,7 +2268,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				audiobridge->room_id = g_ascii_strtoull(room_num, NULL, 0);
 				if(audiobridge->room_id == 0) {
 					JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, invalid ID 0...\n");
-					g_free(audiobridge);
+					janus_audiobridge_room_destroy(audiobridge);
 					cl = cl->next;
 					continue;
 				}
@@ -2276,7 +2277,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				g_snprintf(room_id_str, sizeof(room_id_str), "%"SCNu64, audiobridge->room_id);
 				if(strcmp(room_num, room_id_str)) {
 					JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, ID '%s' is not numeric...\n", room_num);
-					g_free(audiobridge);
+					janus_audiobridge_room_destroy(audiobridge);
 					cl = cl->next;
 					continue;
 				}
@@ -2287,7 +2288,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				/* It does... */
 				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, room %s already exists...\n", room_num);
-				g_free(audiobridge);
+				janus_audiobridge_room_destroy(audiobridge);
 				cl = cl->next;
 				continue;
 			}
@@ -2311,6 +2312,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 					break;
 				default:
 					JANUS_LOG(LOG_ERR, "Unsupported sampling rate %"SCNu32"...\n", audiobridge->sampling_rate);
+					janus_audiobridge_room_destroy(audiobridge);
 					cl = cl->next;
 					continue;
 			}
@@ -2378,7 +2380,6 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			audiobridge->rtp_encoder = NULL;
 			audiobridge->rtp_udp_sock = -1;
 			janus_mutex_init(&audiobridge->rtp_mutex);
-			janus_refcount_init(&audiobridge->ref, janus_audiobridge_room_free);
 			JANUS_LOG(LOG_VERB, "Created AudioBridge room: %s (%s, %s, secret: %s, pin: %s)\n",
 				audiobridge->room_id_str, audiobridge->room_name,
 				audiobridge->is_private ? "private" : "public",
@@ -2799,6 +2800,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 		/* Create the AudioBridge room */
 		janus_audiobridge_room *audiobridge = g_malloc0(sizeof(janus_audiobridge_room));
+		janus_refcount_init(&audiobridge->ref, janus_audiobridge_room_free);
 		/* Generate a random ID, if needed */
 		gboolean room_id_allocated = FALSE;
 		if(!string_ids && room_id == 0) {
@@ -2878,6 +2880,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			default:
 				if(room_id_allocated)
 					g_free(room_id_str);
+				janus_audiobridge_room_destroy(audiobridge);
 				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Unsupported sampling rate %"SCNu32"...\n", audiobridge->sampling_rate);
 				error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
@@ -2919,7 +2922,6 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		audiobridge->rtp_encoder = NULL;
 		audiobridge->rtp_udp_sock = -1;
 		janus_mutex_init(&audiobridge->rtp_mutex);
-		janus_refcount_init(&audiobridge->ref, janus_audiobridge_room_free);
 		g_hash_table_insert(rooms,
 			string_ids ? (gpointer)g_strdup(audiobridge->room_id_str) : (gpointer)janus_uint64_dup(audiobridge->room_id),
 			audiobridge);
@@ -7356,6 +7358,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				i = janus_audiobridge_resample(outBuffer, samples, audiobridge->sampling_rate, (int16_t *)mixedpkt->data, 8000);
 				if(i == 0) {
 					JANUS_LOG(LOG_WARN, "[G.711] Error downsampling from %d, skipping audio packet\n", audiobridge->sampling_rate);
+					g_free(mixedpkt->data);
+					g_free(mixedpkt);
 					janus_refcount_decrease(&p->ref);
 					ps = ps->next;
 					continue;
