@@ -41,6 +41,7 @@ room-<unique room ID>: {
 	default_prebuffering = number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)
 	record = true|false (whether this room should be recorded, default=false)
 	record_file = /path/to/recording.wav (where to save the recording)
+	record_dir = /path/to/ (path to save the recording to, makes record_file a relative path if provided)
 	allow_rtp_participants = true|false (whether participants should be allowed to join
 		via plain RTP as well, rather than just WebRTC, default=false)
 
@@ -135,6 +136,7 @@ room-<unique room ID>: {
 	"default_prebuffering" : <number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)>,
 	"record" : <true|false, whether to record the room or not, default=false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
+	"record_dir" : "</path/to/, optional; makes record_file a relative path, if provided>",
 	"allow_rtp_participants" : <true|false, whether participants should be allowed to join via plain RTP as well, default=false>
 }
 \endverbatim
@@ -244,7 +246,8 @@ room-<unique room ID>: {
 	"room" : <unique numeric ID of the room>,
 	"secret" : "<room secret; mandatory if configured>"
 	"record" : <true|false, whether this room should be automatically recorded or not>,
-	"record_file" : "<file where audio recording is saved (optional)>"
+	"record_file" : "<file where audio recording should be saved (optional)>",
+	"record_dir" : "<path where audio recording file should be saved (optional)>"
 }
 \endverbatim
  *
@@ -1018,6 +1021,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"spatial_audio", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"record_file", JSON_STRING, 0},
+	{"record_dir", JSON_STRING, 0},
 	{"allow_rtp_participants", JANUS_JSON_BOOL, 0},
 	{"permanent", JANUS_JSON_BOOL, 0},
 	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
@@ -1064,7 +1068,8 @@ static struct janus_json_parameter join_parameters[] = {
 };
 static struct janus_json_parameter record_parameters[] = {
 	{"record", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED},
-	{"record_file", JSON_STRING, 0}
+	{"record_file", JSON_STRING, 0},
+	{"record_dir", JSON_STRING, 0}
 };
 static struct janus_json_parameter rtp_parameters[] = {
 	{"ip", JSON_STRING, 0},
@@ -1164,7 +1169,8 @@ typedef struct janus_audiobridge_room {
 	int audio_active_packets;	/* Amount of packets with audio level for checkup */
 	int audio_level_average;	/* Average audio level */
 	volatile gint record;		/* Whether this room has to be recorded or not */
-	gchar *record_file;			/* Path of the recording file */
+	gchar *record_file;			/* Path of the recording file (absolute or relative, depending on record_dir) */
+	gchar *record_dir;			/* Folder to save the recording file to */
 	FILE *recording;			/* File to record the room into */
 	gint64 record_lastupdate;	/* Time when we last updated the wav header */
 	volatile gint wav_header_added;	/* If wav header is added in recording file */
@@ -1523,6 +1529,7 @@ static void janus_audiobridge_room_free(const janus_refcount *audiobridge_ref) {
 	g_free(audiobridge->room_secret);
 	g_free(audiobridge->room_pin);
 	g_free(audiobridge->record_file);
+	g_free(audiobridge->record_dir);
 	g_hash_table_destroy(audiobridge->participants);
 	g_hash_table_destroy(audiobridge->anncs);
 	g_hash_table_destroy(audiobridge->allowed);
@@ -2252,6 +2259,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
 			janus_config_item *record = janus_config_get(config, cat, janus_config_type_item, "record");
 			janus_config_item *recfile = janus_config_get(config, cat, janus_config_type_item, "record_file");
+			janus_config_item *recdir = janus_config_get(config, cat, janus_config_type_item, "record_dir");
 			janus_config_item *allowrtp = janus_config_get(config, cat, janus_config_type_item, "allow_rtp_participants");
 			if(sampling == NULL || sampling->value == NULL) {
 				JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, missing mandatory information...\n");
@@ -2260,6 +2268,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			}
 			/* Create the AudioBridge room */
 			janus_audiobridge_room *audiobridge = g_malloc0(sizeof(janus_audiobridge_room));
+			janus_refcount_init(&audiobridge->ref, janus_audiobridge_room_free);
 			const char *room_num = cat->name;
 			if(strstr(room_num, "room-") == room_num)
 				room_num += 5;
@@ -2267,7 +2276,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				audiobridge->room_id = g_ascii_strtoull(room_num, NULL, 0);
 				if(audiobridge->room_id == 0) {
 					JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, invalid ID 0...\n");
-					g_free(audiobridge);
+					janus_audiobridge_room_destroy(audiobridge);
 					cl = cl->next;
 					continue;
 				}
@@ -2276,7 +2285,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				g_snprintf(room_id_str, sizeof(room_id_str), "%"SCNu64, audiobridge->room_id);
 				if(strcmp(room_num, room_id_str)) {
 					JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, ID '%s' is not numeric...\n", room_num);
-					g_free(audiobridge);
+					janus_audiobridge_room_destroy(audiobridge);
 					cl = cl->next;
 					continue;
 				}
@@ -2287,7 +2296,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				/* It does... */
 				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, room %s already exists...\n", room_num);
-				g_free(audiobridge);
+				janus_audiobridge_room_destroy(audiobridge);
 				cl = cl->next;
 				continue;
 			}
@@ -2311,6 +2320,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 					break;
 				default:
 					JANUS_LOG(LOG_ERR, "Unsupported sampling rate %"SCNu32"...\n", audiobridge->sampling_rate);
+					janus_audiobridge_room_destroy(audiobridge);
 					cl = cl->next;
 					continue;
 			}
@@ -2360,6 +2370,13 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				g_atomic_int_set(&audiobridge->record, 1);
 			if(recfile && recfile->value)
 				audiobridge->record_file = g_strdup(recfile->value);
+			if(recdir && recdir->value) {
+				audiobridge->record_dir = g_strdup(recdir->value);
+				if(janus_mkdir(audiobridge->record_dir, 0755) < 0) {
+					/* FIXME Should this be fatal, when creating a room? */
+					JANUS_LOG(LOG_WARN, "AudioBridge mkdir (%s) error: %d (%s)\n", audiobridge->record_dir, errno, g_strerror(errno));
+				}
+			}
 			audiobridge->recording = NULL;
 			audiobridge->allow_plainrtp = FALSE;
 			if(allowrtp && allowrtp->value)
@@ -2378,7 +2395,6 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			audiobridge->rtp_encoder = NULL;
 			audiobridge->rtp_udp_sock = -1;
 			janus_mutex_init(&audiobridge->rtp_mutex);
-			janus_refcount_init(&audiobridge->ref, janus_audiobridge_room_free);
 			JANUS_LOG(LOG_VERB, "Created AudioBridge room: %s (%s, %s, secret: %s, pin: %s)\n",
 				audiobridge->room_id_str, audiobridge->room_name,
 				audiobridge->is_private ? "private" : "public",
@@ -2743,6 +2759,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_t *default_prebuffering = json_object_get(root, "default_prebuffering");
 		json_t *record = json_object_get(root, "record");
 		json_t *recfile = json_object_get(root, "record_file");
+		json_t *recdir = json_object_get(root, "record_dir");
 		json_t *allowrtp = json_object_get(root, "allow_rtp_participants");
 		json_t *permanent = json_object_get(root, "permanent");
 		if(allowed) {
@@ -2799,6 +2816,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 		/* Create the AudioBridge room */
 		janus_audiobridge_room *audiobridge = g_malloc0(sizeof(janus_audiobridge_room));
+		janus_refcount_init(&audiobridge->ref, janus_audiobridge_room_free);
 		/* Generate a random ID, if needed */
 		gboolean room_id_allocated = FALSE;
 		if(!string_ids && room_id == 0) {
@@ -2881,7 +2899,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Unsupported sampling rate %"SCNu32"...\n", audiobridge->sampling_rate);
 				error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
-				g_snprintf(error_cause, 512, "We currently only support 16kHz (wideband) as a sampling rate for audio rooms, %"SCNu32" TBD...", audiobridge->sampling_rate);
+				g_snprintf(error_cause, 512, "Unsupported sampling rate %"SCNu32, audiobridge->sampling_rate);
+				janus_audiobridge_room_destroy(audiobridge);
 				goto prepare_response;
 		}
 		audiobridge->room_ssrc = janus_random_uint32();
@@ -2890,6 +2909,13 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			g_atomic_int_set(&audiobridge->record, 1);
 		if(recfile)
 			audiobridge->record_file = g_strdup(json_string_value(recfile));
+		if(recdir) {
+			audiobridge->record_dir = g_strdup(json_string_value(recdir));
+			if(janus_mkdir(audiobridge->record_dir, 0755) < 0) {
+				/* FIXME Should this be fatal, when creating a room? */
+				JANUS_LOG(LOG_WARN, "AudioBridge mkdir (%s) error: %d (%s)\n", audiobridge->record_dir, errno, g_strerror(errno));
+			}
+		}
 		audiobridge->recording = NULL;
 		audiobridge->allow_plainrtp = FALSE;
 		if(allowrtp && json_is_true(allowrtp))
@@ -2919,7 +2945,6 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		audiobridge->rtp_encoder = NULL;
 		audiobridge->rtp_udp_sock = -1;
 		janus_mutex_init(&audiobridge->rtp_mutex);
-		janus_refcount_init(&audiobridge->ref, janus_audiobridge_room_free);
 		g_hash_table_insert(rooms,
 			string_ids ? (gpointer)g_strdup(audiobridge->room_id_str) : (gpointer)janus_uint64_dup(audiobridge->room_id),
 			audiobridge);
@@ -2989,6 +3014,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			if(audiobridge->record_file) {
 				janus_config_add(config, c, janus_config_item_create("record", "yes"));
 				janus_config_add(config, c, janus_config_item_create("record_file", audiobridge->record_file));
+				if(audiobridge->record_dir)
+					janus_config_add(config, c, janus_config_item_create("record_dir", audiobridge->record_dir));
 			}
 			if(audiobridge->spatial_audio)
 				janus_config_add(config, c, janus_config_item_create("spatial_audio", "yes"));
@@ -3139,6 +3166,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			if(audiobridge->record_file) {
 				janus_config_add(config, c, janus_config_item_create("record", "yes"));
 				janus_config_add(config, c, janus_config_item_create("record_file", audiobridge->record_file));
+				if(audiobridge->record_dir)
+					janus_config_add(config, c, janus_config_item_create("record_dir", audiobridge->record_dir));
 			}
 			if(audiobridge->spatial_audio)
 				janus_config_add(config, c, janus_config_item_create("spatial_audio", "yes"));
@@ -3301,6 +3330,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			goto prepare_response;
 		json_t *record = json_object_get(root, "record");
 		json_t *recfile = json_object_get(root, "record_file");
+		json_t *recdir = json_object_get(root, "record_dir");
 		gboolean recording_active = json_is_true(record);
 		/* Lookup room */
 		janus_mutex_lock(&rooms_mutex);
@@ -3314,6 +3344,16 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		janus_mutex_unlock(&rooms_mutex);
 		/* Set recording status */
 		gint room_prev_recording_active = recording_active ? 1 : 0;
+		/* Check if we need to create a folder */
+		if(recording_active && recdir != NULL) {
+			if(janus_mkdir(json_string_value(recdir), 0755) < 0) {
+				/* FIXME Should this be fatal, when creating a room? */
+				JANUS_LOG(LOG_ERR, "AudioBridge mkdir (%s) error: %d (%s)\n", audiobridge->record_dir, errno, g_strerror(errno));
+				error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "mkdir error: %d (%s)", errno, g_strerror(errno));
+				goto prepare_response;
+			}
+		}
 		if(room_prev_recording_active != g_atomic_int_get(&audiobridge->record)) {
 			/* Room recording state has changed */
 			JANUS_LOG(LOG_VERB, "Recording status changed: prev=%d, curr=%d\n", g_atomic_int_get(&audiobridge->record), recording_active);
@@ -3321,7 +3361,12 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			if(recfile && recording_active) {
 				g_free(audiobridge->record_file);
 				audiobridge->record_file = g_strdup(json_string_value(recfile));
-				JANUS_LOG(LOG_VERB, "Recording file path: %s\n", audiobridge->record_file);
+				if(recdir) {
+					g_free(audiobridge->record_dir);
+					audiobridge->record_dir = g_strdup(json_string_value(recdir));
+				}
+				JANUS_LOG(LOG_VERB, "Recording file: %s (path: %s)\n",
+					audiobridge->record_file, audiobridge->record_dir ? audiobridge->record_dir : "not provided");
 			}
 		}
 		response = json_object();
@@ -6923,15 +6968,25 @@ static void janus_audiobridge_rec_add_wav_header(janus_audiobridge_room *audiobr
 	gint64 now = janus_get_real_time();
 	audiobridge->rec_start_time = now;
 	if(audiobridge->record_file) {
-		g_snprintf(filename, 255, "%s%s%s", audiobridge->record_file,
+		g_snprintf(filename, 255, "%s%s%s%s%s",
+			audiobridge->record_dir ? audiobridge->record_dir : "",
+			audiobridge->record_dir ? "/" : "",
+			audiobridge->record_file,
 			rec_tempext ? "." : "", rec_tempext ? rec_tempext : "");
 	} else {
-		g_snprintf(filename, 255, "janus-audioroom-%s-%"SCNi64".wav%s%s", audiobridge->room_id_str,
-			now, rec_tempext ? "." : "", rec_tempext ? rec_tempext : "");
+		g_snprintf(filename, 255, "%s%sjanus-audioroom-%s-%"SCNi64".wav%s%s",
+			audiobridge->record_dir ? audiobridge->record_dir : "",
+			audiobridge->record_dir ? "/" : "",
+			audiobridge->room_id_str, now,
+			rec_tempext ? "." : "", rec_tempext ? rec_tempext : "");
 	}
 	audiobridge->recording = fopen(filename, "wb");
 	if(audiobridge->recording == NULL) {
-		JANUS_LOG(LOG_WARN, "Recording requested, but could NOT open file %s for writing...\n", filename);
+		JANUS_LOG(LOG_WARN, "Recording requested, but could NOT open file %s for writing, giving up...\n", filename);
+		g_atomic_int_set(&audiobridge->record, 0);
+		g_atomic_int_set(&audiobridge->wav_header_added, 0);
+		g_free(audiobridge->record_file);
+		audiobridge->record_file = NULL;
 	} else {
 		JANUS_LOG(LOG_VERB, "Recording requested, opened file %s for writing\n", filename);
 		/* Write WAV header */
@@ -6977,18 +7032,29 @@ static void janus_audiobridge_update_wav_header(janus_audiobridge_room *audiobri
 
 	char filename[255];
 	if(audiobridge->record_file) {
-		g_snprintf(filename, 255, "%s", audiobridge->record_file);
+		g_snprintf(filename, 255, "%s%s%s",
+			audiobridge->record_dir ? audiobridge->record_dir : "",
+			audiobridge->record_dir ? "/" : "",
+			audiobridge->record_file);
 	} else {
-		g_snprintf(filename, 255, "janus-audioroom-%s-%"SCNi64".wav", audiobridge->room_id_str,
-			audiobridge->rec_start_time);
+		g_snprintf(filename, 255, "%s%sjanus-audioroom-%s-%"SCNi64".wav",
+			audiobridge->record_dir ? audiobridge->record_dir : "",
+			audiobridge->record_dir ? "/" : "",
+			audiobridge->room_id_str, audiobridge->rec_start_time);
 	}
 	if(rec_tempext) {
 		/* We need to rename the file, to remove the temporary extension */
 		char extfilename[255];
 		if(audiobridge->record_file) {
-			g_snprintf(extfilename, 255, "%s.%s", audiobridge->record_file, rec_tempext);
+			g_snprintf(extfilename, 255, "%s%s%s.%s",
+				audiobridge->record_dir ? audiobridge->record_dir : "",
+				audiobridge->record_dir ? "/" : "",
+				audiobridge->record_file, rec_tempext);
 		} else {
-			g_snprintf(extfilename, 255, "janus-audioroom-%s-%"SCNi64".wav.%s", audiobridge->room_id_str,
+			g_snprintf(extfilename, 255, "%s%sjanus-audioroom-%s-%"SCNi64".wav.%s",
+				audiobridge->record_dir ? audiobridge->record_dir : "",
+				audiobridge->record_dir ? "/" : "",
+				audiobridge->room_id_str,
 				audiobridge->rec_start_time, rec_tempext);
 		}
 		if(rename(extfilename, filename) != 0) {
