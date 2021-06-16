@@ -3337,17 +3337,17 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		janus_audiobridge_room *audiobridge = NULL;
 		error_code = janus_audiobridge_access_room(root, TRUE, &audiobridge, error_cause, sizeof(error_cause));
 		if(error_code != 0) {
-			JANUS_LOG(LOG_ERR, "Failed to access audiobridge\n");
 			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "Failed to access room\n");
 			goto prepare_response;
 		}
-		janus_mutex_unlock(&rooms_mutex);
 		/* Set recording status */
 		gint room_prev_recording_active = recording_active ? 1 : 0;
 		/* Check if we need to create a folder */
 		if(recording_active && recdir != NULL) {
 			if(janus_mkdir(json_string_value(recdir), 0755) < 0) {
 				/* FIXME Should this be fatal, when creating a room? */
+				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "AudioBridge mkdir (%s) error: %d (%s)\n", audiobridge->record_dir, errno, g_strerror(errno));
 				error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
 				g_snprintf(error_cause, 512, "mkdir error: %d (%s)", errno, g_strerror(errno));
@@ -3361,17 +3361,18 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			if(recfile && recording_active) {
 				g_free(audiobridge->record_file);
 				audiobridge->record_file = g_strdup(json_string_value(recfile));
-				if(recdir) {
-					g_free(audiobridge->record_dir);
-					audiobridge->record_dir = g_strdup(json_string_value(recdir));
-				}
-				JANUS_LOG(LOG_VERB, "Recording file: %s (path: %s)\n",
-					audiobridge->record_file, audiobridge->record_dir ? audiobridge->record_dir : "not provided");
+				JANUS_LOG(LOG_VERB, "Recording file: %s\n", audiobridge->record_file);
+			}
+			if(recdir && recording_active) {
+				g_free(audiobridge->record_dir);
+				audiobridge->record_dir = g_strdup(json_string_value(recdir));
+				JANUS_LOG(LOG_VERB, "Recording folder: %s\n", audiobridge->record_dir);
 			}
 		}
 		response = json_object();
 		json_object_set_new(response, "audiobridge", json_string("success"));
 		json_object_set_new(response, "record", json_boolean(g_atomic_int_get(&audiobridge->record)));
+		janus_mutex_unlock(&rooms_mutex);
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "list")) {
 		/* List all rooms (but private ones) and their details (except for the secret, of course...) */
