@@ -137,7 +137,7 @@ $(document).ready(function() {
 											if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 												if(!simulcastStarted[mid]) {
 													simulcastStarted[mid] = true;
-													addSimulcastButtons(mid, temporal !== null && temporal !== undefined);
+													addSimulcastButtons(mid, true);
 												}
 												// We just received notice that there's been a switch, update the buttons
 												updateSimulcastButtons(mid, substream, temporal);
