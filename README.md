@@ -17,7 +17,7 @@ To install it, you'll need to satisfy the following dependencies:
 
 * [Jansson](http://www.digip.org/jansson/)
 * [libconfig](https://hyperrealm.github.io/libconfig/)
-* [libnice](https://libnice.freedesktop.org/) (at least v0.1.16 suggested, master recommended)
+* [libnice](https://libnice.freedesktop.org/) (at least v0.1.16 suggested, v0.1.18 recommended)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v2.x suggested)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you are interested in Data Channels)
@@ -283,6 +283,8 @@ or on the command line:
                                   vmnet,192.168., default=vmnet)
 	-6, --ipv6-candidates         Whether to enable IPv6 candidates or not
                                   (experimental)  (default=off)
+	-O, --ipv6-link-local         Whether IPv6 link-local candidates should be
+                                  gathered as well  (default=off)
 	-l, --libnice-debug           Whether to enable libnice debugging or not
                                   (default=off)
 	-f, --full-trickle            Do full-trickle instead of half-trickle

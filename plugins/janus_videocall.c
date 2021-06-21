@@ -786,7 +786,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 				json_t *result = json_object();
 				json_object_set_new(result, "event", json_string("simulcast"));
 				json_object_set_new(result, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
-				json_object_set_new(result, "substream", json_integer(session->sim_context.substream));
+				json_object_set_new(result, "substream", json_integer(peer->sim_context.substream));
 				json_object_set_new(event, "result", result);
 				gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, event, NULL);
 				json_decref(event);
@@ -798,7 +798,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 				json_t *result = json_object();
 				json_object_set_new(result, "event", json_string("simulcast"));
 				json_object_set_new(result, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
-				json_object_set_new(result, "temporal", json_integer(session->sim_context.templayer));
+				json_object_set_new(result, "temporal", json_integer(peer->sim_context.templayer));
 				json_object_set_new(event, "result", result);
 				gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, event, NULL);
 				json_decref(event);
@@ -1366,21 +1366,13 @@ static void *janus_videocall_handler(void *data) {
 			/* Check if this user will simulcast */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast && janus_get_codec_pt(msg_sdp, "vp8") > 0) {
-				JANUS_LOG(LOG_VERB, "VideoCall callee (%s) is going to do simulcasting\n", session->username);
-				session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
-				session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
-				session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
+				JANUS_LOG(LOG_VERB, "VideoCall callee (%s) cannot do simulcast.\n", session->username);
 			} else {
 				int i=0;
 				for(i=0; i<3; i++) {
 					session->ssrc[i] = 0;
 					g_free(session->rid[0]);
 					session->rid[0] = NULL;
-					if(peer) {
-						peer->ssrc[i] = 0;
-						g_free(peer->rid[0]);
-						peer->rid[0] = NULL;
-					}
 				}
 			}
 			/* Check which codecs we ended up using */
@@ -1500,8 +1492,10 @@ static void *janus_videocall_handler(void *data) {
 			}
 			if(substream) {
 				session->sim_context.substream_target = json_integer_value(substream);
-				JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
-					session->ssrc[session->sim_context.substream], session->sim_context.substream_target, session->sim_context.substream);
+				if(session->sim_context.substream_target >= 0 && session->sim_context.substream_target <= 2) {
+					JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
+						session->ssrc[session->sim_context.substream_target], session->sim_context.substream_target, session->sim_context.substream);
+				}
 				if(session->sim_context.substream_target == session->sim_context.substream) {
 					/* No need to do anything, we're already getting the right substream, so notify the user */
 					json_t *event = json_object();

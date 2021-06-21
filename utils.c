@@ -1185,7 +1185,7 @@ size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compr
 	}
 
 	/* Initialize the deflater, and clarify we need gzip */
-	z_stream zs;
+	z_stream zs = { 0 };
 	zs.zalloc = Z_NULL;
 	zs.zfree = Z_NULL;
 	zs.opaque = Z_NULL;

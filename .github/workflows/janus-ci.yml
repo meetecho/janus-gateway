@@ -14,7 +14,7 @@ jobs:
         datachannels: ["yes", "no"]
         libcurl: ["yes", "no"]
         include:
-          - datachannel: "yes"
+          - datachannels: "yes"
             libcurl: "yes"
             deps_from_src: "yes"
             janus_config_opts: ""

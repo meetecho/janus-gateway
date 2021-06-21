@@ -587,6 +587,8 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-h264.h \
 	postprocessing/pp-av1.c \
 	postprocessing/pp-av1.h \
+	postprocessing/pp-avformat.c \
+	postprocessing/pp-avformat.h \
 	postprocessing/pp-h265.c \
 	postprocessing/pp-h265.h \
 	postprocessing/pp-opus.c \
