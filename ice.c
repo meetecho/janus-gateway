@@ -2473,7 +2473,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"]     SRTP unprotect error: %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")\n", handle->handle_id, janus_srtp_error_str(res), len, buflen, timestamp, seq);
 				}
 			} else {
-				if(medium->ssrc_peer[0] == 0) {
+				if(!video || (vindex == 0 && medium->ssrc_peer[0] == 0)) {
 					medium->ssrc_peer[0] = ntohl(header->ssrc);
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"]     Peer #%d (%s) SSRC: %u\n",
 						handle->handle_id, medium->mindex,
