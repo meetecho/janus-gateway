@@ -1610,8 +1610,10 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 		return;
 	char line[255];
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#pragma GCC diagnostic ignored "-Wsuggest-attribute=format"
 	g_vsnprintf(line, sizeof(line), fmt, ap);
 #pragma GCC diagnostic warning "-Wformat-nonliteral"
+#pragma GCC diagnostic warning "-Wsuggest-attribute=format"
 	if(skip) {
 		/* This is a message we're not interested in: just check when it ends */
 		if(line[3] == '-') {
@@ -3182,9 +3184,9 @@ static void *janus_sip_handler(void *data) {
 			g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
 
 			/* Take call-id from request, if it exists */
-			char *callid = NULL;
+			const char *callid = NULL;
 			json_t *request_callid = json_object_get(root, "call_id");
-			if (request_callid)
+			if(request_callid)
 				callid = json_string_value(request_callid);
 
 			/* Do we have a handle for this subscription already? */
@@ -4146,13 +4148,17 @@ static void *janus_sip_handler(void *data) {
 				/* Craft the Replaces header field */
 				sip_replaces_t *r = nua_handle_make_replaces(replaced->stack->s_nh_i, session->stack->s_home, 0);
 				char *replaces = sip_headers_as_url_query(session->stack->s_home, SIPTAG_REPLACES(r), TAG_END());
+#pragma GCC diagnostic ignored "-Winline"
 				refer_to = sip_refer_to_format(session->stack->s_home, "<%s?%s>", uri_text, replaces);
+#pragma GCC diagnostic warning "-Winline"
 				JANUS_LOG(LOG_VERB, "Attended transfer: <%s?%s>\n", uri_text, replaces);
 				su_free(session->stack->s_home, r);
 				su_free(session->stack->s_home, replaces);
 			}
 			if(refer_to == NULL)
+#pragma GCC diagnostic ignored "-Winline"
 				refer_to = sip_refer_to_format(session->stack->s_home, "<%s>", uri_text);
+#pragma GCC diagnostic warning "-Winline"
 			/* Send the REFER */
 			nua_refer(session->stack->s_nh_i,
 				SIPTAG_REFER_TO(refer_to),
