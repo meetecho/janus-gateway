@@ -2584,7 +2584,7 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		session->media.on_hold = FALSE;
 
 		/* Send a BYE or respond with 480 */
-		if(g_atomic_int_get(&session->established) || session->status == janus_sip_call_status_inviting)
+		if(janus_sip_call_is_established(session) || session->status == janus_sip_call_status_inviting)
 			nua_bye(session->stack->s_nh_i, TAG_END());
 		else
 			nua_respond(session->stack->s_nh_i, 480, sip_status_phrase(480), TAG_END());
