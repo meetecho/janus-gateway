@@ -657,6 +657,7 @@
 #include <sofia-sip/url.h>
 #include <sofia-sip/tport_tag.h>
 #include <sofia-sip/su_log.h>
+#include <sofia-sip/sofia_features.h>
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -837,6 +838,8 @@ static uint16_t rtp_range_max = 60000;
 static int dscp_audio_rtp = 0;
 static int dscp_video_rtp = 0;
 
+static gboolean query_contact_header = FALSE;
+
 static GThread *handler_thread;
 static void *janus_sip_handler(void *data);
 static void janus_sip_hangup_media_internal(janus_plugin_session *handle);
@@ -928,6 +931,7 @@ struct ssip_s {
 	su_root_t *s_root;
 	nua_t *s_nua;
 	nua_handle_t *s_nh_r, *s_nh_i, *s_nh_m;
+	char *contact_header;	/* Only needed for Sofia SIP >= 1.13 */
 	GHashTable *subscriptions;
 	janus_mutex smutex;
 	struct janus_sip_session *session;
@@ -1088,6 +1092,7 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 			g_hash_table_unref(session->stack->subscriptions);
 		session->stack->subscriptions = NULL;
 		janus_mutex_unlock(&session->stack->smutex);
+		g_free(session->stack->contact_header);
 		g_free(session->stack);
 		session->stack = NULL;
 	}
@@ -1760,6 +1765,16 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	if(callback == NULL || config_path == NULL) {
 		/* Invalid arguments */
 		return -1;
+	}
+
+	/* First of all, let's check what version of Sofia SIP is available */
+	int sofia_major = 0, sofia_minor = 0, sofia_patch = 0;
+	if(sscanf(SOFIA_SIP_VERSION, "%d.%d.%d", &sofia_major, &sofia_minor, &sofia_patch) == 3) {
+		if(sofia_major > 2 || (sofia_major >= 1 && sofia_minor >= 13)) {
+			/* Versions of Sofia SIP >= 1.13 apparently don't add a Contact header for,
+			 * guests, so we'll query it ourselves using nua_get_params (see #2597) */
+			query_contact_header = TRUE;
+		}
 	}
 
 	/* Read configuration */
@@ -2732,6 +2747,8 @@ static void *janus_sip_handler(void *data) {
 				if(session->stack == NULL) {
 					session->stack = g_malloc0(sizeof(ssip_t));
 					su_home_init(session->stack->s_home);
+					if(session->master->stack->contact_header != NULL)
+						session->stack->contact_header = g_strdup(session->master->stack->contact_header);
 				}
 				session->stack->session = session;
 				janus_mutex_unlock(&sessions_mutex);
@@ -3454,6 +3471,7 @@ static void *janus_sip_handler(void *data) {
 			/* Prepare the From header */
 			char from_hdr[1024];
 			/* Prepare the stack */
+			gboolean guest = FALSE;
 			if(session->stack->s_nh_i != NULL)
 				nua_handle_destroy(session->stack->s_nh_i);
 			if(!session->helper) {
@@ -3466,6 +3484,7 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 				session->stack->s_nh_i = nua_handle(session->stack->s_nua, session, TAG_END());
+				guest = (session->stack->s_nh_r == NULL);
 				janus_mutex_unlock(&session->stack->smutex);
 				if(session->account.display_name) {
 					g_snprintf(from_hdr, sizeof(from_hdr), "\"%s\" <%s>", session->account.display_name, session->account.identity);
@@ -3493,6 +3512,7 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 				session->stack->s_nh_i = nua_handle(session->master->stack->s_nua, session, TAG_END());
+				guest = (session->master->stack->s_nh_r == NULL);
 				janus_mutex_unlock(&session->master->stack->smutex);
 				if(session->master->account.display_name) {
 					g_snprintf(from_hdr, sizeof(from_hdr), "\"%s\" <%s>", session->master->account.display_name, session->master->account.identity);
@@ -3605,11 +3625,16 @@ static void *janus_sip_handler(void *data) {
 			g_atomic_int_set(&session->establishing, 1);
 			/* Add a reference for this call */
 			janus_sip_ref_active_call(session);
+			/* Check if we need to manually add the Contact header */
+			gboolean add_contact_header = FALSE;
+			if(guest && session->stack->contact_header != NULL)
+				add_contact_header = TRUE;
 			/* Send the INVITE */
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
 				SIPTAG_CALL_ID_STR(callid),
+				TAG_IF(add_contact_header, SIPTAG_CONTACT_STR(session->stack->contact_header)),
 				SOATAG_USER_SDP_STR(sdp),
 				NUTAG_PROXY(session->helper && session->master ?
 					session->master->account.outbound_proxy : session->account.outbound_proxy),
@@ -5300,6 +5325,19 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 	/* Responses */
 		case nua_r_get_params:
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			const tagi_t* from = NULL;
+			if((status != 200) || ((from = tl_find(tags, siptag_from_str)) == NULL)) {
+				JANUS_LOG(LOG_WARN, "Unable to find 'siptag_from_str' among all the tags\n");
+				break;
+			}
+			const char *from_value = (const char *)from->t_value;
+			if(from_value == NULL || strlen(from_value) < 2) {
+				JANUS_LOG(LOG_WARN, "Invalid 'siptag_from_str' value '%s'\n", from_value);
+				break;
+			}
+			JANUS_LOG(LOG_VERB, "'siptag_from_str': %s\n", from_value);
+			g_free(ssip->contact_header);
+			ssip->contact_header = g_strdup(from_value);
 			break;
 		case nua_r_set_params:
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
@@ -6823,6 +6861,8 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				SIPTAG_SUPPORTED(NULL),
 				NTATAG_CANCEL_2543(session->account.rfc2543_cancel),
 				TAG_NULL());
+	if(query_contact_header)
+		nua_get_params(session->stack->s_nua, SIPTAG_FROM_STR(""), TAG_END());
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */
 	janus_mutex_lock(&session->stack->smutex);
