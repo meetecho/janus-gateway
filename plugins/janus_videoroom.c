@@ -356,13 +356,15 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
- * To get a list of the available rooms (excluded those configured or
- * created as private rooms) you can make use of the \c list request,
- * which has to be formatted as follows:
+ * To get a list of the available rooms you can make use of the \c list request.
+ *
+ * \c admin_key is optional. If included and correct, rooms configured/created
+ * as private will be included in the list as well.
  *
 \verbatim
 {
-	"request" : "list"
+	"request" : "list",
+	"admin_key" : "..." // optional
 }
 \endverbatim
  *
