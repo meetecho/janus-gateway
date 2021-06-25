@@ -735,6 +735,9 @@ void janus_ice_set_static_event_loops(int loops, gboolean allow_api);
 /*! \brief Method to return the number of static event loops, if enabled
  * @returns The number of static event loops, if configured, or 0 if the feature is disabled */
 int janus_ice_get_static_event_loops(void);
+/*! \brief Method to check whether loop indication via API is allowed
+ * @returns true if allowed, false otherwise */
+gboolean janus_ice_is_loop_indication_allowed(void);
 /*! \brief Method to stop all the static event loops, if enabled
  * @note This will wait for the related threads to exit, and so may delay the shutdown process */
 void janus_ice_stop_static_event_loops(void);

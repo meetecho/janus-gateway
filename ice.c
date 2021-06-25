@@ -182,6 +182,9 @@ static void *janus_ice_static_event_loop_thread(void *data) {
 int janus_ice_get_static_event_loops(void) {
 	return static_event_loops;
 }
+gboolean janus_ice_is_loop_indication_allowed(void) {
+	return allow_loop_indication;
+}
 void janus_ice_set_static_event_loops(int loops, gboolean allow_api) {
 	if(loops == 0)
 		return;
