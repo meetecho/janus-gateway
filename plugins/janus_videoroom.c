@@ -386,6 +386,8 @@ room-<unique room ID>: {
 			"record_dir" : "<if recording, the path where the .mjr files are being saved>",
 			"lock_record" : <true|false, whether the room recording state can only be changed providing the secret>,
 			"num_participants" : <count of the participants (publishers, active or not; not subscribers)>
+			"is_private" : <whether this room is 'private' (as in hidden) or not>
+			...
 		},
 		// Other rooms
 	]
@@ -3766,6 +3768,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				json_object_set_new(rl, "room", string_ids ? json_string(room->room_id_str) : json_integer(room->room_id));
 				json_object_set_new(rl, "description", json_string(room->room_name));
 				json_object_set_new(rl, "pin_required", room->room_pin ? json_true() : json_false());
+				json_object_set_new(rl, "is_private", room->is_private ? json_true() : json_false());
 				json_object_set_new(rl, "max_publishers", json_integer(room->max_publishers));
 				json_object_set_new(rl, "bitrate", json_integer(room->bitrate));
 				if(room->bitrate_cap)
