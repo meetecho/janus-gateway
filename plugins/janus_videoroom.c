@@ -3802,7 +3802,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				json_object_set_new(rl, "record", room->record ? json_true() : json_false());
 				json_object_set_new(rl, "rec_dir", json_string(room->rec_dir));
 				json_object_set_new(rl, "lock_record", room->lock_record ? json_true() : json_false());
-				/* TODO: Should we list participants as well? or should there be a separate API call on a specific room for this? */
 				json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
 				json_object_set_new(rl, "audiolevel_ext", room->audiolevel_ext ? json_true() : json_false());
 				json_object_set_new(rl, "audiolevel_event", room->audiolevel_event ? json_true() : json_false());
