@@ -4357,10 +4357,11 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			json_t *action = json_object_get(root, "action");
 			const char *action_text = json_string_value(action);
-			if(strcasecmp(action_text, "start") && strcasecmp(action_text, "stop")) {
-				JANUS_LOG(LOG_ERR, "Invalid action (should be start|stop)\n");
+			if(strcasecmp(action_text, "start") && strcasecmp(action_text, "stop") &&
+				strcasecmp(action_text, "pause") && strcasecmp(action_text, "resume")) {
+				JANUS_LOG(LOG_ERR, "Invalid action (should be start|stop|pause|resume)\n");
 				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid action (should be start|stop)");
+				g_snprintf(error_cause, 512, "Invalid action (should be start|stop|pause|resume)");
 				goto error;
 			}
 			gboolean record_audio = FALSE, record_video = FALSE,	/* No media is recorded by default */
@@ -4501,6 +4502,35 @@ static void *janus_sip_handler(void *data) {
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 						gateway->send_pli(session->handle);
 					}
+				}
+			} else if(!strcasecmp(action_text, "pause")) {
+				if(record_audio) {
+					janus_recorder_pause(&session->arc);
+				}
+				if(record_video) {
+					janus_recorder_pause(&session->vrc);
+				}
+				if(record_peer_audio) {
+					janus_recorder_pause(&session->arc_peer);
+				}
+				if(record_peer_video) {
+					janus_recorder_pause(&session->vrc_peer);
+				}
+			} else if(!strcasecmp(action_text, "resume")) {
+				if(record_audio) {
+					janus_recorder_resume(&session->arc);
+				}
+				if(record_video) {
+					janus_recorder_resume(&session->vrc);
+				}
+				if(record_peer_audio) {
+					janus_recorder_resume(&session->arc_peer);
+				}
+				if(record_peer_video) {
+					janus_recorder_resume(&session->vrc_peer);
+				}
+				if(record_video || record_peer_video) {
+					gateway->send_pli(&session->handle);
 				}
 			} else {
 				/* Stop recording something: notice that this never returns an error, even when we were not recording anything */

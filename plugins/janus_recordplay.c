@@ -1104,7 +1104,8 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		json_object_set_new(response, "settings", settings);
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "record") || !strcasecmp(request_text, "play")
-			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "stop")) {
+			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "stop")
+			|| !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "resume")) {
 		/* These messages are handled asynchronously */
 		janus_recordplay_message *msg = g_malloc(sizeof(janus_recordplay_message));
 		msg->handle = handle;
@@ -2007,6 +2008,32 @@ playdone:
 			}
 			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 			gateway->close_pc(session->handle);
+		} else if (!strcasecmp(request_text, "pause") || !strcasecmp(request_text, "resume")) {
+			JANUS_LOG(LOG_VERB, "Record&Play: Got pause/resume request\n");
+			int pause = !strcasecmp(request_text, "pause");
+			result = json_object();
+			json_object_set_new(result, "status", json_string(pause ? "paused" : "resumed"));
+			if(session->recording) {
+				json_object_set_new(result, "id", json_integer(session->recording->id));
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string(pause ? "paused" : "resumed"));
+					if(session->recording)
+						json_object_set_new(info, "id", json_integer(session->recording->id));
+					gateway->notify_event(&janus_recordplay_plugin, session->handle, info);
+				}
+				if(pause) {
+					janus_recorder_pause(session->arc);
+					janus_recorder_pause(session->vrc);
+					janus_recorder_pause(session->drc);
+				} else {
+					janus_recorder_resume(session->arc);
+					janus_recorder_resume(session->vrc);
+					janus_recorder_resume(session->drc);
+					gateway->send_pli(session->handle);
+				}
+			}
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
 			error_code = JANUS_RECORDPLAY_ERROR_INVALID_REQUEST;

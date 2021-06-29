@@ -255,6 +255,24 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 	return rc;
 }
 
+int janus_recorder_pause(janus_recorder *recorder) {
+	if(!recorder)
+		return -1;
+	janus_mutex_lock_nodebug(&recorder->mutex);
+	g_atomic_int_set(&recorder->paused, 1);
+	janus_mutex_unlock_nodebug(&recorder->mutex);
+	return 0;
+}
+
+int janus_recorder_resume(janus_recorder *recorder) {
+	if(!recorder)
+		return -1;
+	janus_mutex_lock_nodebug(&recorder->mutex);
+	g_atomic_int_set(&recorder->paused, 0);
+	janus_mutex_unlock_nodebug(&recorder->mutex);
+	return 0;
+}
+
 int janus_recorder_add_extmap(janus_recorder *recorder, int id, const char *extmap) {
 	if(!recorder || g_atomic_int_get(&recorder->header) || id < 1 || id > 15 || extmap == NULL)
 		return -1;
@@ -291,6 +309,10 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 	if(!g_atomic_int_get(&recorder->writable)) {
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -4;
+	}
+	if(g_atomic_int_get(&recorder->paused)) {
+		janus_mutex_unlock_nodebug(&recorder->mutex);
+		return -5;
 	}
 	gint64 now = janus_get_monotonic_time();
 	if(!g_atomic_int_get(&recorder->header)) {
