@@ -1771,8 +1771,8 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	int sofia_major = 0, sofia_minor = 0, sofia_patch = 0;
 	if(sscanf(SOFIA_SIP_VERSION, "%d.%d.%d", &sofia_major, &sofia_minor, &sofia_patch) == 3) {
 		if(sofia_major > 2 || (sofia_major >= 1 && sofia_minor >= 13)) {
-			/* Versions of Sofia SIP >= 1.13 apparently don't add a Contact header for,
-			 * guests, so we'll query it ourselves using nua_get_params (see #2597) */
+			/* Versions of Sofia SIP >= 1.13 apparently don't add a Contact header in
+			 * dialogs, so we'll query it ourselves using nua_get_params (see #2597) */
 			query_contact_header = TRUE;
 		}
 	}
@@ -3471,7 +3471,6 @@ static void *janus_sip_handler(void *data) {
 			/* Prepare the From header */
 			char from_hdr[1024];
 			/* Prepare the stack */
-			gboolean guest = FALSE;
 			if(session->stack->s_nh_i != NULL)
 				nua_handle_destroy(session->stack->s_nh_i);
 			if(!session->helper) {
@@ -3484,7 +3483,6 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 				session->stack->s_nh_i = nua_handle(session->stack->s_nua, session, TAG_END());
-				guest = (session->stack->s_nh_r == NULL);
 				janus_mutex_unlock(&session->stack->smutex);
 				if(session->account.display_name) {
 					g_snprintf(from_hdr, sizeof(from_hdr), "\"%s\" <%s>", session->account.display_name, session->account.identity);
@@ -3512,7 +3510,6 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 				session->stack->s_nh_i = nua_handle(session->master->stack->s_nua, session, TAG_END());
-				guest = (session->master->stack->s_nh_r == NULL);
 				janus_mutex_unlock(&session->master->stack->smutex);
 				if(session->master->account.display_name) {
 					g_snprintf(from_hdr, sizeof(from_hdr), "\"%s\" <%s>", session->master->account.display_name, session->master->account.identity);
@@ -3626,9 +3623,7 @@ static void *janus_sip_handler(void *data) {
 			/* Add a reference for this call */
 			janus_sip_ref_active_call(session);
 			/* Check if we need to manually add the Contact header */
-			gboolean add_contact_header = FALSE;
-			if(guest && session->stack->contact_header != NULL)
-				add_contact_header = TRUE;
+			gboolean add_contact_header = (session->stack->contact_header != NULL);
 			/* Send the INVITE */
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
