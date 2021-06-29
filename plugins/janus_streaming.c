@@ -375,9 +375,16 @@ multistream-test: {
 	"secret" : "<secret to query/edit the mountpoint later; optional>",
 	"pin" : "<PIN required for viewers to access mountpoint; optional>",
 	"is_private" : <true|false, whether the mountpoint should be listable; true by default>,
-	"audio" : <true|false, whether the mountpoint will have audio; false by default>,
-	"video" : <true|false, whether the mountpoint will have video; false by default>,
-	"data" : <true|false, whether the mountpoint will have datachannels; false by default>,
+	"media" : [
+		{
+			"type" : "<audio|video|data>",
+			"mid" : "<unique mid to assign to this stream in negotiated PeerConnections>",
+			"port" : <port to bind to, to receive media to relay>",
+			...
+		}.
+		... other streams, if any ...
+	],
+	...
 	"permanent" : <true|false, whether the mountpoint should be saved to configuration file or not; false by default>,
 	...
 }
