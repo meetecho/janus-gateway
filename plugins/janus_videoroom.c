@@ -362,8 +362,7 @@ room-<unique room ID>: {
  *
 \verbatim
 {
-	"request" : "list",
-	"admin_key" : "..."
+	"request" : "list"
 }
 \endverbatim
  *
