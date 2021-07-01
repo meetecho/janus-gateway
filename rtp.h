@@ -195,6 +195,22 @@ int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
 int janus_rtp_header_extension_parse_rid(char *buf, int len, int id,
 	char *sdes_item, int sdes_len);
 
+/*! \brief Helper to parse an abs-send-time RTP extension (http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] abs_ts Variable where the parsed abs-send-time value will be stored
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_abs_sent_time(char *buf, int len, int id, uint32_t *abs_ts);
+
+/*! \brief Helper to set an abs-send-time RTP extension (http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] abs_ts Absolute Send Time value to set
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_set_abs_send_time(char *buf, int len, int id, uint32_t abs_ts);
+
 /*! \brief Helper to parse a transport wide sequence number (https://tools.ietf.org/html/draft-holmer-rmcat-transport-wide-cc-extensions-01)
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
