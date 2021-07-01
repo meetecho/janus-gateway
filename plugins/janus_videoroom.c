@@ -7695,15 +7695,6 @@ static void *janus_videoroom_handler(void *data) {
 						break;
 					mid_ext_id++;
 				}
-				int twcc_ext_id = 1;
-				while(twcc_ext_id < 15) {
-					if(twcc_ext_id != mid_ext_id &&
-							twcc_ext_id != participant->audio_level_extmap_id &&
-							twcc_ext_id != participant->video_orient_extmap_id &&
-							twcc_ext_id != participant->playout_delay_extmap_id)
-						break;
-					twcc_ext_id++;
-				}
 				offer = janus_sdp_generate_offer(s_name, answer->c_addr,
 					JANUS_SDP_OA_AUDIO, participant->audio,
 					JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(participant->acodec),
@@ -7723,8 +7714,6 @@ static void *janus_videoroom_handler(void *data) {
 						participant->video_orient_extmap_id > 0 ? participant->video_orient_extmap_id : 0,
 					JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
 						participant->playout_delay_extmap_id > 0 ? participant->playout_delay_extmap_id : 0,
-					JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
-						videoroom->transport_wide_cc_ext ? twcc_ext_id : 0,
 					JANUS_SDP_OA_DATA, participant->data,
 					JANUS_SDP_OA_DONE);
 				/* Is this room recorded, or are we recording this publisher already? */
