@@ -4486,7 +4486,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				}
 				/* Set the abs-send-time value, if needed */
 				if(video && stream->abs_send_time_ext_id > 0) {
-					int64_t ntp_ts = janus_get_monotonic_time();
+					int64_t ntp_ts = janus_get_real_time();
 					int64_t abs24 = (ntp_ts >> 14) & 0x00ffffff;
 					uint32_t abs_ts = abs24;
 					if(janus_rtp_header_extension_set_abs_send_time(pkt->data, pkt->length,
