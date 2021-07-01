@@ -4486,14 +4486,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				}
 				/* Set the abs-send-time value, if needed */
 				if(video && stream->abs_send_time_ext_id > 0) {
-					struct timeval tv;
-					gettimeofday(&tv, NULL);
-					uint64_t s = tv.tv_sec + 2208988800u;
-					uint32_t u = tv.tv_usec;
-					uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
-					uint64_t ntp_ts = (s << 32) + f;
-					uint64_t abs24 = (ntp_ts >> 14) & 0x00ffffff;
-					uint32_t abs_ts = abs24;
+					int64_t now = (((janus_get_monotonic_time()/1000) << 18) + 500) / 1000;
+					uint32_t abs_ts = (uint32_t)now & 0x00FFFFFF;
 					if(janus_rtp_header_extension_set_abs_send_time(pkt->data, pkt->length,
 							stream->abs_send_time_ext_id, abs_ts) < 0) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting abs-send-time value...\n", handle->handle_id);
