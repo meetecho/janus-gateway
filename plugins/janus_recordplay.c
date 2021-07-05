@@ -1594,6 +1594,7 @@ static void *janus_recordplay_handler(void *data) {
 				/* Renegotiation: make sure the user provided an offer, and send answer */
 				JANUS_LOG(LOG_VERB, "Request to update existing recorder\n");
 				if(!session->recorder || !session->recording) {
+					janus_sdp_destroy(offer);
 					JANUS_LOG(LOG_ERR, "Not a recording session, can't update\n");
 					error_code = JANUS_RECORDPLAY_ERROR_INVALID_STATE;
 					g_snprintf(error_cause, 512, "Not a recording session, can't update");

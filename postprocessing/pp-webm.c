@@ -38,7 +38,16 @@ static AVFormatContext *fctx;
 static AVStream *vStream;
 static int max_width = 0, max_height = 0, fps = 0;
 
-int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
+/* Supported target formats */
+static const char *janus_pp_webm_formats[] = {
+	"webm", "mkv", NULL
+};
+const char **janus_pp_webm_get_extensions(void) {
+	return janus_pp_webm_formats;
+}
+
+/* Processing methods */
+int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8, const char *extension) {
 	if(destination == NULL)
 		return -1;
 #if LIBAVCODEC_VERSION_MAJOR < 55
@@ -47,8 +56,12 @@ int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 		return -1;
 	}
 #endif
-	/* WebM output */
-	fctx = janus_pp_create_avformatcontext("webm", metadata, destination);
+	/* .mkv is Matroska video */
+	if(!strcasecmp(extension, "mkv"))
+		extension = "matroska";
+
+	/* Video output */
+	fctx = janus_pp_create_avformatcontext(extension, metadata, destination);
 	if(fctx == NULL) {
 		JANUS_LOG(LOG_ERR, "Error allocating context\n");
 		return -1;
@@ -285,6 +298,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
 	AVPacket *packet = av_packet_alloc();
+	AVRational timebase = {1, 90000};
 
 	while(*working && tmp != NULL) {
 		keyFrame = 0;
@@ -529,10 +543,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 				packet->flags |= AV_PKT_FLAG_KEY;
 
 			/* First we save to the file... */
-			//~ packet.dts = AV_NOPTS_VALUE;
-			//~ packet.pts = AV_NOPTS_VALUE;
-			packet->dts = (tmp->ts-list->ts)/90;
-			packet->pts = (tmp->ts-list->ts)/90;
+			packet->pts = packet->dts = av_rescale_q(tmp->ts-list->ts, timebase, fctx->streams[0]->time_base);
 			if(fctx) {
 				if(av_write_frame(fctx, packet) < 0) {
 					JANUS_LOG(LOG_ERR, "Error writing video frame to file...\n");

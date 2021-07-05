@@ -462,6 +462,7 @@ static duk_ret_t janus_duktape_method_readfile(duk_context *ctx) {
 	int len = (int)ftell(f);
 	if(len < 0) {
 		duk_push_error_object(ctx, DUK_ERR_ERROR, "Error opening file: %s\n", g_strerror(errno));
+		fclose(f);
 		return duk_throw(ctx);
 	}
 	fseek(f, 0, SEEK_SET);

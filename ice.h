@@ -37,10 +37,11 @@
  * @param[in] full_trickle Whether full-trickle must be used (instead of half-trickle)
  * @param[in] ignore_mdns Whether mDNS candidates should be ignored, instead of resolved
  * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not
+ * @param[in] ipv6_linklocal Whether IPv6 link-local candidates should be gathered
  * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
  * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used */
 void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ignore_mdns,
-	gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
+	gboolean ipv6, gboolean ipv6_linklocal, uint16_t rtp_min_port, uint16_t rtp_max_port);
 /*! \brief ICE stuff de-initialization */
 void janus_ice_deinit(void);
 /*! \brief Method to check whether a STUN server is reachable
@@ -129,6 +130,10 @@ gboolean janus_ice_is_mdns_enabled(void);
 /*! \brief Method to check whether IPv6 candidates are enabled/supported or not
  * @returns true if IPv6 candidates are enabled/supported, false otherwise */
 gboolean janus_ice_is_ipv6_enabled(void);
+/*! \brief Method to check whether IPv6 link-local candidates will be gathered or not
+ * \note This obviously only makes sense if IPv6 support is enabled in general
+ * @returns true if IPv6 link-local candidates will be gathered, false otherwise */
+gboolean janus_ice_is_ipv6_linklocal_enabled(void);
 #ifdef HAVE_ICE_NOMINATION
 /*! \brief Method to configure the ICE nomination mode (regular or aggressive)
  * @param[in] nomination The ICE nomination mode (regular or aggressive) */

@@ -72,7 +72,10 @@ Comma-separated list of the only interfaces to use for ICE gathering; partial st
 Comma-separated list of interfaces or IP addresses to ignore for ICE gathering; partial strings are supported (e.g., vmnet8,192.168.0.1,10.0.0.1 or vmnet,192.168., default=vmnet)
 .TP
 .BR \-6 ", " \-\-ipv6-candidates
-Whether to enable IPv6 candidates or not (experimental) (default=off)
+Whether to enable IPv6 candidates or not (default=off)
+.TP
+.BR \-O ", " \-\-ipv6-link-local
+Whether IPv6 link-local candidates should be gathered as well (default=off)
 .TP
 .BR \-l ", " \-\-libnice-debug
 Whether to enable libnice debugging or not (default=off)
