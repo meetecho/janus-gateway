@@ -1165,6 +1165,11 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
+ * Notice that if your \c subscribe request didn't change anything as far
+ * as the SDP negotiation is concerned (e.g., subscribing to new data streams
+ * where a datachannel existed already), you'll simply get an \c updated
+ * event back with no \c streams object.
+ *
  * As explained before, in case the message contains a JSEP offer (which may
  * not be the case if no change occurred), then clients will need to send
  * a new JSEP answer with a \c start request to close this renegotiation.
@@ -1205,7 +1210,9 @@ room-<unique room ID>: {
  * A successful \c unsubscribe will result in exactly the same \c updated
  * event \c subscribe triggers, so the same considerations apply with
  * respect to the potential need of a renegotiation and how to complete
- * it with a \c start along a JSEP answer.
+ * it with a \c start along a JSEP answer. Again, if \c unsubscribe didn't
+ * result in SDP changes (e.g., unsubscribing from a data channel stream),
+ * you'll simply get an \c updated event back with no \c streams object.
  *
  * Notice that, in case you want to trigger an ICE restart rather than
  * updating a subscription, you'll have to use a different request, named
@@ -8580,8 +8587,18 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				if(changes == 0) {
 					janus_mutex_unlock(&subscriber->streams_mutex);
-					/* Nothing changes, don't do anything */
-					JANUS_LOG(LOG_WARN, "No subscription done, skipping renegotiation\n");
+					/* Nothing changes, just ack and don't do anything else */
+					JANUS_LOG(LOG_VERB, "No subscription done, skipping renegotiation\n");
+					event = json_object();
+					json_object_set_new(event, "videoroom", json_string("updated"));
+					json_object_set_new(event, "room", string_ids ?
+						json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
+					/* How long will the Janus core take to push the event? */
+					gint64 start = janus_get_monotonic_time();
+					int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, NULL);
+					JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
+					json_decref(event);
+					/* Done */
 					janus_videoroom_message_free(msg);
 					/* Decrease the references we took before */
 					while(publishers) {
@@ -8756,8 +8773,18 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				if(changes == 0) {
 					janus_mutex_unlock(&subscriber->streams_mutex);
-					/* Nothing changes, don't do anything */
+					/* Nothing changes, just ack and don't do anything else */
 					JANUS_LOG(LOG_VERB, "No unsubscription done, skipping renegotiation\n");
+					event = json_object();
+					json_object_set_new(event, "videoroom", json_string("updated"));
+					json_object_set_new(event, "room", string_ids ?
+						json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
+					/* How long will the Janus core take to push the event? */
+					gint64 start = janus_get_monotonic_time();
+					int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, NULL);
+					JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
+					json_decref(event);
+					/* Done */
 					janus_refcount_decrease(&subscriber->ref);
 					janus_videoroom_message_free(msg);
 					continue;
