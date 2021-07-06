@@ -3756,7 +3756,6 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 					temp = temp->next;
 				}
 				json_object_set_new(info, "streams", media);
-				janus_refcount_decrease(&participant->ref);
 			}
 			if(participant != NULL)
 				janus_refcount_decrease(&participant->ref);
