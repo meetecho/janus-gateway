@@ -16,6 +16,8 @@
 
 #include "pp-rtp.h"
 
+/* G.711 stuff */
+const char **janus_pp_g711_get_extensions(void);
 int janus_pp_g711_create(char *destination, char *metadata);
 int janus_pp_g711_process(FILE *file, janus_pp_frame_packet *list, int *working);
 void janus_pp_g711_close(void);

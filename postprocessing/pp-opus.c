@@ -34,12 +34,28 @@ static const uint8_t opus_extradata[19] = {
 	0, 0, 0, 0, 0,
 };
 
-int janus_pp_opus_create(char *destination, char *metadata) {
+/* Supported target formats */
+static const char *janus_pp_opus_formats[] = {
+	"opus", "ogg", "mka", NULL
+};
+const char **janus_pp_opus_get_extensions(void) {
+	return janus_pp_opus_formats;
+}
+
+/* Processing methods */
+int janus_pp_opus_create(char *destination, char *metadata, const char *extension) {
 	if(destination == NULL)
 		return -1;
 
-	/* WebM output */
-	fctx = janus_pp_create_avformatcontext("ogg", metadata, destination);
+	/* .opus and .ogg are the same thing */
+	if(!strcasecmp(extension, "opus"))
+		extension = "ogg";
+	/* .mka is Matroska audio */
+	if(!strcasecmp(extension, "mka"))
+		extension = "matroska";
+
+	/* Audio output */
+	fctx = janus_pp_create_avformatcontext(extension, metadata, destination);
 	if(fctx == NULL) {
 		JANUS_LOG(LOG_ERR, "Error allocating context\n");
 		return -1;

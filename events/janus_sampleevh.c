@@ -741,6 +741,8 @@ static void *janus_sampleevh_handler(void *data) {
 			if(compressed_len == 0) {
 				JANUS_LOG(LOG_ERR, "Failed to compress event (%zu bytes)...\n", strlen(event_text));
 				/* Nothing we can do... get rid of the event */
+				if(curl)
+					curl_easy_cleanup(curl);
 				free(event_text);
 				json_decref(output);
 				output = NULL;

@@ -347,6 +347,8 @@ static json_t *janus_info(const char *transaction) {
 		json_object_set_new(info, "public-ips", ips);
 	}
 	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
+	if(janus_ice_is_ipv6_enabled())
+		json_object_set_new(info, "ipv6-link-local", janus_ice_is_ipv6_linklocal_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
 #ifdef HAVE_ICE_NOMINATION
@@ -3769,6 +3771,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	janus_ice_stream *stream = ice_handle->stream;
 	if (stream == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error stream not found\n", ice_handle->handle_id);
+		janus_sdp_destroy(parsed_sdp);
 		janus_mutex_unlock(&ice_handle->mutex);
 		return NULL;
 	}
@@ -4481,6 +4484,9 @@ gint main(int argc, char *argv[])
 	if(args_info.ipv6_candidates_given) {
 		janus_config_add(config, config_media, janus_config_item_create("ipv6", "true"));
 	}
+	if(args_info.ipv6_link_local_given) {
+		janus_config_add(config, config_media, janus_config_item_create("ipv6_linklocal", "true"));
+	}
 	if(args_info.min_nack_queue_given) {
 		char mnq[20];
 		g_snprintf(mnq, 20, "%d", args_info.min_nack_queue_arg);
@@ -4691,9 +4697,13 @@ gint main(int argc, char *argv[])
 #endif
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
 	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE,
-		ignore_mdns = FALSE, ignore_unreachable_ice_server = FALSE;
+		ipv6_linklocal = FALSE, ignore_mdns = FALSE, ignore_unreachable_ice_server = FALSE;
 	item = janus_config_get(config, config_media, janus_config_type_item, "ipv6");
 	ipv6 = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	if(ipv6) {
+		item = janus_config_get(config, config_media, janus_config_type_item, "ipv6_linklocal");
+		ipv6_linklocal = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	}
 	item = janus_config_get(config, config_media, janus_config_type_item, "rtp_port_range");
 	if(item && item->value) {
 		/* Split in min and max port */
@@ -4817,7 +4827,7 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		janus_ice_set_static_event_loops(atoi(item->value));
 	/* Initialize the ICE stack now */
-	janus_ice_init(ice_lite, ice_tcp, full_trickle, ignore_mdns, ipv6, rtp_min_port, rtp_max_port);
+	janus_ice_init(ice_lite, ice_tcp, full_trickle, ignore_mdns, ipv6, ipv6_linklocal, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
 		if(!ignore_unreachable_ice_server) {
 			JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);

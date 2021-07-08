@@ -13,6 +13,7 @@
 # default_prebuffering = number of packets to buffer before decoding each particiant (default=6)
 # record = true|false (whether this room should be recorded, default=false)
 # record_file = "/path/to/recording.wav" (where to save the recording)
+# record_dir = "/path/to/" (path to save the recording to, makes record_file a relative path if provided)
 # allow_rtp_participants = true|false (whether participants should be allowed to join
 #		via plain RTP as well, rather than just WebRTC, default=false)
 # groups = optional, non-hierarchical, array of groups to tag participants, for external forwarding purposes only
@@ -73,5 +74,6 @@ room-1234: {
 	secret = "adminpwd"
 	sampling_rate = 16000
 	record = false
-	#record_file = "/path/to/recording.wav"
+	#record_dir = "/path/to/"
+	#record_file = "recording.wav"
 }

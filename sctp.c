@@ -425,7 +425,7 @@ static int janus_sctp_incoming_data(struct socket *sock, union sctp_sockstore ad
 void janus_sctp_send_data(janus_sctp_association *sctp, char *label, char *protocol, gboolean textdata, char *buf, int len) {
 	if(sctp == NULL)
 		return;
-	
+
 	if(buf == NULL || len <= 0)
 		return;
 	if(label == NULL)
@@ -603,6 +603,7 @@ int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, c
 			req->channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT;
 			break;
 		default:
+			g_free(req);
 			return 0;
 	}
 	req->priority = htons(0); /* XXX: add support */
@@ -879,7 +880,7 @@ int janus_sctp_close_channel(janus_sctp_association *sctp, uint16_t id) {
 void janus_sctp_data_ready(janus_sctp_association *sctp) {
 	if(sctp == NULL || g_atomic_int_get(&sctp->destroyed))
 		return;
-		
+
 	if(sctp->pending_messages != NULL && !g_queue_is_empty(sctp->pending_messages)) {
 		/* Messages waiting in the queue, send those first */
 		janus_sctp_pending_message *m = g_queue_peek_head(sctp->pending_messages);
@@ -894,8 +895,8 @@ void janus_sctp_data_ready(janus_sctp_association *sctp) {
 			janus_sctp_pending_message_free(m);
 			m = g_queue_peek_head(sctp->pending_messages);
 		}
-	}	
-		
+	}
+
 	janus_dtls_sctp_data_ready(sctp->dtls);
 }
 
