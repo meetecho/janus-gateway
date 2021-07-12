@@ -626,7 +626,7 @@
  * decides to follow up on the transfer request, and they're already in
  * a call (e.g., with the transferor), then they must use a different
  * handle for the purpose, e.g., via a helper as described in the
- * \c sipmc section.
+ * \ref sipmc section.
  *
  * The transfer target will receive the call exactly as previously discussed,
  * with the difference that it may or may not include a \c referred_by
