@@ -1502,7 +1502,7 @@ static GHashTable *rooms;
 static janus_mutex rooms_mutex = JANUS_MUTEX_INITIALIZER;
 static char *admin_key = NULL;
 static gboolean lock_rtpfwd = FALSE;
-static int simulcast_min_bitrate = 64000;
+static int simulcast_min_bitrate = 256000;
 
 typedef struct janus_videoroom_session {
 	janus_plugin_session *handle;
