@@ -110,6 +110,7 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 	/* Create the recorder */
 	janus_recorder *rc = g_malloc0(sizeof(janus_recorder));
 	janus_refcount_init(&rc->ref, janus_recorder_free);
+	janus_rtp_switching_context_reset(&rc->context);
 	rc->dir = NULL;
 	rc->filename = NULL;
 	rc->file = NULL;
@@ -259,7 +260,7 @@ int janus_recorder_pause(janus_recorder *recorder) {
 	if(!recorder)
 		return -1;
 	janus_mutex_lock_nodebug(&recorder->mutex);
-	g_atomic_int_set(&recorder->paused, 1);
+	recorder->paused = janus_get_monotonic_time();
 	janus_mutex_unlock_nodebug(&recorder->mutex);
 	return 0;
 }
@@ -268,7 +269,14 @@ int janus_recorder_resume(janus_recorder *recorder) {
 	if(!recorder)
 		return -1;
 	janus_mutex_lock_nodebug(&recorder->mutex);
-	g_atomic_int_set(&recorder->paused, 0);
+	if(recorder->type == JANUS_RECORDER_AUDIO) {
+		recorder->context.a_seq_reset = TRUE;
+		recorder->context.a_time_offset -= janus_get_monotonic_time() - recorder->paused;
+	} else if(recorder->type == JANUS_RECORDER_VIDEO) {
+		recorder->context.v_seq_reset = TRUE;
+		recorder->context.v_time_offset -= janus_get_monotonic_time() - recorder->paused;
+	}
+	recorder->paused = 0;
 	janus_mutex_unlock_nodebug(&recorder->mutex);
 	return 0;
 }
@@ -310,7 +318,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -4;
 	}
-	if(g_atomic_int_get(&recorder->paused)) {
+	if(recorder->paused > 0) {
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -5;
 	}
@@ -406,17 +414,33 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 				res, sizeof(gint64), g_strerror(errno));
 		}
 	}
+	/* Edit packet header if needed */
+	rtp_header *header = (rtp_header *)buffer;
+	uint32_t ssrc = ntohl(header->ssrc);
+	uint16_t seq = ntohs(header->seq_number);
+	timestamp = ntohl(header->timestamp);
+	if(recorder->type != JANUS_RECORDER_DATA) {
+		janus_rtp_header_update(header, &recorder->context, recorder->type == JANUS_RECORDER_VIDEO, 0);
+	}
 	/* Save packet on file */
 	int temp = 0, tot = length;
 	while(tot > 0) {
 		temp = fwrite(buffer+length-tot, sizeof(char), tot, recorder->file);
 		if(temp <= 0) {
 			JANUS_LOG(LOG_ERR, "Error saving frame...\n");
+			/* Restore packet header data */
+			header->ssrc = htonl(ssrc);
+			header->seq_number = htons(seq);
+			header->timestamp = htonl(timestamp);
 			janus_mutex_unlock_nodebug(&recorder->mutex);
 			return -6;
 		}
 		tot -= temp;
 	}
+	/* Restore packet header data */
+	header->ssrc = htonl(ssrc);
+	header->seq_number = htons(seq);
+	header->timestamp = htonl(timestamp);
 	/* Done */
 	janus_mutex_unlock_nodebug(&recorder->mutex);
 	return 0;

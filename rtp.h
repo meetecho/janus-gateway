@@ -226,14 +226,14 @@ typedef struct janus_rtp_switching_context {
 			v_last_ssrc, v_last_ts, v_base_ts, v_base_ts_prev, v_prev_ts, v_target_ts, v_start_ts;
 	uint16_t a_last_seq, a_prev_seq, a_base_seq, a_base_seq_prev,
 			v_last_seq, v_prev_seq, v_base_seq, v_base_seq_prev;
-	gboolean a_seq_reset, a_new_ssrc,
-			v_seq_reset, v_new_ssrc;
+	gboolean a_ts_reset, a_seq_reset, a_new_ssrc,
+			v_ts_reset, v_seq_reset, v_new_ssrc;
 	gint16 a_seq_offset,
 			v_seq_offset;
 	gint32 a_prev_delay, a_active_delay, a_ts_offset,
 			v_prev_delay, v_active_delay, v_ts_offset;
-	gint64 a_last_time, a_reference_time, a_start_time, a_evaluating_start_time,
-			v_last_time, v_reference_time, v_start_time, v_evaluating_start_time;
+	gint64 a_last_time, a_reference_time, a_start_time, a_evaluating_start_time, a_time_offset,
+			v_last_time, v_reference_time, v_start_time, v_evaluating_start_time, v_time_offset;
 } janus_rtp_switching_context;
 
 /*! \brief Set (or reset) the context fields to their default values

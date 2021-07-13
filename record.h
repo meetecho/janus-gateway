@@ -27,6 +27,7 @@
 
 #include "mutex.h"
 #include "refcount.h"
+#include "rtp.h"
 
 
 /*! \brief Media types we can record */
@@ -60,8 +61,10 @@ typedef struct janus_recorder {
 	volatile int header;
 	/*! \brief Whether this recorder instance can be used for writing or not */
 	volatile int writable;
-	/*! \brief Whether recorder instance is paused or not */
-	volatile int paused;
+	/*! \brief Pause start timestamp */
+	gint64 paused;
+	/*! \brief RTP switching context for rewriting RTP headers */
+	janus_rtp_switching_context context;
 	/*! \brief Mutex to lock/unlock this recorder instance */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
