@@ -5515,6 +5515,42 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 		uint32_t bitrate = janus_rtcp_get_remb(buf, len);
 		if(bitrate > 0) {
 			/* FIXME We got a REMB from this subscriber, should we do something about it? */
+			JANUS_LOG(LOG_INFO, "Received REMB: %d\n", bitrate);
+
+			const target_layer = 0;
+
+			janus_mutex_lock(&session->mutex);
+			janus_videoroom_publisher *publisher = s->feed;
+			/* It is safe to use feed as the only other place sets feed to NULL
+			   is in this function and accessing to this function is synchronized
+			   by sessions_mutex */
+
+			if((publisher->ssrc[0] != 0 || publisher->rid[0] != NULL)) {
+				s->sim_context.substream_target = target_layer; //json_integer_value(sc_substream);
+				if(s->sim_context.substream_target >= 0 && s->sim_context.substream_target <= 2) {
+					JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
+						publisher->ssrc[s->sim_context.substream_target],
+						s->sim_context.substream_target,
+						s->sim_context.substream);
+				}
+				if(s->sim_context.substream_target == s->sim_context.substream) {
+					/* No need to do anything, we're already getting the right substream, so notify the user */
+					/*
+					json_t *event = json_object();
+					json_object_set_new(event, "videoroom", json_string("event"));
+					json_object_set_new(event, "room", string_ids ? json_string(s->room_id_str) : json_integer(s->room_id));
+					json_object_set_new(event, "substream", json_integer(s->sim_context.substream));
+					gateway->push_event(handle, &janus_videoroom_plugin, NULL, event, NULL);
+					json_decref(event);
+					*/
+				} else {
+					/* Send a FIR */
+					janus_videoroom_reqpli(publisher, "Simulcasting substream change");
+				}
+			}
+
+			janus_mutex_unlock(&session->mutex);
+
 		}
 		janus_refcount_decrease_nodebug(&s->ref);
 	}
