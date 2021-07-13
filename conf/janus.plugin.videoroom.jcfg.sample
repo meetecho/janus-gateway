@@ -55,9 +55,9 @@ general: {
 	# In case you want to use strings instead (e.g., a UUID), set string_ids to true.
 	#string_ids = true
 
-	#min_rec_bitrate_simulcast=0	# The minimum bitrate required to subscribe 
-									# higher simulcast layers. If REMB is lower than
-									# this, the subscriber will automatically switched
+	#min_rec_bitrate_simulcast=0	# The minimum bitrate required to subscribe higher
+									# simulcast layers. If REMB is lower than that, 
+									# the subscriber will automatically be switched
 									# to the lowest simulcast layer (default=64000).
 									# This can avoid creating congestion for simulcast
 									# subscribers.
