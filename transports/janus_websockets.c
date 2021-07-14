@@ -1013,6 +1013,9 @@ void janus_websockets_destroy(void) {
 	if(!g_atomic_int_get(&initialized))
 		return;
 	g_atomic_int_set(&stopping, 1);
+#if ((LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || LWS_LIBRARY_VERSION_MAJOR >= 4)
+	lws_cancel_service(wsc);
+#endif
 
 	/* Stop the service thread */
 	if(ws_thread != NULL) {
