@@ -1008,7 +1008,7 @@ typedef struct janus_sip_media {
 	char *video_srtp_local_profile, *video_srtp_local_crypto;
 	gboolean video_send;
 	janus_sdp_mdirection pre_hold_video_dir;
-	janus_rtp_switching_context context;
+	janus_rtp_switching_context acontext, vcontext;
 	int pipefd[2];
 	gboolean updated;
 	int video_orientation_extension_id;
@@ -1442,7 +1442,8 @@ static void janus_sip_media_reset(janus_sip_session *session) {
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	session->media.video_orientation_extension_id = -1;
 	session->media.audio_level_extension_id = -1;
-	janus_rtp_switching_context_reset(&session->media.context);
+	janus_rtp_switching_context_reset(&session->media.acontext);
+	janus_rtp_switching_context_reset(&session->media.vcontext);
 }
 
 
@@ -2114,7 +2115,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_orientation_extension_id = -1;
 	session->media.audio_level_extension_id = -1;
 	/* Initialize the RTP context */
-	janus_rtp_switching_context_reset(&session->media.context);
+	janus_rtp_switching_context_reset(&session->media.acontext);
+	janus_rtp_switching_context_reset(&session->media.vcontext);
 	session->media.pipefd[0] = -1;
 	session->media.pipefd[1] = -1;
 	session->media.updated = FALSE;
@@ -3573,11 +3575,18 @@ static void *janus_sip_handler(void *data) {
 			}
 			/* If the user negotiated simulcasting, just stick with the base substream */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
-			if(msg_simulcast) {
+			if(msg_simulcast && json_array_size(msg_simulcast) > 0) {
 				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
-				json_t *s = json_object_get(msg_simulcast, "ssrcs");
-				if(s && json_array_size(s) > 0)
-					session->media.simulcast_ssrc = json_integer_value(json_array_get(s, 0));
+				size_t i = 0;
+				for(i=0; i<json_array_size(msg_simulcast); i++) {
+					json_t *sobj = json_array_get(msg_simulcast, i);
+					json_t *s = json_object_get(sobj, "ssrcs");
+					if(s && json_array_size(s) > 0)
+						session->media.simulcast_ssrc = json_integer_value(json_array_get(s, 0));
+					session->media.simulcast_ssrc = json_integer_value(json_object_get(s, "ssrc-0"));
+					/* FIXME We're stopping at the first item, there may be more */
+					break;
+				}
 			}
 			/* Check if there are new credentials to authenticate the INVITE */
 			if(authuser) {
@@ -6183,18 +6192,19 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 				}
 				ma = ma->next;
 			}
+			/* If we need to remove some payload types from this m-line, do it now */
+			if(pts_to_remove != NULL) {
+				GList *temp = pts_to_remove;
+				while(temp) {
+					int pt = GPOINTER_TO_INT(temp->data);
+					janus_sdp_remove_payload_type(sdp, m->index, pt);
+					temp = temp->next;
+				}
+				g_list_free(pts_to_remove);
+				pts_to_remove = NULL;
+			}
 		}
 		temp = temp->next;
-	}
-	/* If we need to remove some payload types from the SDP, do it now */
-	if(pts_to_remove != NULL) {
-		GList *temp = pts_to_remove;
-		while(temp) {
-			int pt = GPOINTER_TO_INT(temp->data);
-			janus_sdp_remove_payload_type(sdp, pt);
-			temp = temp->next;
-		}
-		g_list_free(pts_to_remove);
 	}
 	/* Generate a SDP string out of our changes */
 	return janus_sdp_write(sdp);
@@ -6685,12 +6695,12 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
-					janus_rtp_header_update(header, &session->media.context, FALSE, 0);
+					janus_rtp_header_update(header, &session->media.acontext, FALSE, 0);
 					/* Save the frame if we're recording */
 					header->ssrc = htonl(session->media.audio_ssrc_peer);
 					janus_recorder_save_frame(session->arc_peer, buffer, bytes);
 					/* Relay to application */
-					janus_plugin_rtp rtp = { .video = FALSE, .buffer = buffer, .length = bytes };
+					janus_plugin_rtp rtp = { .mindex = -1, .video = FALSE, .buffer = buffer, .length = bytes };
 					janus_plugin_rtp_extensions_reset(&rtp.extensions);
 					/* Add audio-level extension, if present */
 					if(session->media.audio_level_extension_id != -1) {
@@ -6725,7 +6735,7 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Relay to application */
-					janus_plugin_rtcp rtcp = { .video = FALSE, .buffer = buffer, bytes };
+					janus_plugin_rtcp rtcp = { .mindex = -1, .video = FALSE, .buffer = buffer, bytes };
 					gateway->relay_rtcp(session->handle, &rtcp);
 					continue;
 				} else if(session->media.video_rtp_fd != -1 && fds[i].fd == session->media.video_rtp_fd) {
@@ -6756,12 +6766,12 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
-					janus_rtp_header_update(header, &session->media.context, TRUE, 0);
+					janus_rtp_header_update(header, &session->media.vcontext, TRUE, 0);
 					/* Save the frame if we're recording */
 					header->ssrc = htonl(session->media.video_ssrc_peer);
 					janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
 					/* Relay to application */
-					janus_plugin_rtp rtp = { .video = TRUE, .buffer = buffer, .length = bytes };
+					janus_plugin_rtp rtp = { .mindex = -1, .video = TRUE, .buffer = buffer, .length = bytes };
 					janus_plugin_rtp_extensions_reset(&rtp.extensions);
 					/* Add video-orientation extension, if present */
 					if(session->media.video_orientation_extension_id > 0) {
@@ -6802,7 +6812,7 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Relay to application */
-					janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = buffer, bytes };
+					janus_plugin_rtcp rtcp = { .mindex = -1, .video = TRUE, .buffer = buffer, bytes };
 					gateway->relay_rtcp(session->handle, &rtcp);
 					continue;
 				}

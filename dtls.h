@@ -64,8 +64,8 @@ typedef enum janus_dtls_state {
 
 /*! \brief Janus DTLS-SRTP handle */
 typedef struct janus_dtls_srtp {
-	/*! \brief Opaque pointer to the component this DTLS-SRTP context belongs to */
-	void *component;
+	/*! \brief Opaque pointer to the WebRTC PeerConnection this DTLS-SRTP context belongs to */
+	void *pc;
 	/*! \brief DTLS role of the server for this stream: 1=client, 0=server */
 	janus_dtls_role dtls_role;
 	/*! \brief DTLS state of this component: -1=failed, 0=nothing, 1=trying, 2=connected */
@@ -108,10 +108,10 @@ typedef struct janus_dtls_srtp {
 
 
 /*! \brief Create a janus_dtls_srtp instance
- * @param[in] component Opaque pointer to the component owning that will use the stack
+ * @param[in] pc Opaque pointer to the WebRTC PeerConnection owning the stack
  * @param[in] role The role of the DTLS stack (client/server)
  * @returns A new janus_dtls_srtp instance if successful, NULL otherwise */
-janus_dtls_srtp *janus_dtls_srtp_create(void *component, janus_dtls_role role);
+janus_dtls_srtp *janus_dtls_srtp_create(void *pc, janus_dtls_role role);
 /*! \brief Start a DTLS handshake
  * @param[in] dtls The janus_dtls_srtp instance to start the handshake on */
 void janus_dtls_srtp_handshake(janus_dtls_srtp *dtls);

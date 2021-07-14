@@ -482,7 +482,9 @@ stream_DATA += \
 	plugins/streams/music.mulaw \
 	plugins/streams/radio.alaw \
 	plugins/streams/test_gstreamer.sh \
-	plugins/streams/test_gstreamer_1.sh
+	plugins/streams/test_gstreamer1.sh \
+	plugins/streams/test_gstreamer_multistream.sh \
+	plugins/streams/test_gstreamer1_multistream.sh
 EXTRA_DIST += \
 	conf/janus.plugin.streaming.jcfg.sample.in \
 	$(stream_DATA)

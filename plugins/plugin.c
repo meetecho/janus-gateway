@@ -49,12 +49,15 @@ void janus_plugin_rtp_extensions_reset(janus_plugin_rtp_extensions *extensions) 
 void janus_plugin_rtp_reset(janus_plugin_rtp *packet) {
 	if(packet) {
 		memset(packet, 0, sizeof(janus_plugin_rtp));
+		packet->mindex = -1;
 		janus_plugin_rtp_extensions_reset(&packet->extensions);
 	}
 }
 void janus_plugin_rtcp_reset(janus_plugin_rtcp *packet) {
-	if(packet)
+	if(packet) {
 		memset(packet, 0, sizeof(janus_plugin_rtcp));
+		packet->mindex = -1;
+	}
 }
 void janus_plugin_data_reset(janus_plugin_data *packet) {
 	if(packet)
