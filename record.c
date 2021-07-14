@@ -260,7 +260,7 @@ int janus_recorder_pause(janus_recorder *recorder) {
 	if(!recorder)
 		return -1;
 	janus_mutex_lock_nodebug(&recorder->mutex);
-	recorder->paused = janus_get_monotonic_time();
+	g_atomic_int_set(&recorder->paused, TRUE);
 	janus_mutex_unlock_nodebug(&recorder->mutex);
 	return 0;
 }
@@ -270,13 +270,15 @@ int janus_recorder_resume(janus_recorder *recorder) {
 		return -1;
 	janus_mutex_lock_nodebug(&recorder->mutex);
 	if(recorder->type == JANUS_RECORDER_AUDIO) {
+		recorder->context.a_ts_reset = TRUE;
 		recorder->context.a_seq_reset = TRUE;
-		recorder->context.a_time_offset -= janus_get_monotonic_time() - recorder->paused;
+		recorder->context.a_last_time = janus_get_monotonic_time();
 	} else if(recorder->type == JANUS_RECORDER_VIDEO) {
+		recorder->context.v_ts_reset = TRUE;
 		recorder->context.v_seq_reset = TRUE;
-		recorder->context.v_time_offset -= janus_get_monotonic_time() - recorder->paused;
+		recorder->context.v_last_time = janus_get_monotonic_time();
 	}
-	recorder->paused = 0;
+	g_atomic_int_set(&recorder->paused, FALSE);
 	janus_mutex_unlock_nodebug(&recorder->mutex);
 	return 0;
 }
@@ -318,7 +320,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -4;
 	}
-	if(recorder->paused > 0) {
+	if(g_atomic_int_get(&recorder->paused)) {
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -5;
 	}

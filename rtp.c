@@ -595,7 +595,6 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 	uint32_t ssrc = ntohl(header->ssrc);
 	uint32_t timestamp = ntohl(header->timestamp);
 	uint16_t seq = ntohs(header->seq_number);
-	gint64 ts_diff = 0;
 	if(video) {
 		if(ssrc != context->v_last_ssrc) {
 			/* Video SSRC changed: update both sequence number and timestamp */
@@ -624,9 +623,6 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 				JANUS_LOG(LOG_VERB, "Computed offset for video RTP timestamp: %"SCNu32"\n", (guint32)time_diff);
 			}
 		}
-		if(context->v_time_offset != 0) {
-			ts_diff = (context->v_time_offset*90)/1000; 	/* We're assuming 90khz here */
-		}
 		if(context->v_seq_reset) {
 			/* Video sequence number was paused for a while */
 			JANUS_LOG(LOG_VERB, "Video RTP sequence number reset requested");
@@ -636,7 +632,7 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 		}
 		/* Compute a coherent timestamp and sequence number */
 		context->v_prev_ts = context->v_last_ts;
-		context->v_last_ts = (guint32)((timestamp-context->v_base_ts) + context->v_base_ts_prev + ts_diff);
+		context->v_last_ts = (timestamp-context->v_base_ts) + context->v_base_ts_prev;
 		context->v_prev_seq = context->v_last_seq;
 		context->v_last_seq = (seq-context->v_base_seq)+context->v_base_seq_prev+1;
 		/* Update the timestamp and sequence number in the RTP packet */
@@ -676,12 +672,6 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 				JANUS_LOG(LOG_VERB, "Computed offset for audio RTP timestamp: %"SCNu32"\n", (guint32)time_diff);
 			}
 		}
-		if(context->a_time_offset != 0) {
-			int akhz = 48;
-			if(header->type == 0 || header->type == 8 || header->type == 9)
-				akhz = 8;	/* We're assuming 48khz here (Opus), unless it's G.711/G.722 (8khz) */
-			ts_diff = (context->a_time_offset*90)/1000; 	/* We're assuming 90khz here */
-		}
 		if(context->a_seq_reset) {
 			/* Audio sequence number was paused for a while */
 			JANUS_LOG(LOG_VERB, "Audio RTP sequence number reset requested");
@@ -691,7 +681,7 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 		}
 		/* Compute a coherent timestamp and sequence number */
 		context->a_prev_ts = context->a_last_ts;
-		context->a_last_ts = (guint32)((timestamp-context->a_base_ts) + context->a_base_ts_prev + ts_diff);
+		context->a_last_ts = (timestamp-context->a_base_ts) + context->a_base_ts_prev;
 		context->a_prev_seq = context->a_last_seq;
 		context->a_last_seq = (seq-context->a_base_seq)+context->a_base_seq_prev+1;
 		/* Update the timestamp and sequence number in the RTP packet */
