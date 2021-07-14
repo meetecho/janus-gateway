@@ -153,6 +153,7 @@ static struct lws_context *context = NULL;
 static gint64 disconnected = 0;
 static gboolean reconnect = FALSE;
 static int reconnect_retries = 0;
+#define MAX_RETRY_SECS	8
 
 typedef struct janus_wsevh_client {
 	struct lws *wsi;		/* The libwebsockets client instance */
@@ -452,6 +453,9 @@ void janus_wsevh_destroy(void) {
 	if(!g_atomic_int_get(&initialized))
 		return;
 	g_atomic_int_set(&stopping, 1);
+#if ((LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || LWS_LIBRARY_VERSION_MAJOR >= 4)
+	lws_cancel_service(context);
+#endif
 
 	if(ws_thread != NULL) {
 		g_thread_join(ws_thread);
@@ -576,8 +580,9 @@ static void *janus_wsevh_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining WebSocketsEventHandler client thread\n");
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		/* Loop until we have to stop */
-		lws_service(context, 50);
-		if(reconnect) {
+		if(!reconnect) {
+			lws_service(context, 50);
+		} else {
 			/* We should reconnect, get rid of the previous context */
 			if(reconnect_retries > 0) {
 				/* Wait a few seconds before retrying */
@@ -590,8 +595,11 @@ static void *janus_wsevh_thread(void *data) {
 			}
 			if(reconnect_retries == 0)
 				reconnect_retries++;
-			else
+			else if (reconnect_retries < MAX_RETRY_SECS) {
 				reconnect_retries += reconnect_retries;
+				if (reconnect_retries > MAX_RETRY_SECS)
+					reconnect_retries = MAX_RETRY_SECS;
+			}
 			JANUS_LOG(LOG_WARN, "Reconnecting to WebSockets event handler backend... (next retry in %ds)\n",
 				reconnect_retries);
 			ws_client = NULL;
@@ -707,6 +715,7 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 			ws_client->bufoffset = 0;
 			reconnect_retries = 0;
 			janus_mutex_init(&ws_client->mutex);
+			lws_callback_on_writable(wsi);
 			return 0;
 		}
 		case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
