@@ -153,7 +153,7 @@ static struct lws_context *context = NULL;
 static gint64 disconnected = 0;
 static gboolean reconnect = FALSE;
 static int reconnect_retries = 0;
-#define MAX_RETRY_SECS	8
+#define JANUS_WSEVH_MAX_RETRY_SECS	8
 
 typedef struct janus_wsevh_client {
 	struct lws *wsi;		/* The libwebsockets client instance */
@@ -595,10 +595,10 @@ static void *janus_wsevh_thread(void *data) {
 			}
 			if(reconnect_retries == 0)
 				reconnect_retries++;
-			else if (reconnect_retries < MAX_RETRY_SECS) {
+			else if (reconnect_retries < JANUS_WSEVH_MAX_RETRY_SECS) {
 				reconnect_retries += reconnect_retries;
-				if (reconnect_retries > MAX_RETRY_SECS)
-					reconnect_retries = MAX_RETRY_SECS;
+				if (reconnect_retries > JANUS_WSEVH_MAX_RETRY_SECS)
+					reconnect_retries = JANUS_WSEVH_MAX_RETRY_SECS;
 			}
 			JANUS_LOG(LOG_WARN, "Reconnecting to WebSockets event handler backend... (next retry in %ds)\n",
 				reconnect_retries);
