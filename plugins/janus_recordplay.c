@@ -42,7 +42,8 @@
  * 		audio = videoroom-audio.mjr
  * 		video = videoroom-video.mjr
  *
- * Data channel recordings are supported via a \c data attribute as well.
+ * Data channel recordings are suppoered via a \c data attribute as well.
+
  *
  * \section recplayapi Record&Play API
  *
@@ -367,6 +368,10 @@ static struct janus_json_parameter play_parameters[] = {
 	{"restart", JANUS_JSON_BOOL, 0}
 };
 
+static struct janus_json_parameter seek_parameters[] = {
+	{"timestamp", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
+
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
@@ -458,9 +463,16 @@ typedef struct janus_recordplay_session {
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
+	GAsyncQueue *seek_requests;
 } janus_recordplay_session;
 static GHashTable *sessions;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
+
+typedef struct janus_recordplay_seek_request {
+	janus_recordplay_frame_packet *audioseekframe;
+	janus_recordplay_frame_packet *videoseekframe;
+	janus_recordplay_frame_packet *dataseekpacket;
+} janus_recordplay_seek_request;
 
 static void janus_recordplay_session_destroy(janus_recordplay_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
@@ -951,6 +963,16 @@ void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error) 
 		*error = -2;
 		return;
 	}
+	GAsyncQueue *seek_requests = session->seek_requests;
+	session->seek_requests = NULL;
+	if(seek_requests) {
+		janus_recordplay_seek_request *seek_request;
+		while((seek_request = 
+			g_async_queue_try_pop(seek_requests))) {
+				g_free(seek_request);
+		}
+		g_async_queue_unref(seek_requests);
+	}
 	JANUS_LOG(LOG_VERB, "Removing Record&Play session...\n");
 	janus_recordplay_hangup_media_internal(handle);
 	g_hash_table_remove(sessions, handle);
@@ -1104,6 +1126,7 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		json_object_set_new(response, "settings", settings);
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "record") || !strcasecmp(request_text, "play")
+			|| !strcasecmp(request_text, "seek")
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "stop")) {
 		/* These messages are handled asynchronously */
 		janus_recordplay_message *msg = g_malloc(sizeof(janus_recordplay_message));
@@ -1479,6 +1502,58 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 	g_free(session->video_profile);
 	session->video_profile = NULL;
 	g_atomic_int_set(&session->hangingup, 0);
+}
+
+static janus_recordplay_seek_request *janus_recordplay_generate_seek_request(janus_recordplay_session *session, uint64_t seek_timestamp) {
+	if(!session)
+		return NULL;
+	/* Find correct frame for audio, video, data */
+	janus_recordplay_frame_packet *audio = session->aframes, *video = session->vframes, *data = session->dframes;
+	u_int64_t ts = (u_int64_t)seek_timestamp;
+
+	int audio_pt = session->recording? session->recording->audio_pt : 0;
+	int akhz = 48;
+	if(audio_pt == 0 || audio_pt == 8 || audio_pt == 9)
+		akhz = 8;
+	int vkhz = 90;
+
+	if(audio) {
+		u_int64_t audio_start_ts = audio->ts;
+		while(audio) { 
+			if(audio->next && (((audio->next->ts - audio_start_ts)*1000/akhz) >= ts))
+				break;
+			audio = audio->next;
+		}
+	}
+	if(video) {
+		u_int64_t video_start_ts = video->ts;
+		while(video) {
+			if(video->next && (((video->next->ts - video_start_ts)*1000/vkhz) >= ts))
+				break;
+			video = video->next;
+		}
+	}
+	if(data) {
+		u_int64_t data_start_ts = data->ts;
+		while(data) {
+			if(data->next && ((data->next->ts - data_start_ts) >= ts))
+				break;
+			data = data->next;
+		}
+	}
+
+	if (!audio && !video) {
+		JANUS_LOG(LOG_ERR, "Seek location not found, can't seek\n");
+		return NULL;
+	}
+
+	/* Found seek location */
+	janus_recordplay_seek_request *seek_request = g_malloc(sizeof(janus_recordplay_seek_request));
+	seek_request->audioseekframe = audio;
+	seek_request->videoseekframe = video;
+	seek_request->dataseekpacket = data;
+
+	return seek_request;
 }
 
 /* Thread to handle incoming messages */
@@ -1922,14 +1997,14 @@ recdone:
 					JANUS_LOG(LOG_WARN, "Error opening audio recording, trying to go on anyway\n");
 					warning = "Broken audio file, playing video only";
 				}
-			}
+			} else session->aframes = NULL;
 			if(rec->vrc_file) {
 				session->vframes = janus_recordplay_get_frames(recordings_path, rec->vrc_file);
 				if(session->vframes == NULL) {
 					JANUS_LOG(LOG_WARN, "Error opening video recording, trying to go on anyway\n");
 					warning = "Broken video file, playing audio only";
 				}
-			}
+			} else session->vframes = NULL;
 			if(rec->drc_file) {
 				session->dframes = janus_recordplay_get_frames(recordings_path, rec->drc_file);
 				if(session->dframes == NULL) {
@@ -1941,11 +2016,24 @@ recdone:
 				error_code = JANUS_RECORDPLAY_ERROR_INVALID_RECORDING;
 				g_snprintf(error_cause, 512, "Error opening recording files");
 				goto error;
-			}
+			} 
 			session->recording = rec;
 			session->recorder = FALSE;
 			rec->viewers = g_list_append(rec->viewers, session);
 			e2ee = rec->e2ee;
+
+			json_t *timestamp = json_object_get(root, "start_at"); 
+			if(timestamp) {
+				/* Got a seek request, validate and extract timestamp to seek */
+				guint64 ts = json_integer_value(timestamp);
+
+				/* Search seek location and send seek request to  */
+				janus_recordplay_seek_request *seek_request = janus_recordplay_generate_seek_request(session, ts);
+				if (!session->seek_requests)
+					session->seek_requests = g_async_queue_new();
+				if(seek_request) 
+					g_async_queue_push(session->seek_requests, seek_request);
+			}
 			/* Send this viewer the prepared offer  */
 			sdp = g_strdup(rec->offer);
 playdone:
@@ -1966,6 +2054,44 @@ playdone:
 				json_object_set_new(info, "data", session->dframes ? json_true() : json_false());
 				gateway->notify_event(&janus_recordplay_plugin, session->handle, info);
 			}
+		} else if(!strcasecmp(request_text, "seek")) {
+			if(!session->aframes && !session->vframes) {
+				JANUS_LOG(LOG_ERR, "Not a playout session, can't seek\n");
+				error_code = JANUS_RECORDPLAY_ERROR_INVALID_STATE;
+				g_snprintf(error_cause, 512, "Not a playout session, can't seek");
+				goto error;
+			}
+			/* Got a seek request, validate and extract timestamp to seek */
+			JANUS_VALIDATE_JSON_OBJECT(root, seek_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			json_t *timestamp = json_object_get(root, "timestamp"); 
+			guint64 ts = json_integer_value(timestamp);
+
+			/* Search seek location and send seek request to  */
+			janus_recordplay_seek_request *seek_request = janus_recordplay_generate_seek_request(session, ts);
+			if (!session->seek_requests)
+				session->seek_requests = g_async_queue_new();
+			if(seek_request) 
+				g_async_queue_push(session->seek_requests, seek_request);
+			else {
+				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Seek location not found, can't seek");
+				goto error;
+			}
+			/* Done! */
+			result = json_object();
+			json_object_set_new(result, "status", json_string("playing"));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("playing"));
+				json_object_set_new(info, "id", json_integer(session->recording->id));
+				gateway->notify_event(&janus_recordplay_plugin, session->handle, info);
+			}		 
+
 		} else if(!strcasecmp(request_text, "start")) {
 			if(!session->aframes && !session->vframes) {
 				JANUS_LOG(LOG_ERR, "Not a playout session, can't start\n");
@@ -2583,6 +2709,46 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 	return list;
 }
 
+static janus_recordplay_frame_packet *janus_recordplay_find_next_keyframe(janus_videocodec codec, FILE *vfile, janus_recordplay_frame_packet *frame, u_int64_t *keyframe_offset) {
+	*keyframe_offset = 0;
+	janus_recordplay_frame_packet *video = frame;
+	gboolean (*is_keyframe)(const char *buffer, int len);
+	if(codec == JANUS_VIDEOCODEC_VP8)
+		is_keyframe = &janus_vp8_is_keyframe;
+	else if(codec == JANUS_VIDEOCODEC_VP9)
+		is_keyframe = &janus_vp9_is_keyframe;
+	else if(codec == JANUS_VIDEOCODEC_H264)
+		is_keyframe = &janus_h264_is_keyframe;
+	else if(codec == JANUS_VIDEOCODEC_AV1)
+		is_keyframe = &janus_av1_is_keyframe;
+	else if(codec == JANUS_VIDEOCODEC_H265)
+		is_keyframe = &janus_h265_is_keyframe;
+	else 
+		/* Don't know how to identify keyframe */
+		return frame;
+	
+	char *buffer = g_malloc0(1500);
+	while(video) {
+		fseek(vfile, video->offset, SEEK_SET);
+		int bytes = fread(buffer, sizeof(char), video->len, vfile);
+		if(bytes != video->len)
+			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, video->len);
+		janus_plugin_rtp packet = { .video = TRUE, .buffer = (char *)buffer, .length = bytes };
+		int plen = 0;
+		char *payload = janus_rtp_payload(packet.buffer, packet.length, &plen);
+		if((*is_keyframe)(payload, plen))
+			break;
+		*keyframe_offset += video->ts - frame->ts;
+		video = video->next;
+	}
+
+	free(buffer);
+	if(video)
+		return video;
+	else
+		return frame;
+}
+
 static void *janus_recordplay_playout_thread(void *sessiondata) {
 	janus_recordplay_session *session = (janus_recordplay_session *)sessiondata;
 	if(!session) {
@@ -2701,6 +2867,38 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 		asent = FALSE;
 		vsent = FALSE;
 		dsent = FALSE;
+		if(session->seek_requests) {
+			janus_recordplay_seek_request *seek_request = 
+				g_async_queue_try_pop(session->seek_requests);
+			if(seek_request) {
+				u_int64_t key_frame_offset = 0;
+				if(seek_request->videoseekframe) {
+					seek_request->videoseekframe = janus_recordplay_find_next_keyframe(rec->vcodec, vfile, seek_request->videoseekframe, &key_frame_offset);
+					session->context.v_seq_reset = TRUE;
+					session->context.v_base_ts_prev += (video->ts - session->context.v_base_ts);
+					session->context.v_base_ts = seek_request->videoseekframe->ts;
+					video = seek_request->videoseekframe;
+				}
+				if(seek_request->audioseekframe) {
+					u_int64_t audioseek_ts = seek_request->audioseekframe->ts;
+					while(seek_request->audioseekframe
+						&& (key_frame_offset > (seek_request->audioseekframe->ts - audioseek_ts)))
+						seek_request->audioseekframe = seek_request->audioseekframe->next;
+					session->context.a_seq_reset = TRUE;
+					session->context.a_base_ts_prev += (audio->ts - session->context.a_base_ts);
+					session->context.a_base_ts = seek_request->audioseekframe->ts;
+					audio = seek_request->audioseekframe;
+				}
+				if(seek_request->dataseekpacket) {
+					u_int64_t dataseek_ts = seek_request->dataseekpacket->ts;
+					while(seek_request->dataseekpacket
+						&& (key_frame_offset > (seek_request->dataseekpacket->ts - dataseek_ts)))
+						seek_request->dataseekpacket = seek_request->dataseekpacket->next;
+					data = seek_request->dataseekpacket;
+				}
+				g_free(seek_request);
+			}
+		}
 		if(audio) {
 			if(audio == session->aframes) {
 				/* First packet, send now */
@@ -2711,6 +2909,7 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 				/* Update payload type */
 				janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 				rtp->type = audio_pt;
+				janus_rtp_header_update(rtp, &session->context, FALSE, 0);
 				janus_plugin_rtp prtp = { .video = FALSE, .buffer = (char *)buffer, .length = bytes };
 				janus_plugin_rtp_extensions_reset(&prtp.extensions);
 				gateway->relay_rtp(session->handle, &prtp);
@@ -2753,6 +2952,7 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 					/* Update payload type */
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = audio_pt;
+					janus_rtp_header_update(rtp, &session->context, FALSE, 0);
 					janus_plugin_rtp prtp = { .video = FALSE, .buffer = (char *)buffer, .length = bytes };
 					janus_plugin_rtp_extensions_reset(&prtp.extensions);
 					gateway->relay_rtp(session->handle, &prtp);
@@ -2773,6 +2973,7 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 					/* Update payload type */
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = video_pt;
+					janus_rtp_header_update(rtp, &session->context, TRUE, 0);
 					janus_plugin_rtp prtp = { .video = TRUE, .buffer = (char *)buffer, .length = bytes };
 					janus_plugin_rtp_extensions_reset(&prtp.extensions);
 					gateway->relay_rtp(session->handle, &prtp);
@@ -2819,6 +3020,7 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 						/* Update payload type */
 						janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 						rtp->type = video_pt;
+						janus_rtp_header_update(rtp, &session->context, TRUE, 0);
 						janus_plugin_rtp prtp = { .video = TRUE, .buffer = (char *)buffer, .length = bytes };
 						janus_plugin_rtp_extensions_reset(&prtp.extensions);
 						gateway->relay_rtp(session->handle, &prtp);
