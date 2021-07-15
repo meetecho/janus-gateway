@@ -1924,11 +1924,6 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	}
 	JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
-#ifdef HAVE_SRTP_2
-	/* Init randomizer (for randum numbers in SRTP) */
-	RAND_poll();
-#endif
-
 	/* Setup sofia */
 	su_init();
 	if(notify_events && callback->events_is_enabled()) {
