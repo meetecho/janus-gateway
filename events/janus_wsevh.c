@@ -574,7 +574,7 @@ plugin_response:
 	* The reconnect is handled in a dedicated wsl scheduler janus_wsevh_schedule_connect_attempt
 	*/
 	static void *janus_wsevh_thread(void *data) {
-	JANUS_LOG(LOG_INFO, "Joining WebSocketsEventHandler (wsl>=3.2) client thread\n");
+	JANUS_LOG(LOG_VERB, "Joining WebSocketsEventHandler (wsl>=3.2) client thread\n");
 		int n = 0;
 		while(n >= 0 && g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping))
 				n = lws_service(context, 0);
@@ -588,7 +588,7 @@ plugin_response:
 	* The reconnect is handled in the loop for wsl < 3.2
 	*/
 	static void *janus_wsevh_thread(void *data) {
-		JANUS_LOG(LOG_INFO, "Joining WebSocketsEventHandler (wsl<3.2) client thread\n");
+		JANUS_LOG(LOG_VERB, "Joining WebSocketsEventHandler (wsl<3.2) client thread\n");
 		while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 			/* Loop until we have to stop */
 			if(!reconnect) {
