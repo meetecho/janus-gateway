@@ -105,6 +105,18 @@ general: {
 									# As such, if you want to use this you should
 									# provision the correct value according to the
 									# available resources (e.g., CPUs available).
+	#allow_loop_indication = true	# In case a static number of event loops is
+									# configured as explained above, by default
+									# new handles will be allocated on one loop or
+									# another by the Janus core itself. In some cases
+									# it may be helpful to manually tell the Janus
+									# core which loop a handle should be added to,
+									# e.g., to group viewers of the same stream on
+									# the same loop. This is possible via the Janus
+									# API when performing the 'attach' request, but
+									# only if allow_loop_indication is set to true;
+									# it's set to false by default to avoid abuses.
+									# Don't change if you don't know what you're doing!
 	#opaqueid_in_api = true			# Opaque IDs set by applications are typically
 									# only passed to event handlers for correlation
 									# purposes, but not sent back to the user or
