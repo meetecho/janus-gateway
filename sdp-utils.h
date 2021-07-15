@@ -285,6 +285,10 @@ JANUS_SDP_OA_AUDIO_EXTENSION,
 JANUS_SDP_OA_VIDEO_EXTENSION,
 /*! \brief When generating an answer (this is ignored for offers), accept this extension (by default, we reject them all; can be used multiple times) */
 JANUS_SDP_OA_ACCEPT_EXTMAP,
+/*! \brief When generating an offer (this is ignored for answers), use this payload type for RED/Opus (depends on value that follows) */
+JANUS_SDP_OA_OPUSRED_PT,
+/*! \brief When generating an answer (this is ignored for offers), accept opus/red if offered */
+JANUS_SDP_OA_ACCEPT_OPUSRED,
 /*! \brief MUST be used as the last argument in janus_sdp_generate_offer and janus_sdp_generate_answer */
 JANUS_SDP_OA_DONE = 0
 } janus_sdp_oa_type;
@@ -368,5 +372,10 @@ const char *janus_sdp_get_codec_rtpmap(const char *codec);
  * @param pt The payload type to find
  * @returns The fmtp content, if found, or NULL otherwise */
 const char *janus_sdp_get_fmtp(janus_sdp *sdp, int pt);
+
+/*! \brief Helper to get the opus/red payload type from an SDP, if present
+ * @param sdp The Janus SDP instance to process
+ * @returns The payload type, if found, or -1 otherwise */
+int janus_sdp_get_opusred_pt(janus_sdp *sdp);
 
 #endif
