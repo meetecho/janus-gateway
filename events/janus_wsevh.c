@@ -43,6 +43,11 @@ const char *janus_wsevh_get_package(void);
 void janus_wsevh_incoming_event(json_t *event);
 json_t *janus_wsevh_handle_request(json_t *request);
 
+/* Forward declarations */
+void janus_wsevh_schedule_connect_attempt(void);
+void janus_wsevh_calculate_reconnect_delay_on_fail(void);
+static void janus_wsevh_connect_attempt(struct lws_sorted_usec_list* sul);
+
 /* Event handler setup */
 static janus_eventhandler janus_wsevh =
 	JANUS_EVENTHANDLER_INIT (
@@ -150,9 +155,11 @@ static const char *protocol = NULL, *address = NULL;
 static char path[256];
 static int port = 0;
 static struct lws_context *context = NULL;
+static lws_sorted_usec_list_t sul_stagger = { 0 };
 static gint64 disconnected = 0;
 static gboolean reconnect = FALSE;
-static int reconnect_retries = 0;
+static int reconnect_delay = 0;
+#define JANUS_WSEVH_MAX_RETRY_SECS	8
 
 typedef struct janus_wsevh_client {
 	struct lws *wsi;		/* The libwebsockets client instance */
@@ -371,7 +378,6 @@ int janus_wsevh_init(const char *config_path) {
 		protocols[0].name = g_strdup(item->value);
 
 	/* Connect */
-	JANUS_LOG(LOG_VERB, "WebSocketsEventHandler: Connecting to WebSockets server...\n");
 	gboolean secure = !strcasecmp(protocol, "wss");
 	struct lws_context_creation_info info = { 0 };
 	info.port = CONTEXT_PORT_NO_LISTEN;
@@ -385,19 +391,7 @@ int janus_wsevh_init(const char *config_path) {
 		JANUS_LOG(LOG_FATAL, "Creating libwebsocket context failed\n");
 		goto error;
 	}
-	struct lws_client_connect_info i = { 0 };
-	i.host = address;
-	i.origin = address;
-	i.address = address;
-	i.port = port;
-	i.path = path;
-	i.context = context;
-	if(secure)
-		i.ssl_connection = 1;
-	i.ietf_version_or_minus_one = -1;
-	i.client_exts = exts;
-	i.protocol = protocols[0].name;
-	wsi = lws_client_connect_via_info(&i);
+	janus_wsevh_connect_attempt(NULL);
 	if(wsi == NULL) {
 		JANUS_LOG(LOG_FATAL, "Error initializing WebSocket connection\n");
 		goto error;
@@ -452,6 +446,9 @@ void janus_wsevh_destroy(void) {
 	if(!g_atomic_int_get(&initialized))
 		return;
 	g_atomic_int_set(&stopping, 1);
+#if ((LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || LWS_LIBRARY_VERSION_MAJOR >= 4)
+	lws_cancel_service(context);
+#endif
 
 	if(ws_thread != NULL) {
 		g_thread_join(ws_thread);
@@ -571,56 +568,53 @@ plugin_response:
 		}
 }
 
-/* Thread to implement the WebSockets loop */
-static void *janus_wsevh_thread(void *data) {
-	JANUS_LOG(LOG_VERB, "Joining WebSocketsEventHandler client thread\n");
-	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
-		/* Loop until we have to stop */
-		lws_service(context, 50);
-		if(reconnect) {
-			/* We should reconnect, get rid of the previous context */
-			if(reconnect_retries > 0) {
-				/* Wait a few seconds before retrying */
-				gint64 now = janus_get_monotonic_time();
-				if((now-disconnected) < (gint64)reconnect_retries*G_USEC_PER_SEC) {
-					/* Try again later */
-					g_usleep(100000);
-					continue;
-				}
-			}
-			if(reconnect_retries == 0)
-				reconnect_retries++;
-			else
-				reconnect_retries += reconnect_retries;
-			JANUS_LOG(LOG_WARN, "Reconnecting to WebSockets event handler backend... (next retry in %ds)\n",
-				reconnect_retries);
-			ws_client = NULL;
-			wsi = NULL;
-			struct lws_client_connect_info i;
-			memset(&i, 0, sizeof(i));
-			i.host = address;
-			i.origin = address;
-			i.address = address;
-			i.port = port;
-			i.path = path;
-			i.context = context;
-			i.ssl_connection = 0;
-			i.ietf_version_or_minus_one = -1;
-			i.client_exts = exts;
-			i.protocol = protocols[0].name;
-			i.method = NULL;
-			wsi = lws_client_connect_via_info(&i);
-			if(wsi == NULL) {
-				JANUS_LOG(LOG_WARN, "Error attempting reconnection...\n");
-				continue;
-			}
-			reconnect = FALSE;
-		}
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3 && LWS_LIBRARY_VERSION_MINOR > 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
+	/*
+	* Websocket thread loop for websocket library newer thant 3.2
+	* The reconnect is handled in a dedicated wsl scheduler janus_wsevh_schedule_connect_attempt
+	*/
+	static void *janus_wsevh_thread(void *data) {
+	JANUS_LOG(LOG_INFO, "Joining WebSocketsEventHandler (wsl>=3.2) client thread\n");
+		int n = 0;
+		while(n >= 0 && g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping))
+				n = lws_service(context, 0);
+		lws_context_destroy(context);
+		JANUS_LOG(LOG_VERB, "Leaving WebSocketsEventHandler (wsl>=3.2) client thread\n");
+		return NULL;
 	}
-	lws_context_destroy(context);
-	JANUS_LOG(LOG_VERB, "Leaving WebSocketsEventHandler client thread\n");
-	return NULL;
-}
+#else
+	/*
+	* Websocket thread loop for websocket library prior to (less than) 3.2
+	* The reconnect is handled in the loop for wsl < 3.2
+	*/
+	static void *janus_wsevh_thread(void *data) {
+		JANUS_LOG(LOG_INFO, "Joining WebSocketsEventHandler (wsl<3.2) client thread\n");
+		while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
+			/* Loop until we have to stop */
+			if(!reconnect) {
+				lws_service(context, 50);
+			} else {
+				/* We should reconnect, get rid of the previous context */
+				if(reconnect_delay > 0) {
+					/* Wait a few seconds before retrying */
+					gint64 now = janus_get_monotonic_time();
+					if((now-disconnected) < (gint64)reconnect_delay*G_USEC_PER_SEC) {
+						/* Try again later */
+						g_usleep(100000);
+						continue;
+					}
+				}
+				ws_client = NULL;
+				janus_wsevh_connect_attempt(NULL);
+				if (!wsi)
+					janus_wsevh_calculate_reconnect_delay_on_fail();
+			}
+		}
+		lws_context_destroy(context);
+		JANUS_LOG(LOG_VERB, "Leaving WebSocketsEventHandler (wsl<3.2) client thread\n");
+		return NULL;
+	}
+#endif
 
 /* Thread to handle incoming events */
 static void *janus_wsevh_handler(void *data) {
@@ -705,15 +699,15 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 			ws_client->buflen = 0;
 			ws_client->bufpending = 0;
 			ws_client->bufoffset = 0;
-			reconnect_retries = 0;
+			reconnect_delay = 0;
+			reconnect = FALSE;
 			janus_mutex_init(&ws_client->mutex);
+			lws_callback_on_writable(wsi);
 			return 0;
 		}
 		case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
-			JANUS_LOG(LOG_ERR, "Error connecting to backend\n");
-			/* Should we reconnect? */
-			disconnected = janus_get_monotonic_time();
-			reconnect = TRUE;
+			janus_wsevh_calculate_reconnect_delay_on_fail();
+			janus_wsevh_schedule_connect_attempt();
 			return 1;
 		}
 		case LWS_CALLBACK_CLIENT_RECEIVE: {
@@ -828,4 +822,53 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 			break;
 	}
 	return 0;
+}
+
+/**
+ * Implements the connecting attempt to the upstream websocket server
+ * sets the connection result (lws_client_connect_info) to static wsi
+ */
+static void janus_wsevh_connect_attempt(struct lws_sorted_usec_list* sul) {
+	struct lws_client_connect_info i = { 0 };
+	i.host = address;
+	i.origin = address;
+	i.address = address;
+	i.port = port;
+	i.path = path;
+	i.context = context;
+	if(!strcasecmp(protocol, "wss"))
+		i.ssl_connection = 1;
+	i.ietf_version_or_minus_one = -1;
+	i.client_exts = exts;
+	i.protocol = protocols[0].name;
+	JANUS_LOG(LOG_INFO, "WebSocketsEventHandler: Connecting to upstream websocket server %s:%d...\n", address, port);
+	wsi = lws_client_connect_via_info(&i);
+	if(!wsi) // As we specified a callback pointer in the context the NULL result is unlikely to happen -> just logging it here in case we see it in the field
+		JANUS_LOG(LOG_ERR, "WebSocketsEventHandler: Connecting to upstream websocket server %s:%d failed\n", address, port);
+}
+
+/**
+ * Adopts the reconnect_delay value in case of an error
+ * Increases the value up to JANUS_WSEVH_MAX_RETRY_SECS
+ */
+void janus_wsevh_calculate_reconnect_delay_on_fail(void) {
+	if(reconnect_delay == 0)
+		reconnect_delay = 1;
+	else if (reconnect_delay < JANUS_WSEVH_MAX_RETRY_SECS) {
+		reconnect_delay += reconnect_delay;
+		if (reconnect_delay > JANUS_WSEVH_MAX_RETRY_SECS)
+			reconnect_delay = JANUS_WSEVH_MAX_RETRY_SECS;
+	}
+	disconnected = janus_get_monotonic_time();
+	reconnect = TRUE;
+	JANUS_LOG(LOG_WARN, "WebSocketsEventHandler: Error attempting connection... (next retry in %ds)\n", reconnect_delay);
+}
+
+/**
+ * Schedules a connect attempt using the lws scheduler as 
+ */
+void janus_wsevh_schedule_connect_attempt(void) {
+	#if (LWS_LIBRARY_VERSION_MAJOR >= 3 && LWS_LIBRARY_VERSION_MINOR > 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
+		lws_sul_schedule(context, 0, &sul_stagger, janus_wsevh_connect_attempt, reconnect_delay * LWS_US_PER_SEC);
+	#endif
 }
