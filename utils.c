@@ -81,11 +81,12 @@ guint64 janus_random_uint64(void) {
 	 * a good idea, as we don't want to make it harder to cross compile Janus
 	 *
 	 * TODO Look into what libssl and/or libcrypto provide in that respect
-	 *
-	 * PS: JavaScript only supports integer up to 2^53, so we need to
-	 * make sure the number is below 9007199254740992 for safety
 	 */
-	guint64 num = g_random_int() & 0x1FFFFF;
+	return g_random_int();
+}
+
+guint64 janus_random_uint64_javacript_safe(void) {
+	guint64 num = janus_random_uint64() & 0x1FFFFF;
 	num = (num << 32) | g_random_int();
 	return num;
 }

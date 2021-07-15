@@ -69,6 +69,15 @@ guint32 janus_random_uint32(void);
  * @returns A random 64-bit unsigned integer */
 guint64 janus_random_uint64(void);
 
+/*! \brief Helper to generate random 64-bit unsigned integers which are safe to use in Javascript
+ * @note Javascript does not have real integers, its builtin "number" type is a float64.
+ * Thus, only integer values up to Number.MAX_SAFE_INTEGER == 2^53 - 1 == 9007199254740991
+ * can be safely represented in Javascript. This method returns such numbers.
+ * Use this method instead of janus_random_uint64() whenever you generate numbers which
+ * might end up in Javascript (via JSON API).
+ * @returns A random 64-bit unsigned integer */
+guint64 janus_random_uint64_javacript_safe(void);
+
 /*! \brief Helper to generate random UUIDs (needed by some plugins)
  * @returns A random UUID string, which must be deallocated with \c g_free */
 char *janus_random_uuid(void);
