@@ -1618,7 +1618,7 @@ static void *janus_recordplay_handler(void *data) {
 			}
 			if(id == 0) {
 				while(id == 0) {
-					id = janus_random_uint64();
+					id = janus_random_uint64_javacript_safe();
 					if(g_hash_table_lookup(recordings, &id) != NULL) {
 						/* Recording ID already taken, try another one */
 						id = 0;

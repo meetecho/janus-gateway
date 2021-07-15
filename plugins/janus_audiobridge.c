@@ -2821,7 +2821,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		gboolean room_id_allocated = FALSE;
 		if(!string_ids && room_id == 0) {
 			while(room_id == 0) {
-				room_id = janus_random_uint64();
+				room_id = janus_random_uint64_javacript_safe();
 				if(g_hash_table_lookup(rooms, &room_id) != NULL) {
 					/* Room ID already taken, try another one */
 					room_id = 0;
@@ -5673,7 +5673,7 @@ static void *janus_audiobridge_handler(void *data) {
 				if(user_id == 0) {
 					/* Generate a random ID */
 					while(user_id == 0) {
-						user_id = janus_random_uint64();
+						user_id = janus_random_uint64_javacript_safe();
 						if(g_hash_table_lookup(audiobridge->participants, &user_id) != NULL) {
 							/* User ID already taken, try another one */
 							user_id = 0;
@@ -6394,7 +6394,7 @@ static void *janus_audiobridge_handler(void *data) {
 				if(user_id == 0) {
 					/* Generate a random ID */
 					while(user_id == 0) {
-						user_id = janus_random_uint64();
+						user_id = janus_random_uint64_javacript_safe();
 						if(g_hash_table_lookup(audiobridge->participants, &user_id) != NULL) {
 							/* User ID already taken, try another one */
 							user_id = 0;
