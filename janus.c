@@ -1520,16 +1520,16 @@ int janus_process_incoming_request(janus_request *request) {
 				}
 				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART)) {
 					JANUS_LOG(LOG_INFO, "[%"SCNu64"] Restarting ICE...\n", handle->handle_id);
-					/* Update remote credentials for ICE */
-					if(handle->stream) {
-						nice_agent_set_remote_credentials(handle->agent, handle->stream->stream_id,
-							handle->stream->ruser, handle->stream->rpass);
-					}
 					/* FIXME We only need to do that for offers: if it's an answer, we did that already */
 					if(offer) {
 						janus_ice_restart(handle);
 					} else {
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
+					}
+					/* Update remote credentials for ICE */
+					if(handle->stream) {
+						nice_agent_set_remote_credentials(handle->agent, handle->stream->stream_id,
+							handle->stream->ruser, handle->stream->rpass);
 					}
 					/* If we're full-trickling, we'll need to resend the candidates later */
 					if(janus_ice_is_full_trickle_enabled()) {
