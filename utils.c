@@ -82,11 +82,13 @@ guint64 janus_random_uint64(void) {
 	 *
 	 * TODO Look into what libssl and/or libcrypto provide in that respect
 	 */
-	return g_random_int();
+	guint64 num = g_random_int();
+	num = (num << 32) | g_random_int();
+	return num;
 }
 
 guint64 janus_random_uint64_javacript_safe(void) {
-	guint64 num = janus_random_uint64() & 0x1FFFFF;
+	guint64 num = g_random_int() & 0x1FFFFF;
 	num = (num << 32) | g_random_int();
 	return num;
 }
