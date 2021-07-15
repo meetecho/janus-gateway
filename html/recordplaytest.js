@@ -497,6 +497,18 @@ function startRecording() {
 					recordplay.hangup();
 				}
 			});
+
+			$('#pause').on('click', () => {
+				recordplay.send({message: {request: 'pause'}});
+				$('#pause').attr('hidden', true);
+				$('#resume').attr('hidden', false);
+			});
+
+			$('#resume').on('click', () => {
+				recordplay.send({message: {request: 'resume'}});
+				$('#pause').attr('hidden', false);
+				$('#resume').attr('hidden', true);
+			});
 	});
 }
 
