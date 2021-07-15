@@ -4957,6 +4957,8 @@ done:
 				g_strlcat(sdptemp, "a=sendonly\r\n", 2048);
 				g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 1, JANUS_RTP_EXTMAP_MID);
 				g_strlcat(sdptemp, buffer, 2048);
+				g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 2, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
+				g_strlcat(sdptemp, buffer, 2048);
 			}
 #ifdef HAVE_SCTP
 			if(mp->data && session->data) {
