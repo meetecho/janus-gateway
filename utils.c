@@ -21,6 +21,7 @@
 #include <inttypes.h>
 
 #include <zlib.h>
+#include <openssl/rand.h>
 
 #include "utils.h"
 #include "debug.h"
@@ -71,20 +72,21 @@ gboolean janus_strcmp_const_time(const void *str1, const void *str2) {
 }
 
 guint32 janus_random_uint32(void) {
-	return g_random_int();
+	guint32 ret = 0;
+	if (RAND_bytes((void *)&ret, sizeof(ret)) != 1) {
+		JANUS_LOG(LOG_FATAL, "\tOpenSSL RAND_bytes() failed\n");
+		exit(1);
+	}
+	return ret;
 }
 
 guint64 janus_random_uint64(void) {
-	/*
-	 * FIXME This needs to be improved, and use something that generates
-	 * more strongly random stuff... using /dev/urandom is probably not
-	 * a good idea, as we don't want to make it harder to cross compile Janus
-	 *
-	 * TODO Look into what libssl and/or libcrypto provide in that respect
-	 */
-	guint64 num = g_random_int();
-	num = (num << 32) | g_random_int();
-	return num;
+	guint64 ret = 0;
+	if (RAND_bytes((void *)&ret, sizeof(ret)) != 1) {
+		JANUS_LOG(LOG_FATAL, "\tOpenSSL RAND_bytes() failed\n");
+		exit(1);
+	}
+	return ret;
 }
 
 guint64 janus_random_uint64_javacript_safe(void) {
