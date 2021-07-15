@@ -88,9 +88,7 @@ guint64 janus_random_uint64(void) {
 }
 
 guint64 janus_random_uint64_javacript_safe(void) {
-	guint64 num = g_random_int() & 0x1FFFFF;
-	num = (num << 32) | g_random_int();
-	return num;
+	return janus_random_uint64() & 0x1FFFFFFFFFFFFF;
 }
 
 char *janus_random_uuid(void) {
