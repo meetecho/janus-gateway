@@ -30,6 +30,9 @@
 #include "refcount.h"
 #include "plugins/plugin.h"
 
+/*! \brief The maximum number of packets we'll ever send in a single call */
+#define JANUS_MAX_PENDING_MESSAGES	10
+
 
 /*! \brief ICE stuff initialization
  * @param[in] ice_lite Whether the ICE Lite mode should be enabled or not
@@ -208,6 +211,11 @@ void janus_enable_opaqueid_in_api(void);
 /*! \brief Method to check whether opaque ID have to be added to Janus API responses/events
  * @returns TRUE if they need to be present, FALSE otherwise */
 gboolean janus_is_opaqueid_in_api_enabled(void);
+/*! \brief Method to disable the new sendmmsg mode */
+void janus_disable_sendmmsg(void);
+/*! \brief Method to check whether the sendmmsg mode is enabled
+ * @returns TRUE if it's enabled (default), FALSE otherwise */
+gboolean janus_is_sendmmsg_enabled(void);
 
 
 /*! \brief Helper method to get a string representation of a libnice ICE state
@@ -544,6 +552,12 @@ struct janus_ice_component {
 	gboolean do_audio_nacks;
 	/*! \brief Whether we should do NACKs (in or out) for video */
 	gboolean do_video_nacks;
+	/*! \brief Number of pending messages ready to deliver */
+	uint8_t pending_messages_num;
+	/*! \brief Array of libnice NiceOutputMessage messages, to be sent together */
+	NiceOutputMessage pending_messages[JANUS_MAX_PENDING_MESSAGES];
+	/*! \brief Array of opaque pointers to the actual data to be sent */
+	void *pending_messages_data[JANUS_MAX_PENDING_MESSAGES];
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
 	GQueue *audio_retransmit_buffer, *video_retransmit_buffer;
 	/*! \brief HashTable of retransmittable sequence numbers, in case we receive NACKs */
@@ -622,8 +636,10 @@ janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque
  * @param[in] core_session The core/peer session this ICE handle belongs to
  * @param[in] handle The Janus ICE handle
  * @param[in] plugin The plugin the ICE handle needs to be attached to
+ * @param[in] loop_index In case static event loops are used, an indication on which loop to use for this handle
+ * (-1 will let the core pick one; in case API selection is disabled in the settings, this value is ignored)
  * @returns 0 in case of success, a negative integer otherwise */
-gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle, janus_plugin *plugin);
+gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle, janus_plugin *plugin, int loop_index);
 /*! \brief Method to destroy a Janus ICE handle
  * @param[in] core_session The core/peer session this ICE handle belongs to
  * @param[in] handle The Janus ICE handle to destroy
@@ -727,8 +743,9 @@ void janus_ice_resend_trickles(janus_ice_handle *handle);
 /*! \brief Method to configure the static event loops mechanism at startup
  * @note Check the \c event_loops property in the \c janus.jcfg configuration
  * for an explanation of this feature, and the possible impact on Janus and users
- * @param[in] loops The number of static event loops to start (0 to disable the feature) */
-void janus_ice_set_static_event_loops(int loops);
+ * @param[in] loops The number of static event loops to start (0 to disable the feature)
+ * @param[in] allow_api Whether allocation on a specific loop driven via API should be allowed or not (false by default) */
+void janus_ice_set_static_event_loops(int loops, gboolean allow_api);
 /*! \brief Method to return the number of static event loops, if enabled
  * @returns The number of static event loops, if configured, or 0 if the feature is disabled */
 int janus_ice_get_static_event_loops(void);
