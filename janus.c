@@ -4996,6 +4996,11 @@ gint main(int argc, char *argv[])
 	SSL_library_init();
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
+	/* check if random pool looks ok (this does not give any guarantees for later, though) */
+	if(RAND_status() != 1) {
+		JANUS_LOG(LOG_FATAL, "\tOpenSSL PRNG is not properly seeded, cannot generate random numbers\n");
+		exit(1);
+	}
 	/* ... and DTLS-SRTP in particular */
 	const char *dtls_ciphers = NULL;
 	item = janus_config_get(config, config_certs, janus_config_type_item, "dtls_ciphers");
