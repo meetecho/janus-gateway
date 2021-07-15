@@ -709,6 +709,8 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 			return 0;
 		}
 		case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
+			JANUS_LOG(LOG_ERR, "Error connecting to backend (%s)\n",
+				in ? (char *)in : "unknown error");
 			janus_wsevh_calculate_reconnect_delay_on_fail();
 			janus_wsevh_schedule_connect_attempt();
 			return 1;
