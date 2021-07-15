@@ -46,7 +46,7 @@ json_t *janus_wsevh_handle_request(json_t *request);
 /* Forward declarations */
 void janus_wsevh_schedule_connect_attempt(void);
 void janus_wsevh_calculate_reconnect_delay_on_fail(void);
-static void janus_wsevh_connect_attempt(struct lws_sorted_usec_list* sul);
+static void janus_wsevh_connect_attempt(void* sul);
 
 /* Event handler setup */
 static janus_eventhandler janus_wsevh =
@@ -155,7 +155,9 @@ static const char *protocol = NULL, *address = NULL;
 static char path[256];
 static int port = 0;
 static struct lws_context *context = NULL;
-static lws_sorted_usec_list_t sul_stagger = { 0 };
+#if ((LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || LWS_LIBRARY_VERSION_MAJOR >= 4)
+	static lws_sorted_usec_list_t sul_stagger = { 0 };
+#endif
 static gint64 disconnected = 0;
 static gboolean reconnect = FALSE;
 static int reconnect_delay = 0;
@@ -384,6 +386,7 @@ int janus_wsevh_init(const char *config_path) {
 	info.protocols = protocols;
 	info.gid = -1;
 	info.uid = -1;
+	info.timeout_secs = 10;
 	if(secure)
 		info.options |= LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
 	context = lws_create_context(&info);
@@ -828,7 +831,7 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
  * Implements the connecting attempt to the upstream websocket server
  * sets the connection result (lws_client_connect_info) to static wsi
  */
-static void janus_wsevh_connect_attempt(struct lws_sorted_usec_list* sul) {
+static void janus_wsevh_connect_attempt(void* sul) {
 	struct lws_client_connect_info i = { 0 };
 	i.host = address;
 	i.origin = address;
@@ -845,6 +848,7 @@ static void janus_wsevh_connect_attempt(struct lws_sorted_usec_list* sul) {
 	wsi = lws_client_connect_via_info(&i);
 	if(!wsi) // As we specified a callback pointer in the context the NULL result is unlikely to happen -> just logging it here in case we see it in the field
 		JANUS_LOG(LOG_ERR, "WebSocketsEventHandler: Connecting to upstream websocket server %s:%d failed\n", address, port);
+	reconnect = FALSE;
 }
 
 /**
