@@ -582,7 +582,7 @@ static void *janus_wsevh_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining WebSocketsEventHandler (lws>=3.2) client thread\n");
 	int n = 0;
 	while(n >= 0 && g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping))
-			n = lws_service(context, 0);
+		n = lws_service(context, 0);
 	lws_context_destroy(context);
 	JANUS_LOG(LOG_VERB, "Leaving WebSocketsEventHandler (lws>=3.2) client thread\n");
 	return NULL;
@@ -862,6 +862,7 @@ static void janus_wsevh_connect_attempt(lws_sorted_usec_list_t* sul) {
 		disconnected = janus_get_monotonic_time();
 		reconnect = TRUE;
 		JANUS_LOG(LOG_ERR, "WebSocketsEventHandler: Connecting to upstream websocket server %s:%d failed\n", address, port);
+		return;
 	}
 	reconnect = FALSE;
 }
