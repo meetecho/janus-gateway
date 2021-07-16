@@ -390,7 +390,6 @@ int janus_wsevh_init(const char *config_path) {
 	info.protocols = protocols;
 	info.gid = -1;
 	info.uid = -1;
-	info.timeout_secs = 10;
 	if(secure)
 		info.options |= LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
 	context = lws_create_context(&info);
