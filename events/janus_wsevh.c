@@ -624,7 +624,7 @@ static void *janus_wsevh_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Leaving WebSocketsEventHandler (lws<3.2) client thread\n");
 	return NULL;
 }
-#endif 
+#endif
 
 /* Thread to handle incoming events */
 static void *janus_wsevh_handler(void *data) {
