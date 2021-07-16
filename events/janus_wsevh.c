@@ -389,6 +389,9 @@ int janus_wsevh_init(const char *config_path) {
 	info.protocols = protocols;
 	info.gid = -1;
 	info.uid = -1;
+#if ((LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || LWS_LIBRARY_VERSION_MAJOR >= 4)
+	info.connect_timeout_secs = 5;
+#endif
 	if(secure)
 		info.options |= LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
 	context = lws_create_context(&info);
@@ -621,7 +624,7 @@ static void *janus_wsevh_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Leaving WebSocketsEventHandler (lws<3.2) client thread\n");
 	return NULL;
 }
-#endif
+#endif 
 
 /* Thread to handle incoming events */
 static void *janus_wsevh_handler(void *data) {
