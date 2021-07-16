@@ -710,6 +710,7 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 			reconnect = FALSE;
 			janus_mutex_init(&ws_client->mutex);
 			lws_callback_on_writable(wsi);
+			JANUS_LOG(LOG_INFO, "WebSocketsEventHandler connected\n");
 			return 0;
 		}
 		case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
@@ -806,11 +807,12 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 #else
 		case LWS_CALLBACK_CLOSED: {
 #endif
-			JANUS_LOG(LOG_INFO, "WebSockets event handler connection closed\n");
+			reconnect_delay = 1;
+			JANUS_LOG(LOG_INFO, "Connection to WebSocketsEventHandler backend closed (next connection attempt in %ds)\n", reconnect_delay);
 			if(ws_client != NULL) {
 				/* Cleanup */
 				janus_mutex_lock(&ws_client->mutex);
-				JANUS_LOG(LOG_INFO, "Destroying WebSockets event handler client\n");
+				JANUS_LOG(LOG_INFO, "Destroying WebSocketsEventHandler client\n");
 				ws_client->wsi = NULL;
 				/* Free the shared buffers */
 				g_free(ws_client->buffer);
@@ -820,8 +822,6 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 				ws_client->bufoffset = 0;
 				janus_mutex_unlock(&ws_client->mutex);
 			}
-			reconnect_delay = 1;
-			JANUS_LOG(LOG_INFO, "Connection to WebSockets event handler backend closed (next connection attempt in %ds)\n", reconnect_delay);
 			/* Check if we should reconnect */
 			ws_client = NULL;
 			wsi = NULL;
