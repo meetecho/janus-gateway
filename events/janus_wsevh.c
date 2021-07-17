@@ -389,7 +389,7 @@ int janus_wsevh_init(const char *config_path) {
 	info.protocols = protocols;
 	info.gid = -1;
 	info.uid = -1;
-#if ((LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || LWS_LIBRARY_VERSION_MAJOR >= 4)
+#if ((LWS_LIBRARY_VERSION_MAJOR == 4 && LWS_LIBRARY_VERSION_MINOR >= 1) || LWS_LIBRARY_VERSION_MAJOR >= 5)
 	info.connect_timeout_secs = 5;
 #endif
 	if(secure)
