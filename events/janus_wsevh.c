@@ -577,10 +577,8 @@ plugin_response:
 }
 
 #if (LWS_LIBRARY_VERSION_MAJOR >= 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 4)
-/*
- * Websocket thread loop for websocket library newer than 3.2
- * The reconnect is handled in a dedicated lws scheduler janus_wsevh_schedule_connect_attempt
- */
+/* Websocket thread loop for websocket library newer than 3.2
+ * The reconnect is handled in a dedicated lws scheduler janus_wsevh_schedule_connect_attempt */
 static void *janus_wsevh_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining WebSocketsEventHandler (lws>=3.2) client thread\n");
 	int n = 0;
@@ -591,10 +589,8 @@ static void *janus_wsevh_thread(void *data) {
 	return NULL;
 }
 #else
-/*
- * Websocket thread loop for websocket library prior to (less than) 3.2
- * The reconnect is handled in the loop for lws < 3.2
- */
+/* Websocket thread loop for websocket library prior to (less than) 3.2
+ * The reconnect is handled in the loop for lws < 3.2 */
 static void *janus_wsevh_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining WebSocketsEventHandler (lws<3.2) client thread\n");
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
@@ -841,10 +837,8 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 	return 0;
 }
 
-/**
- * Implements the connecting attempt to the backend websocket server
- * sets the connection result (lws_client_connect_info) to static wsi
- */
+/* Implements the connecting attempt to the backend websocket server
+ * sets the connection result (lws_client_connect_info) to static wsi */
 static void janus_wsevh_connect_attempt(lws_sorted_usec_list_t *sul) {
 	struct lws_client_connect_info i = { 0 };
 	i.host = address;
@@ -870,10 +864,8 @@ static void janus_wsevh_connect_attempt(lws_sorted_usec_list_t *sul) {
 	reconnect = FALSE;
 }
 
-/**
- * Adopts the reconnect_delay value in case of an error
- * Increases the value up to JANUS_WSEVH_MAX_RETRY_SECS
- */
+/* Adopts the reconnect_delay value in case of an error
+ * Increases the value up to JANUS_WSEVH_MAX_RETRY_SECS */
 static void janus_wsevh_calculate_reconnect_delay_on_fail(void) {
 	if(reconnect_delay == 0)
 		reconnect_delay = 1;
@@ -884,9 +876,7 @@ static void janus_wsevh_calculate_reconnect_delay_on_fail(void) {
 	}
 }
 
-/**
- * Schedules a connect attempt using the lws scheduler as 
- */
+/* Schedules a connect attempt using the lws scheduler as */
 static void janus_wsevh_schedule_connect_attempt(void) {
 	#if (LWS_LIBRARY_VERSION_MAJOR >= 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 4)
 		lws_sul_schedule(context, 0, &sul_stagger, janus_wsevh_connect_attempt, reconnect_delay * LWS_US_PER_SEC);
