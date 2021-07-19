@@ -581,9 +581,14 @@ plugin_response:
  * The reconnect is handled in a dedicated lws scheduler janus_wsevh_schedule_connect_attempt */
 static void *janus_wsevh_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining WebSocketsEventHandler (lws>=3.2) client thread\n");
-	int n = 0;
-	while(n >= 0 && g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping))
-		n = lws_service(context, 0);
+	int nLast = 0;
+	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
+		int n = lws_service(context, 0);
+		if((n < 0 || nLast < 0) && nLast != n) {
+			JANUS_LOG(LOG_ERR, "lws_service returned %d\n", n);
+			nLast = n;
+		}
+	}
 	lws_context_destroy(context);
 	JANUS_LOG(LOG_VERB, "Leaving WebSocketsEventHandler (lws>=3.2) client thread\n");
 	return NULL;
