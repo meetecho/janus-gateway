@@ -55,7 +55,7 @@ CFLAGS="$CFLAGS \
 	-Werror=implicit-function-declaration"
 
 case "$CC" in
-clang*)
+*clang*)
 	# Specific clang flags
 	CFLAGS="$CFLAGS \
 		-Wno-cast-align \
