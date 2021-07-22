@@ -2728,7 +2728,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			/* Generate a unique numeric ID */
 			JANUS_LOG(LOG_VERB, "Missing numeric id, will generate a random one...\n");
 			while(mpid == 0) {
-				mpid = janus_random_uint64_javacript_safe();
+				mpid = janus_random_uint64();
 				if(g_hash_table_lookup(mountpoints, &mpid) != NULL ||
 						g_hash_table_lookup(mountpoints_temp, &mpid) != NULL) {
 					/* ID already in use, try another one */

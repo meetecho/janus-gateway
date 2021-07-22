@@ -733,7 +733,7 @@ janus_session *janus_session_create(guint64 session_id) {
 	janus_session *session = NULL;
 	if(session_id == 0) {
 		while(session_id == 0) {
-			session_id = janus_random_uint64_javacript_safe();
+			session_id = janus_random_uint64();
 			session = janus_session_find(session_id);
 			if(session != NULL) {
 				/* Session ID already taken, try another one */

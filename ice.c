@@ -1233,7 +1233,7 @@ janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque
 	janus_ice_handle *handle = NULL;
 	guint64 handle_id = 0;
 	while(handle_id == 0) {
-		handle_id = janus_random_uint64_javacript_safe();
+		handle_id = janus_random_uint64();
 		handle = janus_session_handles_find(session, handle_id);
 		if(handle != NULL) {
 			/* Handle ID already taken, try another one */

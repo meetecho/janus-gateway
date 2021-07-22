@@ -89,7 +89,7 @@ guint64 janus_random_uint64_full(void) {
 	return ret;
 }
 
-guint64 janus_random_uint64_javacript_safe(void) {
+guint64 janus_random_uint64(void) {
 	return janus_random_uint64_full() & 0x1FFFFFFFFFFFFF;
 }
 

@@ -78,7 +78,7 @@ guint64 janus_random_uint64_full(void);
  * Use this method instead of janus_random_uint64() whenever you generate numbers which
  * might end up in Javascript (via JSON API).
  * @returns A random 64-bit unsigned integer */
-guint64 janus_random_uint64_javacript_safe(void);
+guint64 janus_random_uint64(void);
 
 /*! \brief Helper to generate random UUIDs (needed by some plugins)
  * @returns A random UUID string, which must be deallocated with \c g_free */
