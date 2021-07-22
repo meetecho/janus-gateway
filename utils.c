@@ -80,7 +80,7 @@ guint32 janus_random_uint32(void) {
 	return ret;
 }
 
-guint64 janus_random_uint64(void) {
+guint64 janus_random_uint64_full(void) {
 	guint64 ret = 0;
 	if (RAND_bytes((void *)&ret, sizeof(ret)) != 1) {
 		JANUS_LOG(LOG_FATAL, "\tOpenSSL RAND_bytes() failed\n");
@@ -90,7 +90,7 @@ guint64 janus_random_uint64(void) {
 }
 
 guint64 janus_random_uint64_javacript_safe(void) {
-	return janus_random_uint64() & 0x1FFFFFFFFFFFFF;
+	return janus_random_uint64_full() & 0x1FFFFFFFFFFFFF;
 }
 
 char *janus_random_uuid(void) {
@@ -103,8 +103,8 @@ char *janus_random_uuid(void) {
 	const char *template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx";
 	const char *samples = "0123456789abcdef";
 	union { unsigned char b[16]; uint64_t word[2]; } rnd;
-	rnd.word[0] = janus_random_uint64();
-	rnd.word[1] = janus_random_uint64();
+	rnd.word[0] = janus_random_uint64_full();
+	rnd.word[1] = janus_random_uint64_full();
 	/* Generate the string */
 	char uuid[37], *dst = uuid;
 	const char *p = template;
