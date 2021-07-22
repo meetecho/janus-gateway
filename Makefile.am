@@ -637,11 +637,9 @@ mjr2pcap_SOURCES = \
 mjr2pcap_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(POST_PROCESSING_CFLAGS) \
-	$(BORINGSSL_CFLAGS) \
 	$(NULL)
 
 mjr2pcap_LDADD = \
-	$(BORINGSSL_LIBS) \
 	$(POST_PROCESSING_LIBS) \
 	$(POST_PROCESSING_MANUAL_LIBS) \
 	$(NULL)
@@ -660,12 +658,10 @@ pcap2mjr_CFLAGS = \
 	$(AM_CFLAGS) \
 	-I$(top_builddir)/postprocessing \
 	$(POST_PROCESSING_CFLAGS) \
-	$(BORINGSSL_CFLAGS) \
 	$(PCAP_CFLAGS) \
 	$(NULL)
 
 pcap2mjr_LDADD = \
-	$(BORINGSSL_LIBS) \
 	$(POST_PROCESSING_LIBS) \
 	$(POST_PROCESSING_MANUAL_LIBS) \
 	$(PCAP_LIBS) \
