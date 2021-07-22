@@ -28,6 +28,7 @@
 #ifdef HAVE_TURNRESTAPI
 #include <curl/curl.h>
 #endif
+#include <libwebsockets.h>
 
 #include "janus.h"
 #include "version.h"
@@ -394,6 +395,7 @@ static json_t *janus_info(const char *transaction) {
 		if(curl_version && curl_version->version)
 			json_object_set_new(deps, "libcurl", json_string(curl_version->version));
 	#endif
+		json_object_set_new(deps, "libwebsocket", json_string(LWS_BUILD_HASH));
 		json_object_set_new(deps, "crypto", json_string(janus_get_ssl_version()));
 		json_object_set_new(info, "dependencies", deps);
 	}
