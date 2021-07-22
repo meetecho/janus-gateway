@@ -62,7 +62,7 @@ gboolean janus_strcmp_const_time(const void *str1, const void *str2);
 
 /*! \brief Helper to generate random 32-bit unsigned integers (useful for SSRCs, etc.)
  * @note Currently just wraps g_random_int()
- * @returns A random 32-bit unsigned integer */
+ * @returns A (crypto-safe) random 32-bit unsigned integer */
 guint32 janus_random_uint32(void);
 
 /*! \brief Helper to generate random 64-bit unsigned integers
@@ -71,17 +71,20 @@ guint32 janus_random_uint32(void);
  * @returns A random 64-bit unsigned integer */
 guint64 janus_random_uint64_full(void);
 
-/*! \brief Helper to generate random 64-bit unsigned integers which are safe to use in Javascript
- * @note Javascript does not have real integers, its builtin "number" type is a float64.
- * Thus, only integer values up to Number.MAX_SAFE_INTEGER == 2^53 - 1 == 9007199254740991
+/*! \brief Helper to generate random 52 bit unsigned integers
+ * @note The reason for 52 instead of 64 bits: Javascript does not have real integers,
+ * its builtin "number" type is a float64. Thus, only integer values up to
+ * Number.MAX_SAFE_INTEGER == 2^53 - 1 == 9007199254740991
  * can be safely represented in Javascript. This method returns such numbers.
- * Use this method instead of janus_random_uint64() whenever you generate numbers which
+ * Use this method instead of janus_random_uint64_full() whenever you generate numbers which
  * might end up in Javascript (via JSON API).
- * @returns A random 64-bit unsigned integer */
+ * This method is called janus_random_uint64() instead of janus_random_uint52() (or similar)
+ * for backwards compatibility.
+ * @returns A (crypto-safe) random 64-bit unsigned integer */
 guint64 janus_random_uint64(void);
 
 /*! \brief Helper to generate random UUIDs (needed by some plugins)
- * @returns A random UUID string, which must be deallocated with \c g_free */
+ * @returns A (crypto-safe) random UUID string, which must be deallocated with \c g_free */
 char *janus_random_uuid(void);
 
 /*! \brief Helper to generate an allocated copy of a guint64 number
