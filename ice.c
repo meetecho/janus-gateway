@@ -2676,6 +2676,17 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						rtp.extensions.video_flipped = f;
 					}
 				}
+				if(stream->dependencydesc_ext_id != -1) {
+					uint8_t dd[256];
+					int len = sizeof(dd);
+					if(janus_rtp_header_extension_parse_dependency_desc(buf, buflen,
+							stream->dependencydesc_ext_id, dd, &len) == 0 && len > 0) {
+						/* We copy the DD bytes as they are: it's up to plugins to parse it, if needed */
+						JANUS_LOG(LOG_HUGE, "Dependency descriptor: %d bytes\n", len);
+						rtp.extensions.dd_len = len;
+						memcpy(rtp.extensions.dd_content, dd, len);
+					}
+				}
 				/* Pass the packet to the plugin */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtp && handle->app_handle &&
@@ -4776,7 +4787,8 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 	/* Add core and plugin extensions, if any */
 	if((packet->video && handle->stream->transport_wide_cc_ext_id > 0) || handle->stream->mid_ext_id > 0 ||
 			(!packet->video && packet->extensions.audio_level != -1 && handle->stream->audiolevel_ext_id > 0) ||
-			(packet->video && packet->extensions.video_rotation != -1 && handle->stream->videoorientation_ext_id > 0)) {
+			(packet->video && packet->extensions.video_rotation != -1 && handle->stream->videoorientation_ext_id > 0) ||
+			(packet->video && packet->extensions.dd_len > 0 && handle->stream->dependencydesc_ext_id > 0)) {
 		header->extension = 1;
 		memset(extensions, 0, sizeof(extensions));
 		janus_rtp_header_extension *extheader = (janus_rtp_header_extension *)extensions;
@@ -4838,6 +4850,14 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 			*(index+1) = (c<<3) + (f<<2) + (r1<<1) + r0;
 			index += 2;
 			extlen += 2;
+		}
+		if(packet->video && packet->extensions.dd_len > 0 && handle->stream->dependencydesc_ext_id > 0) {
+			/* Add dependency descriptor extension */
+			*index = (handle->stream->dependencydesc_ext_id << 4) + (packet->extensions.dd_len-1);
+			index++;
+			memcpy(index, packet->extensions.dd_content, packet->extensions.dd_len);
+			index += packet->extensions.dd_len;
+			extlen += packet->extensions.dd_len + 1;
 		}
 		/* Calculate the whole length */
 		uint16_t words = extlen/4;

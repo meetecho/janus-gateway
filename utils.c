@@ -1175,6 +1175,19 @@ inline void janus_set4(guint8 *data,size_t i,guint32 val) {
 	data[i]   = (guint8)(val>>24);
 }
 
+uint8_t janus_bitstream_getbit(uint8_t *base, uint32_t offset) {
+	return ((*(base + (offset >> 0x3))) >> (0x7 - (offset & 0x7))) & 0x1;
+}
+
+uint32_t janus_bitstream_getbits(uint8_t *base, uint8_t num, uint32_t *offset) {
+	uint32_t res = 0;
+	int32_t i = 0;
+	for(i=num-1; i>=0; i--) {
+		res |= janus_bitstream_getbit(base, (*offset)++) << i;
+	}
+	return res;
+}
+
 #ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compressed, size_t zlen) {
 	if(text == NULL || tlen < 1 || compressed == NULL || zlen < 1)

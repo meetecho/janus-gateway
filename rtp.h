@@ -86,6 +86,8 @@ typedef struct janus_rtp_header_extension {
 #define JANUS_RTP_EXTMAP_RID				"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
 /*! \brief a=extmap:5 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id */
 #define JANUS_RTP_EXTMAP_REPAIRED_RID		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id"
+/*! \brief a=extmap:10 https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension */
+#define JANUS_RTP_EXTMAP_DEPENDENCY_DESC	"https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension"
 /*! \brief \note Note: We don't support encrypted extensions yet */
 #define JANUS_RTP_EXTMAP_ENCRYPTED			"urn:ietf:params:rtp-hdrext:encrypt"
 
@@ -194,6 +196,16 @@ int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
  * @returns 0 if found, -1 otherwise */
 int janus_rtp_header_extension_parse_rid(char *buf, int len, int id,
 	char *sdes_item, int sdes_len);
+
+/*! \brief Helper to parse a dependency descriptor RTP extension (https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] dd_item Buffer where the dependency descriptor will be written
+ * @param[out] dd_len Size of the input/output buffer, will be updated with the size of the data
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_dependency_desc(char *buf, int len, int id,
+	uint8_t *dd_item, int *dd_len);
 
 /*! \brief Helper to parse a transport wide sequence number (https://tools.ietf.org/html/draft-holmer-rmcat-transport-wide-cc-extensions-01)
  * @param[in] buf The packet data

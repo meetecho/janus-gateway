@@ -35,7 +35,7 @@ char *janus_rtp_payload(char *buf, int len, int *plen) {
 		hlen += rtp->csrccount*4;
 
 	if(rtp->extension) {
-		janus_rtp_header_extension *ext = (janus_rtp_header_extension*)(buf+hlen);
+		janus_rtp_header_extension *ext = (janus_rtp_header_extension *)(buf+hlen);
 		int extlen = ntohs(ext->length)*4;
 		hlen += 4;
 		if(len > (hlen + extlen))
@@ -111,6 +111,8 @@ const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id) {
 						return JANUS_RTP_EXTMAP_RID;
 					if(strstr(extension, JANUS_RTP_EXTMAP_REPAIRED_RID))
 						return JANUS_RTP_EXTMAP_REPAIRED_RID;
+					if(strstr(extension, JANUS_RTP_EXTMAP_DEPENDENCY_DESC))
+						return JANUS_RTP_EXTMAP_DEPENDENCY_DESC;
 					JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
 					return NULL;
 				}
@@ -237,10 +239,10 @@ int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
 		return -2;
 	int val_len = (*ext & 0x0F) + 1;
 	if(val_len > (sdes_len-1)) {
-		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d < %d), MID will be cut\n", val_len, sdes_len);
+		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d > %d), MID will be cut\n", val_len, sdes_len);
 		val_len = sdes_len-1;
 	}
-	if (val_len > len-(ext-buf)-1 ) {
+	if(val_len > len-(ext-buf)-1 ) {
 		return -3;
 	}
 	memcpy(sdes_item, ext+1, val_len);
@@ -259,14 +261,37 @@ int janus_rtp_header_extension_parse_rid(char *buf, int len, int id,
 		return -2;
 	int val_len = (*ext & 0x0F) + 1;
 	if(val_len > (sdes_len-1)) {
-		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d < %d), RTP stream ID will be cut\n", val_len, sdes_len);
+		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d > %d), RTP stream ID will be cut\n", val_len, sdes_len);
 		val_len = sdes_len-1;
 	}
-	if (val_len > len-(ext-buf)-1 ) {
+	if(val_len > len-(ext-buf)-1 ) {
 		return -3;
 	}
 	memcpy(sdes_item, ext+1, val_len);
 	*(sdes_item+val_len) = '\0';
+	return 0;
+}
+
+int janus_rtp_header_extension_parse_dependency_desc(char *buf, int len, int id,
+		uint8_t *dd_item, int *dd_len) {
+	char *ext = NULL;
+	int buflen = *dd_len;
+	*dd_len = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
+		return -1;
+	/* a=extmap:10 https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension */
+	if(ext == NULL)
+		return -2;
+	int val_len = (*ext & 0x0F) + 1;
+	if(val_len > buflen) {
+		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d > %d), dependency descriptor will be cut\n", val_len, buflen);
+		val_len = buflen;
+	}
+	if(val_len > len-(ext-buf)-1 ) {
+		return -3;
+	}
+	memcpy(dd_item, ext+1, val_len);
+	*dd_len = val_len;
 	return 0;
 }
 

@@ -1956,12 +1956,13 @@ function Janus(gatewayCallbacks) {
 		if(addTracks && stream) {
 			Janus.log('Adding local stream');
 			var simulcast2 = (callbacks.simulcast2 === true);
+			var svc = callbacks.svc;
 			stream.getTracks().forEach(function(track) {
 				Janus.log('Adding local track:', track);
 				var sender = null;
-				if(!simulcast2 || track.kind === 'audio') {
+				if((!simulcast2 && !svc) || track.kind === 'audio') {
 					sender = config.pc.addTrack(track, stream);
-				} else {
+				} else if(simulcast2) {
 					Janus.log('Enabling rid-based simulcasting:', track);
 					var maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
 					var tr = config.pc.addTransceiver(track, {
@@ -1971,6 +1972,17 @@ function Janus(gatewayCallbacks) {
 							{ rid: "h", active: true, maxBitrate: maxBitrates.high },
 							{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
 							{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
+						]
+					});
+					if(tr)
+						sender = tr.sender;
+				} else {
+					Janus.log('Enabling SVC (' + svc + '):', track);
+					var tr = config.pc.addTransceiver(track, {
+						direction: "sendrecv",
+						streams: [stream],
+						sendEncodings: [
+							{ scalabilityMode: svc }
 						]
 					});
 					if(tr)
