@@ -2754,7 +2754,7 @@ static void *janus_sip_handler(void *data) {
 					if(session->master->stack->contact_header != NULL)
 						session->stack->contact_header = g_strdup(session->master->stack->contact_header);
 				}
-				/* Check if custo headers need to be intercepted */
+				/* Check if custom headers need to be intercepted */
 				json_t *header_prefixes_json = json_object_get(root, "incoming_header_prefixes");
 				if(header_prefixes_json) {
 					size_t index = 0;
