@@ -1500,7 +1500,7 @@ static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_
 	while(unknown_header != NULL) {
 		GList *temp = session->incoming_header_prefixes;
 		while(temp != NULL) {
-			char *header_prefix = (char *) temp->data;
+			char *header_prefix = (char *)temp->data;
 			if(header_prefix != NULL && unknown_header->un_name != NULL) {
 				if(strncasecmp(unknown_header->un_name, header_prefix, strlen(header_prefix)) == 0) {
 					const char *header_name = g_strdup(unknown_header->un_name);
