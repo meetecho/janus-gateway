@@ -74,7 +74,7 @@ guint64 janus_random_uint64_full(void);
 /*! \brief Helper to generate random 52 bit unsigned integers
  * @note The reason for 52 instead of 64 bits: Javascript does not have real integers,
  * its builtin "number" type is a float64. Thus, only integer values up to
- * Number.MAX_SAFE_INTEGER == 2^53 - 1 == 9007199254740991
+ * <code>Number.MAX_SAFE_INTEGER == 2^53 - 1 == 9007199254740991</code>
  * can be safely represented in Javascript. This method returns such numbers.
  * Use this method instead of janus_random_uint64_full() whenever you generate numbers which
  * might end up in Javascript (via JSON API).
