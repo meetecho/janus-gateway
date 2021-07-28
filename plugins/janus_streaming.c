@@ -5704,6 +5704,8 @@ done:
 						g_strlcat(sdptemp, "a=sendonly\r\n", sizeof(sdptemp));
 						g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 1, JANUS_RTP_EXTMAP_MID);
 						g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+						g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 2, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
+						g_strlcat(sdptemp, buffer, 2048);
 					}
 #ifdef HAVE_SCTP
 					else if(stream->type == JANUS_STREAMING_MEDIA_DATA && data) {

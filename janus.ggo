@@ -12,7 +12,7 @@ option "configs-folder" F "Configuration files folder (default=./conf)" string t
 option "cert-pem" c "DTLS certificate" string typestr="filename" optional
 option "cert-key" k "DTLS certificate key" string typestr="filename" optional
 option "cert-pwd" K "DTLS certificate key passphrase (if needed)" string typestr="text" optional
-option "stun-server" S "STUN server(:port) to use, if needed (e.g., Janus behind NAT, default=none)" string typestr="ip:port" optional
+option "stun-server" S "STUN server(:port) to use, if needed (e.g., Janus behind NAT, default=none)" string typestr="address:port" optional
 option "nat-1-1" 1 "Comma-separated list of public IPs to put in all host candidates, assuming a 1:1 NAT is in place (e.g., Amazon EC2 instances, default=none)" string typestr="ips" optional
 option "keep-private-host" 2 "When nat-1-1 is used (e.g., Amazon EC2 instances), don't remove the private host, but keep both to simulate STUN" flag off
 option "ice-enforce-list" E "Comma-separated list of the only interfaces to use for ICE gathering; partial strings are supported (e.g., eth0 or eno1,wlan0, default=none)" string typestr="list" optional

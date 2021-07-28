@@ -733,6 +733,7 @@ static void *janus_sampleevh_handler(void *data) {
 			curl_easy_setopt(curl, CURLOPT_PASSWORD, backend_pwd);
 		}
 		janus_mutex_unlock(&evh_mutex);
+		headers = curl_slist_append(headers, "Content-Type: application/json");
 		/* Check if we need to compress the data */
 		if(compress) {
 			compressed_len = janus_gzip_compress(compression,
@@ -748,10 +749,8 @@ static void *janus_sampleevh_handler(void *data) {
 				output = NULL;
 				continue;
 			}
+			headers = curl_slist_append(headers, "Content-Encoding: gzip");
 		}
-		headers = curl_slist_append(headers, compress ? "Accept: application/gzip": "Accept: application/json");
-		headers = curl_slist_append(headers, compress ? "Content-Type: application/gzip" : "Content-Type: application/json");
-		headers = curl_slist_append(headers, "charsets: utf-8");
 		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, compress ? compressed_text : event_text);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, compress ? compressed_len : strlen(event_text));

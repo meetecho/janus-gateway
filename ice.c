@@ -4159,6 +4159,15 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					/* ... but only if this isn't a retransmission (for those we already set it before) */
 					header->ssrc = htonl(medium->ssrc);
 				}
+				/* Set the abs-send-time value, if needed */
+				if(video && pc->abs_send_time_ext_id > 0) {
+					int64_t now = (((janus_get_monotonic_time()/1000) << 18) + 500) / 1000;
+					uint32_t abs_ts = (uint32_t)now & 0x00FFFFFF;
+					if(janus_rtp_header_extension_set_abs_send_time(pkt->data, pkt->length,
+							pc->abs_send_time_ext_id, abs_ts) < 0) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting abs-send-time value...\n", handle->handle_id);
+					}
+				}
 				/* Set the transport-wide sequence number, if needed */
 				if(video && pc->transport_wide_cc_ext_id > 0) {
 					pc->transport_wide_cc_out_seq_num++;
@@ -4411,7 +4420,8 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 	int origext = header->extension;
 	header->extension = 0;
 	/* Add core and plugin extensions, if any */
-	if((packet->video && handle->pc->transport_wide_cc_ext_id > 0) || handle->pc->mid_ext_id > 0 ||
+	if(handle->pc->mid_ext_id > 0 || (packet->video && handle->pc->abs_send_time_ext_id > 0) ||
+			(packet->video && handle->pc->transport_wide_cc_ext_id > 0) ||
 			(!packet->video && packet->extensions.audio_level != -1 && handle->pc->audiolevel_ext_id > 0) ||
 			(packet->video && packet->extensions.video_rotation != -1 && handle->pc->videoorientation_ext_id > 0)) {
 		header->extension = 1;
@@ -4421,6 +4431,14 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 		extheader->length = 0;
 		/* Iterate on all extensions we need */
 		char *index = extensions + 4;
+		/* Check if we need to add the abs-send-time extension */
+		if(packet->video && handle->pc->abs_send_time_ext_id > 0) {
+			*index = (handle->pc->abs_send_time_ext_id << 4) + 2;
+			/* We'll actually set the value later, when sending the packet */
+			memset(index+1, 0, 3);
+			index += 4;
+			extlen += 4;
+		}
 		/* Check if we need to add the transport-wide CC extension */
 		if(packet->video && handle->pc->transport_wide_cc_ext_id > 0) {
 			*index = (handle->pc->transport_wide_cc_ext_id << 4) + 1;

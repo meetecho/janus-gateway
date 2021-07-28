@@ -429,8 +429,8 @@ struct janus_ice_peerconnection {
 	gint audiolevel_ext_id;
 	/*! \brief Video orientation extension ID */
 	gint videoorientation_ext_id;
-	/*! \brief Frame marking extension ID */
-	gint framemarking_ext_id;
+	/*! \brief Absolute Send Time ext ID */
+	gint abs_send_time_ext_id;
 	/*! \brief Whether we do transport wide cc */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */

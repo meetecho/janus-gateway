@@ -1474,6 +1474,40 @@ int janus_process_incoming_request(janus_request *request) {
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);
 					}
 					janus_request_ice_handle_answer(handle, jsep_sdp);
+					/* Check if the answer does contain the mid/abs-send-time/twcc extmaps */
+					int mindex = 0;
+					gboolean do_mid = FALSE, do_twcc = FALSE, do_abs_send_time = FALSE;
+					GList *temp = parsed_sdp->m_lines;
+					while(temp) {
+						janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+						gboolean have_mid = FALSE, have_twcc = FALSE, have_abs_send_time = FALSE;
+						GList *tempA = m->attributes;
+						while(tempA) {
+							janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
+							if(a->name && a->value && !strcasecmp(a->name, "extmap")) {
+								if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
+									have_mid = TRUE;
+								else if(strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
+									have_twcc = TRUE;
+								else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
+									have_abs_send_time = TRUE;
+							}
+							tempA = tempA->next;
+						}
+						do_mid = do_mid || have_mid;
+						do_twcc = do_twcc || have_twcc;
+						do_abs_send_time = do_abs_send_time || have_abs_send_time;
+						mindex++;
+						temp = temp->next;
+					}
+					if(!do_mid && handle->pc)
+						handle->pc->mid_ext_id = 0;
+					if(!do_twcc && handle->pc) {
+						handle->pc->do_transport_wide_cc = FALSE;
+						handle->pc->transport_wide_cc_ext_id = 0;
+					}
+					if(!do_abs_send_time && handle->pc)
+						handle->pc->abs_send_time_ext_id = 0;
 				} else {
 					/* Check if the mid RTP extension is being negotiated */
 					handle->pc->mid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_MID);
@@ -1484,6 +1518,8 @@ int janus_process_incoming_request(janus_request *request) {
 					handle->pc->audiolevel_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 					/* Check if the video orientation ID extension is being negotiated */
 					handle->pc->videoorientation_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+					/* Check if the abs-send-time ID extension is being negotiated */
+					handle->pc->abs_send_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->pc->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -1544,6 +1580,8 @@ int janus_process_incoming_request(janus_request *request) {
 					handle->pc->audiolevel_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 					/* Check if the video orientation ID extension is being negotiated */
 					handle->pc->videoorientation_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+					/* Check if the abs-send-time ID extension is being negotiated */
+					handle->pc->abs_send_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->pc->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -3051,6 +3089,8 @@ json_t *janus_admin_peerconnection_summary(janus_ice_peerconnection *pc) {
 		json_object_set_new(se, JANUS_RTP_EXTMAP_RID, json_integer(pc->rid_ext_id));
 	if(pc->ridrtx_ext_id > 0)
 		json_object_set_new(se, JANUS_RTP_EXTMAP_REPAIRED_RID, json_integer(pc->ridrtx_ext_id));
+	if(pc->abs_send_time_ext_id > 0)
+		json_object_set_new(se, JANUS_RTP_EXTMAP_ABS_SEND_TIME, json_integer(pc->abs_send_time_ext_id));
 	if(pc->transport_wide_cc_ext_id > 0)
 		json_object_set_new(se, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC, json_integer(pc->transport_wide_cc_ext_id));
 	if(pc->audiolevel_ext_id > 0)
@@ -3598,7 +3638,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			}
 		}
 		/* Make sure we don't send the rid/repaired-rid attributes when offering ourselves */
-		int mid_ext_id = 0, transport_wide_cc_ext_id = 0, audiolevel_ext_id = 0, videoorientation_ext_id = 0;
+		int mid_ext_id = 0, transport_wide_cc_ext_id = 0, abs_send_time_ext_id = 0,
+			audiolevel_ext_id = 0, videoorientation_ext_id = 0;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -3610,6 +3651,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						mid_ext_id = atoi(a->value);
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
 						transport_wide_cc_ext_id = atoi(a->value);
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
+						abs_send_time_ext_id = atoi(a->value);
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL))
 						audiolevel_ext_id = atoi(a->value);
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
@@ -3632,28 +3675,36 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->pc->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
 			ice_handle->pc->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 		}
+		if(ice_handle->pc && ice_handle->pc->abs_send_time_ext_id != abs_send_time_ext_id)
+			ice_handle->pc->abs_send_time_ext_id = abs_send_time_ext_id;
 		if(ice_handle->pc && ice_handle->pc->audiolevel_ext_id != audiolevel_ext_id)
 			ice_handle->pc->audiolevel_ext_id = audiolevel_ext_id;
 		if(ice_handle->pc && ice_handle->pc->videoorientation_ext_id != videoorientation_ext_id)
 			ice_handle->pc->videoorientation_ext_id = videoorientation_ext_id;
 	} else {
-		/* Check if the answer does contain the mid/rid/repaired-rid attributes */
+		/* Check if the answer does contain the mid/rid/repaired-rid/abs-send-time/twcc extmaps */
 		int mindex = 0;
-		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE;
+		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE,
+			do_twcc = FALSE, do_abs_send_time = FALSE;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-			gboolean have_mid = FALSE, have_rid = FALSE, have_repaired_rid = FALSE;
+			gboolean have_mid = FALSE, have_rid = FALSE, have_repaired_rid = FALSE,
+				have_twcc = FALSE, have_abs_send_time = FALSE;
 			GList *tempA = m->attributes;
 			while(tempA) {
 				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
-				if(a->name && a->value) {
+				if(a->name && a->value && !strcasecmp(a->name, "extmap")) {
 					if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
 						have_mid = TRUE;
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_RID))
 						have_rid = TRUE;
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID))
 						have_repaired_rid = TRUE;
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
+						have_twcc = TRUE;
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
+						have_abs_send_time = TRUE;
 				}
 				tempA = tempA->next;
 			}
@@ -3676,6 +3727,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			do_mid = do_mid || have_mid;
 			do_rid = do_rid || have_rid;
 			do_repaired_rid = do_repaired_rid || have_repaired_rid;
+			do_twcc = do_twcc || have_twcc;
+			do_abs_send_time = do_abs_send_time || have_abs_send_time;
 			mindex++;
 			temp = temp->next;
 		}
@@ -3687,6 +3740,12 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		}
 		if(!do_repaired_rid && ice_handle->pc)
 			ice_handle->pc->ridrtx_ext_id = 0;
+		if(!do_twcc && ice_handle->pc) {
+			ice_handle->pc->do_transport_wide_cc = FALSE;
+			ice_handle->pc->transport_wide_cc_ext_id = 0;
+		}
+		if(!do_abs_send_time && ice_handle->pc)
+			ice_handle->pc->abs_send_time_ext_id = 0;
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
 		/* Wait for candidates-done callback */
