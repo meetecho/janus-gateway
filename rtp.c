@@ -332,6 +332,37 @@ int janus_rtp_header_extension_parse_dependency_desc(char *buf, int len, int id,
 	return 0;
 }
 
+int janus_rtp_header_extension_parse_abs_sent_time(char *buf, int len, int id, uint32_t *abs_ts) {
+	char *ext = NULL;
+	uint8_t idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
+		return -1;
+	/* a=extmap:4 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time */
+	if(ext == NULL)
+		return -2;
+	if(idlen < 3 || idlen > len-(ext-buf)-1)
+		return -3;
+	uint32_t abs24 = 0;
+	memcpy(&abs24, ext, 3);
+	if(abs_ts)
+		*abs_ts = ntohl(abs24 << 8);
+	return 0;
+}
+
+int janus_rtp_header_extension_set_abs_send_time(char *buf, int len, int id, uint32_t abs_ts) {
+	char *ext = NULL;
+	uint8_t idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
+		return -1;
+	if(ext == NULL)
+		return -2;
+	if(idlen < 3 || idlen > len-(ext-buf)-1)
+		return -3;
+	uint32_t abs24 = htonl(abs_ts) >> 8;
+	memcpy(ext, &abs24, 3);
+	return 0;
+}
+
 int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id, uint16_t *transSeqNum) {
 	char *ext = NULL;
 	uint8_t idlen = 0;

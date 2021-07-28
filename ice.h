@@ -469,6 +469,8 @@ struct janus_ice_stream {
 	gint videoorientation_ext_id;
 	/*! \brief Dependency descriptor extension ID */
 	gint dependencydesc_ext_id;
+	/*! \brief Absolute Send Time ext ID */
+	gint abs_send_time_ext_id;
 	/*! \brief Whether we do transport wide cc for video */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */

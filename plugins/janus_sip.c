@@ -1500,7 +1500,7 @@ static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_
 	while(unknown_header != NULL) {
 		GList *temp = session->incoming_header_prefixes;
 		while(temp != NULL) {
-			char *header_prefix = (char *) temp->data;
+			char *header_prefix = (char *)temp->data;
 			if(header_prefix != NULL && unknown_header->un_name != NULL) {
 				if(strncasecmp(unknown_header->un_name, header_prefix, strlen(header_prefix)) == 0) {
 					const char *header_name = g_strdup(unknown_header->un_name);
@@ -2754,6 +2754,28 @@ static void *janus_sip_handler(void *data) {
 					if(session->master->stack->contact_header != NULL)
 						session->stack->contact_header = g_strdup(session->master->stack->contact_header);
 				}
+				/* Check if custom headers need to be intercepted */
+				json_t *header_prefixes_json = json_object_get(root, "incoming_header_prefixes");
+				if(header_prefixes_json) {
+					size_t index = 0;
+					json_t *value = NULL;
+					json_array_foreach(header_prefixes_json, index, value) {
+						const char *header_prefix = json_string_value(value);
+						if(header_prefix)
+							session->incoming_header_prefixes = g_list_append(session->incoming_header_prefixes, g_strdup(header_prefix));
+					}
+				} else {
+					/* No custom headers, inherit the parent's if any */
+					if(ms->incoming_header_prefixes != NULL) {
+						GList *temp = ms->incoming_header_prefixes;
+						while(temp != NULL) {
+							char *header_prefix = (char *)temp->data;
+							if(header_prefix != NULL)
+								session->incoming_header_prefixes = g_list_append(session->incoming_header_prefixes, g_strdup(header_prefix));
+							temp = temp->next;
+						}
+					}
+				}
 				session->stack->session = session;
 				janus_mutex_unlock(&sessions_mutex);
 				/* Send an event back */
@@ -2956,7 +2978,6 @@ static void *janus_sip_handler(void *data) {
 			if(header_prefixes_json) {
 				size_t index = 0;
 				json_t *value = NULL;
-
 				json_array_foreach(header_prefixes_json, index, value) {
 					const char *header_prefix = json_string_value(value);
 					if(header_prefix)

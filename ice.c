@@ -4494,6 +4494,15 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					/* ... but only if this isn't a retransmission (for those we already set it before) */
 					header->ssrc = htonl(video ? stream->video_ssrc : stream->audio_ssrc);
 				}
+				/* Set the abs-send-time value, if needed */
+				if(video && stream->abs_send_time_ext_id > 0) {
+					int64_t now = (((janus_get_monotonic_time()/1000) << 18) + 500) / 1000;
+					uint32_t abs_ts = (uint32_t)now & 0x00FFFFFF;
+					if(janus_rtp_header_extension_set_abs_send_time(pkt->data, pkt->length,
+							stream->abs_send_time_ext_id, abs_ts) < 0) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting abs-send-time value...\n", handle->handle_id);
+					}
+				}
 				/* Set the transport-wide sequence number, if needed */
 				if(video && stream->transport_wide_cc_ext_id > 0) {
 					stream->transport_wide_cc_out_seq_num++;
@@ -4784,7 +4793,8 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 	int origext = header->extension;
 	header->extension = 0;
 	/* Add core and plugin extensions, if any */
-	if((packet->video && handle->stream->transport_wide_cc_ext_id > 0) || handle->stream->mid_ext_id > 0 ||
+	if(handle->stream->mid_ext_id > 0 || (packet->video && handle->stream->abs_send_time_ext_id > 0) ||
+			(packet->video && handle->stream->transport_wide_cc_ext_id > 0) ||
 			(!packet->video && packet->extensions.audio_level != -1 && handle->stream->audiolevel_ext_id > 0) ||
 			(packet->video && packet->extensions.video_rotation != -1 && handle->stream->videoorientation_ext_id > 0) ||
 			(packet->video && packet->extensions.dd_len > 0 && handle->stream->dependencydesc_ext_id > 0)) {
@@ -4798,6 +4808,22 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 		extheader->length = 0;
 		/* Iterate on all extensions we need */
 		char *index = extensions + 4;
+		/* Check if we need to add the abs-send-time extension */
+		if(packet->video && handle->stream->abs_send_time_ext_id > 0) {
+			/* We'll actually set the value later, when sending the packet */
+			if(!use_2byte) {
+				*index = (handle->stream->abs_send_time_ext_id << 4) + 2;
+				memset(index+1, 0, 3);
+				index += 4;
+				extlen += 4;
+			} else {
+				*index = handle->stream->abs_send_time_ext_id;
+				*(index+1) = 3;
+				memset(index+2, 0, 3);
+				index += 5;
+				extlen += 5;
+			}
+		}
 		/* Check if we need to add the transport-wide CC extension */
 		if(packet->video && handle->stream->transport_wide_cc_ext_id > 0) {
 			/* We'll actually set the sequence number later, when sending the packet */
