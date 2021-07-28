@@ -72,6 +72,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	janus_rtp_header_extension_parse_rid((char *)data, size, 1, sdes_item, sizeof(sdes_item));
 	janus_rtp_header_extension_parse_mid((char *)data, size, 1, sdes_item, sizeof(sdes_item));
 	janus_rtp_header_extension_parse_transport_wide_cc((char *)data, size, 1, &transport_seq_num);
+	janus_rtp_header_extension_parse_abs_sent_time((char *)data, size, 1, NULL);
 
 	/* Extract codec payload */
 	int plen = 0;
