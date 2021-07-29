@@ -74,7 +74,7 @@ gboolean janus_strcmp_const_time(const void *str1, const void *str2) {
 guint32 janus_random_uint32(void) {
 	guint32 ret = 0;
 	if(RAND_bytes((void *)&ret, sizeof(ret)) != 1) {
-		JANUS_LOG(LOG_ERR, "Safe RAND_bytes() failed, falling back to unsafe PRNG\n");
+		JANUS_LOG(LOG_WARN, "Safe RAND_bytes() failed, falling back to unsafe PRNG\n");
 		return g_random_int();
 	}
 	return ret;
@@ -83,7 +83,7 @@ guint32 janus_random_uint32(void) {
 guint64 janus_random_uint64_full(void) {
 	guint64 ret = 0;
 	if(RAND_bytes((void *)&ret, sizeof(ret)) != 1) {
-		JANUS_LOG(LOG_ERR, "Safe RAND_bytes() failed, falling back to unsafe PRNG\n");
+		JANUS_LOG(LOG_WARN, "Safe RAND_bytes() failed, falling back to unsafe PRNG\n");
 		return (g_random_int() << 32) | g_random_int();
 	}
 	return ret;
