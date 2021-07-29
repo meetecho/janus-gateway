@@ -60,6 +60,9 @@ if(getQueryStringValue("room") !== "")
 var stereo = false;
 if(getQueryStringValue("stereo") !== "")
 	stereo = (getQueryStringValue("stereo") === "true");
+var mygroup = null;	// Forwarding group, if required by the room
+if(getQueryStringValue("group") !== "")
+	mygroup = getQueryStringValue("group");
 var myusername = null;
 var myid = null;
 var webrtcUp = false;
@@ -426,7 +429,11 @@ function registerUsername() {
 		}
 		var register = { request: "join", room: myroom, display: username };
 		myusername = username;
-		mixertest.send({ message: register});
+		// If the room uses forwarding groups, this is how we state ours
+		if(mygroup)
+			register["group"] = mygroup;
+		// Send the message
+		mixertest.send({ message: register });
 	}
 }
 
