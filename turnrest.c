@@ -268,6 +268,8 @@ janus_turnrest_response *janus_turnrest_request(const char *user) {
 			if(res != NULL)
 				freeaddrinfo(res);
 			g_strfreev(uri_parts);
+			g_strfreev(parts);
+			janus_turnrest_instance_destroy(instance);
 			continue;
 		}
 		freeaddrinfo(res);

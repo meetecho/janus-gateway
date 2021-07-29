@@ -180,8 +180,8 @@ certificates: {
 	#rsa_private_key = false
 }
 
-# Media-related stuff: you can configure whether if you want
-# to enable IPv6 support, the minimum size of the NACK queue (in ms,
+# Media-related stuff: you can configure whether if you want to enable IPv6
+# support (and link-local IPs), the minimum size of the NACK queue (in ms,
 # defaults to 200ms) for retransmissions no matter the RTT, the range of
 # ports to use for RTP and RTCP (by default, no range is envisaged), the
 # starting MTU for DTLS (1200 by default, it adapts automatically),
@@ -198,6 +198,7 @@ certificates: {
 # you should pick a reasonable trade-off (usually 2*max expected RTT).
 media: {
 	#ipv6 = true
+	#ipv6_linklocal = true
 	#min_nack_queue = 500
 	#rtp_port_range = "20000-40000"
 	#dtls_mtu = 1200

@@ -356,9 +356,9 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
- * To get a list of the available rooms (excluded those configured or
- * created as private rooms) you can make use of the \c list request,
- * which has to be formatted as follows:
+ * To get a list of the available rooms you can make use of the \c list request.
+ * \c admin_key is optional. If included and correct, rooms configured/created
+ * as private will be included in the list as well.
  *
 \verbatim
 {
@@ -376,16 +376,29 @@ room-<unique room ID>: {
 			"room" : <unique numeric ID>,
 			"description" : "<Name of the room>",
 			"pin_required" : <true|false, whether a PIN is required to join this room>,
+			"is_private" : <true|false, whether this room is 'private' (as in hidden) or not>,
 			"max_publishers" : <how many publishers can actually publish via WebRTC at the same time>,
 			"bitrate" : <bitrate cap that should be forced (via REMB) on all publishers by default>,
-			"bitrate_cap" : <true|false, whether the above cap should act as a limit to dynamic bitrate changes by publishers>,
+			"bitrate_cap" : <true|false, whether the above cap should act as a limit to dynamic bitrate changes by publishers (optional)>,
 			"fir_freq" : <how often a keyframe request is sent via PLI/FIR to active publishers>,
+			"require_pvtid": <true|false, whether subscriptions in this room require a private_id>,
+			"require_e2ee": <true|false, whether end-to-end encrypted publishers are required>,
+			"notify_joining": <true|false, whether an event is sent to notify all participants if a new participant joins the room>,
 			"audiocodec" : "<comma separated list of allowed audio codecs>",
 			"videocodec" : "<comma separated list of allowed video codecs>",
+			"opus_fec": <true|false, whether inband FEC must be negotiated (note: only available for Opus) (optional)>,
+			"video_svc": <true|false, whether SVC must be done for video (note: only available for VP9 right now) (optional)>,
 			"record" : <true|false, whether the room is being recorded>,
-			"record_dir" : "<if recording, the path where the .mjr files are being saved>",
+			"rec_dir" : "<if recording, the path where the .mjr files are being saved>",
 			"lock_record" : <true|false, whether the room recording state can only be changed providing the secret>,
 			"num_participants" : <count of the participants (publishers, active or not; not subscribers)>
+			"audiolevel_ext": <true|false, whether the ssrc-audio-level extension must be negotiated or not for new publishers>,
+			"audiolevel_event": <true|false, whether to emit event to other users about audiolevel>,
+			"audio_active_packets": <amount of packets with audio level for checkup (optional, only if audiolevel_event is true)>,
+			"audio_level_average": <average audio level (optional, only if audiolevel_event is true)>,
+			"videoorient_ext": <true|false, whether the video-orientation extension must be negotiated or not for new publishers>,
+			"playoutdelay_ext": <true|false, whether the playout-delay extension must be negotiated or not for new publishers>,
+			"transport_wide_cc_ext": <true|false, whether the transport wide cc extension must be negotiated or not for new publishers>
 		},
 		// Other rooms
 	]
@@ -1623,7 +1636,6 @@ typedef struct janus_videoroom_publisher {
 	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
 	char *rid[3];			/* Only needed if simulcasting is rid-based */
 	int rid_extmap_id;		/* rid extmap ID */
-	int framemarking_ext_id;			/* Frame marking extmap ID */
 	guint8 audio_level_extmap_id;		/* Audio level extmap ID */
 	guint8 video_orient_extmap_id;		/* Video orientation extmap ID */
 	guint8 playout_delay_extmap_id;		/* Playout delay extmap ID */
@@ -2327,7 +2339,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->acodec[4] = JANUS_AUDIOCODEC_NONE;
 			/* Check if we're forcing a different single codec, or allowing more than one */
 			if(audiocodec && audiocodec->value) {
-				gchar **list = g_strsplit(audiocodec->value, ",", 4);
+				gchar **list = g_strsplit(audiocodec->value, ",", 6);
 				gchar *codec = list[0];
 				if(codec != NULL) {
 					int i=0;
@@ -2352,7 +2364,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->vcodec[4] = JANUS_VIDEOCODEC_NONE;
 			/* Check if we're forcing a different single codec, or allowing more than one */
 			if(videocodec && videocodec->value) {
-				gchar **list = g_strsplit(videocodec->value, ",", 4);
+				gchar **list = g_strsplit(videocodec->value, ",", 6);
 				gchar *codec = list[0];
 				if(codec != NULL) {
 					int i=0;
@@ -3036,7 +3048,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *audiocodec = json_object_get(root, "audiocodec");
 		if(audiocodec) {
 			const char *audiocodec_value = json_string_value(audiocodec);
-			gchar **list = g_strsplit(audiocodec_value, ",", 4);
+			gchar **list = g_strsplit(audiocodec_value, ",", 6);
 			gchar *codec = list[0];
 			if(codec != NULL) {
 				int i=0;
@@ -3059,7 +3071,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *videocodec = json_object_get(root, "videocodec");
 		if(videocodec) {
 			const char *videocodec_value = json_string_value(videocodec);
-			gchar **list = g_strsplit(videocodec_value, ",", 4);
+			gchar **list = g_strsplit(videocodec_value, ",", 6);
 			gchar *codec = list[0];
 			if(codec != NULL) {
 				int i=0;
@@ -3214,7 +3226,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		/* Check if we're forcing a different single codec, or allowing more than one */
 		if(audiocodec) {
 			const char *audiocodec_value = json_string_value(audiocodec);
-			gchar **list = g_strsplit(audiocodec_value, ",", 4);
+			gchar **list = g_strsplit(audiocodec_value, ",", 6);
 			gchar *codec = list[0];
 			if(codec != NULL) {
 				int i=0;
@@ -3240,7 +3252,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		/* Check if we're forcing a different single codec, or allowing more than one */
 		if(videocodec) {
 			const char *videocodec_value = json_string_value(videocodec);
-			gchar **list = g_strsplit(videocodec_value, ",", 4);
+			gchar **list = g_strsplit(videocodec_value, ",", 6);
 			gchar *codec = list[0];
 			if(codec != NULL) {
 				int i=0;
@@ -3767,6 +3779,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				json_object_set_new(rl, "room", string_ids ? json_string(room->room_id_str) : json_integer(room->room_id));
 				json_object_set_new(rl, "description", json_string(room->room_name));
 				json_object_set_new(rl, "pin_required", room->room_pin ? json_true() : json_false());
+				json_object_set_new(rl, "is_private", room->is_private ? json_true() : json_false());
 				json_object_set_new(rl, "max_publishers", json_integer(room->max_publishers));
 				json_object_set_new(rl, "bitrate", json_integer(room->bitrate));
 				if(room->bitrate_cap)
@@ -3787,7 +3800,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				json_object_set_new(rl, "record", room->record ? json_true() : json_false());
 				json_object_set_new(rl, "rec_dir", json_string(room->rec_dir));
 				json_object_set_new(rl, "lock_record", room->lock_record ? json_true() : json_false());
-				/* TODO: Should we list participants as well? or should there be a separate API call on a specific room for this? */
 				json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
 				json_object_set_new(rl, "audiolevel_ext", room->audiolevel_ext ? json_true() : json_false());
 				json_object_set_new(rl, "audiolevel_event", room->audiolevel_event ? json_true() : json_false());
@@ -4882,7 +4894,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		/* Lookup room */
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = NULL;
-		error_code = janus_videoroom_access_room(root, FALSE, TRUE, &videoroom, error_cause, sizeof(error_cause));
+		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
 		if(error_code != 0) {
 			JANUS_LOG(LOG_ERR, "Failed to access videoroom\n");
 			janus_mutex_unlock(&rooms_mutex);
@@ -5146,10 +5158,13 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 			json_object_set_new(pub, "videoroom", json_string("event"));
 			json_object_set_new(pub, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
 			json_object_set_new(pub, "publishers", list);
-			if (participant->room) {
-				janus_mutex_lock(&participant->room->mutex);
+			janus_videoroom *room = participant->room;
+			if(room && !g_atomic_int_get(&room->destroyed)) {
+				janus_refcount_increase(&room->ref);
+				janus_mutex_lock(&room->mutex);
 				janus_videoroom_notify_participants(participant, pub, FALSE);
-				janus_mutex_unlock(&participant->room->mutex);
+				janus_mutex_unlock(&room->mutex);
+				janus_refcount_decrease(&room->ref);
 			}
 			json_decref(pub);
 			/* Also notify event handlers */
@@ -7020,10 +7035,12 @@ static void *janus_videoroom_handler(void *data) {
 					/* Check if a simulcasting-related request is involved */
 					if(sc_substream && (publisher->ssrc[0] != 0 || publisher->rid[0] != NULL)) {
 						subscriber->sim_context.substream_target = json_integer_value(sc_substream);
-						JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
-							publisher->ssrc[subscriber->sim_context.substream],
-							subscriber->sim_context.substream_target,
-							subscriber->sim_context.substream);
+						if(subscriber->sim_context.substream_target >= 0 && subscriber->sim_context.substream_target <= 2) {
+							JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
+								publisher->ssrc[subscriber->sim_context.substream_target],
+								subscriber->sim_context.substream_target,
+								subscriber->sim_context.substream);
+						}
 						if(subscriber->sim_context.substream_target == subscriber->sim_context.substream) {
 							/* No need to do anything, we're already getting the right substream, so notify the user */
 							json_t *event = json_object();
@@ -7615,7 +7632,6 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
-					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_FRAME_MARKING,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->audiolevel_ext ? JANUS_RTP_EXTMAP_AUDIO_LEVEL : NULL,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->videoorient_ext ? JANUS_RTP_EXTMAP_VIDEO_ORIENTATION : NULL,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->playoutdelay_ext ? JANUS_RTP_EXTMAP_PLAYOUT_DELAY : NULL,
@@ -7692,14 +7708,14 @@ static void *janus_videoroom_handler(void *data) {
 						break;
 					mid_ext_id++;
 				}
-				int twcc_ext_id = 1;
-				while(twcc_ext_id < 15) {
-					if(twcc_ext_id != mid_ext_id &&
-							twcc_ext_id != participant->audio_level_extmap_id &&
-							twcc_ext_id != participant->video_orient_extmap_id &&
-							twcc_ext_id != participant->playout_delay_extmap_id)
+				int abs_send_time_ext_id = 1;
+				while(abs_send_time_ext_id < 15) {
+					if(abs_send_time_ext_id != mid_ext_id &&
+							abs_send_time_ext_id != participant->audio_level_extmap_id &&
+							abs_send_time_ext_id != participant->video_orient_extmap_id &&
+							abs_send_time_ext_id != participant->playout_delay_extmap_id)
 						break;
-					twcc_ext_id++;
+					abs_send_time_ext_id++;
 				}
 				offer = janus_sdp_generate_offer(s_name, answer->c_addr,
 					JANUS_SDP_OA_AUDIO, participant->audio,
@@ -7720,8 +7736,7 @@ static void *janus_videoroom_handler(void *data) {
 						participant->video_orient_extmap_id > 0 ? participant->video_orient_extmap_id : 0,
 					JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
 						participant->playout_delay_extmap_id > 0 ? participant->playout_delay_extmap_id : 0,
-					JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
-						videoroom->transport_wide_cc_ext ? twcc_ext_id : 0,
+					JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_ABS_SEND_TIME, abs_send_time_ext_id,
 					JANUS_SDP_OA_DATA, participant->data,
 					JANUS_SDP_OA_DONE);
 				/* Is this room recorded, or are we recording this publisher already? */
@@ -7740,7 +7755,6 @@ static void *janus_videoroom_handler(void *data) {
 						JANUS_LOG(LOG_VERB, "Publisher is going to do simulcasting\n");
 						janus_rtp_simulcasting_prepare(msg_simulcast,
 							&participant->rid_extmap_id,
-							&participant->framemarking_ext_id,
 							participant->ssrc, participant->rid);
 					} else {
 						/* No simulcasting involved */

@@ -1582,6 +1582,7 @@ static void *janus_recordplay_handler(void *data) {
 				/* Renegotiation: make sure the user provided an offer, and send answer */
 				JANUS_LOG(LOG_VERB, "Request to update existing recorder\n");
 				if(!session->recorder || !session->recording) {
+					janus_sdp_destroy(offer);
 					JANUS_LOG(LOG_ERR, "Not a recording session, can't update\n");
 					error_code = JANUS_RECORDPLAY_ERROR_INVALID_STATE;
 					g_snprintf(error_cause, 512, "Not a recording session, can't update");
@@ -1820,10 +1821,9 @@ recdone:
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast) {
 				JANUS_LOG(LOG_VERB, "Recording client negotiated simulcasting\n");
-				int rid_ext_id = -1, framemarking_ext_id = -1;
-				janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, &framemarking_ext_id, session->ssrc, session->rid);
+				int rid_ext_id = -1;
+				janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, session->ssrc, session->rid);
 				session->sim_context.rid_ext_id = rid_ext_id;
-				session->sim_context.framemarking_ext_id = framemarking_ext_id;
 				session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
 				session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
 				if(rec->vcodec != JANUS_VIDEOCODEC_VP8 && rec->vcodec != JANUS_VIDEOCODEC_H264) {

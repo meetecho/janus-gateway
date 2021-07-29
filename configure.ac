@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.11.2],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.11.4],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -55,7 +55,7 @@ CFLAGS="$CFLAGS \
 	-Werror=implicit-function-declaration"
 
 case "$CC" in
-clang*)
+*clang*)
 	# Specific clang flags
 	CFLAGS="$CFLAGS \
 		-Wno-cast-align \
@@ -75,9 +75,9 @@ cc*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=112
+JANUS_VERSION=114
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.11.2"
+JANUS_VERSION_STRING="0.11.4"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -605,6 +605,7 @@ AC_CHECK_LIB([rabbitmq],
                  AC_DEFINE(HAVE_RABBITMQEVH)
                  enable_rabbitmq_event_handler=yes
                ])
+               AC_CHECK_HEADERS([rabbitmq-c/amqp.h])
              ],
              [
                AS_IF([test "x$enable_rabbitmq" = "xyes"],

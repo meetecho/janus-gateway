@@ -462,6 +462,7 @@ static duk_ret_t janus_duktape_method_readfile(duk_context *ctx) {
 	int len = (int)ftell(f);
 	if(len < 0) {
 		duk_push_error_object(ctx, DUK_ERR_ERROR, "Error opening file: %s\n", g_strerror(errno));
+		fclose(f);
 		return duk_throw(ctx);
 	}
 	fseek(f, 0, SEEK_SET);
@@ -1156,6 +1157,7 @@ static duk_ret_t janus_duktape_method_relayrtcp(duk_context *ctx) {
 }
 
 static duk_ret_t janus_duktape_method_relaytextdata(duk_context *ctx) {
+	int n = duk_get_top(ctx);
 	if(duk_get_type(ctx, 0) != DUK_TYPE_NUMBER) {
 		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
 			janus_duktape_type_string(DUK_TYPE_NUMBER), janus_duktape_type_string(duk_get_type(ctx, 0)));
@@ -1171,7 +1173,16 @@ static duk_ret_t janus_duktape_method_relaytextdata(duk_context *ctx) {
 			janus_duktape_type_string(DUK_TYPE_NUMBER), janus_duktape_type_string(duk_get_type(ctx, 2)));
 		return duk_throw(ctx);
 	}
-	/* FIXME We should add support for labels, here */
+	if(n > 3 && duk_get_type(ctx, 3) != DUK_TYPE_STRING) {
+		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
+			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 3)));
+		return duk_throw(ctx);
+	}
+	if(n > 4 && duk_get_type(ctx, 4) != DUK_TYPE_STRING) {
+		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
+			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 4)));
+		return duk_throw(ctx);
+	}
 	uint32_t id = (uint32_t)duk_get_number(ctx, 0);
 	const char *payload = duk_get_string(ctx, 1);
 	int len = (int)duk_get_number(ctx, 2);
@@ -1179,6 +1190,13 @@ static duk_ret_t janus_duktape_method_relaytextdata(duk_context *ctx) {
 		JANUS_LOG(LOG_ERR, "Invalid data\n");
 		duk_push_error_object(ctx, DUK_ERR_ERROR, "Invalid payload of declared size %d", len);
 		return duk_throw(ctx);
+	}
+	/* Check if label and/or protocol were provided as well */
+	const char *label = NULL, *protocol = NULL;
+	if(n > 3) {
+		label = duk_get_string(ctx, 3);
+		if(n > 4)
+			protocol = duk_get_string(ctx, 4);
 	}
 	/* Find the session */
 	janus_mutex_lock(&duktape_sessions_mutex);
@@ -1197,8 +1215,8 @@ static duk_ret_t janus_duktape_method_relaytextdata(duk_context *ctx) {
 	}
 	/* Send the data */
 	janus_plugin_data data = {
-		.label = NULL,
-		.protocol = NULL,
+		.label = (char *)label,
+		.protocol = (char *)protocol,
 		.binary = FALSE,
 		.buffer = (char *)payload,
 		.length = len
@@ -1210,6 +1228,7 @@ static duk_ret_t janus_duktape_method_relaytextdata(duk_context *ctx) {
 }
 
 static duk_ret_t janus_duktape_method_relaybinarydata(duk_context *ctx) {
+	int n = duk_get_top(ctx);
 	if(duk_get_type(ctx, 0) != DUK_TYPE_NUMBER) {
 		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
 			janus_duktape_type_string(DUK_TYPE_NUMBER), janus_duktape_type_string(duk_get_type(ctx, 0)));
@@ -1225,14 +1244,30 @@ static duk_ret_t janus_duktape_method_relaybinarydata(duk_context *ctx) {
 			janus_duktape_type_string(DUK_TYPE_NUMBER), janus_duktape_type_string(duk_get_type(ctx, 2)));
 		return duk_throw(ctx);
 	}
+	if(n > 3 && duk_get_type(ctx, 3) != DUK_TYPE_STRING) {
+		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
+			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 4)));
+		return duk_throw(ctx);
+	}
+	if(n > 4 && duk_get_type(ctx, 4) != DUK_TYPE_STRING) {
+		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
+			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 5)));
+		return duk_throw(ctx);
+	}
 	uint32_t id = (uint32_t)duk_get_number(ctx, 0);
-	/* FIXME We should add support for labels, here */
 	const char *payload = duk_get_string(ctx, 1);
 	int len = (int)duk_get_number(ctx, 2);
 	if(payload == NULL || len < 1) {
 		JANUS_LOG(LOG_ERR, "Invalid data\n");
 		duk_push_error_object(ctx, DUK_ERR_ERROR, "Invalid payload of declared size %d", len);
 		return duk_throw(ctx);
+	}
+	/* Check if label and/or protocol were provided as well */
+	const char *label = NULL, *protocol = NULL;
+	if(n > 3) {
+		label = duk_get_string(ctx, 3);
+		if(n > 4)
+			protocol = duk_get_string(ctx, 4);
 	}
 	/* Find the session */
 	janus_mutex_lock(&duktape_sessions_mutex);
@@ -1250,8 +1285,8 @@ static duk_ret_t janus_duktape_method_relaybinarydata(duk_context *ctx) {
 		return duk_throw(ctx);
 	}
 	janus_plugin_data data = {
-		.label = NULL,
-		.protocol = NULL,
+		.label = (char *)label,
+		.protocol = (char *)protocol,
 		.binary = TRUE,
 		.buffer = (char *)payload,
 		.length = len
@@ -1542,11 +1577,11 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 	duk_put_global_string(duktape_ctx, "relayRtp");
 	duk_push_c_function(duktape_ctx, janus_duktape_method_relayrtcp, 4);
 	duk_put_global_string(duktape_ctx, "relayRtcp");
-	duk_push_c_function(duktape_ctx, janus_duktape_method_relaydata, 3);	/* Legacy function, deprecated */
+	duk_push_c_function(duktape_ctx, janus_duktape_method_relaydata, 5);	/* Legacy function, deprecated */
 	duk_put_global_string(duktape_ctx, "relayData");
-	duk_push_c_function(duktape_ctx, janus_duktape_method_relaytextdata, 3);
+	duk_push_c_function(duktape_ctx, janus_duktape_method_relaytextdata, 5);
 	duk_put_global_string(duktape_ctx, "relayTextData");
-	duk_push_c_function(duktape_ctx, janus_duktape_method_relaybinarydata, 3);
+	duk_push_c_function(duktape_ctx, janus_duktape_method_relaybinarydata, 5);
 	duk_put_global_string(duktape_ctx, "relayBinaryData");
 	duk_push_c_function(duktape_ctx, janus_duktape_method_startrecording, 13);
 	duk_put_global_string(duktape_ctx, "startRecording");
@@ -2178,7 +2213,7 @@ struct janus_plugin_result *janus_duktape_handle_message(janus_plugin_session *h
 		json_t *simulcast = json_object_get(jsep, "simulcast");
 		if(simulcast != NULL) {
 			janus_rtp_simulcasting_prepare(simulcast,
-				&session->rid_extmap_id, NULL,
+				&session->rid_extmap_id,
 				session->ssrc, session->rid);
 		}
 		const char *sdp_type = json_string_value(json_object_get(jsep, "type"));
@@ -2519,6 +2554,8 @@ void janus_duktape_incoming_data(janus_plugin_session *handle, janus_plugin_data
 		return;
 	char *buf = packet->buffer;
 	uint16_t len = packet->length;
+	char *label = packet->label;
+	char *protocol = packet->protocol;
 	/* Are we recording? */
 	janus_recorder_save_frame(session->drc, buf, len);
 	/* Check if the JS script wants to handle/manipulate data channel packets itself */
@@ -2534,7 +2571,9 @@ void janus_duktape_incoming_data(janus_plugin_session *handle, janus_plugin_data
 		/* We use a string for both text and binary data */
 		duk_push_lstring(t, buf, len);
 		duk_push_number(t, len);
-		int res = duk_pcall(t, 3);
+		duk_push_lstring(t, label, label ? strlen(label) : 0);
+		duk_push_lstring(t, protocol, protocol ? strlen(protocol) : 0);
+		int res = duk_pcall(t, 5);
 		if(res != DUK_EXEC_SUCCESS) {
 			/* Something went wrong... */
 			JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));

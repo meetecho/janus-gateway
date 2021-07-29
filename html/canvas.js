@@ -198,7 +198,7 @@ $(document).ready(function() {
 									if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 										if(!simulcastStarted) {
 											simulcastStarted = true;
-											addSimulcastButtons(msg["videocodec"] === "vp8" || msg["videocodec"] === "h264");
+											addSimulcastButtons(msg["videocodec"] === "vp8");
 										}
 										// We just received notice that there's been a switch, update the buttons
 										updateSimulcastButtons(substream, temporal);
@@ -481,6 +481,12 @@ function addSimulcastButtons(temporal) {
 		'		</div>' +
 		'	</div>' +
 		'</div>');
+	if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
+		// Chromium-based browsers only have two temporal layers
+		$('#tl-2').remove();
+		$('#tl-1').css('width', '50%');
+		$('#tl-0').css('width', '50%');
+	}
 	// Enable the simulcast selection buttons
 	$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {

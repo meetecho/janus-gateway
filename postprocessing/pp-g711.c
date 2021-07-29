@@ -116,6 +116,13 @@ int16_t janus_pp_g711_alaw_table[256] =
       944,   912,  1008,   976,   816,   784,   880,   848
 };
 
+/* Supported target formats */
+static const char *janus_pp_g711_formats[] = {
+	"wav", NULL
+};
+const char **janus_pp_g711_get_extensions(void) {
+	return janus_pp_g711_formats;
+}
 
 /* Processing methods */
 int janus_pp_g711_create(char *destination, char *metadata) {

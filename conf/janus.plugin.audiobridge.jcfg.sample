@@ -4,6 +4,7 @@
 # secret = "<optional password needed for manipulating (e.g. destroying) the room>"
 # pin = "<optional password needed for joining the room>"
 # sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
+# spatial_audio = true|false (if true, the mix will be stereo to spatially place users, default=false)
 # audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must
 #		be negotiated/used or not for new joins, default=true)
 # audiolevel_event = true|false (whether to emit event to other users or not, default=false)
@@ -12,6 +13,9 @@
 # default_prebuffering = number of packets to buffer before decoding each particiant (default=6)
 # record = true|false (whether this room should be recorded, default=false)
 # record_file = "/path/to/recording.wav" (where to save the recording)
+# record_dir = "/path/to/" (path to save the recording to, makes record_file a relative path if provided)
+# allow_rtp_participants = true|false (whether participants should be allowed to join
+#		via plain RTP as well, rather than just WebRTC, default=false)
 #
 #     The following lines are only needed if you want the mixed audio
 #     to be automatically forwarded via plain RTP to an external component
@@ -45,6 +49,22 @@ general: {
 	# By default, integers are used as a unique ID for both rooms and participants.
 	# In case you want to use strings instead (e.g., a UUID), set string_ids to true.
 	#string_ids = true
+
+	# Normally, all AudioBridge participants will join by negotiating a WebRTC
+	# PeerConnection: the plugin also supports adding participants that will
+	# use plain RTP, though, be it for supporting legacy users (e.g., SIP
+	# participants who an orchestrator can add to the bridge) or more simply
+	# to temporarily inject external audio in a room from a live source. To
+	# support plain RTP, the plugin needs to have a range of ports it can bind
+	# to: notice this should be configured so that it doesn't conflict with other
+	# plugins (e.g., Streaming, SIP, NoSIP) and applications (e.g., Janus itself).
+	# The default if you don't specify anything is 10000-60000.
+	#rtp_port_range = "50000-60000"
+	# In case we need to support plain RTP participants, we'll also need to know
+	# what local IP address to bind to for media. If no address is set in the
+	# property below, then one will be automatically guessed from the system.
+	#local_ip = "1.2.3.4"
+
 }
 
 room-1234: {
@@ -52,5 +72,6 @@ room-1234: {
 	secret = "adminpwd"
 	sampling_rate = 16000
 	record = false
-	#record_file = "/path/to/recording.wav"
+	#record_dir = "/path/to/"
+	#record_file = "recording.wav"
 }

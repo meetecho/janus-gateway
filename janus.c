@@ -347,6 +347,8 @@ static json_t *janus_info(const char *transaction) {
 		json_object_set_new(info, "public-ips", ips);
 	}
 	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
+	if(janus_ice_is_ipv6_enabled())
+		json_object_set_new(info, "ipv6-link-local", janus_ice_is_ipv6_linklocal_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
 #ifdef HAVE_ICE_NOMINATION
@@ -1488,6 +1490,34 @@ int janus_process_incoming_request(janus_request *request) {
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);
 					}
 					janus_request_ice_handle_answer(handle, audio, video, data, jsep_sdp);
+					/* Check if the answer does contain the mid/abs-send-time/twcc extmaps */
+					gboolean do_mid = FALSE, do_twcc = FALSE, do_abs_send_time = FALSE;
+					GList *temp = parsed_sdp->m_lines;
+					while(temp) {
+						janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+						GList *tempA = m->attributes;
+						while(tempA) {
+							janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
+							if(a->name && a->value && !strcasecmp(a->name, "extmap")) {
+								if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
+									do_mid = TRUE;
+								else if(strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
+									do_twcc = TRUE;
+								else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
+									do_abs_send_time = TRUE;
+							}
+							tempA = tempA->next;
+						}
+						temp = temp->next;
+					}
+					if(!do_mid && handle->stream)
+						handle->stream->mid_ext_id = 0;
+					if(!do_twcc && handle->stream) {
+						handle->stream->do_transport_wide_cc = FALSE;
+						handle->stream->transport_wide_cc_ext_id = 0;
+					}
+					if(!do_abs_send_time && handle->stream)
+						handle->stream->abs_send_time_ext_id = 0;
 				} else {
 					/* Check if the mid RTP extension is being negotiated */
 					handle->stream->mid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_MID);
@@ -1498,8 +1528,8 @@ int janus_process_incoming_request(janus_request *request) {
 					handle->stream->audiolevel_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 					/* Check if the video orientation ID extension is being negotiated */
 					handle->stream->videoorientation_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
-					/* Check if the frame marking ID extension is being negotiated */
-					handle->stream->framemarking_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_FRAME_MARKING);
+					/* Check if the abs-send-time ID extension is being negotiated */
+					handle->stream->abs_send_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -1520,16 +1550,16 @@ int janus_process_incoming_request(janus_request *request) {
 				}
 				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART)) {
 					JANUS_LOG(LOG_INFO, "[%"SCNu64"] Restarting ICE...\n", handle->handle_id);
-					/* Update remote credentials for ICE */
-					if(handle->stream) {
-						nice_agent_set_remote_credentials(handle->agent, handle->stream->stream_id,
-							handle->stream->ruser, handle->stream->rpass);
-					}
 					/* FIXME We only need to do that for offers: if it's an answer, we did that already */
 					if(offer) {
 						janus_ice_restart(handle);
 					} else {
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
+					}
+					/* Update remote credentials for ICE */
+					if(handle->stream) {
+						nice_agent_set_remote_credentials(handle->agent, handle->stream->stream_id,
+							handle->stream->ruser, handle->stream->rpass);
 					}
 					/* If we're full-trickling, we'll need to resend the candidates later */
 					if(janus_ice_is_full_trickle_enabled()) {
@@ -1561,8 +1591,8 @@ int janus_process_incoming_request(janus_request *request) {
 					handle->stream->audiolevel_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 					/* Check if the video orientation ID extension is being negotiated */
 					handle->stream->videoorientation_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
-					/* Check if the frame marking ID extension is being negotiated */
-					handle->stream->framemarking_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_FRAME_MARKING);
+					/* Check if the abs-send-time ID extension is being negotiated */
+					handle->stream->abs_send_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -1627,8 +1657,6 @@ int janus_process_incoming_request(janus_request *request) {
 							json_array_append_new(ssrcs, json_integer(handle->stream->video_ssrc_peer[2]));
 						json_object_set_new(simulcast, "ssrcs", ssrcs);
 					}
-					if(handle->stream->framemarking_ext_id > 0)
-						json_object_set_new(simulcast, "framemarking-ext", json_integer(handle->stream->framemarking_ext_id));
 					json_object_set_new(body_jsep, "simulcast", simulcast);
 				}
 			}
@@ -3053,6 +3081,8 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_object_set_new(se, JANUS_RTP_EXTMAP_RID, json_integer(stream->rid_ext_id));
 	if(stream->ridrtx_ext_id > 0)
 		json_object_set_new(se, JANUS_RTP_EXTMAP_REPAIRED_RID, json_integer(stream->ridrtx_ext_id));
+	if(stream->abs_send_time_ext_id > 0)
+		json_object_set_new(se, JANUS_RTP_EXTMAP_ABS_SEND_TIME, json_integer(stream->abs_send_time_ext_id));
 	if(stream->transport_wide_cc_ext_id > 0)
 		json_object_set_new(se, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC, json_integer(stream->transport_wide_cc_ext_id));
 	if(stream->audiolevel_ext_id > 0)
@@ -3654,7 +3684,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			}
 		}
 		/* Make sure we don't send the rid/repaired-rid attributes when offering ourselves */
-		int mid_ext_id = 0, transport_wide_cc_ext_id = 0, audiolevel_ext_id = 0, videoorientation_ext_id = 0;
+		int mid_ext_id = 0, transport_wide_cc_ext_id = 0, abs_send_time_ext_id = 0,
+			audiolevel_ext_id = 0, videoorientation_ext_id = 0;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -3666,6 +3697,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						mid_ext_id = atoi(a->value);
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
 						transport_wide_cc_ext_id = atoi(a->value);
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
+						abs_send_time_ext_id = atoi(a->value);
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL))
 						audiolevel_ext_id = atoi(a->value);
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
@@ -3688,26 +3721,33 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
 			ice_handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 		}
+		if(ice_handle->stream && ice_handle->stream->abs_send_time_ext_id != abs_send_time_ext_id)
+			ice_handle->stream->abs_send_time_ext_id = abs_send_time_ext_id;
 		if(ice_handle->stream && ice_handle->stream->audiolevel_ext_id != audiolevel_ext_id)
 			ice_handle->stream->audiolevel_ext_id = audiolevel_ext_id;
 		if(ice_handle->stream && ice_handle->stream->videoorientation_ext_id != videoorientation_ext_id)
 			ice_handle->stream->videoorientation_ext_id = videoorientation_ext_id;
 	} else {
-		/* Check if the answer does contain the mid/rid/repaired-rid attributes */
-		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE;
+		/* Check if the answer does contain the mid/rid/repaired-rid/abs-send-time/twcc extmaps */
+		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE,
+			do_twcc = FALSE, do_abs_send_time = FALSE;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 			GList *tempA = m->attributes;
 			while(tempA) {
 				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
-				if(a->name && a->value) {
+				if(a->name && a->value && !strcasecmp(a->name, "extmap")) {
 					if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
 						do_mid = TRUE;
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_RID))
 						do_rid = TRUE;
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID))
 						do_repaired_rid = TRUE;
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
+						do_twcc = TRUE;
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
+						do_abs_send_time = TRUE;
 				}
 				tempA = tempA->next;
 			}
@@ -3731,6 +3771,12 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		}
 		if(!do_repaired_rid && ice_handle->stream)
 			ice_handle->stream->ridrtx_ext_id = 0;
+		if(!do_twcc && ice_handle->stream) {
+			ice_handle->stream->do_transport_wide_cc = FALSE;
+			ice_handle->stream->transport_wide_cc_ext_id = 0;
+		}
+		if(!do_abs_send_time && ice_handle->stream)
+			ice_handle->stream->abs_send_time_ext_id = 0;
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
 		/* Wait for candidates-done callback */
@@ -3775,6 +3821,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	janus_ice_stream *stream = ice_handle->stream;
 	if (stream == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error stream not found\n", ice_handle->handle_id);
+		janus_sdp_destroy(parsed_sdp);
 		janus_mutex_unlock(&ice_handle->mutex);
 		return NULL;
 	}
@@ -4487,6 +4534,9 @@ gint main(int argc, char *argv[])
 	if(args_info.ipv6_candidates_given) {
 		janus_config_add(config, config_media, janus_config_item_create("ipv6", "true"));
 	}
+	if(args_info.ipv6_link_local_given) {
+		janus_config_add(config, config_media, janus_config_item_create("ipv6_linklocal", "true"));
+	}
 	if(args_info.min_nack_queue_given) {
 		char mnq[20];
 		g_snprintf(mnq, 20, "%d", args_info.min_nack_queue_arg);
@@ -4697,9 +4747,13 @@ gint main(int argc, char *argv[])
 #endif
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
 	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE,
-		ignore_mdns = FALSE, ignore_unreachable_ice_server = FALSE;
+		ipv6_linklocal = FALSE, ignore_mdns = FALSE, ignore_unreachable_ice_server = FALSE;
 	item = janus_config_get(config, config_media, janus_config_type_item, "ipv6");
 	ipv6 = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	if(ipv6) {
+		item = janus_config_get(config, config_media, janus_config_type_item, "ipv6_linklocal");
+		ipv6_linklocal = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	}
 	item = janus_config_get(config, config_media, janus_config_type_item, "rtp_port_range");
 	if(item && item->value) {
 		/* Split in min and max port */
@@ -4823,7 +4877,7 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		janus_ice_set_static_event_loops(atoi(item->value));
 	/* Initialize the ICE stack now */
-	janus_ice_init(ice_lite, ice_tcp, full_trickle, ignore_mdns, ipv6, rtp_min_port, rtp_max_port);
+	janus_ice_init(ice_lite, ice_tcp, full_trickle, ignore_mdns, ipv6, ipv6_linklocal, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
 		if(!ignore_unreachable_ice_server) {
 			JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);

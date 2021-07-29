@@ -1,5 +1,6 @@
-#Janus-pp-rec 0.11.2 gengetopt file
-usage "janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]"
+#Janus-pp-rec 0.11.4 gengetopt file
+usage "janus-pp-rec [OPTIONS] source.mjr [destination.[opus|ogg|mka|wav|webm|mkv|h264|srt]]"
+option "file-extensions" F "Only print the supported target file extensions per codec" flag off
 option "json" j "Only print JSON header" flag off
 option "header" H "Only parse .mjr header" flag off
 option "parse" p "Only parse and re-order packets" flag off
@@ -11,7 +12,7 @@ option "videoorient-ext" v "ID of the video-orientation RTP extension (default=n
 option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional
 option "debug-timestamps" D "Enable debug/logging timestamps" flag off
 option "disable-colors" o "Disable color in the logging" flag off
-option "format" f "Specifies the output format (overrides the format from the destination)" string values="opus", "wav", "webm", "mp4", "srt" optional
+option "format" f "Specifies the output format (overrides the format from the destination)" string values="opus", "ogg", "mka", "wav", "webm", "mkv", "mp4", "srt" optional
 option "faststart" t "For mp4 files write the MOOV atom at the head of the file" flag off
 option "audioskew" S "Time threshold to trigger an audio skew compensation, disabled if 0 (default=0)" int typestr="milliseconds" optional
 option "silence-distance" C "RTP packets distance used to detect RTP silence suppression, disabled if 0 (default=100)" int typestr="count" optional
