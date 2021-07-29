@@ -61,14 +61,17 @@ gboolean janus_is_true(const char *value);
 gboolean janus_strcmp_const_time(const void *str1, const void *str2);
 
 /*! \brief Helper to generate random 32-bit unsigned integers (useful for SSRCs, etc.)
- * @note Currently just wraps g_random_int()
- * @returns A (crypto-safe) random 32-bit unsigned integer */
+ * @note Warning: this will fall back to a non-cryptographically safe PRNG in case
+ * the crypto library RAND_bytes() call fails.
+ * @returns A (mostly crypto-safe) random 32-bit unsigned integer */
 guint32 janus_random_uint32(void);
 
 /*! \brief Helper to generate random 64-bit unsigned integers
  * @note Unlike janus_random_uint64(), which actually only generates 52 bits, this
  * generates the full 64 bits. See the janus_random_uint64() docstring for details.
- * @returns A random 64-bit unsigned integer */
+ * Warning: this will fall back to a non-cryptographically safe PRNG in case
+ * the crypto library RAND_bytes() call fails.
+ * @returns A (mostly crypto-safe) random 52-bit unsigned integer */
 guint64 janus_random_uint64_full(void);
 
 /*! \brief Helper to generate random 52 bit unsigned integers
@@ -80,11 +83,15 @@ guint64 janus_random_uint64_full(void);
  * might end up in Javascript (via JSON API).
  * This method is called janus_random_uint64() instead of janus_random_uint52() (or similar)
  * for backwards compatibility.
- * @returns A (crypto-safe) random 64-bit unsigned integer */
+ * Warning: this will fall back to a non-cryptographically safe PRNG in case
+ * the crypto library RAND_bytes() call fails.
+ * @returns A (mostly crypto-safe) random 64-bit unsigned integer */
 guint64 janus_random_uint64(void);
 
 /*! \brief Helper to generate random UUIDs (needed by some plugins)
- * @returns A (crypto-safe) random UUID string, which must be deallocated with \c g_free */
+ * Warning: this will fall back to a non-cryptographically safe PRNG in case
+ * the crypto library RAND_bytes() call fails.
+ * @returns A (mostly crypto-safe) random UUID string, which must be deallocated with \c g_free */
 char *janus_random_uuid(void);
 
 /*! \brief Helper to generate an allocated copy of a guint64 number
