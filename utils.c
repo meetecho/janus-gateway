@@ -1344,7 +1344,7 @@ size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compr
 	zs.zfree = Z_NULL;
 	zs.opaque = Z_NULL;
 	zs.next_in = (Bytef *)text;
-	zs.avail_in = (uInt)tlen+1;
+	zs.avail_in = (uInt)tlen;
 	zs.next_out = (Bytef *)compressed;
 	zs.avail_out = (uInt)zlen;
 	int res = deflateInit2(&zs, compression, Z_DEFLATED, 15 | 16, 8, Z_DEFAULT_STRATEGY);

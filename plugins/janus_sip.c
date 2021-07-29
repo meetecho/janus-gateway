@@ -626,7 +626,7 @@
  * decides to follow up on the transfer request, and they're already in
  * a call (e.g., with the transferor), then they must use a different
  * handle for the purpose, e.g., via a helper as described in the
- * \c sipmc section.
+ * \ref sipmc section.
  *
  * The transfer target will receive the call exactly as previously discussed,
  * with the difference that it may or may not include a \c referred_by
@@ -988,6 +988,7 @@ typedef struct janus_sip_media {
 	guint32 audio_ssrc, audio_ssrc_peer;
 	int audio_pt, opusred_pt;
 	const char *audio_pt_name;
+	gint32 audio_srtp_tag;
 	srtp_t audio_srtp_in, audio_srtp_out;
 	srtp_policy_t audio_remote_policy, audio_local_policy;
 	char *audio_srtp_local_profile, *audio_srtp_local_crypto;
@@ -1001,6 +1002,7 @@ typedef struct janus_sip_media {
 	guint32 simulcast_ssrc;
 	int video_pt;
 	const char *video_pt_name;
+	gint32 video_srtp_tag;
 	srtp_t video_srtp_in, video_srtp_out;
 	srtp_policy_t video_remote_policy, video_local_policy;
 	char *video_srtp_local_profile, *video_srtp_local_crypto;
@@ -1307,7 +1309,7 @@ static int janus_sip_srtp_set_remote(janus_sip_session *session, gboolean video,
 		master_length = SRTP_AESGCM256_MASTER_LENGTH;
 #endif
 	} else {
-		JANUS_LOG(LOG_ERR, "[SIP-%s] Unsupported SRTP profile %s\n", session->account.username, profile);
+		JANUS_LOG(LOG_WARN, "[SIP-%s] Unsupported SRTP profile %s\n", session->account.username, profile);
 		return -2;
 	}
 	JANUS_LOG(LOG_VERB, "[SIP-%s] Key/Salt/Master: %zu/%zu/%zu\n",
@@ -1373,6 +1375,7 @@ static void janus_sip_srtp_cleanup(janus_sip_session *session) {
 	session->media.has_srtp_remote_video = FALSE;
 	session->media.srtp_profile = 0;
 	/* Audio */
+	session->media.audio_srtp_tag = 0;
 	if(session->media.audio_srtp_out)
 		srtp_dealloc(session->media.audio_srtp_out);
 	session->media.audio_srtp_out = NULL;
@@ -1392,6 +1395,7 @@ static void janus_sip_srtp_cleanup(janus_sip_session *session) {
 		session->media.audio_srtp_local_crypto = NULL;
 	}
 	/* Video */
+	session->media.video_srtp_tag = 0;
 	if(session->media.video_srtp_out)
 		srtp_dealloc(session->media.video_srtp_out);
 	session->media.video_srtp_out = NULL;
@@ -1497,7 +1501,7 @@ static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_
 	while(unknown_header != NULL) {
 		GList *temp = session->incoming_header_prefixes;
 		while(temp != NULL) {
-			char *header_prefix = (char *) temp->data;
+			char *header_prefix = (char *)temp->data;
 			if(header_prefix != NULL && unknown_header->un_name != NULL) {
 				if(strncasecmp(unknown_header->un_name, header_prefix, strlen(header_prefix)) == 0) {
 					const char *header_name = g_strdup(unknown_header->un_name);
@@ -2752,6 +2756,28 @@ static void *janus_sip_handler(void *data) {
 					if(session->master->stack->contact_header != NULL)
 						session->stack->contact_header = g_strdup(session->master->stack->contact_header);
 				}
+				/* Check if custom headers need to be intercepted */
+				json_t *header_prefixes_json = json_object_get(root, "incoming_header_prefixes");
+				if(header_prefixes_json) {
+					size_t index = 0;
+					json_t *value = NULL;
+					json_array_foreach(header_prefixes_json, index, value) {
+						const char *header_prefix = json_string_value(value);
+						if(header_prefix)
+							session->incoming_header_prefixes = g_list_append(session->incoming_header_prefixes, g_strdup(header_prefix));
+					}
+				} else {
+					/* No custom headers, inherit the parent's if any */
+					if(ms->incoming_header_prefixes != NULL) {
+						GList *temp = ms->incoming_header_prefixes;
+						while(temp != NULL) {
+							char *header_prefix = (char *)temp->data;
+							if(header_prefix != NULL)
+								session->incoming_header_prefixes = g_list_append(session->incoming_header_prefixes, g_strdup(header_prefix));
+							temp = temp->next;
+						}
+					}
+				}
 				session->stack->session = session;
 				janus_mutex_unlock(&sessions_mutex);
 				/* Send an event back */
@@ -2954,7 +2980,6 @@ static void *janus_sip_handler(void *data) {
 			if(header_prefixes_json) {
 				size_t index = 0;
 				json_t *value = NULL;
-
 				json_array_foreach(header_prefixes_json, index, value) {
 					const char *header_prefix = json_string_value(value);
 					if(header_prefix)
@@ -6040,18 +6065,29 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 						}
 						gint32 tag = 0;
 						char profile[101], crypto[101];
-						/* FIXME inline can be more complex than that, and we're currently only offering SHA1_80 */
 						int res = a->value ? (sscanf(a->value, "%"SCNi32" %100s inline:%100s",
 							&tag, profile, crypto)) : 0;
 						if(res != 3) {
 							JANUS_LOG(LOG_WARN, "Failed to parse crypto line, ignoring... %s\n", a->value);
 						} else {
 							gboolean video = (m->type == JANUS_SDP_VIDEO);
-							janus_sip_srtp_set_remote(session, video, profile, crypto);
-							if(!video)
+							if(answer && ((!video && tag != session->media.audio_srtp_tag) || (video && tag != session->media.video_srtp_tag))) {
+								/* Not the tag for the crypto line we offered */
+								tempA = tempA->next;
+								continue;
+							}
+							if(janus_sip_srtp_set_remote(session, video, profile, crypto) < 0) {
+								/* Unsupported profile? */
+								tempA = tempA->next;
+								continue;
+							}
+							if(!video) {
+								session->media.audio_srtp_tag = tag;
 								session->media.has_srtp_remote_audio = TRUE;
-							else
+							} else {
+								session->media.video_srtp_tag = tag;
 								session->media.has_srtp_remote_video = TRUE;
+							}
 						}
 					}
 				}
@@ -6116,7 +6152,10 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 				if(!session->media.audio_srtp_local_profile || !session->media.audio_srtp_local_crypto) {
 					janus_sip_srtp_set_local(session, FALSE, &session->media.audio_srtp_local_profile, &session->media.audio_srtp_local_crypto);
 				}
-				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", session->media.audio_srtp_local_profile, session->media.audio_srtp_local_crypto);
+				if(session->media.audio_srtp_tag == 0)
+					session->media.audio_srtp_tag = 1;
+				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "%"SCNi32" %s inline:%s",
+					session->media.audio_srtp_tag, session->media.audio_srtp_local_profile, session->media.audio_srtp_local_crypto);
 				m->attributes = g_list_append(m->attributes, a);
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
@@ -6125,7 +6164,10 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 				if(!session->media.video_srtp_local_profile || !session->media.video_srtp_local_crypto) {
 					janus_sip_srtp_set_local(session, TRUE, &session->media.video_srtp_local_profile, &session->media.video_srtp_local_crypto);
 				}
-				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", session->media.video_srtp_local_profile, session->media.video_srtp_local_crypto);
+				if(session->media.video_srtp_tag == 0)
+					session->media.video_srtp_tag = 1;
+				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "%"SCNi32" %s inline:%s",
+					session->media.video_srtp_tag, session->media.video_srtp_local_profile, session->media.video_srtp_local_crypto);
 				m->attributes = g_list_append(m->attributes, a);
 			}
 		}

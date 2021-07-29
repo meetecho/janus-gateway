@@ -473,6 +473,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 					uint8_t ybit = (vp9pd & 0x10);
 					uint8_t gbit = (vp9pd & 0x08);
 					if(ybit) {
+						keyFrame = 1;
 						/* Iterate on all spatial layers and get resolution */
 						buffer++;
 						len--;

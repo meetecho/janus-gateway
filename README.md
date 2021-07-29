@@ -264,8 +264,9 @@ or on the command line:
 	-c, --cert-pem=filename       DTLS certificate
 	-k, --cert-key=filename       DTLS certificate key
 	-K, --cert-pwd=text           DTLS certificate key passphrase (if needed)
-	-S, --stun-server=filename    STUN server(:port) to use, if needed (e.g.,
-								  Janus behind NAT, default=none)
+	-S, --stun-server=address:port
+                                  STUN server(:port) to use, if needed (e.g.,
+                                  Janus behind NAT, default=none)
 	-1, --nat-1-1=ip              Public IP to put in all host candidates,
                                   assuming a 1:1 NAT is in place (e.g., Amazon
                                   EC2 instances, default=none)
