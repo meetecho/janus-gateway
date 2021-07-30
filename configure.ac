@@ -954,6 +954,8 @@ AS_IF([test "x$enable_post_processing" = "xyes"],
                          [
                            glib-2.0 >= $glib_version
                            jansson >= $jansson_version
+                           libssl >= $ssl_version
+                           libcrypto
                            libavutil
                            libavcodec
                            libavformat
