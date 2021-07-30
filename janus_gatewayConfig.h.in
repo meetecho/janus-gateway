@@ -1,0 +1,9 @@
+#ifndef JANUS_GATEWAY_CONFIG_H
+#define JANUS_GATEWAY_CONFIG_H
+
+/* the configured options and settings for janus_gateway */
+#define JANUS_GATEWAY_VERSION_MAJOR @janus_gateway_VERSION_MAJOR@
+#define JANUS_GATEWAY_VERSION_MINOR @janus_gateway_VERSION_MINOR@
+#define JANUS_GATEWAY_VERSION_PATCH @janus_gateway_VERSION_PATCH@
+
+#endif /* JANUS_GATEWAY_CONFIG_H */
