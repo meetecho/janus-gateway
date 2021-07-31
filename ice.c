@@ -3618,16 +3618,17 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	janus_ice_peerconnection *pc = handle->pc;
 
-	janus_ice_peerconnection_medium *medium;
-	if (pc) {
+	janus_ice_peerconnection_medium *medium = NULL;
+	if(pc) {
 		/* Find inbound video medium */
 		GHashTableIter iter;
 		gpointer value;
 		g_hash_table_iter_init(&iter, pc->media_bymid);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_ice_peerconnection_medium *m = value;
-			if (m->type == JANUS_MEDIA_VIDEO && m->recv) {
+			if(m && m->type == JANUS_MEDIA_VIDEO && m->recv) {
 				medium = m;
+				break;
 			}
 		}
 	}
