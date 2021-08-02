@@ -61,7 +61,7 @@ typedef struct janus_recorder {
 	volatile int header;
 	/*! \brief Whether this recorder instance can be used for writing or not */
 	volatile int writable;
-	/*! \brief Whether writing RTP packets is paused */
+	/*! \brief Whether writing s/RTP packets/data is paused */
 	volatile int paused;
 	/*! \brief RTP switching context for rewriting RTP headers */
 	janus_rtp_switching_context context;

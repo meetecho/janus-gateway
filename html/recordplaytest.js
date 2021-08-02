@@ -497,18 +497,15 @@ function startRecording() {
 					recordplay.hangup();
 				}
 			});
-
-			$('#pause').on('click', () => {
+		$('#pause-resume').unbind('click').on('click', function() {
+			if($(this).text() === 'Pause') {
 				recordplay.send({message: {request: 'pause'}});
-				$('#pause').attr('hidden', true);
-				$('#resume').attr('hidden', false);
-			});
-
-			$('#resume').on('click', () => {
+				$(this).text('Resume');
+			} else {
 				recordplay.send({message: {request: 'resume'}});
-				$('#pause').attr('hidden', false);
-				$('#resume').attr('hidden', true);
-			});
+				$(this).text('Pause');
+			}
+		});
 	});
 }
 

@@ -2010,17 +2010,16 @@ playdone:
 			gateway->close_pc(session->handle);
 		} else if (!strcasecmp(request_text, "pause") || !strcasecmp(request_text, "resume")) {
 			JANUS_LOG(LOG_VERB, "Record&Play: Got pause/resume request\n");
-			int pause = !strcasecmp(request_text, "pause");
-			result = json_object();
-			json_object_set_new(result, "status", json_string(pause ? "paused" : "resumed"));
 			if(session->recording) {
+				gboolean pause = !strcasecmp(request_text, "pause");
+				result = json_object();
+				json_object_set_new(result, "status", json_string(pause ? "paused" : "resumed"));
 				json_object_set_new(result, "id", json_integer(session->recording->id));
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string(pause ? "paused" : "resumed"));
-					if(session->recording)
-						json_object_set_new(info, "id", json_integer(session->recording->id));
+					json_object_set_new(info, "id", json_integer(session->recording->id));
 					gateway->notify_event(&janus_recordplay_plugin, session->handle, info);
 				}
 				if(pause) {
@@ -2033,6 +2032,8 @@ playdone:
 					janus_recorder_resume(session->drc);
 					gateway->send_pli(session->handle);
 				}
+			} else {
+				JANUS_LOG(LOG_VERB, "Record&Play: Not recording, ignoring pause/resume request\n");
 			}
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
