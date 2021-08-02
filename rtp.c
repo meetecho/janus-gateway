@@ -1198,3 +1198,98 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 	/* If we got here, the packet can be relayed */
 	return TRUE;
 }
+
+void janus_av1_svc_context_reset(janus_av1_svc_context *context) {
+	if(context == NULL)
+		return;
+	/* Reset the context values */
+	if(context->templates != NULL)
+		g_hash_table_destroy(context->templates);
+	memset(context, 0, sizeof(*context));
+}
+
+gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
+		uint8_t *dd, int dd_len, uint8_t *template_id) {
+	if(!context || !dd || dd_len < 3)
+		return FALSE;
+
+	/* First of all, let's parse the Dependency Descriptor */
+	size_t blen = dd_len*8;
+	uint32_t offset = 0;
+	/* mandatory_descriptor_fields() */
+	uint8_t start = janus_bitstream_getbit(dd, offset++);
+	uint8_t end = janus_bitstream_getbit(dd, offset++);
+	uint8_t template = janus_bitstream_getbits(dd, 6, &offset);
+	uint16_t frame = janus_bitstream_getbits(dd, 16, &offset);
+	JANUS_LOG(LOG_WARN, "  -- s=%u, e=%u, t=%u, f=%u\n",
+		start, end, template, frame);
+	if(blen > 24) {
+		/* extended_descriptor_fields() */
+		uint8_t tdeps = janus_bitstream_getbit(dd, offset++);
+		(void)janus_bitstream_getbit(dd, offset++);
+		(void)janus_bitstream_getbit(dd, offset++);
+		(void)janus_bitstream_getbit(dd, offset++);
+		(void)janus_bitstream_getbit(dd, offset++);
+		/* template_dependency_structure() */
+		if(tdeps) {
+			uint8_t tioff = janus_bitstream_getbits(dd, 6, &offset);
+			(void)janus_bitstream_getbits(dd, 5, &offset);
+			/* template_layers() */
+			uint32_t nlidc = 0;
+			uint8_t tcnt = 0;
+			int spatial_layers = 0;
+			int temporal_layers = 0;
+			do {
+				nlidc = janus_bitstream_getbits(dd, 2, &offset);
+				if(context->templates == NULL)
+					context->templates = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_free);
+				janus_av1_svc_template *t = g_hash_table_lookup(context->templates,
+					GUINT_TO_POINTER(tcnt));
+				if(t == NULL) {
+					t = g_malloc0(sizeof(janus_av1_svc_template));
+					t->id = tcnt;
+					g_hash_table_insert(context->templates, GUINT_TO_POINTER(t->id), t);
+					context->updated = TRUE;
+				}
+				t->spatial = spatial_layers;
+				t->temporal = temporal_layers;
+				JANUS_LOG(LOG_WARN, "  -- -- -- [%u] spatial=%u, temporal=%u\n",
+					tcnt, t->spatial, t->temporal);
+				if(nlidc == 1) {
+					temporal_layers++;
+				} else if(nlidc == 2) {
+					temporal_layers = 0;
+					spatial_layers++;
+				}
+				tcnt++;
+			} while(nlidc != 3);
+			/* Check if anything changed since the latest update */
+			if(context->tcnt != tcnt || context->tioff != tioff ||
+					context->spatial_layers != spatial_layers ||
+					context->temporal_layers != temporal_layers)
+				context->updated = TRUE;
+			context->tcnt = tcnt;
+			context->tioff = tioff;
+			context->spatial_layers = spatial_layers;
+			context->temporal_layers = temporal_layers;
+			/* FIXME We currently don't care about the other fields */
+		}
+	}
+	/* frame_dependency_definition() */
+	uint8_t tindex = (template + 64 - context->tioff) % 64;
+	janus_av1_svc_template *t = g_hash_table_lookup(context->templates,
+		GUINT_TO_POINTER(tindex));
+	if(t == NULL) {
+		JANUS_LOG(LOG_WARN, "Invalid template ID '%u' (count is %u), ignoring packet...\n",
+			tindex, context->tcnt);
+		return FALSE;
+	}
+	JANUS_LOG(LOG_WARN, "  -- spatial=%u, temporal=%u (tindex %u)\n",
+		t->spatial, t->temporal, t->id);
+	/* FIXME We currently don't care about the other fields */
+
+	/* If we got here, the packet is fine */
+	if(template_id != NULL)
+		*template_id = tindex;
+	return TRUE;
+}
