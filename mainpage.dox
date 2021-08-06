@@ -89,10 +89,10 @@
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
- * - \b libnice: https://libnice.freedesktop.org/ (ICE/STUN/TURN, at least v0.1.16 suggested, master recommended)
+ * - \b libnice: https://libnice.freedesktop.org/ (ICE/STUN/TURN, at least v0.1.16 suggested, v0.1.18 recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v2.x suggested)
- * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
+ * - \b usrsctp: https://github.com/sctplab/usrsctp (\c optional, Data Channels)
  * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, v0.9.59, Web server)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
@@ -197,7 +197,8 @@ Janus.init({
    dependencies: Janus.useDefaultDependencies(), // or: Janus.useOldDependencies() to get the behaviour of previous Janus versions
    callback: function() {
 	   // Done!
-   });
+   }
+});
  \endverbatim
  *
  * \note When using one of the JavaScript module variants of \c janus.js, you
@@ -213,7 +214,7 @@ Janus.init({
    dependencies: Janus.useDefaultDependencies(), // or: Janus.useOldDependencies() to get the behaviour of previous Janus versions
    callback: function() {
 	   // Done!
-   });
+   }
 });
  \endverbatim
  *
@@ -887,7 +888,7 @@ echotest.createOffer({
      // Let's make that object available.
      new webpack.ProvidePlugin({ adapter: ['webrtc-adapter', 'default'] })
    ]
- }
+ };
  \endverbatim
  *
  * On the other hand, \c janus.js defines the \c Janus object globally. So a small tweak is also
@@ -910,7 +911,7 @@ echotest.createOffer({
        }
      ]
    }
- }
+ };
  \endverbatim
  *
  * With that extra configuration, the official \c janus.js can be used directly in any modular
@@ -1273,7 +1274,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
 			"echotest" : "event",
 			"result" : "ok"
 		}
-	},
+	}
 }
 \endverbatim
  *
@@ -3745,10 +3746,10 @@ ldd janus | grep asan
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
- * - \b libnice: https://libnice.freedesktop.org/ (ICE/STUN/TURN, at least v0.1.16 suggested, master recommended)
+ * - \b libnice: https://libnice.freedesktop.org/ (ICE/STUN/TURN, at least v0.1.16 suggested, v0.1.18 recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v2.x suggested)
- * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
+ * - \b usrsctp: https://github.com/sctplab/usrsctp (\c optional, Data Channels)
  * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server, at least v0.9.59)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)

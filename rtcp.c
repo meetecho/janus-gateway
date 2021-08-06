@@ -268,9 +268,9 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 		} else {
 			/* Status vector */
 			ss = (chunk & 0x4000) >> 14;
-			length = (s ? 7 : 14);
-			JANUS_LOG(LOG_HUGE, "  [%"SCNu16"] t=status-vector, ss=%s, l=%"SCNu8"\n", num,
-				s ? "2-bit" : "bit", length);
+			length = (ss ? 7 : 14);
+			JANUS_LOG(LOG_HUGE, "  [%"SCNu16"] t=status-vector, ss=%ss, l=%"SCNu8"\n", num,
+				ss ? "2-bit" : "bit", length);
 			while(length > 0 && psc > 0) {
 				if(!ss)
 					s = (chunk & (1 << (length-1))) ? janus_rtp_packet_status_smalldelta : janus_rtp_packet_status_notreceived;
@@ -872,7 +872,7 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 					/* Try to detect the retransmissions */
 					/* TODO We have to accomplish this in a smarter way */
 					int32_t rtp_diff = ntohl(rtp->timestamp) - ctx->rtp_last_inorder_ts;
-					int32_t ms_diff = (abs(rtp_diff) * 1000) / ctx->tb;
+					int64_t ms_diff = ((int64_t)abs(rtp_diff) * 1000) / ctx->tb;
 					if (ms_diff > 120)
 						ctx->retransmitted++;
 					else

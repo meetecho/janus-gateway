@@ -709,6 +709,13 @@ static void *janus_sampleevh_handler(void *data) {
 
 			/* Since this a simple plugin, it does the same for all events: so just convert to string... */
 			event_text = json_dumps(output, json_format);
+			if(event_text == NULL) {
+				JANUS_LOG(LOG_WARN, "Failed to stringify event, event lost...\n");
+				/* Nothing we can do... get rid of the event */
+				json_decref(output);
+				output = NULL;
+				continue;
+			}
 		}
 		/* Whether we just prepared the event or this is a retransmission, send it via HTTP POST */
 		CURLcode res;
@@ -726,6 +733,7 @@ static void *janus_sampleevh_handler(void *data) {
 			curl_easy_setopt(curl, CURLOPT_PASSWORD, backend_pwd);
 		}
 		janus_mutex_unlock(&evh_mutex);
+		headers = curl_slist_append(headers, "Content-Type: application/json");
 		/* Check if we need to compress the data */
 		if(compress) {
 			compressed_len = janus_gzip_compress(compression,
@@ -734,15 +742,15 @@ static void *janus_sampleevh_handler(void *data) {
 			if(compressed_len == 0) {
 				JANUS_LOG(LOG_ERR, "Failed to compress event (%zu bytes)...\n", strlen(event_text));
 				/* Nothing we can do... get rid of the event */
-				g_free(event_text);
+				if(curl)
+					curl_easy_cleanup(curl);
+				free(event_text);
 				json_decref(output);
 				output = NULL;
 				continue;
 			}
+			headers = curl_slist_append(headers, "Content-Encoding: gzip");
 		}
-		headers = curl_slist_append(headers, compress ? "Accept: application/gzip": "Accept: application/json");
-		headers = curl_slist_append(headers, compress ? "Content-Type: application/gzip" : "Content-Type: application/json");
-		headers = curl_slist_append(headers, "charsets: utf-8");
 		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, compress ? compressed_text : event_text);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, compress ? compressed_len : strlen(event_text));
@@ -778,7 +786,7 @@ done:
 		if(headers)
 			curl_slist_free_all(headers);
 		if(!retransmit)
-			g_free(event_text);
+			free(event_text);
 
 		/* Done, let's unref the event */
 		json_decref(output);

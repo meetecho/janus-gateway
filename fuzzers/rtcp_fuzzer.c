@@ -13,6 +13,11 @@ gboolean janus_log_colors = FALSE;
 char *janus_log_global_prefix = NULL;
 int lock_debug = 0;
 
+/* This is to avoid linking with openSSL */
+int RAND_bytes(uint8_t *key, int len) {
+	return 0;
+}
+
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/* Sanity Checks */
 	/* Max UDP payload with MTU=1500 */

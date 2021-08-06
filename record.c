@@ -335,6 +335,11 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 			json_object_set_new(info, "e", json_true());
 		gchar *info_text = json_dumps(info, JSON_PRESERVE_ORDER);
 		json_decref(info);
+		if(info_text == NULL) {
+			JANUS_LOG(LOG_ERR, "Error converting header to text...\n");
+			janus_mutex_unlock_nodebug(&recorder->mutex);
+			return -5;
+		}
 		uint16_t info_bytes = htons(strlen(info_text));
 		size_t res = fwrite(&info_bytes, sizeof(uint16_t), 1, recorder->file);
 		if(res != 1) {
@@ -386,7 +391,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		if(temp <= 0) {
 			JANUS_LOG(LOG_ERR, "Error saving frame...\n");
 			janus_mutex_unlock_nodebug(&recorder->mutex);
-			return -5;
+			return -6;
 		}
 		tot -= temp;
 	}

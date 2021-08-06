@@ -208,7 +208,7 @@ version.c: FORCE | $(dir_target)
 	echo "$(build_date)" | awk 'BEGIN {} {print "const char *janus_build_git_time = \""$$0"\";"} END {} ' >> version.c
 	echo "$(JANUS_VERSION)" | awk 'BEGIN {} {print "int janus_version = "$$0";"} END {} ' >> version.c
 	echo "$(JANUS_VERSION_STRING)" | awk 'BEGIN {} {print "const char *janus_version_string = \""$$0"\";"} END {} ' >> version.c
-	PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" pkg-config --modversion nice | awk 'BEGIN {} {print "const char *libnice_version_string = \""$$0"\";"} END {} ' >> version.c
+	PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" "$(PKG_CONFIG)" --modversion nice | awk 'BEGIN {} {print "const char *libnice_version_string = \""$$0"\";"} END {} ' >> version.c
 
 $(dir_present):
 	`which git` rev-parse HEAD | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
@@ -585,6 +585,8 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-h264.h \
 	postprocessing/pp-av1.c \
 	postprocessing/pp-av1.h \
+	postprocessing/pp-avformat.c \
+	postprocessing/pp-avformat.h \
 	postprocessing/pp-h265.c \
 	postprocessing/pp-h265.h \
 	postprocessing/pp-opus.c \
@@ -608,9 +610,11 @@ janus_pp_rec_CFLAGS = \
 	-I$(top_builddir)/postprocessing \
 	$(LIBCURL_CFLAGS) \
 	$(POST_PROCESSING_CFLAGS) \
+	$(BORINGSSL_CFLAGS) \
 	$(NULL)
 
 janus_pp_rec_LDADD = \
+	$(BORINGSSL_LIBS) \
 	$(POST_PROCESSING_LIBS) \
 	$(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) \
 	$(NULL)
@@ -635,9 +639,11 @@ mjr2pcap_SOURCES = \
 mjr2pcap_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(POST_PROCESSING_CFLAGS) \
+	$(BORINGSSL_CFLAGS) \
 	$(NULL)
 
 mjr2pcap_LDADD = \
+	$(BORINGSSL_LIBS) \
 	$(POST_PROCESSING_LIBS) \
 	$(POST_PROCESSING_MANUAL_LIBS) \
 	$(NULL)
@@ -657,9 +663,11 @@ pcap2mjr_CFLAGS = \
 	-I$(top_builddir)/postprocessing \
 	$(POST_PROCESSING_CFLAGS) \
 	$(PCAP_CFLAGS) \
+	$(BORINGSSL_CFLAGS) \
 	$(NULL)
 
 pcap2mjr_LDADD = \
+	$(BORINGSSL_LIBS) \
 	$(POST_PROCESSING_LIBS) \
 	$(POST_PROCESSING_MANUAL_LIBS) \
 	$(PCAP_LIBS) \

@@ -402,6 +402,10 @@ int janus_nanomsg_send_message(janus_transport_session *transport, void *request
 	/* Convert to string */
 	char *payload = json_dumps(message, json_format);
 	json_decref(message);
+	if(payload == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+		return -1;
+	}
 	/* Enqueue the packet and have poll tell us when it's time to send it */
 	g_async_queue_push(admin ? admin_client.messages : client.messages, payload);
 	/* Notify the thread there's data to send */
@@ -554,7 +558,7 @@ void *janus_nanomsg_thread(void *data) {
 						int res = nn_send(poll_nfds[i].fd, payload, strlen(payload), 0);
 						/* FIXME Should we check if sent everything? */
 						JANUS_LOG(LOG_HUGE, "Written %d/%zu bytes on %d\n", res, strlen(payload), poll_nfds[i].fd);
-						g_free(payload);
+						free(payload);
 					}
 				}
 			}
