@@ -859,6 +859,10 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 	}
 
 	char *payload = json_dumps(message, json_format);
+	if(payload == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+		return -1;
+	}
 	JANUS_LOG(LOG_HUGE, "Sending %s API message via MQTT: %s\n", admin ? "admin" : "Janus", payload);
 
 	int rc;
@@ -1369,7 +1373,7 @@ void janus_mqtt_client_disconnect_failure_impl(void *context, int rc) {
 	JANUS_LOG(LOG_ERR, "Can't disconnect from MQTT broker, return code: %d\n", rc);
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
 	janus_mutex_lock(&ctx->disconnect.mutex);
-	g_cond_signal(&ctx->disconnect.cond);
+	janus_condition_signal(&ctx->disconnect.cond);
 	janus_mutex_unlock(&ctx->disconnect.mutex);
 }
 

@@ -12,9 +12,9 @@
  * so that they can be post-processed later on to extract playable media
  * files. This utility allows you to process those files, in order to
  * get a working media file you can playout with an external player.
- * The tool will generate a .webm if the recording includes VP8 frames,
- * an .opus if the recording includes Opus frames, an .mp4 if the recording
- * includes H.264 frames, and a .wav file if the recording includes
+ * The tool will generate a .webm/.mkv if the recording includes VP8 frames,
+ * an .opus/.ogg/.mka if the recording includes Opus frames, an .mp4/.mkv if the
+ * recording includes H.264/H.265/AV1 frames, and a .wav file if the recording includes
  * G.711 (mu-law or a-law) frames. In case the recording contains text
  * frames as received via data channels, instead, a .srt file will be
  * generated with the text content and the related timing information.
@@ -24,7 +24,7 @@
  * path to the destination file, e.g.:
  *
 \verbatim
-./janus-pp-rec /path/to/source.mjr /path/to/destination.[opus|wav|webm|h264|srt]
+./janus-pp-rec /path/to/source.mjr /path/to/destination.[opus|ogg|mka|wav|webm|mkv|h264|srt]
 \endverbatim
  *
  * An attempt to specify an output format that is not compliant with the
@@ -46,10 +46,13 @@
  * show something like this:
  *
 \verbatim
-Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
+Usage: janus-pp-rec [OPTIONS] source.mjr
+[destination.[opus|ogg|mka|wav|webm|mkv|h264|srt]]
 
   -h, --help                    Print help and exit
   -V, --version                 Print version and exit
+  -F, --file-extensions         Only print the supported target file extensions
+                                  per codec  (default=off)
   -j, --json                    Only print JSON header  (default=off)
   -H, --header                  Only parse .mjr header  (default=off)
   -p, --parse                   Only parse and re-order packets  (default=off)
@@ -57,6 +60,8 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
   -i, --ignore-first=count      Number of first packets to ignore when
                                   processing, e.g., in case they're cause of
                                   issues (default=0)
+  -P, --payload-type=pt         Ignore all RTP packets that don't match the
+                                  specified payload type (default=none)
   -a, --audiolevel-ext=id       ID of the audio-levels RTP extension
                                   (default=none)
   -v, --videoorient-ext=id      ID of the video-orientation RTP extension
@@ -67,14 +72,25 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
   -o, --disable-colors          Disable color in the logging  (default=off)
   -f, --format=STRING           Specifies the output format (overrides the
                                   format from the destination)  (possible
-                                  values="opus", "wav", "webm", "mp4",
-                                  "srt")
+                                  values="opus", "ogg", "mka", "wav",
+                                  "webm", "mkv", "mp4", "srt")
   -t, --faststart               For mp4 files write the MOOV atom at the head
                                   of the file  (default=off)
   -S, --audioskew=milliseconds  Time threshold to trigger an audio skew
                                   compensation, disabled if 0 (default=0)
   -C, --silence-distance=count  RTP packets distance used to detect RTP silence
-								  suppression, disabled if 0 (default=100)
+                                  suppression, disabled if 0 (default=100)
+  -r, --restamp=count           If the latency of a packet is bigger than the
+                                  `moving_average_latency * (<restamp>/1000)`
+                                  the timestamps will be corrected, disabled if
+                                  0 (default=0)
+  -c, --restamp-packets=count   Number of packets used for calculating moving
+                                  average latency for timestamp correction
+                                  (default=10)
+  -n, --restamp-min-th=milliseconds
+                                Minimum latency of moving average to reach
+                                  before starting to correct timestamps.
+                                  (default=500)
 \endverbatim
  *
  * \note This utility does not do any form of transcoding. It just
@@ -138,6 +154,15 @@ static int audioskew_th = DEFAULT_AUDIO_SKEW_TH;
 #define DEFAULT_SILENCE_DISTANCE 100
 static int silence_distance = DEFAULT_SILENCE_DISTANCE;
 
+#define DEFAULT_RESTAMP_MULTIPLIER 0
+static int restamp_multiplier = DEFAULT_RESTAMP_MULTIPLIER;
+
+#define DEFAULT_RESTAMP_MIN_TH 500
+static int restamp_min_th = DEFAULT_RESTAMP_MIN_TH;
+
+#define DEFAULT_RESTAMP_PACKETS 10
+static int restamp_packets = DEFAULT_RESTAMP_PACKETS;
+
 /* Signal handler */
 static void janus_pp_handle_signal(int signum) {
 	working = 0;
@@ -161,6 +186,39 @@ typedef struct janus_pp_rtp_skew_context {
 } janus_pp_rtp_skew_context;
 static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_rtp_skew_context *context);
 
+/* Helper methods for timestamp correction (restamp) */
+static double get_latency(const janus_pp_frame_packet *tmp, int rate);
+static double get_moving_average_of_latency(janus_pp_frame_packet *pkt, int rate, int num_of_packets);
+
+/* Helper method to check whether a processor accepts a specific extension */
+static gboolean janus_pp_extension_check(const char *extension, const char **allowed) {
+	if(allowed == NULL || extension == NULL)
+		return FALSE;
+	const char **ext = allowed;
+	while(*ext != NULL) {
+		if(!strcasecmp(extension, *ext))
+			return TRUE;
+		ext++;
+	}
+	/* If we got here, we don't support this target format for this codec (yet) */
+	return FALSE;
+}
+static char *janus_pp_extensions_string(const char **allowed, char *supported, size_t suplen) {
+	if(allowed == NULL || supported == NULL || suplen == 0)
+		return NULL;
+	supported[0] = '\0';
+	g_strlcat(supported, "[", suplen);
+	const char **ext = allowed;
+	while(*ext != NULL) {
+		if(strlen(supported) > 1)
+			g_strlcat(supported, ", ", suplen);
+		g_strlcat(supported, *ext, suplen);
+		ext++;
+	}
+	g_strlcat(supported, "]", suplen);
+	return supported;
+}
+
 /* Main Code */
 int main(int argc, char *argv[])
 {
@@ -171,6 +229,27 @@ int main(int argc, char *argv[])
 
 	janus_log_init(FALSE, TRUE, NULL);
 	atexit(janus_log_destroy);
+
+	/* Check if we only need to print the supported extensions for all codecs */
+	if(args_info.file_extensions_given) {
+		JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
+		JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
+		JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
+		JANUS_LOG(LOG_INFO, "Supported file extensions:\n");
+		char supported[100];
+		JANUS_LOG(LOG_INFO, "  -- Opus:   %s\n", janus_pp_extensions_string(janus_pp_opus_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- G.711:  %s\n", janus_pp_extensions_string(janus_pp_g711_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- G.722:  %s\n", janus_pp_extensions_string(janus_pp_g722_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- VP8:    %s\n", janus_pp_extensions_string(janus_pp_webm_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- VP9:    %s\n", janus_pp_extensions_string(janus_pp_webm_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- H.264:  %s\n", janus_pp_extensions_string(janus_pp_h264_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- AV1:    %s\n", janus_pp_extensions_string(janus_pp_av1_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- H.265:  %s\n", janus_pp_extensions_string(janus_pp_h265_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- Text:   %s\n", janus_pp_extensions_string(janus_pp_srt_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- Binary: any\n");
+		cmdline_parser_free(&args_info);
+		exit(0);
+	}
 
 	/* If we're asked to print the JSON header as it is, we must not print anything else */
 	gboolean jsonheader_only = FALSE, header_only = FALSE, parse_only = FALSE;
@@ -233,7 +312,21 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			silence_distance = val;
 	}
-
+	if(args_info.restamp_given || (g_getenv("JANUS_PPREC_RESTAMP") != NULL)) {
+		int val = args_info.restamp_given ? args_info.restamp_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP"));
+		if(val >= 0)
+			restamp_multiplier = val;
+	}
+	if(args_info.restamp_packets_given || (g_getenv("JANUS_PPREC_RESTAMP_PACKETS") != NULL)) {
+		int val = args_info.restamp_packets_given ? args_info.restamp_packets_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP_PACKETS"));
+		if(val >= 0)
+			restamp_packets = val;
+	}
+	if(args_info.restamp_min_th_given || (g_getenv("JANUS_PPREC_RESTAMP_MIN_TH") != NULL)) {
+		int val = args_info.restamp_min_th_given ? args_info.restamp_min_th_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP_MIN_TH"));
+		if(val >= 0)
+			restamp_min_th = val;
+	}
 	/* Evaluate arguments to find source and target */
 	char *source = NULL, *destination = NULL, *setting = NULL;
 	int i=0;
@@ -255,7 +348,10 @@ int main(int argc, char *argv[])
 				(strcmp(setting, "-d")) && (strcmp(setting, "--debug-level")) &&
 				(strcmp(setting, "-f")) && (strcmp(setting, "--format")) &&
 				(strcmp(setting, "-S")) && (strcmp(setting, "--audioskew")) &&
-				(strcmp(setting, "-C")) && (strcmp(setting, "--silence-distance"))
+				(strcmp(setting, "-C")) && (strcmp(setting, "--silence-distance")) &&
+				(strcmp(setting, "-r")) && (strcmp(setting, "--restamp")) &&
+				(strcmp(setting, "-c")) && (strcmp(setting, "--restamp-packets")) &&
+				(strcmp(setting, "-n")) && (strcmp(setting, "--restamp-min-th"))
 		)) {
 			if(source == NULL)
 				source = argv[i];
@@ -311,7 +407,7 @@ int main(int argc, char *argv[])
 		extension++;
 	}
 
-	if (janus_faststart && strcasecmp(extension, "mp4")) {
+	if(janus_faststart && strcasecmp(extension, "mp4")) {
 		JANUS_LOG(LOG_ERR, "Faststart only supported for MP4");
 		cmdline_parser_free(&args_info);
 		exit(1);
@@ -493,49 +589,55 @@ int main(int argc, char *argv[])
 					exit(1);
 				}
 				const char *c = json_string_value(codec);
+				char supported[100];
 				if(video) {
 					if(!strcasecmp(c, "vp8")) {
 						vp8 = TRUE;
-						if(extension && strcasecmp(extension, "webm")) {
-							JANUS_LOG(LOG_ERR, "VP8 RTP packets can only be converted to a .webm file\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_webm_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "VP8 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_webm_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "vp9")) {
 						vp9 = TRUE;
-						if(extension && strcasecmp(extension, "webm")) {
-							JANUS_LOG(LOG_ERR, "VP9 RTP packets can only be converted to a .webm file\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_webm_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "VP9 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_webm_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "h264")) {
 						h264 = TRUE;
-						if(extension && strcasecmp(extension, "mp4")) {
-							JANUS_LOG(LOG_ERR, "H.264 RTP packets can only be converted to a .mp4 file\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_h264_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "H.264 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_h264_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "av1")) {
 						av1 = TRUE;
-						if(extension && strcasecmp(extension, "mp4")) {
-							JANUS_LOG(LOG_ERR, "AV1 RTP packets can only be converted to a .mp4 file\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_av1_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "AV1 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_av1_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "h265")) {
 						h265 = TRUE;
-						if(extension && strcasecmp(extension, "mp4")) {
-							JANUS_LOG(LOG_ERR, "H.265 RTP packets can only be converted to a .mp4 file\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_h265_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "H.265 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_h265_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else {
-						JANUS_LOG(LOG_WARN, "The post-processor only supports VP8, VP9 and H.264 video for now (was '%s')...\n", c);
+						JANUS_LOG(LOG_WARN, "The post-processor only supports VP8, VP9, H.264, AV1 and H.265 video for now (was '%s')...\n", c);
 						json_decref(info);
 						cmdline_parser_free(&args_info);
 						exit(1);
@@ -543,8 +645,9 @@ int main(int argc, char *argv[])
 				} else if(!video && !data) {
 					if(!strcasecmp(c, "opus")) {
 						opus = TRUE;
-						if(extension && strcasecmp(extension, "opus")) {
-							JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to an .opus file\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_opus_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "Opus RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_opus_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
@@ -556,16 +659,18 @@ int main(int argc, char *argv[])
 						exit(1);
 					} else if(!strcasecmp(c, "g711") || !strcasecmp(c, "pcmu") || !strcasecmp(c, "pcma")) {
 						g711 = TRUE;
-						if(extension && strcasecmp(extension, "wav")) {
-							JANUS_LOG(LOG_ERR, "G.711 RTP packets can only be converted to a .wav file\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_g711_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "G.711 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_g711_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "g722")) {
 						g722 = TRUE;
-						if(extension && strcasecmp(extension, "wav")) {
-							JANUS_LOG(LOG_ERR, "G.722 RTP packets can only be converted to a .wav file\n");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_g722_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "G.722 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_g722_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
@@ -584,8 +689,9 @@ int main(int argc, char *argv[])
 						exit(1);
 					}
 					textdata = !strcasecmp(c, "text");
-					if(textdata && extension && strcasecmp(extension, "srt")) {
-						JANUS_LOG(LOG_ERR, "Text data channel packets can only be converted to a .srt file\n");
+					if(textdata && extension && !janus_pp_extension_check(extension, janus_pp_srt_get_extensions())) {
+						JANUS_LOG(LOG_ERR, "Text data channel packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+							janus_pp_extensions_string(janus_pp_srt_get_extensions(), supported, sizeof(supported)));
 						json_decref(info);
 						cmdline_parser_free(&args_info);
 						exit(1);
@@ -678,7 +784,9 @@ int main(int argc, char *argv[])
 
 	/* Now that we know what we're working with, check the extension */
 	if(extension && strcasecmp(extension, "opus") && strcasecmp(extension, "wav") &&
+			strcasecmp(extension, "ogg") && strcasecmp(extension, "mka") &&
 			strcasecmp(extension, "webm") && strcasecmp(extension, "mp4") &&
+			strcasecmp(extension, "mkv") &&
 			strcasecmp(extension, "srt") && (!data || (data && textdata))) {
 		/* Unsupported extension? */
 		JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
@@ -1114,6 +1222,50 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	/* Run restamping */
+	if(!video && !data && restamp_multiplier > 0) {
+		tmp = list;
+		uint64_t restamping_offset = 0;
+		double restamp_threshold = (double) restamp_min_th/1000;
+		double restamp_jump_multiplier = (double) restamp_multiplier/1000;
+
+		while(tmp) {
+			uint64_t original_ts = tmp->ts;
+
+			/* Update ts with current offset */
+			if(restamping_offset > 0) {
+				tmp->ts += restamping_offset;
+			}
+
+			/* Calculate diff between time of reception and the rtp timestamp */
+			double current_latency = get_latency(tmp, rate);
+
+			if(current_latency > restamp_threshold) {
+				/* Check for possible jump compared to previous latency values */
+				double moving_avg_latency = get_moving_average_of_latency(tmp->prev, rate, restamp_packets);
+				JANUS_LOG(LOG_VERB, "latency=%.2f mavg=%.2f\n", current_latency, moving_avg_latency);
+
+				/* Found a new jump in latency? */
+				if(current_latency > (moving_avg_latency*restamp_jump_multiplier)) {
+					/* Increase restamping offset with current offset */
+					restamping_offset += (current_latency-moving_avg_latency)*rate;
+
+					/* Calculate new_ts with new offset */
+					uint64_t new_ts = original_ts+restamping_offset;
+
+					/* Update current packet ts with new ts */
+					tmp->ts = new_ts;
+
+					JANUS_LOG(LOG_WARN, "Timestamp gap detected. Restamping packets from here. Seq: %d\n", tmp->seq);
+					JANUS_LOG(LOG_INFO, "latency=%.2f mavg=%.2f original_ts=%.ld new_ts=%.ld offset=%.ld\n", current_latency, moving_avg_latency, original_ts, tmp->ts, restamping_offset);
+				}
+			}
+
+			tmp = tmp->next;
+		}
+	}
+
+	/* Run audioskew */
 	if(!video && !data && audioskew_th > 0) {
 		tmp = list;
 		janus_pp_rtp_skew_context context = {};
@@ -1144,7 +1296,7 @@ int main(int argc, char *argv[])
 
 	if(!video && !data) {
 		if(opus) {
-			if(janus_pp_opus_create(destination, metadata) < 0) {
+			if(janus_pp_opus_create(destination, metadata, extension) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .opus file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
@@ -1178,25 +1330,25 @@ int main(int argc, char *argv[])
 		}
 	} else {
 		if(vp8 || vp9) {
-			if(janus_pp_webm_create(destination, metadata, vp8) < 0) {
+			if(janus_pp_webm_create(destination, metadata, vp8, extension) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .webm file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
 		} else if(h264) {
-			if(janus_pp_h264_create(destination, metadata, janus_faststart) < 0) {
+			if(janus_pp_h264_create(destination, metadata, janus_faststart, extension) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
 		} else if(av1) {
-			if(janus_pp_av1_create(destination, metadata, janus_faststart) < 0) {
+			if(janus_pp_av1_create(destination, metadata, janus_faststart, extension) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
 		} else if(h265) {
-			if(janus_pp_h265_create(destination, metadata, janus_faststart) < 0) {
+			if(janus_pp_h265_create(destination, metadata, janus_faststart, extension) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
@@ -1487,4 +1639,31 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 	pkt->seq = fixed_rtp_seq;
 
 	return exit_status;
+}
+
+static double get_latency(const janus_pp_frame_packet *tmp, int rate) {
+	/* Get latency of packet based on time of arrival (at server side) and the RTP timestamp */
+	double corrected_ts = tmp->ts-list->ts;
+	double rts = corrected_ts/(double) rate;
+	double pts = (double) tmp->p_ts/1000;
+	return pts-rts;
+}
+
+static double get_moving_average_of_latency(janus_pp_frame_packet *pkt, int rate, int num_of_packets) {
+	/* Get a moving average of packet latency using the get_latency function */
+	if(!pkt || num_of_packets == 0) {
+		return 0;
+	}
+
+	int packets = 0;
+	double sum = 0;
+
+	janus_pp_frame_packet *tmp = pkt;
+	while(tmp && packets < num_of_packets) {
+		sum += get_latency(tmp, rate);
+		tmp = tmp->prev;
+		packets++;
+	}
+
+	return sum/packets;
 }

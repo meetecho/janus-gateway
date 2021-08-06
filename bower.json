@@ -1,6 +1,6 @@
 {
   "name": "janus-gateway",
-  "version": "0.11.2",
+  "version": "0.11.4",
   "homepage": "https://github.com/meetecho/janus-gateway",
   "authors": [
     "Lorenzo Miniero <lorenzo@meetecho.com>",
@@ -33,6 +33,6 @@
     "tests"
   ],
   "dependencies": {
-    "webrtc-adapter": "7.7.0"
+    "webrtc-adapter": "8.0.0"
   }
 }

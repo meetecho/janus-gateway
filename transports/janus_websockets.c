@@ -1013,6 +1013,9 @@ void janus_websockets_destroy(void) {
 	if(!g_atomic_int_get(&initialized))
 		return;
 	g_atomic_int_set(&stopping, 1);
+#if ((LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || LWS_LIBRARY_VERSION_MAJOR >= 4)
+	lws_cancel_service(wsc);
+#endif
 
 	/* Stop the service thread */
 	if(ws_thread != NULL) {
@@ -1142,6 +1145,12 @@ int janus_websockets_send_message(janus_transport_session *transport, void *requ
 	}
 	/* Convert to string and enqueue */
 	char *payload = json_dumps(message, json_format);
+	if(payload == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
+		json_decref(message);
+		janus_mutex_unlock(&transport->mutex);
+		return -1;
+	}
 	g_async_queue_push(client->messages, payload);
 #if (LWS_LIBRARY_VERSION_MAJOR >= 3)
 	/* On libwebsockets >= 3.x we use lws_cancel_service */

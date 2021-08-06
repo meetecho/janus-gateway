@@ -22,6 +22,7 @@
 #include <ctype.h> //BB
 
 #include <zlib.h>
+#include <openssl/rand.h>
 
 #include "utils.h"
 #include "debug.h"
@@ -72,23 +73,25 @@ gboolean janus_strcmp_const_time(const void *str1, const void *str2) {
 }
 
 guint32 janus_random_uint32(void) {
-	return g_random_int();
+	guint32 ret = 0;
+	if(RAND_bytes((void *)&ret, sizeof(ret)) != 1) {
+		JANUS_LOG(LOG_WARN, "Safe RAND_bytes() failed, falling back to unsafe PRNG\n");
+		return g_random_int();
+	}
+	return ret;
+}
+
+guint64 janus_random_uint64_full(void) {
+	guint64 ret = 0;
+	if(RAND_bytes((void *)&ret, sizeof(ret)) != 1) {
+		JANUS_LOG(LOG_WARN, "Safe RAND_bytes() failed, falling back to unsafe PRNG\n");
+		return (g_random_int() << 32) | g_random_int();
+	}
+	return ret;
 }
 
 guint64 janus_random_uint64(void) {
-	/*
-	 * FIXME This needs to be improved, and use something that generates
-	 * more strongly random stuff... using /dev/urandom is probably not
-	 * a good idea, as we don't want to make it harder to cross compile Janus
-	 *
-	 * TODO Look into what libssl and/or libcrypto provide in that respect
-	 *
-	 * PS: JavaScript only supports integer up to 2^53, so we need to
-	 * make sure the number is below 9007199254740992 for safety
-	 */
-	guint64 num = g_random_int() & 0x1FFFFF;
-	num = (num << 32) | g_random_int();
-	return num;
+	return janus_random_uint64_full() & 0x1FFFFFFFFFFFFF;
 }
 
 char *janus_random_uuid(void) {
@@ -101,8 +104,8 @@ char *janus_random_uuid(void) {
 	const char *template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx";
 	const char *samples = "0123456789abcdef";
 	union { unsigned char b[16]; uint64_t word[2]; } rnd;
-	rnd.word[0] = janus_random_uint64();
-	rnd.word[1] = janus_random_uint64();
+	rnd.word[0] = janus_random_uint64_full();
+	rnd.word[1] = janus_random_uint64_full();
 	/* Generate the string */
 	char uuid[37], *dst = uuid;
 	const char *p = template;
@@ -1149,6 +1152,8 @@ int janus_vp9_parse_svc(char *buffer, int len, gboolean *found, janus_vp9_svc_in
 }
 
 inline guint32 janus_push_bits(guint32 word, size_t num, guint32 val) {
+	if(num == 0)
+		return word;
 	return (word << num) | (val & (0xFFFFFFFF>>(32-num)));
 }
 
@@ -1184,12 +1189,12 @@ size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compr
 	}
 
 	/* Initialize the deflater, and clarify we need gzip */
-	z_stream zs;
+	z_stream zs = { 0 };
 	zs.zalloc = Z_NULL;
 	zs.zfree = Z_NULL;
 	zs.opaque = Z_NULL;
 	zs.next_in = (Bytef *)text;
-	zs.avail_in = (uInt)tlen+1;
+	zs.avail_in = (uInt)tlen;
 	zs.next_out = (Bytef *)compressed;
 	zs.avail_out = (uInt)zlen;
 	int res = deflateInit2(&zs, compression, Z_DEFLATED, 15 | 16, 8, Z_DEFAULT_STRATEGY);

@@ -36,6 +36,14 @@ static void janus_pp_srt_format_time(char *buffer, int len, guint64 when) {
 	g_snprintf(buffer, len, "%02"SCNi64":%02"SCNi64":%02"SCNi64".%03"SCNi64, hours, minutes, seconds, ms);
 }
 
+/* Supported target formats */
+static const char *janus_pp_srt_formats[] = {
+	"srt", NULL
+};
+const char **janus_pp_srt_get_extensions(void) {
+	return janus_pp_srt_formats;
+}
+
 /* Processing methods */
 int janus_pp_srt_create(char *destination, char *metadata) {
 	/* Create srt file */

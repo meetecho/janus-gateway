@@ -34,6 +34,7 @@ general: {
 	#queue_durable = false				# Whether or not incoming queue should remain after a RabbitMQ reboot
 	#queue_autodelete = false			# Whether or not incoming queue should autodelete after janus disconnects from RabbitMQ
 	#queue_exclusive = false			# Whether or not incoming queue should only allow one subscriber
+	#heartbeat = 60 				# Defines the seconds without communication that should pass before considering the TCP connection unreachable.
 
 	#ssl_enabled = false				# Whether ssl support must be enabled
 	#ssl_verify_peer = true				# Whether peer verification must be enabled

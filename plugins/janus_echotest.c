@@ -876,10 +876,9 @@ static void *janus_echotest_handler(void *data) {
 		json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 		if(msg_simulcast) {
 			JANUS_LOG(LOG_VERB, "EchoTest client is going to do simulcasting\n");
-			int rid_ext_id = -1, framemarking_ext_id = -1;
-			janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, &framemarking_ext_id, session->ssrc, session->rid);
+			int rid_ext_id = -1;
+			janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, session->ssrc, session->rid);
 			session->sim_context.rid_ext_id = rid_ext_id;
-			session->sim_context.framemarking_ext_id = framemarking_ext_id;
 			session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
 			session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
 		}
@@ -990,8 +989,10 @@ static void *janus_echotest_handler(void *data) {
 		}
 		if(substream) {
 			session->sim_context.substream_target = json_integer_value(substream);
-			JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
-				session->ssrc[session->sim_context.substream], session->sim_context.substream_target, session->sim_context.substream);
+			if(session->sim_context.substream_target >= 0 && session->sim_context.substream_target <= 2) {
+				JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
+					session->ssrc[session->sim_context.substream_target], session->sim_context.substream_target, session->sim_context.substream);
+			}
 			if(session->sim_context.substream_target == session->sim_context.substream) {
 				/* No need to do anything, we're already getting the right substream, so notify the user */
 				json_t *event = json_object();
@@ -1093,7 +1094,6 @@ static void *janus_echotest_handler(void *data) {
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION,
-				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_FRAME_MARKING,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
 				JANUS_SDP_OA_DONE);
 			/* If we ended up sendonly, switch to inactive (as we don't really send anything ourselves) */
