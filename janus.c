@@ -4059,16 +4059,16 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 		janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 		if(!ice_handle) {
 			JANUS_LOG(LOG_INFO, "janus_plugin_notify_event: !ice_handle\n");
-			json_decref(event);
-			return;
+			//json_decref(event);
+			//return;
 		}
 		handle_id = ice_handle->handle_id;
 		opaque_id = ice_handle->opaque_id;
 		janus_session *session = (janus_session *)ice_handle->session;
 		if(!session) {
 			JANUS_LOG(LOG_INFO, "janus_plugin_notify_event: !session\n");
-			json_decref(event);
-			return;
+			//json_decref(event);
+			//return;
 		}
 		session_id = session->session_id;
 	}
