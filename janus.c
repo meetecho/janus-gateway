@@ -4041,17 +4041,24 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 
 void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event) {
 	/* A plugin asked to notify an event to the handlers */
+	JANUS_LOG(LOG_INFO, "Entering janus_plugin_notify_event");
 	if(!plugin || !event || !json_is_object(event))
 		return;
 	guint64 session_id = 0, handle_id = 0;
 	char *opaque_id = NULL;
 	if(plugin_session != NULL) {
+
+		JANUS_LOG(LOG_INFO, "janus_plugin_notify_event: plugin_session != NULL");
+
 		if(!janus_plugin_session_is_alive(plugin_session)) {
+			JANUS_LOG(LOG_INFO, "janus_plugin_notify_event: !janus_plugin_session_is_alive(plugin_session)");
+
 			json_decref(event);
 			return;
 		}
 		janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 		if(!ice_handle) {
+			JANUS_LOG(LOG_INFO, "janus_plugin_notify_event: !ice_handle");
 			json_decref(event);
 			return;
 		}
@@ -4059,6 +4066,7 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 		opaque_id = ice_handle->opaque_id;
 		janus_session *session = (janus_session *)ice_handle->session;
 		if(!session) {
+			JANUS_LOG(LOG_INFO, "janus_plugin_notify_event: !session");
 			json_decref(event);
 			return;
 		}
