@@ -4046,31 +4046,21 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 		return;
 	guint64 session_id = 0, handle_id = 0;
 	char *opaque_id = NULL;
-	if(plugin_session != NULL) {
 
-		JANUS_LOG(LOG_INFO, "janus_plugin_notify_event: plugin_session != NULL \n");
+	/* BB - The following case has been changed to extract as much information as possible without returning */
+	if(plugin_session) {
 
-		if(!janus_plugin_session_is_alive(plugin_session)) {
-			JANUS_LOG(LOG_INFO, "janus_plugin_notify_event: !janus_plugin_session_is_alive(plugin_session)\n");
-
-			//json_decref(event);
-			//return;
-		}
 		janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
-		if(!ice_handle) {
-			JANUS_LOG(LOG_INFO, "janus_plugin_notify_event: !ice_handle \n");
-			//json_decref(event);
-			//return;
+		if(ice_handle) {
+			// BB - Let's set the handle_id and opaque_id if the ice handle is available
+			handle_id = ice_handle->handle_id;
+			opaque_id = ice_handle->opaque_id;
 		}
-		handle_id = ice_handle->handle_id;
-		opaque_id = ice_handle->opaque_id;
+
 		janus_session *session = (janus_session *)ice_handle->session;
-		if(!session) {
-			JANUS_LOG(LOG_INFO, "janus_plugin_notify_event: !session \n");
-			//json_decref(event);
-			//return;
+		if(session) {
+			session_id = session->session_id;
 		}
-		session_id = session->session_id;
 	}
 	/* Notify event handlers */
 	if(janus_events_is_enabled()) {
