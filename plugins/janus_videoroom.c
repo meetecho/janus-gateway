@@ -2717,7 +2717,7 @@ static void janus_videoroom_participant_joining(janus_videoroom_publisher *p) {
 	}
 }
 
-static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *participant, gboolean is_leaving, gboolean kicked) {
+static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *participant, janus_videoroom_session *session, gboolean is_leaving, gboolean kicked) {
 	/* we need to check if the room still exists, may have been destroyed already */
 	if(participant->room == NULL)
 		return;
@@ -2750,7 +2750,7 @@ static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *partic
 		json_object_set_new(info, "event", json_string(is_leaving ? (kicked ? "kicked" : "leaving") : "unpublished"));
 		json_object_set_new(info, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
 		json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
-		gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+		gateway->notify_event(&janus_videoroom_plugin, session ? session->handle : NULL, info);
 	}
 	if(is_leaving) {
 		g_hash_table_remove(participant->room->participants,
@@ -2795,7 +2795,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		session->participant = NULL;
 		janus_mutex_unlock(&session->mutex);
 		if(p && p->room) {
-			janus_videoroom_leave_or_unpublish(p, TRUE, FALSE);
+			janus_videoroom_leave_or_unpublish(p, session, TRUE, FALSE);
 		}
 		janus_videoroom_publisher_destroy(p);
 		if(p)
@@ -4643,7 +4643,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_mutex_unlock(&participant->own_subscriptions_mutex);
 		}
 		/* This publisher is leaving, tell everybody */
-		janus_videoroom_leave_or_unpublish(participant, TRUE, TRUE);
+		janus_videoroom_leave_or_unpublish(participant, session, TRUE, TRUE);
 		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 		if(participant && !g_atomic_int_get(&participant->destroyed) && participant->session)
 			gateway->close_pc(participant->session->handle);
@@ -5985,7 +5985,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 		}
 		participant->e2ee = FALSE;
 		janus_mutex_unlock(&participant->subscribers_mutex);
-		janus_videoroom_leave_or_unpublish(participant, FALSE, FALSE);
+		janus_videoroom_leave_or_unpublish(participant, session, FALSE, FALSE);
 		janus_refcount_decrease(&participant->ref);
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 		/* Get rid of subscriber */
@@ -7024,7 +7024,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
 				json_object_set_new(event, "leaving", json_string("ok"));
 				/* This publisher is leaving, tell everybody */
-				janus_videoroom_leave_or_unpublish(participant, TRUE, FALSE);
+				janus_videoroom_leave_or_unpublish(participant, session, TRUE, FALSE);
 				/* Done */
 				participant->audio_active = FALSE;
 				participant->video_active = FALSE;
