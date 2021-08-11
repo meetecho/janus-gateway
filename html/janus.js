@@ -1973,6 +1973,7 @@ function Janus(gatewayCallbacks) {
 							{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
 						]
 					});
+					config.maxBitrates = [maxBitrates.low, maxBitrates.medium, maxBitrates.high];
 					if(tr)
 						sender = tr.sender;
 				}
@@ -2776,6 +2777,7 @@ function Janus(gatewayCallbacks) {
 					{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
 				];
 				sender.setParameters(parameters);
+				config.maxBitrates = [maxBitrates.low, maxBitrates.medium, maxBitrates.high];
 			}
 		}
 		config.pc.createOffer(mediaConstraints)
@@ -3020,6 +3022,7 @@ function Janus(gatewayCallbacks) {
 				{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2},
 				{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4}
 			]});
+			config.maxBitrates = [maxBitrates.low, maxBitrates.medium, maxBitrates.high];
 		}
 		config.pc.createAnswer(mediaConstraints)
 			.then(function(answer) {

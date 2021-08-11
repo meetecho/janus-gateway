@@ -559,6 +559,7 @@ room-<unique room ID>: {
 	"audiocodec" : "<audio codec to prefer among the negotiated ones; optional>",
 	"videocodec" : "<video codec to prefer among the negotiated ones; optional>",
 	"bitrate" : <bitrate cap to return via REMB; optional, overrides the global room value if present>,
+	"simulcast_bitrates" : <target bitrates for simulcast layers (0-2). If set, Janus will automatically switch a subscriber to a lower layer if its REMB is too low; optional>,
 	"record" : <true|false, whether this publisher should be recorded or not; optional>,
 	"filename" : "<if recording, the base path/file to use for the recording files; optional>",
 	"display" : "<new display name to use in the room; optional>",
@@ -1364,6 +1365,7 @@ static struct janus_json_parameter publish_parameters[] = {
 	{"videocodec", JSON_STRING, 0},
 	{"data", JANUS_JSON_BOOL, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"simulcast_bitrates", JSON_ARRAY, 0},
 	{"keyframe", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
@@ -1650,6 +1652,7 @@ typedef struct janus_videoroom_publisher {
 	gboolean data_active, data_muted;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
 	uint32_t bitrate;
+	uint32_t simulcast_bitrates [3];
 	gint64 remb_startup;/* Incremental changes on REMB to reach the target at startup */
 	gint64 remb_latest;	/* Time of latest sent REMB (to avoid flooding) */
 	gint64 fir_latest;	/* Time of latest sent FIR (to avoid flooding) */
@@ -5525,9 +5528,46 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 				}
 			}
 		}
-		uint32_t bitrate = janus_rtcp_get_remb(buf, len);
-		if(bitrate > 0) {
+		uint32_t remb = janus_rtcp_get_remb(buf, len);
+		if(remb > 0) {
 			/* FIXME We got a REMB from this subscriber, should we do something about it? */
+			// JANUS_LOG(LOG_VERB, "Received REMB: %d\n", remb);
+			janus_mutex_lock(&session->mutex);
+			janus_videoroom_publisher *publisher = s->feed;
+			/* It is safe to use feed as the only other place sets feed to NULL
+				is in this function and accessing to this function is synchronized
+				by sessions_mutex */
+
+			if(publisher->simulcast_bitrates && publisher->simulcast_bitrates[0] > 0 && publisher->simulcast_bitrates[1] > 0 && publisher->simulcast_bitrates[2] > 0) {
+
+				int max_layer = 0;
+				if (remb >= publisher->simulcast_bitrates[2]) {
+					max_layer = 2;
+				} else if(remb >= publisher->simulcast_bitrates[1]) {
+					max_layer = 1;
+				}
+
+				if((publisher->ssrc[0] != 0 || publisher->rid[0] != NULL)) {
+
+					if (s->sim_context.substream_target > max_layer) {
+						JANUS_LOG(LOG_VERB, "Switching to lower simulcast layer (%d) because received REMB (%d) was lower than the publishers target bitrate (%d)\n", max_layer, remb, publisher->simulcast_bitrates[max_layer+1]);
+						s->sim_context.substream_target = max_layer;
+						if(s->sim_context.substream_target >= 0 && s->sim_context.substream_target <= 2) {
+							JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
+								publisher->ssrc[s->sim_context.substream_target],
+								s->sim_context.substream_target,
+								s->sim_context.substream);
+						}
+						if(s->sim_context.substream_target == s->sim_context.substream) {
+							/* No need to do anything, we're already getting the right substream, so notify the user */
+						} else {
+							/* Send a FIR */
+							janus_videoroom_reqpli(publisher, "Simulcasting substream change");
+						}
+					}
+				}
+			}
+			janus_mutex_unlock(&session->mutex);
 		}
 		janus_refcount_decrease_nodebug(&s->ref);
 	}
@@ -6705,6 +6745,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *update = json_object_get(root, "update");
 				json_t *user_audio_active_packets = json_object_get(root, "audio_active_packets");
 				json_t *user_audio_level_average = json_object_get(root, "audio_level_average");
+				json_t *simulcast_bitrates = json_object_get(root, "simulcast_bitrates");
 				if(audio) {
 					gboolean audio_active = json_is_true(audio);
 					if(g_atomic_int_get(&session->started) && audio_active && !participant->audio_active && !participant->audio_muted) {
@@ -6795,6 +6836,17 @@ static void *janus_videoroom_handler(void *data) {
 					if(g_atomic_int_get(&session->started))
 						participant->remb_latest = janus_get_monotonic_time();
 					gateway->send_remb(msg->handle, participant->bitrate);
+				}
+				if(simulcast_bitrates) {
+					size_t index;
+					json_t *value;
+					size_t simulcast_bitrates_size = json_array_size(simulcast_bitrates);
+					if (simulcast_bitrates_size == 3) {
+						json_array_foreach(simulcast_bitrates, index, value) {
+							// JANUS_LOG(LOG_VERB, "simulcast_bitrates i: %d value: %d\n", index, json_integer_value(value));
+							participant->simulcast_bitrates[index] = json_integer_value(value);
+						}
+					}
 				}
 				if(keyframe && json_is_true(keyframe)) {
 					/* Send a FIR */
