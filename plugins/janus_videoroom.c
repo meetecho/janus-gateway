@@ -674,6 +674,7 @@ room-<unique room ID>: {
 	"video" : <true|false, depending on whether or not video should be relayed; true by default>,
 	"data" : <true|false, depending on whether or not data should be relayed; true by default>,
 	"bitrate" : <bitrate cap to return via REMB; optional, overrides the global room value if present (unless bitrate_cap is set)>,
+	"simulcast_bitrates" : <target bitrates for simulcast layers (0-2). If set, Janus will automatically switch a subscriber to a lower layer if its REMB is too low; optional>,
 	"keyframe" : <true|false, whether we should send this publisher a keyframe request>,
 	"record" : <true|false, whether this publisher should be recorded or not; optional>,
 	"filename" : "<if recording, the base path/file to use for the recording files; optional>",
@@ -1412,6 +1413,7 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
 	{"data", JANUS_JSON_BOOL, 0},
+	{"simulcast_bitrates", JSON_ARRAY, 0},
 	/* For talk detection */
 	{"audio_level_averge", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1687,6 +1689,7 @@ typedef struct janus_videoroom_subscriber {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
 	guint64 room_id;		/* Unique room ID */
+	guint32 last_remb;		/* Last seen remb value from rtp */
 	gchar *room_id_str;		/* Unique room ID (when using strings) */
 	janus_videoroom_publisher *feed;	/* Participant this subscriber is subscribed to */
 	gboolean close_pc;		/* Whether we should automatically close the PeerConnection when the publisher goes away */
@@ -5529,41 +5532,50 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 			}
 		}
 		uint32_t remb = janus_rtcp_get_remb(buf, len);
-		if(remb > 0) {
-			/* FIXME We got a REMB from this subscriber, should we do something about it? */
-			// JANUS_LOG(LOG_VERB, "Received REMB: %d\n", remb);
+		/* remb comes in bit/second so we dont need every change... make it a bit relaxed only adopting changes of 5k */
+		remb = remb - (remb % 5000);
+		/* If we have a remb value and it differs from the last seen one */
+		if(remb > 0 && remb != s->last_remb) {
+			s->last_remb = remb;
+
+			/* Retrieve the publisher */
 			janus_mutex_lock(&session->mutex);
 			janus_videoroom_publisher *publisher = s->feed;
-			/* It is safe to use feed as the only other place sets feed to NULL
-				is in this function and accessing to this function is synchronized
-				by sessions_mutex */
 
-			if(publisher->simulcast_bitrates && publisher->simulcast_bitrates[0] > 0 && publisher->simulcast_bitrates[1] > 0 && publisher->simulcast_bitrates[2] > 0) {
+			/* Were simulcast bitrates configured via the API and is the publisher providing simulcast  */
+			if(publisher->simulcast_bitrates[0] && (publisher->ssrc[0] != 0 || publisher->rid[0] != NULL)) {
+				JANUS_LOG(LOG_INFO, "REMB (%d)\n", remb);
 
-				int max_layer = 0;
-				if (remb >= publisher->simulcast_bitrates[2]) {
-					max_layer = 2;
-				} else if(remb >= publisher->simulcast_bitrates[1]) {
-					max_layer = 1;
-				}
-
-				if((publisher->ssrc[0] != 0 || publisher->rid[0] != NULL)) {
-
-					if (s->sim_context.substream_target > max_layer) {
-						JANUS_LOG(LOG_VERB, "Switching to lower simulcast layer (%d) because received REMB (%d) was lower than the publishers target bitrate (%d)\n", max_layer, remb, publisher->simulcast_bitrates[max_layer+1]);
-						s->sim_context.substream_target = max_layer;
-						if(s->sim_context.substream_target >= 0 && s->sim_context.substream_target <= 2) {
-							JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
-								publisher->ssrc[s->sim_context.substream_target],
-								s->sim_context.substream_target,
-								s->sim_context.substream);
-						}
-						if(s->sim_context.substream_target == s->sim_context.substream) {
-							/* No need to do anything, we're already getting the right substream, so notify the user */
-						} else {
-							/* Send a FIR */
-							janus_videoroom_reqpli(publisher, "Simulcasting substream change");
-						}
+				/* According to REMB, what the currently highest possible layer we can provide on that PC */
+				int highest_possible_layer = 0;
+				if (publisher->simulcast_bitrates[2] && remb >= publisher->simulcast_bitrates[2])
+					highest_possible_layer = 2;
+				else if(publisher->simulcast_bitrates[1] && remb >= publisher->simulcast_bitrates[1])
+					highest_possible_layer = 1;
+				
+				/* We have a new limit from REMB */
+				if(s->sim_context.substream_limit_by_remb != highest_possible_layer) {
+					if(highest_possible_layer < s->sim_context.substream_limit_by_remb && s->sim_context.substream > highest_possible_layer) {
+						/* The currently transported layer (bitrate) is higher than the limit -> we need to reduce */
+						JANUS_LOG(LOG_WARN, "Currently sent simulcast layer (%d) uses a higher bitrate (%d) than available through REMB (%d) -> switch to lower layer (highest possible %d)\n",
+							s->sim_context.substream,
+							publisher->simulcast_bitrates[s->sim_context.substream],
+							remb,
+							highest_possible_layer);
+						s->sim_context.substream_limit_by_remb = highest_possible_layer;
+						/* Send a FIR */
+						janus_videoroom_reqpli(publisher, "Simulcasting substream change");
+					} else if(highest_possible_layer > s->sim_context.substream_limit_by_remb && s->sim_context.substream < highest_possible_layer && s->sim_context.substream_target > s->sim_context.substream) {
+						/* The currently transported layer (bitrate) is lower than the possible remb allows */
+						/* The client also requested a higher layer than it is currently possible */
+						JANUS_LOG(LOG_WARN, "Currently sent simulcast layer (%d) uses a lower bitrate (%d) than available through REMB (%d) -> switch to higher layer (highest possible %d)\n",
+							s->sim_context.substream,
+							publisher->simulcast_bitrates[s->sim_context.substream],
+							remb,
+							highest_possible_layer);
+						s->sim_context.substream_limit_by_remb = highest_possible_layer;
+						/* Send a FIR */
+						janus_videoroom_reqpli(publisher, "Simulcasting substream change");
 					}
 				}
 			}
@@ -6841,10 +6853,21 @@ static void *janus_videoroom_handler(void *data) {
 					size_t index;
 					json_t *value;
 					size_t simulcast_bitrates_size = json_array_size(simulcast_bitrates);
-					if (simulcast_bitrates_size == 3) {
+					if(simulcast_bitrates_size == 2 || simulcast_bitrates_size == 3) {
+						gboolean valid = TRUE;
 						json_array_foreach(simulcast_bitrates, index, value) {
 							// JANUS_LOG(LOG_VERB, "simulcast_bitrates i: %d value: %d\n", index, json_integer_value(value));
-							participant->simulcast_bitrates[index] = json_integer_value(value);
+							int bitrate = json_integer_value(value);
+							if(!bitrate) {
+								valid = FALSE;
+								break;
+							}
+							participant->simulcast_bitrates[index] = bitrate;
+						}
+						if(!valid) {
+							int i = 0;
+							for(i = 0; i < 3; i++)
+								participant->simulcast_bitrates[i] = 0;
 						}
 					}
 				}

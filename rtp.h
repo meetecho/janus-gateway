@@ -285,10 +285,14 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 typedef struct janus_rtp_simulcasting_context {
 	/*! \brief RTP Stream extension ID, if any */
 	gint rid_ext_id;
-	/*! \brief Which simulcast substream we should forward back */
+	/*! \brief The currently forwarded and notified simulcast substream */
 	int substream;
+	/*! \brief If using REMB for handshaking simulcast layers this is the currently chosen layer if the bitrate limit forces a lower layer */
+	int substream_limit_by_remb;
+	/*! \brief The requested substream as configured via the api (this is what the client wants to have, not what he currently receives) */
+	int substream_target;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */
-	int substream_target, substream_target_temp;
+	int substream_target_temp;
 	/*! \brief Which simulcast temporal layer we should forward back */
 	int templayer;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe) */

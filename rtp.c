@@ -932,6 +932,7 @@ void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *contex
 	memset(context, 0, sizeof(*context));
 	context->rid_ext_id = -1;
 	context->substream = -1;
+	context->substream_limit_by_remb = -1;
 	context->substream_target_temp = -1;
 	context->templayer = -1;
 }
@@ -1023,6 +1024,13 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		context->substream_target_temp = -1;
 	}
 	int target = (context->substream_target_temp == -1) ? context->substream_target : context->substream_target_temp;
+	if (context->substream_limit_by_remb != -1 && target > context->substream_limit_by_remb) {
+		/* The REMB implementation in association with the publiher bitrates allows us to detect if we
+		 * can transport a certain layer. If the currently REMB is lower than the bitrate of the requested
+		 * substream the limit comes in place. */
+		target = context->substream_limit_by_remb;
+	}
+
 	/* Check what we need to do with the packet */
 	if(context->substream == -1) {
 		if((vcodec == JANUS_VIDEOCODEC_VP8 && janus_vp8_is_keyframe(payload, plen)) ||
