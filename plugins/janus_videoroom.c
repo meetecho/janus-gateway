@@ -2795,6 +2795,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		session->participant = NULL;
 		janus_mutex_unlock(&session->mutex);
 		if(p && p->room) {
+			JANUS_LOG(LOG_INFO, "janus_videoroom.c is_leaving=TRUE, kicked=FALSE (1)\n");
 			janus_videoroom_leave_or_unpublish(p, session, TRUE, FALSE);
 		}
 		janus_videoroom_publisher_destroy(p);
@@ -4643,6 +4644,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_mutex_unlock(&participant->own_subscriptions_mutex);
 		}
 		/* This publisher is leaving, tell everybody */
+		JANUS_LOG(LOG_INFO, "janus_videoroom.c is_leaving=TRUE, kicked=TRUE (2)\n");
 		janus_videoroom_leave_or_unpublish(participant, session, TRUE, TRUE);
 		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 		if(participant && !g_atomic_int_get(&participant->destroyed) && participant->session)
@@ -5985,6 +5987,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 		}
 		participant->e2ee = FALSE;
 		janus_mutex_unlock(&participant->subscribers_mutex);
+		JANUS_LOG(LOG_INFO, "janus_videoroom.c is_leaving=FALSE, kicked=FALSE (3)\n");
 		janus_videoroom_leave_or_unpublish(participant, session, FALSE, FALSE);
 		janus_refcount_decrease(&participant->ref);
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
@@ -6004,6 +6007,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 				janus_mutex_unlock(&session->mutex);
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
+					JANUS_LOG(LOG_INFO, "janus_videoroom.c unsubscribed (5)\n");
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string("unsubscribed"));
 					json_object_set_new(info, "room", string_ids ? json_string(publisher->room_id_str) : json_integer(publisher->room_id));
@@ -7024,6 +7028,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
 				json_object_set_new(event, "leaving", json_string("ok"));
 				/* This publisher is leaving, tell everybody */
+				JANUS_LOG(LOG_INFO, "janus_videoroom.c is_leaving=TRUE, kicked=FALSE (4)\n");
 				janus_videoroom_leave_or_unpublish(participant, session, TRUE, FALSE);
 				/* Done */
 				participant->audio_active = FALSE;
