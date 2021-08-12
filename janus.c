@@ -4041,7 +4041,6 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 
 void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event) {
 	/* A plugin asked to notify an event to the handlers */
-	JANUS_LOG(LOG_INFO, "Entering janus_plugin_notify_event \n");
 	if(!plugin || !event || !json_is_object(event))
 		return;
 	guint64 session_id = 0, handle_id = 0;
@@ -4049,7 +4048,6 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 
 	/* BB - The following case has been changed to extract as much information as possible without returning */
 	if(plugin_session) {
-
 		janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 		if(ice_handle) {
 			// BB - Let's set the handle_id and opaque_id if the ice handle is available
