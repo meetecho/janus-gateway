@@ -289,6 +289,12 @@ typedef struct janus_rtp_simulcasting_context {
 	int substream;
 	/*! \brief If using REMB for handshaking simulcast layers this is the currently chosen layer if the bitrate limit forces a lower layer */
 	int substream_limit_by_remb;
+	/*! \brief Copy of the simulcast publisher bitrates of the current substream */
+	uint32_t publisher_simulcast_bitrates[3];
+	/*! \brief Whenever we take over new publisher_simulcast_bitrates we check how many layers have been announced */
+	uint32_t publisher_simulcast_layer_count;
+	/*! \brief Switch helper that is used to determine when to switch from the current to another layer. Depending on the current remb vs the current layer bitrate this value is increased if we can switch up or decreased if we need to switch down */
+	int substream_switch_layer_counter;
 	/*! \brief The requested substream as configured via the api (this is what the client wants to have, not what he currently receives) */
 	int substream_target;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */

@@ -1024,7 +1024,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		context->substream_target_temp = -1;
 	}
 	int target = (context->substream_target_temp == -1) ? context->substream_target : context->substream_target_temp;
-	if (context->substream_limit_by_remb != -1 && target > context->substream_limit_by_remb) {
+	if (context->substream_limit_by_remb != -1 && context->substream_limit_by_remb < target) {
 		/* The REMB implementation in association with the publiher bitrates allows us to detect if we
 		 * can transport a certain layer. If the currently REMB is lower than the bitrate of the requested
 		 * substream the limit comes in place. */
