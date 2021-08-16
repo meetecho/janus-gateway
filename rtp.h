@@ -287,8 +287,10 @@ typedef struct janus_rtp_simulcasting_context {
 	gint rid_ext_id;
 	/*! \brief The currently forwarded and notified simulcast substream */
 	int substream;
-	/*! \brief If using REMB for handshaking simulcast layers this is the currently chosen layer if the bitrate limit forces a lower layer */
+	/*! \brief If using REMB for handshaking simulcast layers this is the currently chosen spatial layer if the bitrate limit forces a lower layer */
 	int substream_limit_by_remb;
+	/*! \brief If using REMB for handshaking simulcast layers this is the currently chosen temporal layer if the bitrate limit forces a lower layer */
+	int templayer_limit_by_remb;
 	/*! \brief Copy of the simulcast publisher bitrates of the current substream */
 	uint32_t publisher_simulcast_bitrates[3];
 	/*! \brief Whenever we take over new publisher_simulcast_bitrates we check how many layers have been announced */

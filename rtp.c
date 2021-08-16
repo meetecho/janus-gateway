@@ -934,6 +934,7 @@ void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *contex
 	context->substream = -1;
 	context->substream_limit_by_remb = -1;
 	context->substream_target_temp = -1;
+	context->templayer_limit_by_remb = -1;
 	context->templayer = -1;
 }
 

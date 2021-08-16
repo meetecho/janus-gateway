@@ -1211,6 +1211,9 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 void janus_videoroom_hangup_media(janus_plugin_session *handle);
 void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_videoroom_query_session(janus_plugin_session *handle);
+uint32_t janus_videoroom_getCurrentRampPosition(janus_rtp_simulcasting_context* pSim);
+uint32_t janus_videoroom_getRampPositionBitrate(janus_rtp_simulcasting_context* pSim, uint32_t rampPosition);
+gboolean janus_videoroom_setFlagsForPosition(janus_rtp_simulcasting_context* pSim, uint32_t position);
 
 /* Plugin setup */
 static janus_plugin janus_videoroom_plugin =
@@ -5501,6 +5504,97 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 	janus_videoroom_publisher_dereference_nodebug(participant);
 }
 
+/* Retrieve the current position in the ramp up ramp down process
+ * Ramp positions:
+ * Spatial 0 (L) - Temporal 15fps -> 0
+ * Spatial 0 (L) - Temporal 30fps -> 1
+ * Spatial 1 (M) - Temporal 15fps -> 2
+ * Spatial 1 (M) - Temporal 30fps -> 3
+ * Spatial 2 (H) - Temporal 15fps -> 4
+ * Spatial 2 (H) - Temporal 30fps -> 5 */
+uint32_t janus_videoroom_getCurrentRampPosition(janus_rtp_simulcasting_context* pSim) {
+	uint32_t rampPosition = 0;
+	switch(pSim->substream) {
+		case 1:
+			rampPosition = 2;
+			break;
+		case 2:
+			rampPosition = 4;
+			break;
+		default:
+			rampPosition = 0;
+			break;
+	}
+	if(pSim->templayer == -1 || pSim->templayer == 2)
+		rampPosition++;
+	return rampPosition;
+}
+
+#define CORRECTION_FACTOR_15FPS 0.6
+
+/* Retrieve the bitrate of a dedicated ramp position, 0 if the bitrate could not be determined */
+uint32_t janus_videoroom_getRampPositionBitrate(janus_rtp_simulcasting_context* pSim, uint32_t rampPosition) {
+	uint32_t next = 0;
+	switch(rampPosition) {
+		case 0: // Spatial 0 - Temporal 15fps
+			next = pSim->publisher_simulcast_bitrates[0] * CORRECTION_FACTOR_15FPS;
+			break;
+		case 1: // Spatial 0 - Temporal 30fps
+			next = pSim->publisher_simulcast_bitrates[0];
+			break;
+		case 2: // Spatial 1 - Temporal 15fps
+			if(pSim->publisher_simulcast_layer_count > 1)
+				next = pSim->publisher_simulcast_bitrates[1] * CORRECTION_FACTOR_15FPS;
+			break;
+		case 3: // Spatial 1 - Temporal 30fps
+			if(pSim->publisher_simulcast_layer_count > 1)
+				next = pSim->publisher_simulcast_bitrates[1];
+			break;
+		case 4: // Spatial 2 - Temporal 15fps
+			if(pSim->publisher_simulcast_layer_count > 2)
+				next = pSim->publisher_simulcast_bitrates[2] * CORRECTION_FACTOR_15FPS;
+			break;
+		case 5: // Spatial 2 - Temporal 30fps
+			if(pSim->publisher_simulcast_layer_count > 2)
+				next = pSim->publisher_simulcast_bitrates[2];
+			break;
+		default:
+			break;
+	}
+	return next;
+}
+
+gboolean janus_videoroom_setFlagsForPosition(janus_rtp_simulcasting_context* pSim, uint32_t position) {
+	switch(position) {
+		case 0: // Spatial 0 - Temporal 15fps
+			pSim->substream_limit_by_remb = 0;
+			pSim->templayer_limit_by_remb = 1;
+			return TRUE;
+		case 1: // Spatial 0 - Temporal 30fps
+			pSim->substream_limit_by_remb = 0;
+			pSim->templayer_limit_by_remb = -1;
+			return TRUE;
+		case 2: // Spatial 1 - Temporal 15fps
+			pSim->substream_limit_by_remb = 1;
+			pSim->templayer_limit_by_remb = 1;
+			return TRUE;
+		case 3: // Spatial 1 - Temporal 30fps
+			pSim->substream_limit_by_remb = 1;
+			pSim->templayer_limit_by_remb = -1;
+			return TRUE;
+		case 4: // Spatial 2 - Temporal 15fps
+			pSim->substream_limit_by_remb = -1;
+			pSim->templayer_limit_by_remb = 1;
+			return TRUE;
+		case 5: // Spatial 2 - Temporal 30fps
+			pSim->substream_limit_by_remb = -1;
+			pSim->templayer_limit_by_remb = -1;
+			return TRUE;
+		default:
+			return FALSE;
+	}
+}
+
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
@@ -5537,72 +5631,70 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 
 		janus_rtp_simulcasting_context* pSim = &s->sim_context;
 
+		/* Did the publisher announce layer bitrates via the api? */
 		if(pSim->publisher_simulcast_layer_count && pSim->substream != -1) {
-			/* Did the publisher announce layer bitrates via the api? */
-			uint32_t layer_bitrate = pSim->publisher_simulcast_bitrates[pSim->substream];
-			if(layer_bitrate != 0) {
-				/* We have layer bitrates so the remb simulcast switching shall be active */
-				if(pSim->substream > 0 && remb < layer_bitrate) {
-					/* We are above layer 0 and the bitrate is currently lower than we need for the current layer */
-					pSim->substream_switch_layer_counter -= 1;
-				}
-				else if(remb > layer_bitrate && (uint32_t)pSim->substream < pSim->publisher_simulcast_layer_count) {
-					/* If the current bitrate is sufficient for the current layer increase the switcher value to 0 if it was negative before */
-					if(pSim->substream_switch_layer_counter < 0)
-						pSim->substream_switch_layer_counter ++;
+			/*! Where are we in ramp up, ramp down, what is the current layers bitrate and the one of the next higher layer */
+			uint32_t rampPos = janus_videoroom_getCurrentRampPosition(pSim);
+			uint32_t current_bitrate = janus_videoroom_getRampPositionBitrate(pSim, rampPos);
+			uint32_t higher_bitrate = janus_videoroom_getRampPositionBitrate(pSim, rampPos + 1);
 
-					/* We are below the highest layer and the bitrate is currently higher than we need for the current layer */
-					uint32_t next_higher_layer_bitrate = pSim->publisher_simulcast_bitrates[pSim->substream + 1];
-					if(next_higher_layer_bitrate && remb > next_higher_layer_bitrate) {
-						/* The current bitrate is higher than the next layer above -> speed up the switching */
-						pSim->substream_switch_layer_counter += 1;
-					}
+			/* We have layer bitrates so the remb simulcast switching shall be active */
+			if(rampPos > 0 && remb < current_bitrate) {
+				/* We are above layer 0 and the bitrate is currently lower than we need for the current layer */
+				pSim->substream_switch_layer_counter --;
+			}
+			else if(remb > current_bitrate) {
+				/* If the current bitrate is sufficient for the current layer increase the switcher value to 0 if it was negative before */
+				if(pSim->substream_switch_layer_counter < 0)
+					pSim->substream_switch_layer_counter ++;
+
+				/* We are below the highest layer and the bitrate is currently higher than we need for the current layer */
+				if(higher_bitrate && remb > higher_bitrate) {
+					/* The current bitrate is higher than the next layer above -> speed up the switching */
+					pSim->substream_switch_layer_counter ++;
 				}
-				JANUS_LOG(LOG_INFO, "REMB %d %d %d\n", remb, layer_bitrate, pSim->substream_switch_layer_counter);
-				if(pSim->substream_switch_layer_counter < -20 || pSim->substream_switch_layer_counter > 20) {
-					/* Retrieve the publisher */
-					janus_mutex_lock(&session->mutex);
-					janus_videoroom_publisher *publisher = s->feed;
-					/* Is the publisher really simulcasting? */
-					if(publisher->ssrc[0] != 0 || publisher->rid[0] != NULL) {
-						if(pSim->substream_switch_layer_counter < 10) {
-							pSim->substream_limit_by_remb = pSim->substream - 1;
+			}
+			JANUS_LOG(LOG_INFO, "REMB:%d current:%d nexthigher:%d %d\n", remb, current_bitrate, higher_bitrate, pSim->substream_switch_layer_counter);
+			if(pSim->substream_switch_layer_counter < -20 || pSim->substream_switch_layer_counter > 20) {
+				/* Retrieve the publisher */
+				janus_mutex_lock(&session->mutex);
+				janus_videoroom_publisher *publisher = s->feed;
+
+				/* Is the publisher really simulcasting? */
+				if(publisher->ssrc[0] != 0 || publisher->rid[0] != NULL) {
+					if(pSim->substream_switch_layer_counter < -20) {
+						if(janus_videoroom_setFlagsForPosition(pSim, rampPos - 1)) {
+							uint32_t lower_bitrate = janus_videoroom_getRampPositionBitrate(pSim, rampPos - 1);
 							/* Switching down */
-							JANUS_LOG(LOG_WARN, "Currently REMB bitrate (%d) forces to switch to a lower layer (layer:%d / bitrate:%d) -> (layer:%d / bitrate:%d)) \n",
+							JANUS_LOG(LOG_WARN, "Currently REMB bitrate (%d) forces to switch to a lower layer (spatial:%d / temporal:%d / bitrate:%d)) \n",
 								remb,
-								s->sim_context.substream,
-								publisher->simulcast_bitrates[s->sim_context.substream],
-								pSim->substream_limit_by_remb,
-								publisher->simulcast_bitrates[pSim->substream_limit_by_remb]);
-							/* Send a FIR */
-							janus_videoroom_reqpli(publisher, "Simulcasting substream change");
-						} else {
-							/* Switching up */
-							if(pSim->substream_limit_by_remb)
-								pSim->substream_limit_by_remb++;
-							JANUS_LOG(LOG_WARN, "Currently REMB bitrate (%d) allows to switch to a higher layer (layer:%d / bitrate:%d) -> (layer:%d / bitrate:%d)) \n",
-								remb,
-								s->sim_context.substream,
-								publisher->simulcast_bitrates[s->sim_context.substream],
-								pSim->substream_limit_by_remb,
-								publisher->simulcast_bitrates[pSim->substream_limit_by_remb]);
-							if(pSim->substream_limit_by_remb >= 2) {
-								/* 2 is no limit any longer, disable the limit via setting it to -1 */
-								pSim->substream_limit_by_remb = -1;
-							}
+								s->sim_context.substream_limit_by_remb != -1 ? s->sim_context.substream_limit_by_remb : s->sim_context.substream_target,
+								s->sim_context.templayer_limit_by_remb != -1 ? s->sim_context.templayer_limit_by_remb : s->sim_context.templayer_target,
+								lower_bitrate);
 							/* Send a FIR */
 							janus_videoroom_reqpli(publisher, "Simulcasting substream change");
 						}
-						pSim->substream_switch_layer_counter = 0;
 					} else {
-						JANUS_LOG(LOG_ERR, "REMB values trigger to switch to a differnt layer but it looks like the publisher (%s, %s) is not doing simulcast\n", publisher->user_id_str, publisher->display ? publisher->display : "??");
-						pSim->publisher_simulcast_layer_count = 0;
+						if(janus_videoroom_setFlagsForPosition(pSim, rampPos + 1)) {
+							/* Switching up */
+							JANUS_LOG(LOG_WARN, "Currently REMB bitrate (%d) allows to switch to a higher layer (spatial:%d / temporal:%d / bitrate:%d)) \n",
+								remb,
+								s->sim_context.substream_limit_by_remb != -1 ? s->sim_context.substream_limit_by_remb : s->sim_context.substream_target,
+								s->sim_context.templayer_limit_by_remb != -1 ? s->sim_context.templayer_limit_by_remb : s->sim_context.templayer_target,
+								higher_bitrate);
+							/* Send a FIR */
+							janus_videoroom_reqpli(publisher, "Simulcasting substream change");
+						}
 					}
-					janus_mutex_unlock(&session->mutex);
+					pSim->substream_switch_layer_counter = 0;
+				} else {
+					JANUS_LOG(LOG_ERR, "REMB values trigger to switch to a differnt layer but it looks like the publisher (%s, %s) is not doing simulcast\n", publisher->user_id_str, publisher->display ? publisher->display : "??");
+					pSim->publisher_simulcast_layer_count = 0;
 				}
+				janus_mutex_unlock(&session->mutex);
 			}
 		} else {
-			JANUS_LOG(LOG_INFO, "Nothing to do: %d %d\n", pSim->publisher_simulcast_layer_count, pSim->substream);
+			JANUS_LOG(LOG_INFO, "Nothing todo: %d %d\n", pSim->publisher_simulcast_layer_count, pSim->substream);
 		}
 		janus_refcount_decrease_nodebug(&s->ref);
 	}
