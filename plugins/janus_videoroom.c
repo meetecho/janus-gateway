@@ -2221,17 +2221,30 @@ static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 		/* Forwarders with RTCP support may have an extra reference, stop their source */
 		janus_mutex_lock(&p->rtp_forwarders_mutex);
 		if(g_hash_table_size(p->rtp_forwarders) > 0) {
-			GHashTableIter iter_f;
-			gpointer key_f, value_f;
-			g_hash_table_iter_init(&iter_f, p->rtp_forwarders);
-			while(g_hash_table_iter_next(&iter_f, &key_f, &value_f)) {
-				janus_videoroom_rtp_forwarder *rpv = value_f;
-				if(rpv->rtcp_recv) {
-					GSource *source = rpv->rtcp_recv;
-					rpv->rtcp_recv = NULL;
-					g_source_destroy(source);
-					g_source_unref(source);
+			janus_videoroom_publisher_stream *ps = NULL;
+			GList *temp = p->streams;
+			while(temp) {
+				ps = (janus_videoroom_publisher_stream *)temp->data;
+				janus_mutex_lock(&ps->rtp_forwarders_mutex);
+				if(g_hash_table_size(ps->rtp_forwarders) == 0) {
+					janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+					temp = temp->next;
+					continue;
 				}
+				GHashTableIter iter_f;
+				gpointer key_f, value_f;
+				g_hash_table_iter_init(&iter_f, ps->rtp_forwarders);
+				while(g_hash_table_iter_next(&iter_f, &key_f, &value_f)) {
+					janus_videoroom_rtp_forwarder *rpv = value_f;
+					if(rpv->rtcp_recv) {
+						GSource *source = rpv->rtcp_recv;
+						rpv->rtcp_recv = NULL;
+						g_source_destroy(source);
+						g_source_unref(source);
+					}
+				}
+				janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+				temp = temp->next;
 			}
 		}
 		janus_mutex_unlock(&p->rtp_forwarders_mutex);
