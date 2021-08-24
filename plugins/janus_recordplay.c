@@ -2663,6 +2663,13 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 	/* Open the files */
 	FILE *afile = NULL, *vfile = NULL, *dfile = NULL;
 	if(session->aframes) {
+		if(rec->arc_file == NULL) {
+			janus_refcount_decrease(&rec->ref);
+			janus_refcount_decrease(&session->ref);
+			JANUS_LOG(LOG_ERR, "The recording session contains some audio packets but seems to lack a recording file name\n");
+			g_thread_unref(g_thread_self());
+			return NULL;
+		}
 		char source[1024];
 		if(strstr(rec->arc_file, ".mjr"))
 			g_snprintf(source, 1024, "%s/%s", recordings_path, rec->arc_file);
@@ -2678,6 +2685,13 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 		}
 	}
 	if(session->vframes) {
+		if(rec->vrc_file == NULL) {
+			janus_refcount_decrease(&rec->ref);
+			janus_refcount_decrease(&session->ref);
+			JANUS_LOG(LOG_ERR, "The recording session contains some video packets but seems to lack a recording file name\n");
+			g_thread_unref(g_thread_self());
+			return NULL;
+		}
 		char source[1024];
 		if(strstr(rec->vrc_file, ".mjr"))
 			g_snprintf(source, 1024, "%s/%s", recordings_path, rec->vrc_file);
@@ -2697,6 +2711,13 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 	}
 
 	if(session->dframes) {
+		if(rec->drc_file == NULL) {
+			janus_refcount_decrease(&rec->ref);
+			janus_refcount_decrease(&session->ref);
+			JANUS_LOG(LOG_ERR, "The recording session contains some data packets but seems to lack a recording file name\n");
+			g_thread_unref(g_thread_self());
+			return NULL;
+		}
 		char source[1024];
 		if(strstr(rec->drc_file, ".mjr"))
 			g_snprintf(source, 1024, "%s/%s", recordings_path, rec->drc_file);
