@@ -2843,7 +2843,6 @@ static void janus_videoroom_subscriber_stream_remove(janus_videoroom_subscriber_
 		//~ if(subscriber->streams == NULL && subscriber->session && subscriber->close_pc)
 			//~ gateway->close_pc(subscriber->session->handle);
 	}
-	g_atomic_int_set(&s->ready, 0);
 	if(ps != NULL) {
 		/* Unsubscribe from this stream in particular (datachannels can have multiple sources) */
 		if(g_slist_find(s->publisher_streams, ps) != NULL) {
