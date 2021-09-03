@@ -719,7 +719,52 @@ room-<unique room ID>: {
  * include the \c room and the new participant as the only object in
  * a \c participants array.
  *
- * At this point, the media-related settings of the participant can be
+ * Notice that, while the AudioBridge assumes participants will exchange
+ * media via WebRTC, there's a less known feature that allows you to use
+ * plain RTP to join an AudioBridge room instead. This functionality may
+ * be helpful in case you want, e.g., SIP based endpoints to join an
+ * AudioBridge room, by crafting SDPs for the SIP dialogs yourself using
+ * the info exchanged with the plugin. In order to do that, you keep on
+ * using the API to join as a participant as explained above, but instead
+ * of negotiating a PeerConnection as you usually would, you add an \c rtp
+ * object to the \c join request, which needs to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "join",
+	[..]
+	"rtp" : {
+		"ip" : "<IP address you want media to be sent to>",
+		"port" : <port you want media to be sent to>,
+		"payload_type" : <payload type to use for RTP packets (optional; only needed in case Opus is used, automatic for G.711)>,
+		"audiolevel_ext" : <ID of the audiolevel RTP extension, if used (optional)>,
+		"fec" : <true|false, whether FEC should be enabled for the Opus stream (optional; only needed in case Opus is used)
+	}
+}
+\endverbatim
+ *
+ * In that case, the participant will be configured to use plain RTP to
+ * exchange media with the room, and the \c joined event will include an
+ * \c rtp object as well to complete the negotiation:
+ *
+\verbatim
+{
+	"audiobridge" : "joined",
+	[..]
+	"rtp" : {
+		"ip" : "<IP address the AudioBridge will expect media to be sent to>",
+		"port" : <port the AudioBridge will expect media to be sent to>,
+		"payload_type" : <payload type to use for RTP packets (optional; only needed in case Opus is used, automatic for G.711)>
+	}
+}
+\endverbatim
+ *
+ * Notice that, after a plain RTP session has been established, the
+ * AudioBridge plugin will only start sending media via RTP after it
+ * has received at least a valid RTP packet from the remote endpoint.
+ *
+ * At this point, whether the participant will be interacting via WebRTC
+ * or plain RTP, the media-related settings of the participant can be
  * modified by means of a \c configure request. The \c configure request
  * has to be formatted as follows (notice that all parameters except
  * \c request are optional, depending on what you want to change):
@@ -6263,9 +6308,9 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(details, "ip", json_string(local_ip));
 				json_object_set_new(details, "port", json_integer(participant->plainrtp_media.local_audio_rtp_port));
 				if(participant->codec == JANUS_AUDIOCODEC_OPUS)
-					json_object_set_new(details, "pt", json_integer(participant->opus_pt));
+					json_object_set_new(details, "payload_type", json_integer(participant->opus_pt));
 				else
-					json_object_set_new(details, "pt", json_integer(participant->codec == JANUS_AUDIOCODEC_PCMA ? 8 : 0));
+					json_object_set_new(details, "payload_type", json_integer(participant->codec == JANUS_AUDIOCODEC_PCMA ? 8 : 0));
 				json_object_set_new(event, "rtp", details);
 			}
 			/* Also notify event handlers */
