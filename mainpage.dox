@@ -2294,7 +2294,7 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']);
  * - \c set_no_media_timer: change the value of the no-media timer property;
  * - \c set_slowlink_threshold: change the value of the slowlink-threshold property.
  *
- * \subsection adminreqt Token-related requests
+ * \subsection adminreqk Token-related requests
  * - \c add_token: add a valid token (only available if you enabled the \ref token);
  * - \c allow_token: give a token access to a plugin (only available if you enabled the \ref token);
  * - \c disallow_token: remove a token access from a plugin (only available if you enabled the \ref token);

@@ -105,7 +105,7 @@ guint64 *janus_uint64_dup(guint64 num);
 
 /*! \brief Helper to hash a guint64 number to another guint64 number
  * @note We currently only use for event handlers
- * @param
+ * @param num The guint64 number to hash
  * @returns The hashed number */
 guint64 janus_uint64_hash(guint64 num);
 
