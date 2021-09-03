@@ -3418,6 +3418,7 @@ ldd janus | grep asan
  * - <a href="#mobile">Mobile resources</a>\n
  * - <a href="#pi">Raspberry Pi resources</a>\n
  * - <a href="#docker">Docker resources</a>\n
+ * - <a href="#config">Configuration management</a>\n
  * - <a href="#thirdplugins">Third-party plugins</a>\n
  * - <a href="#thirdtransports">Third-party transports</a>\n
  * - <a href="#evhandlers">Event handlers (monitoring/troubleshooting)</a>\n
@@ -3644,6 +3645,18 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/bartbalaz">Bartosz Balazinski</a></td>
  * 		<td><a href="https://github.com/bartbalaz/janus-container">janus-container</a></td>
  *		<td>Janus container</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
+ * \section config Configuration management
+ *
+ * <table class="table table-striped">
+ * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td><a href="https://github.com/bitsy-ai">Leigh Johnson</a></td>
+ * 		<td><a href="https://galaxy.ansible.com/bitsyai/janus_gateway">ansible-role-janus-gateway</a></td>
+ *		<td>Ansible role to build and deploy Janus</td>
  * </tr>
  * </table>
  * <br/>
