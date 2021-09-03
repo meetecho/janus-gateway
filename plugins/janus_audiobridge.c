@@ -6101,15 +6101,17 @@ static void *janus_audiobridge_handler(void *data) {
 			if(rtp != NULL) {
 				const char *ip = json_string_value(json_object_get(rtp, "ip"));
 				uint16_t port = json_integer_value(json_object_get(rtp, "port"));
-				int pt = json_integer_value(json_object_get(rtp, "payload_type"));
-				if(pt == 0)
-					pt = 100;
-				participant->opus_pt = pt;
+				if(participant->codec == JANUS_AUDIOCODEC_OPUS) {
+					int pt = json_integer_value(json_object_get(rtp, "payload_type"));
+					if(pt == 0)
+						pt = 100;
+					participant->opus_pt = pt;
+				}
 				int audiolevel_ext_id = json_integer_value(json_object_get(rtp, "audiolevel_ext"));
 				if(audiolevel_ext_id > 0)
 					participant->extmap_id = audiolevel_ext_id;
 				gboolean fec = json_is_true(json_object_get(rtp, "fec"));
-				if(fec) {
+				if(participant->codec == JANUS_AUDIOCODEC_OPUS && fec) {
 					participant->fec = TRUE;
 					opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
 				}
@@ -6260,6 +6262,10 @@ static void *janus_audiobridge_handler(void *data) {
 				json_t *details = json_object();
 				json_object_set_new(details, "ip", json_string(local_ip));
 				json_object_set_new(details, "port", json_integer(participant->plainrtp_media.local_audio_rtp_port));
+				if(participant->codec == JANUS_AUDIOCODEC_OPUS)
+					json_object_set_new(details, "pt", json_integer(participant->opus_pt));
+				else
+					json_object_set_new(details, "pt", json_integer(participant->codec == JANUS_AUDIOCODEC_PCMA ? 8 : 0));
 				json_object_set_new(event, "rtp", details);
 			}
 			/* Also notify event handlers */
