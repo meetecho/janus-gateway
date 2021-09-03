@@ -7058,7 +7058,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		JANUS_LOG(LOG_VERB, "Missing name, will generate a random one...\n");
 		memset(tempname, 0, 255);
 		g_snprintf(tempname, 255, "%s", id_str);
-	} else if(atoi(name) != 0) {
+	} else if(name[0] == '0' || atoi(name) != 0) {
 		JANUS_LOG(LOG_VERB, "Names can't start with a number, prefixing it...\n");
 		memset(tempname, 0, 255);
 		g_snprintf(tempname, 255, "mp-%s", name);
