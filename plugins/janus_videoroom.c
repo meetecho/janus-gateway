@@ -7474,20 +7474,6 @@ static void *janus_videoroom_handler(void *data) {
 					GList *temp = p->streams;
 					while(temp) {
 						janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
-						/* Are we updating the description? */
-						if(descriptions != NULL && json_array_size(descriptions) > 0) {
-							size_t i = 0;
-							for(i=0; i<json_array_size(descriptions); i++) {
-								json_t *d = json_array_get(descriptions, i);
-								const char *d_mid = json_string_value(json_object_get(d, "mid"));
-								const char *d_desc = json_string_value(json_object_get(d, "description"));
-								if(d_desc && d_mid && ps->mid && !strcasecmp(d_mid, ps->mid)) {
-									g_free(ps->description);
-									ps->description = g_strdup(d_desc);
-									break;
-								}
-							}
-						}
 						json_t *info = json_object();
 						json_object_set_new(info, "type", json_string(janus_videoroom_media_str(ps->type)));
 						json_object_set_new(info, "mindex", json_integer(ps->mindex));
