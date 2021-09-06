@@ -25,6 +25,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <poll.h>
+
+#include <openssl/rand.h>
 #ifdef HAVE_TURNRESTAPI
 #include <curl/curl.h>
 #endif
