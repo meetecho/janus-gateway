@@ -3576,7 +3576,7 @@ ldd janus | grep asan
  * 		<td>Android/iOS</td>
  * 		<td><a href="https://github.com/meetecho">Meetecho</a></td>
  * 		<td><a href="https://github.com/meetecho/janus-mobile-sdk">janus-mobile-sdk</a></td>
- *		<td>Janus Client SDK</td>
+ *		<td>Janus Client SDK [ABANDONED PROJECT]</td>
  * </tr>
  * <tr>
  * 		<td>Android</td>
