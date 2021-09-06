@@ -8274,6 +8274,31 @@ static void *janus_videoroom_handler(void *data) {
 					g_free(old_display);
 					janus_mutex_unlock(&participant->room->mutex);
 				}
+				/* Are we updating the description? */
+				if(descriptions != NULL && json_array_size(descriptions) > 0 && json_string_value(json_object_get(msg->jsep, "sdp")) == NULL) {
+					/* We only do this here if this is an SDP-less configure: in case
+					 * a renegotiation is involved, descriptions are updated later */
+					gboolean desc_updated = FALSE;
+					size_t i = 0;
+					janus_mutex_lock(&participant->streams_mutex);
+					for(i=0; i<json_array_size(descriptions); i++) {
+						json_t *d = json_array_get(descriptions, i);
+						const char *d_mid = json_string_value(json_object_get(d, "mid"));
+						janus_videoroom_publisher_stream *ps = d_mid ? g_hash_table_lookup(participant->streams_bymid, d_mid) : NULL;
+						if(ps != NULL) {
+							const char *d_desc = json_string_value(json_object_get(d, "description"));
+							if(d_desc) {
+								desc_updated = TRUE;
+								g_free(ps->description);
+								ps->description = g_strdup(d_desc);
+							}
+						}
+					}
+					janus_mutex_unlock(&participant->streams_mutex);
+					/* If at least a description changed, notify everyone else about the publisher details */
+					if(desc_updated)
+						janus_videoroom_notify_about_publisher(participant, TRUE);
+				}
 				/* Done */
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
