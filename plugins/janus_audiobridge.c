@@ -6227,7 +6227,7 @@ static void *janus_audiobridge_handler(void *data) {
 				g_snprintf(tname, sizeof(tname), "rtp %s %s", roomtrunc, parttrunc);
 				janus_refcount_increase(&session->ref);
 				janus_refcount_increase(&participant->ref);
-				participant->plainrtp_media.thread = g_thread_try_new(tname, &janus_audiobridge_plainrtp_relay_thread, session, &error);
+				participant->plainrtp_media.thread = g_thread_try_new(tname, &janus_audiobridge_plainrtp_relay_thread, participant, &error);
 				if(error != NULL) {
 					janus_refcount_decrease(&participant->ref);
 					janus_refcount_decrease(&session->ref);
@@ -8268,14 +8268,14 @@ static int janus_audiobridge_plainrtp_allocate_port(janus_audiobridge_plainrtp_m
 }
 /* Thread to relay RTP/RTCP frames coming from the peer */
 static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
-	janus_audiobridge_session *session = (janus_audiobridge_session *)data;
-	JANUS_LOG(LOG_INFO, "[AudioBridge-%p] Starting Plain RTP participant thread\n", session);
-	if(!session || !session->participant) {
-		JANUS_LOG(LOG_WARN, "[AudioBridge-%p] Invalid session or participant..?\n", session);
+	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)data;
+	if(!participant) {
+		JANUS_LOG(LOG_ERR, "Invalid participant!\n");
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
+	janus_audiobridge_session *session = participant->session;
+	JANUS_LOG(LOG_INFO, "[AudioBridge-%p] Starting Plain RTP participant thread\n", session);
 
 	/* File descriptors */
 	socklen_t addrlen;
