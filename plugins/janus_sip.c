@@ -4195,8 +4195,8 @@ static void *janus_sip_handler(void *data) {
 				su_free(session->stack->s_home, r);
 				su_free(session->stack->s_home, replaces);
 			}
-			if(refer_to == NULL)
 #pragma GCC diagnostic ignored "-Winline"
+			if(refer_to == NULL)
 				refer_to = sip_refer_to_format(session->stack->s_home, "<%s>", uri_text);
 #pragma GCC diagnostic warning "-Winline"
 			/* Send the REFER */
