@@ -719,7 +719,52 @@ room-<unique room ID>: {
  * include the \c room and the new participant as the only object in
  * a \c participants array.
  *
- * At this point, the media-related settings of the participant can be
+ * Notice that, while the AudioBridge assumes participants will exchange
+ * media via WebRTC, there's a less known feature that allows you to use
+ * plain RTP to join an AudioBridge room instead. This functionality may
+ * be helpful in case you want, e.g., SIP based endpoints to join an
+ * AudioBridge room, by crafting SDPs for the SIP dialogs yourself using
+ * the info exchanged with the plugin. In order to do that, you keep on
+ * using the API to join as a participant as explained above, but instead
+ * of negotiating a PeerConnection as you usually would, you add an \c rtp
+ * object to the \c join request, which needs to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "join",
+	[..]
+	"rtp" : {
+		"ip" : "<IP address you want media to be sent to>",
+		"port" : <port you want media to be sent to>,
+		"payload_type" : <payload type to use for RTP packets (optional; only needed in case Opus is used, automatic for G.711)>,
+		"audiolevel_ext" : <ID of the audiolevel RTP extension, if used (optional)>,
+		"fec" : <true|false, whether FEC should be enabled for the Opus stream (optional; only needed in case Opus is used)
+	}
+}
+\endverbatim
+ *
+ * In that case, the participant will be configured to use plain RTP to
+ * exchange media with the room, and the \c joined event will include an
+ * \c rtp object as well to complete the negotiation:
+ *
+\verbatim
+{
+	"audiobridge" : "joined",
+	[..]
+	"rtp" : {
+		"ip" : "<IP address the AudioBridge will expect media to be sent to>",
+		"port" : <port the AudioBridge will expect media to be sent to>,
+		"payload_type" : <payload type to use for RTP packets (optional; only needed in case Opus is used, automatic for G.711)>
+	}
+}
+\endverbatim
+ *
+ * Notice that, after a plain RTP session has been established, the
+ * AudioBridge plugin will only start sending media via RTP after it
+ * has received at least a valid RTP packet from the remote endpoint.
+ *
+ * At this point, whether the participant will be interacting via WebRTC
+ * or plain RTP, the media-related settings of the participant can be
  * modified by means of a \c configure request. The \c configure request
  * has to be formatted as follows (notice that all parameters except
  * \c request are optional, depending on what you want to change):
@@ -6101,15 +6146,17 @@ static void *janus_audiobridge_handler(void *data) {
 			if(rtp != NULL) {
 				const char *ip = json_string_value(json_object_get(rtp, "ip"));
 				uint16_t port = json_integer_value(json_object_get(rtp, "port"));
-				int pt = json_integer_value(json_object_get(rtp, "payload_type"));
-				if(pt == 0)
-					pt = 100;
-				participant->opus_pt = pt;
+				if(participant->codec == JANUS_AUDIOCODEC_OPUS) {
+					int pt = json_integer_value(json_object_get(rtp, "payload_type"));
+					if(pt == 0)
+						pt = 100;
+					participant->opus_pt = pt;
+				}
 				int audiolevel_ext_id = json_integer_value(json_object_get(rtp, "audiolevel_ext"));
 				if(audiolevel_ext_id > 0)
 					participant->extmap_id = audiolevel_ext_id;
 				gboolean fec = json_is_true(json_object_get(rtp, "fec"));
-				if(fec) {
+				if(participant->codec == JANUS_AUDIOCODEC_OPUS && fec) {
 					participant->fec = TRUE;
 					opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
 				}
@@ -6180,7 +6227,7 @@ static void *janus_audiobridge_handler(void *data) {
 				g_snprintf(tname, sizeof(tname), "rtp %s %s", roomtrunc, parttrunc);
 				janus_refcount_increase(&session->ref);
 				janus_refcount_increase(&participant->ref);
-				participant->plainrtp_media.thread = g_thread_try_new(tname, &janus_audiobridge_plainrtp_relay_thread, session, &error);
+				participant->plainrtp_media.thread = g_thread_try_new(tname, &janus_audiobridge_plainrtp_relay_thread, participant, &error);
 				if(error != NULL) {
 					janus_refcount_decrease(&participant->ref);
 					janus_refcount_decrease(&session->ref);
@@ -6260,6 +6307,10 @@ static void *janus_audiobridge_handler(void *data) {
 				json_t *details = json_object();
 				json_object_set_new(details, "ip", json_string(local_ip));
 				json_object_set_new(details, "port", json_integer(participant->plainrtp_media.local_audio_rtp_port));
+				if(participant->codec == JANUS_AUDIOCODEC_OPUS)
+					json_object_set_new(details, "payload_type", json_integer(participant->opus_pt));
+				else
+					json_object_set_new(details, "payload_type", json_integer(participant->codec == JANUS_AUDIOCODEC_PCMA ? 8 : 0));
 				json_object_set_new(event, "rtp", details);
 			}
 			/* Also notify event handlers */
@@ -8217,14 +8268,14 @@ static int janus_audiobridge_plainrtp_allocate_port(janus_audiobridge_plainrtp_m
 }
 /* Thread to relay RTP/RTCP frames coming from the peer */
 static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
-	janus_audiobridge_session *session = (janus_audiobridge_session *)data;
-	JANUS_LOG(LOG_INFO, "[AudioBridge-%p] Starting Plain RTP participant thread\n", session);
-	if(!session || !session->participant) {
-		JANUS_LOG(LOG_WARN, "[AudioBridge-%p] Invalid session or participant..?\n", session);
+	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)data;
+	if(!participant) {
+		JANUS_LOG(LOG_ERR, "Invalid participant!\n");
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
+	janus_audiobridge_session *session = participant->session;
+	JANUS_LOG(LOG_INFO, "[AudioBridge-%p] Starting Plain RTP participant thread\n", session);
 
 	/* File descriptors */
 	socklen_t addrlen;

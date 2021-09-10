@@ -661,10 +661,12 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 		if(packet->buffer == NULL || packet->length == 0)
 			return;
 		char *label = packet->label;
+		char *protocol = packet->protocol;
 		char *buf = packet->buffer;
 		uint16_t len = packet->length;
 		if(packet->binary) {
-			JANUS_LOG(LOG_VERB, "Got a binary DataChannel message (label=%s, %d bytes) to bounce back\n", label, len);
+			JANUS_LOG(LOG_VERB, "Got a binary DataChannel message (label=%s, protocol=%s, %d bytes) to bounce back\n",
+				label, protocol, len);
 			/* Save the frame if we're recording */
 			janus_recorder_save_frame(session->drc, buf, len);
 			/* Binary data, shoot back as it is */
@@ -675,7 +677,8 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 		char *text = g_malloc(len+1);
 		memcpy(text, buf, len);
 		*(text+len) = '\0';
-		JANUS_LOG(LOG_VERB, "Got a DataChannel message (label=%s, %zu bytes) to bounce back: %s\n", label, strlen(text), text);
+		JANUS_LOG(LOG_VERB, "Got a DataChannel message (label=%s, protocol=%s, %zu bytes) to bounce back: %s\n",
+			label, protocol, strlen(text), text);
 		/* Save the frame if we're recording */
 		janus_recorder_save_frame(session->drc, text, strlen(text));
 		/* We send back the same text with a custom prefix */
@@ -686,6 +689,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 		/* Prepare the packet and send it back */
 		janus_plugin_data r = {
 			.label = label,
+			.protocol = protocol,
 			.binary = FALSE,
 			.buffer = reply,
 			.length = strlen(reply)
