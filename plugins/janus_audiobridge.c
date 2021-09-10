@@ -7583,7 +7583,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						ps = ps->next;
 						continue;
 					}
-					memcpy((opus_int16 *)pkt->data, resampled, pkt->length);
+					memcpy(pkt->data, resampled, pkt->length*2);
 				}
 				curBuffer = (opus_int16 *)pkt->data;
 				if(groups_num == 0) {
