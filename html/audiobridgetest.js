@@ -57,6 +57,7 @@ var spinner = null;
 var myroom = 1234;	// Demo room
 if(getQueryStringValue("room") !== "")
 	myroom = parseInt(getQueryStringValue("room"));
+var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var stereo = false;
 if(getQueryStringValue("stereo") !== "")
 	stereo = (getQueryStringValue("stereo") === "true");
@@ -429,6 +430,9 @@ function registerUsername() {
 		}
 		var register = { request: "join", room: myroom, display: username };
 		myusername = username;
+		// Check if we need to join using G.711 instead of (default) Opus
+		if(acodec === 'opus' || acodec === 'pcmu' || acodec === 'pcma')
+			register.codec = acodec;
 		// If the room uses forwarding groups, this is how we state ours
 		if(mygroup)
 			register["group"] = mygroup;
