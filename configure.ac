@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.11.4],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.11.5],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -75,9 +75,9 @@ cc*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=114
+JANUS_VERSION=115
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.11.4"
+JANUS_VERSION_STRING="0.11.5"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -954,6 +954,8 @@ AS_IF([test "x$enable_post_processing" = "xyes"],
                          [
                            glib-2.0 >= $glib_version
                            jansson >= $jansson_version
+                           libssl >= $ssl_version
+                           libcrypto
                            libavutil
                            libavcodec
                            libavformat
