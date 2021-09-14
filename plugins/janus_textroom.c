@@ -332,7 +332,8 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 	"room" : <unique numeric ID of the room to join>,
 	"pin" : "<pin to join the room; mandatory if configured>",
 	"username" : "<unique username to have in the room; mandatory>",
-	"display" : "<display name to use in the room; optional>"
+	"display" : "<display name to use in the room; optional>",
+	"token" : "<invitation token, in case the room has an ACL; optional>",
 }
 \endverbatim
  *
@@ -632,6 +633,7 @@ static struct janus_json_parameter kick_parameters[] = {
 static struct janus_json_parameter join_parameters[] = {
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"pin", JSON_STRING, 0},
+	{"token", JSON_STRING, 0},
 	{"display", JSON_STRING, 0}
 };
 static struct janus_json_parameter message_parameters[] = {
@@ -1221,6 +1223,7 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 			|| !strcasecmp(request_text, "create")
 			|| !strcasecmp(request_text, "edit")
 			|| !strcasecmp(request_text, "announcement")
+			|| !strcasecmp(request_text, "allowed")
 			|| !strcasecmp(request_text, "kick")
 			|| !strcasecmp(request_text, "destroy")) {
 		/* These requests typically only belong to the datachannel
@@ -1302,6 +1305,7 @@ json_t *janus_textroom_handle_admin_message(json_t *message) {
 			|| !strcasecmp(request_text, "create")
 			|| !strcasecmp(request_text, "edit")
 			|| !strcasecmp(request_text, "announcement")
+			|| !strcasecmp(request_text, "allowed")
 			|| !strcasecmp(request_text, "kick")
 			|| !strcasecmp(request_text, "destroy")) {
 		if(json_object_get(message, "textroom") == NULL)
@@ -1695,6 +1699,20 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			error_code = JANUS_TEXTROOM_ERROR_USERNAME_EXISTS;
 			g_snprintf(error_cause, 512, "Username already taken");
 			goto msg_response;
+		}
+		/* A token might be required too */
+		if(textroom->check_tokens) {
+			json_t *token = json_object_get(root, "token");
+			const char *token_text = token ? json_string_value(token) : NULL;
+			if(token_text == NULL || g_hash_table_lookup(textroom->allowed, token_text) == NULL) {
+				janus_mutex_unlock(&session->mutex);
+				janus_mutex_unlock(&textroom->mutex);
+				janus_refcount_decrease(&textroom->ref);
+				JANUS_LOG(LOG_ERR, "Unauthorized (not in the allowed list)\n");
+				error_code = JANUS_TEXTROOM_ERROR_UNAUTHORIZED;
+				g_snprintf(error_cause, 512, "Unauthorized (not in the allowed list)");
+				goto msg_response;
+			}
 		}
 		json_t *display = json_object_get(root, "display");
 		const char *display_text = json_string_value(display);
