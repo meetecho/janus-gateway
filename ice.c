@@ -3630,10 +3630,11 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			if(janus_ice_enforce_list != NULL) {
 				if(ifa->ifa_name != NULL && !janus_ice_is_enforced(ifa->ifa_name) && !janus_ice_is_enforced(host))
 					continue;
-			} else {
-				if(janus_ice_is_ignored(host))
-					continue;
 			}
+			
+			if(janus_ice_is_ignored(host))
+				continue;
+			
 			/* Ok, add interface to the ICE agent */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding %s to the addresses to gather candidates for\n", handle->handle_id, host);
 			NiceAddress addr_local;
