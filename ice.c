@@ -2582,7 +2582,9 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							handle->handle_id, medium->rtx_payload_type);
 					}
 					if(medium->codec == NULL) {
+						janus_mutex_lock(&handle->mutex);
 						const char *codec = janus_get_codec_from_pt(handle->local_sdp, medium->payload_type);
+						janus_mutex_unlock(&handle->mutex);
 						if(codec != NULL)
 							medium->codec = g_strdup(codec);
 					}
@@ -4186,7 +4188,9 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							handle->handle_id, medium->rtx_payload_type);
 					}
 					if(medium->codec == NULL) {
+						janus_mutex_lock(&handle->mutex);
 						const char *codec = janus_get_codec_from_pt(handle->local_sdp, medium->payload_type);
+						janus_mutex_unlock(&handle->mutex);
 						if(codec != NULL)
 							medium->codec = g_strdup(codec);
 					}
