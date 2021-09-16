@@ -1025,12 +1025,11 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		context->substream_target_temp = -1;
 	}
 	int target = (context->substream_target_temp == -1) ? context->substream_target : context->substream_target_temp;
-	if (context->substream_limit_by_remb != -1 && context->substream_limit_by_remb < target) {
-		/* The REMB implementation in association with the publiher bitrates allows us to detect if we
-		 * can transport a certain layer. If the currently REMB is lower than the bitrate of the requested
-		 * substream the limit comes in place. */
+	/* The REMB implementation in association with the publiher bitrates allows us to detect if we
+	 * can transport a certain layer. If the currently REMB is lower than the bitrate of the requested
+	 * substream the limit comes in place. */
+	if (context->substream_limit_by_remb != -1 && target > context->substream_limit_by_remb)
 		target = context->substream_limit_by_remb;
-	}
 
 	/* Check what we need to do with the packet */
 	if(context->substream == -1) {
@@ -1104,9 +1103,17 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		uint8_t keyidx = 0;
 		if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
 			//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
-			if(context->templayer != context->templayer_target && tid == context->templayer_target) {
+			int tempLayer_target = context->templayer_target;
+
+			/* Is there an artificial additional remb limit on the temporal layer */
+			if(context->templayer_limit_by_remb != -1) {
+				if(tempLayer_target == -1 || tempLayer_target > context->templayer_limit_by_remb)
+					tempLayer_target = context->templayer_limit_by_remb;
+			}
+
+			if(context->templayer != tempLayer_target && tid == tempLayer_target) {
 				/* FIXME We should be smarter in deciding when to switch */
-				context->templayer = context->templayer_target;
+				context->templayer = tempLayer_target;
 				/* Notify the caller that the temporal layer changed */
 				context->changed_temporal = TRUE;
 			}

@@ -297,13 +297,13 @@ typedef struct janus_rtp_simulcasting_context {
 	uint32_t publisher_simulcast_layer_count;
 	/*! \brief Switch helper that is used to determine when to switch from the current to another layer. Depending on the current remb vs the current layer bitrate this value is increased if we can switch up or decreased if we need to switch down */
 	int substream_switch_layer_counter;
-	/*! \brief The requested substream as configured via the api (this is what the client wants to have, not what he currently receives) */
+	/*! \brief The requested substream as configured via the api (this is what the client wants to have, not what it currently receives) */
 	int substream_target;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */
 	int substream_target_temp;
 	/*! \brief Which simulcast temporal layer we should forward back */
 	int templayer;
-	/*! \brief As above, but to handle transitions (e.g., wait for keyframe) */
+	/*! \brief The requested temporal layer as configured via the api (this is what the client wants to have, not what it currently receives) */
 	int templayer_target;
 	/*! \brief How much time (in us, default 250000) without receiving packets will make us drop to the substream below */
 	guint32 drop_trigger;
