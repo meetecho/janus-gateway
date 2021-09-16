@@ -10038,7 +10038,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			!stream->subscriber->session || !stream->subscriber->session->handle ||
 			!g_atomic_int_get(&stream->subscriber->session->started))
 		return;
-	janus_videoroom_publisher_stream *ps = stream->publisher_streams->data;
+	janus_videoroom_publisher_stream *ps = stream->publisher_streams ?
+		stream->publisher_streams->data : NULL;
 	if(ps != packet->source)
 		return;
 	janus_videoroom_subscriber *subscriber = stream->subscriber;
