@@ -8282,11 +8282,12 @@ static void *janus_videoroom_rtp_forwarder_rtcp_thread(void *data) {
  * (substream_remb_limited_to / temporal_remb_limited_to)
  *
  * Whats missing:
+ * - Expose the currently seen REMB value in the general peerConnection statistics (just missing for completeness as other pc related values are exposed and helpful for external debugging)
  * - REMB probing on the subscription peerconnection (would speed up the REMB detection and would allow a switching without changing the temporal layers)
  * - transport-cc which would dramatically improve the probing (hard to implement especially in C, so nothing we target now)
  * - Gather the currently really used bitrates directly from the publishers peerconnection and not from the configure/join values
  * - REMB trends sometimes to signal bitrates which are actually no available so we need to ensure that we do not cycle through the ramp all the time
- * - Expose the currently seen REMB value in the general peerConnection statistics (just missing for completeness as other pc related values are exposed
+ * - Support for VP9 (the current approach only targets VP8)
  */
 
 /* This is a correction factor we use to calculate the bitrate if we transport 15fps instead of 3) *
