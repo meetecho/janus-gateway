@@ -1612,9 +1612,10 @@ int janus_process_incoming_request(janus_request *request) {
 		/* Make sure the app handle is still valid */
 		if(handle->app == NULL || !janus_plugin_session_is_alive(handle->app_handle)) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "No plugin to handle this message");
+			if(jsep_sdp_stripped != NULL)
+				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 			g_free(jsep_type);
 			g_free(jsep_sdp_stripped);
-			janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 			goto jsondone;
 		}
 
@@ -1624,6 +1625,16 @@ int janus_process_incoming_request(janus_request *request) {
 		if(jsep_sdp_stripped) {
 			body_jsep = json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped);
 			/* Check if simulcasting is enabled in one of the media streams */
+			janus_mutex_lock(&handle->mutex);
+			if(handle->pc == NULL) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_WEBRTC_STATE, "Invalid PeerConnection");
+				json_decref(body);
+				json_decref(body_jsep);
+				g_free(jsep_type);
+				g_free(jsep_sdp_stripped);
+				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
+				goto jsondone;
+			}
 			json_t *simulcast = NULL;
 			janus_ice_peerconnection_medium *medium = NULL;
 			uint mi=0;
@@ -1659,6 +1670,7 @@ int janus_process_incoming_request(janus_request *request) {
 					json_array_append_new(simulcast, msc);
 				}
 			}
+			janus_mutex_unlock(&handle->mutex);
 			if(simulcast)
 				json_object_set_new(body_jsep, "simulcast", simulcast);
 			/* Check if this is a renegotiation or update */
@@ -1675,6 +1687,8 @@ int janus_process_incoming_request(janus_request *request) {
 		if(result == NULL) {
 			/* Something went horribly wrong! */
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin didn't give a result");
+			if(body_jsep != NULL)
+				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 			goto jsondone;
 		}
 		if(result->type == JANUS_PLUGIN_OK) {
@@ -1686,6 +1700,8 @@ int janus_process_incoming_request(janus_request *request) {
 						"Plugin didn't provide any content for this synchronous response" :
 						"Plugin returned an invalid JSON response");
 				janus_plugin_result_destroy(result);
+				if(body_jsep != NULL)
+					janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 				goto jsondone;
 			}
 			/* Reference the content, as destroying the result instance will decref it */
