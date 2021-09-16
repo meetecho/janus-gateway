@@ -925,6 +925,15 @@ int janus_videocodec_pt(janus_videocodec vcodec) {
 	}
 }
 
+void janus_rtp_simulcasting_remb_context_reset(janus_rtp_simulcasting_remb_context *pContext) {
+	if(pContext == NULL)
+		return;
+	/* Reset the pContext values */
+	memset(pContext, 0, sizeof(*pContext));
+	pContext->substream_limit_by_remb = -1;
+	pContext->templayer_limit_by_remb = -1;
+}
+
 void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *context) {
 	if(context == NULL)
 		return;
@@ -932,10 +941,10 @@ void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *contex
 	memset(context, 0, sizeof(*context));
 	context->rid_ext_id = -1;
 	context->substream = -1;
-	context->substream_limit_by_remb = -1;
 	context->substream_target_temp = -1;
-	context->templayer_limit_by_remb = -1;
 	context->templayer = -1;
+
+	janus_rtp_simulcasting_remb_context_reset(&context->remb_context);
 }
 
 void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t *ssrcs, char **rids) {
@@ -1028,8 +1037,8 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 	/* The REMB implementation in association with the publiher bitrates allows us to detect if we
 	 * can transport a certain layer. If the currently REMB is lower than the bitrate of the requested
 	 * substream the limit comes in place. */
-	if (context->substream_limit_by_remb != -1 && target > context->substream_limit_by_remb)
-		target = context->substream_limit_by_remb;
+	if (context->remb_context.substream_limit_by_remb != -1 && target > context->remb_context.substream_limit_by_remb)
+		target = context->remb_context.substream_limit_by_remb;
 
 	/* Check what we need to do with the packet */
 	if(context->substream == -1) {
@@ -1106,9 +1115,9 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 			int tempLayer_target = context->templayer_target;
 
 			/* Is there an artificial additional remb limit on the temporal layer */
-			if(context->templayer_limit_by_remb != -1) {
-				if(tempLayer_target == -1 || tempLayer_target > context->templayer_limit_by_remb)
-					tempLayer_target = context->templayer_limit_by_remb;
+			if(context->remb_context.templayer_limit_by_remb != -1) {
+				if(tempLayer_target == -1 || tempLayer_target > context->remb_context.templayer_limit_by_remb)
+					tempLayer_target = context->remb_context.templayer_limit_by_remb;
 			}
 
 			if(context->templayer != tempLayer_target && tid == tempLayer_target) {

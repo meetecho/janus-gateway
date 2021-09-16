@@ -280,13 +280,8 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
  * @returns 0 if no compensation is needed, -N if a N packets drop must be performed, N if a N sequence numbers jump has been performed */
 int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now);
 
-
-/*! \brief Helper struct for processing and tracking simulcast streams */
-typedef struct janus_rtp_simulcasting_context {
-	/*! \brief RTP Stream extension ID, if any */
-	gint rid_ext_id;
-	/*! \brief The currently forwarded and notified simulcast substream */
-	int substream;
+/*! \brief Helper struct for handling remb based stream switching */
+typedef struct janus_rtp_simulcasting_remb_context {
 	/*! \brief If using REMB for handshaking simulcast layers this is the currently chosen spatial layer if the bitrate limit forces a lower layer */
 	int substream_limit_by_remb;
 	/*! \brief If using REMB for handshaking simulcast layers this is the currently chosen temporal layer if the bitrate limit forces a lower layer */
@@ -297,6 +292,20 @@ typedef struct janus_rtp_simulcasting_context {
 	uint32_t publisher_simulcast_layer_count;
 	/*! \brief Switch helper that is used to determine when to switch from the current to another layer. Depending on the current remb vs the current layer bitrate this value is increased if we can switch up or decreased if we need to switch down */
 	int substream_switch_layer_counter;
+} janus_rtp_simulcasting_remb_context;
+
+/*! \brief Set (or reset) the context fields to their default values
+ * @param[in] pContext The context to (re)set */
+void janus_rtp_simulcasting_remb_context_reset(janus_rtp_simulcasting_remb_context *pContext);
+
+/*! \brief Helper struct for processing and tracking simulcast streams */
+typedef struct janus_rtp_simulcasting_context {
+	/*! \brief RTP Stream extension ID, if any */
+	gint rid_ext_id;
+	/*! \brief The currently forwarded and notified simulcast substream */
+	int substream;
+	/*! \brief The object that contains all the data we need for the REMB based stream switching */
+	janus_rtp_simulcasting_remb_context remb_context;
 	/*! \brief The requested substream as configured via the api (this is what the client wants to have, not what it currently receives) */
 	int substream_target;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */
