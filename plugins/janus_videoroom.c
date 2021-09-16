@@ -1739,7 +1739,7 @@ void janus_videoroom_remb_based_subscriber_simulcast_switching(janus_videoroom_s
 uint32_t janus_videoroom_remb_get_current_ramp_position(janus_rtp_simulcasting_context *pSim);
 const char* janus_videoroom_remb_get_logtext_for_ramppos(uint32_t rampPosition);
 uint32_t janus_videoroom_remb_get_bitrate_for_ramp_position(janus_rtp_simulcasting_remb_context *pRembContext, uint32_t rampPosition);
-uint32_t janus_videoroom_remb_get_bitrate_for_next_ramp_position(janus_rtp_simulcasting_context *pSim, uint32_t rampPosition);
+void janus_videoroom_remb_get_neighbour_ramp_positions(janus_rtp_simulcasting_context *pSim, uint32_t rampPosition, uint32_t* pNextLower, uint32_t* pNextUpper);
 gboolean janus_videoroom_remb_set_flags_for_ramp_position(janus_rtp_simulcasting_remb_context *pRembContext, uint32_t position);
 const char* janus_videoroom_get_debug_substream_to_text(uint32_t substream);
 const char* janus_videoroom_get_debug_temporal_to_text(uint32_t temporal);
@@ -8292,9 +8292,6 @@ static void *janus_videoroom_rtp_forwarder_rtcp_thread(void *data) {
  * - Support for VP9 (the current approach only targets VP8)
  */
 
-// TODO: If the remb value is currently growing, do not decrease
-// TODO: If the remb value is currently shrinking, do not increase
-
 /* This is a correction factor we use to calculate the bitrate if we transport 15fps instead of 3) *
    The bitrates we handshake with the client are for 30fps, so we need to calculate the values for 15fps internally */
 #define CORRECTION_FACTOR_15FPS 0.6
@@ -8312,8 +8309,13 @@ void janus_videoroom_remb_based_subscriber_simulcast_switching(janus_videoroom_s
 	if(remb && pRembContext->publisher_simulcast_layer_count && pSim->substream != -1) {
 		/*! Where are we in ramp up, ramp down, what is the current layers bitrate and the one of the next higher layer */
 		uint32_t rampPos = janus_videoroom_remb_get_current_ramp_position(pSim);
+		uint32_t nextHigherRampPos = rampPos;
+		uint32_t nextLowerRampPos = rampPos;
+		janus_videoroom_remb_get_neighbour_ramp_positions(pSim, rampPos, &nextLowerRampPos, &nextHigherRampPos);
 		uint32_t current_bitrate = janus_videoroom_remb_get_bitrate_for_ramp_position(pRembContext, rampPos);
-		uint32_t higher_bitrate = janus_videoroom_remb_get_bitrate_for_next_ramp_position(pSim, rampPos);
+		uint32_t higher_bitrate = 0;
+		if(nextHigherRampPos > rampPos)
+			higher_bitrate = janus_videoroom_remb_get_bitrate_for_ramp_position(pRembContext, nextHigherRampPos);
 
 		int lastLayerCounter = pRembContext->substream_switch_layer_counter;
 
@@ -8361,10 +8363,11 @@ void janus_videoroom_remb_based_subscriber_simulcast_switching(janus_videoroom_s
 			/* Is the publisher really simulcasting? */
 			if(publisher->ssrc[0] != 0 || publisher->rid[0] != NULL) {
 				if(pRembContext->substream_switch_layer_counter < 0) {
-					if(janus_videoroom_remb_set_flags_for_ramp_position(pRembContext, rampPos - 1)) {
-						uint32_t lower_bitrate = janus_videoroom_remb_get_bitrate_for_ramp_position(&pSim->remb_context, rampPos - 1);
+					if(janus_videoroom_remb_set_flags_for_ramp_position(pRembContext, nextLowerRampPos)) {
+						uint32_t lower_bitrate = janus_videoroom_remb_get_bitrate_for_ramp_position(&pSim->remb_context, nextLowerRampPos);
 						/* Switching down */
-						JANUS_LOG(LOG_WARN, "Currently bitrate forces to switch to a lower layer (%s %s %d)) \n",
+						JANUS_LOG(LOG_WARN, "Current bitrate forces to switch to a lower ramp pos: %d (%s %s %d)) \n",
+							nextLowerRampPos,
 							janus_videoroom_get_debug_substream_to_text(pRembContext->substream_limit_by_remb != -1 ? pRembContext->substream_limit_by_remb : s->sim_context.substream_target),
 							janus_videoroom_get_debug_temporal_to_text(pRembContext->templayer_limit_by_remb != -1 ? pRembContext->templayer_limit_by_remb : s->sim_context.templayer_target),
 							lower_bitrate);
@@ -8372,9 +8375,10 @@ void janus_videoroom_remb_based_subscriber_simulcast_switching(janus_videoroom_s
 						janus_videoroom_reqpli(publisher, "Simulcasting substream change");
 					}
 				} else {
-					if(janus_videoroom_remb_set_flags_for_ramp_position(pRembContext, rampPos + 1)) {
+					if(janus_videoroom_remb_set_flags_for_ramp_position(pRembContext, nextHigherRampPos)) {
 						/* Switching up */
-						JANUS_LOG(LOG_WARN, "Currently bitrate allows to switch to a higher layer (%s %s %d)) \n",
+						JANUS_LOG(LOG_WARN, "Current bitrate allows to switch to a higher ramp pos: %d (%s %s %d)) \n",
+							nextHigherRampPos,
 							janus_videoroom_get_debug_substream_to_text(pRembContext->substream_limit_by_remb != -1 ? pRembContext->substream_limit_by_remb : s->sim_context.substream_target),
 							janus_videoroom_get_debug_temporal_to_text(pRembContext->templayer_limit_by_remb != -1 ? pRembContext->templayer_limit_by_remb : s->sim_context.templayer_target),
 							higher_bitrate);
@@ -8490,41 +8494,68 @@ uint32_t janus_videoroom_remb_get_bitrate_for_ramp_position(janus_rtp_simulcasti
 }
 
 /*
- * Retrieve the bitrate of the next higher ramp position, 0 if the bitrate could not be determined
- * (already on the highest the client wanted to have)
+ * Retrieve the neighbour ramp positions (lower, upper) of the current one
+ * As the client may have selected to receive a certain temporal/substream, the next lower layer may be not -1
  *
  * @param pSim - the currently used simulcasting context
  * @param rampPosition - The current ramp position we are using
+ * @param pNextLower - The next lower ramp position value
+ * @param pNextHigher - The next upper ramp position value
  * @returns - the bitrate value
  */
-uint32_t janus_videoroom_remb_get_bitrate_for_next_ramp_position(janus_rtp_simulcasting_context *pSim, uint32_t rampPosition) {
-	/* Increase the ramp Position */
-	rampPosition++;
+void janus_videoroom_remb_get_neighbour_ramp_positions(janus_rtp_simulcasting_context *pSim, uint32_t rampPosition, uint32_t* pNextLower, uint32_t* pNextHigher) {
+	int nextLower = rampPosition;
+	int nextHigher = rampPosition;
 
-	/* Check that a preselected temporal from the client does not conflict our ramping up */
-	if(rampPosition % 2) {
-		/* 1,3,5 are the layers where we switch to 30fps, */
-		if(pSim->templayer_target == 0 || pSim->templayer_target == 1) {
-			/* if the client is requesting a lower temporal (7fps, 15fps)
-			 * we cannot use it and need to switch directly to the next substream */
-			rampPosition++;
+	if(nextLower > 0) {
+		/* Decrease the ramp Position */
+		nextLower--;
+
+		/* Check that a preselected temporal from the client does not conflict our ramping up */
+		if(nextLower % 2) {
+			/* 1,3,5 are the layers where we switch to 30fps, */
+			if (pSim->templayer_target == 0 || pSim->templayer_target == 1) {
+				/* if the client is requesting a lower temporal (7fps, 15fps)
+				 * we cannot use it and need to switch directly to the next substream */
+				nextLower++;
+			}
 		}
+
+		if(nextLower < 0)
+			nextLower = 0;
 	}
 
-	/* whats the currently selected substream target layer from the client? (-1 means not defined, so we say highest) */
-	int substream_target = pSim->substream_target;
-	if(substream_target == -1)
-		substream_target = 2;
+	if(nextHigher < 5) {
+		/* Increase the ramp Position */
+		nextHigher++;
 
-	/* Check that a preselected substream layer from the client does not conflict our ramping up
-	 * Ramping up next would be substream high (2), but the client requested low or mid */
-	if(rampPosition > 3 && substream_target < 2)
-		return 0;
-	/* Ramping up next would be substream mid (1), but the client requested low */
-	if(rampPosition > 1 && substream_target < 1)
-		return 0;
+		/* Check that a preselected temporal from the client does not conflict our ramping up */
+		if(nextHigher % 2) {
+			/* 1,3,5 are the layers where we switch to 30fps, */
+			if (pSim->templayer_target == 0 || pSim->templayer_target == 1) {
+				/* if the client is requesting a lower temporal (7fps, 15fps)
+				 * we cannot use it and need to switch directly to the next substream */
+				nextHigher++;
+			}
+		}
 
-	return janus_videoroom_remb_get_bitrate_for_ramp_position(&pSim->remb_context, rampPosition);
+		/* whats the currently selected substream target layer from the client? (-1 means not defined, so we say highest) */
+		int substream_target = pSim->substream_target;
+		if (substream_target == -1)
+			substream_target = 2;
+
+		/* Check that a preselected substream layer from the client does not conflict our ramping up
+		 * Ramping up next would be substream high (2), but the client requested low or mid */
+		if (nextHigher > 3 && substream_target < 2)
+			nextHigher = 0;
+
+		/* Ramping up next would be substream mid (1), but the client requested low */
+		else if (nextHigher > 1 && substream_target < 1)
+			nextHigher = 0;
+	}
+
+	*pNextLower = (uint32_t)nextLower;
+	*pNextHigher = (uint32_t)nextHigher;
 }
 
 /*
