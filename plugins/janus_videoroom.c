@@ -9681,8 +9681,23 @@ static void *janus_videoroom_handler(void *data) {
 						while(ma) {
 							janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
 							if(a->name && a->value) {
-								if(ps->mid == NULL && !strcasecmp(a->name, "mid")) {
-									ps->mid = g_strdup(a->value);
+								if(!strcasecmp(a->name, "mid")) {
+									gboolean mid_changed = FALSE;
+									/* Check if we're just discovering the mid or if it changed */
+									if(ps->mid != NULL && strcasecmp(ps->mid, a->value))
+										mid_changed = TRUE;
+									char *old_mid = mid_changed ? ps->mid : NULL;
+									if(ps->mid == NULL || mid_changed) {
+										ps->mid = g_strdup(a->value);
+										if(mid_changed) {
+											/* Update the table here, since this is not a new stream */
+											janus_refcount_increase(&ps->ref);
+											g_hash_table_insert(participant->streams_bymid, g_strdup(ps->mid), ps);
+											if(old_mid != NULL)
+												g_hash_table_remove(participant->streams_bymid, old_mid);
+											g_free(old_mid);
+										}
+									}
 								} else if(videoroom->audiolevel_ext && m->type == JANUS_SDP_AUDIO &&
 										ps->audio_level_extmap_id == 0 && strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
 									ps->audio_level_extmap_id = atoi(a->value);
