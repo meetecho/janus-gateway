@@ -31,15 +31,29 @@
 #include "mach_gettime.h"
 #endif
 
+/* Returns the monotonic in microseconds
+ * 1 second = 1000 milliseconds
+ * 1 millisecond = 1000 microseconds
+ * 1 second = 1000000 in the return value
+ */
 gint64 janus_get_monotonic_time(void) {
 	struct timespec ts;
+	/* Returns nano seconds */
 	clock_gettime (CLOCK_MONOTONIC, &ts);
+	/* We change from nano secons to microseconds */
 	return (ts.tv_sec*G_GINT64_CONSTANT(1000000)) + (ts.tv_nsec/G_GINT64_CONSTANT(1000));
 }
 
+/* Returns the real time in microseconds
+ * 1 second = 1000 milliseconds
+ * 1 millisecond = 1000 microseconds
+ * 1 second = 1000000 in the return value
+ */
 gint64 janus_get_real_time(void) {
 	struct timespec ts;
+	/* Returns nano seconds */
 	clock_gettime (CLOCK_REALTIME, &ts);
+	/* We change from nano secons to microseconds */
 	return (ts.tv_sec*G_GINT64_CONSTANT(1000000)) + (ts.tv_nsec/G_GINT64_CONSTANT(1000));
 }
 

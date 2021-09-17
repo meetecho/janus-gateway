@@ -932,6 +932,7 @@ void janus_rtp_simulcasting_remb_context_reset(janus_rtp_simulcasting_remb_conte
 	memset(pContext, 0, sizeof(*pContext));
 	pContext->substream_limit_by_remb = -1;
 	pContext->templayer_limit_by_remb = -1;
+	pContext->failed_highest_ramp_pos = -1;
 }
 
 void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *context) {

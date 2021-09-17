@@ -290,8 +290,16 @@ typedef struct janus_rtp_simulcasting_remb_context {
 	uint32_t publisher_simulcast_bitrates[3];
 	/*! \brief Whenever we take over new publisher_simulcast_bitrates we check how many layers have been announced */
 	uint32_t publisher_simulcast_layer_count;
+	/*! \brief % value the remb has changed with the last two remb messages (calculate the % change from the last to the current REMB value, add it the the already known value, divide it by two) */
+	double last_remb_change;
 	/*! \brief Switch helper that is used to determine when to switch from the current to another layer. Depending on the current remb vs the current layer bitrate this value is increased if we can switch up or decreased if we need to switch down */
 	int substream_switch_layer_counter;
+	/*! \brief Last monotonic timestamp when we did a ramp up (milliseconds), we store it every time we do a ramp up */
+	int64_t tm_last_ramp_up;
+	/*! \brief If a ramp up failes (time between last_ramp_up and a following ramping down is too small (tbd what to small is), we store this value */
+	int failed_highest_ramp_pos;
+	/*! \brief Each ramp up fail will increase this counter (we use this counter to set a higher remb value for the next try to ramp up */
+	uint32_t failed_counter;
 } janus_rtp_simulcasting_remb_context;
 
 /*! \brief Set (or reset) the context fields to their default values
