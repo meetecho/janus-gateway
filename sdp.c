@@ -1157,7 +1157,6 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 					|| !strcasecmp(a->name, "setup")
 					|| !strcasecmp(a->name, "connection")
 					|| !strcasecmp(a->name, "group")
-					|| !strcasecmp(a->name, "mid")
 					|| !strcasecmp(a->name, "msid")
 					|| !strcasecmp(a->name, "msid-semantic")
 					|| !strcasecmp(a->name, "rid")
