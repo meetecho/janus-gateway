@@ -148,7 +148,7 @@ $(document).ready(function() {
 								iceState: function(state) {
 									Janus.log("ICE state changed to " + state);
 								},
-								mediaState: function(medium, mid, on) {
+								mediaState: function(medium, on, mid) {
 									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium + " (mid=" + mid + ")");
 								},
 								webrtcState: function(on) {
@@ -1110,7 +1110,7 @@ function addHelper(helperCreated) {
 			iceState: function(state) {
 				Janus.log("[Helper #" + helperId + "] ICE state changed to " + state);
 			},
-			mediaState: function(medium, mid, on) {
+			mediaState: function(medium, on, mid) {
 				Janus.log("[Helper #" + helperId + "] Janus " + (on ? "started" : "stopped") + " receiving our " + medium + " (mid=" + mid + ")");
 			},
 			webrtcState: function(on) {
