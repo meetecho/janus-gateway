@@ -291,9 +291,11 @@ typedef struct janus_rtp_simulcasting_remb_context {
 	/*! \brief Whenever we take over new publisher_simulcast_bitrates we check how many layers have been announced */
 	uint32_t publisher_simulcast_layer_count;
 	/*! \brief % value the remb has changed with the last two remb messages (calculate the % change from the last to the current REMB value, add it the the already known value, divide it by two) */
-	double last_remb_change;
+	double last_bitrate_change;
 	/*! \brief Switch helper that is used to determine when to switch from the current to another layer. Depending on the current remb vs the current layer bitrate this value is increased if we can switch up or decreased if we need to switch down */
 	int substream_switch_layer_counter;
+	/*! \brief The last ramp position that was chosen by the subscribing client (API). Is used to reset the engine on a change */
+	int32_t last_requested_ramp_position;
 	/*! \brief Last monotonic timestamp when we did a ramp up (milliseconds), we store it every time we do a ramp up */
 	int64_t tm_last_ramp_up;
 	/*! \brief If a ramp up failes (time between last_ramp_up and a following ramping down is too small (tbd what to small is), we store this value */
