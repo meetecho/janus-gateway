@@ -2381,8 +2381,6 @@ function Janus(gatewayCallbacks) {
 							});
 						return;
 					}
-					// FIXME what is the correct scope of
-					// callbackUserMedia and getScreenMedia?
 					// We're going to try and use the extension for Chrome 34+, the old approach
 					// for older versions of Chrome, or the experimental support in Firefox 33+
 					function callbackUserMedia (error, stream) { // eslint-disable-line no-inner-declarations
