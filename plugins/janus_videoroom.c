@@ -1692,7 +1692,7 @@ typedef struct janus_videoroom_subscriber {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
 	guint64 room_id;		/* Unique room ID */
-	guint32 last_remb; 		/* The last received remb value */
+	guint32 last_bitrate; 		/* The last received REMB bitrate value */
 	gchar *room_id_str;		/* Unique room ID (when using strings) */
 	janus_videoroom_publisher *feed;	/* Participant this subscriber is subscribed to */
 	gboolean close_pc;		/* Whether we should automatically close the PeerConnection when the publisher goes away */
@@ -5545,32 +5545,32 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 			}
 		}
 
-		uint32_t remb = janus_rtcp_get_remb(buf, len);
+		uint32_t bitrate = janus_rtcp_get_remb(buf, len);
+		if(bitrate > 0) {
+			/* VP8 Simulcasting implementation is loosen from the videoroom, so we need to hand over certain properties*/
+			/* Details for the subscriber peerConnection */
+			janus_vp8_remb_subscriber subscriber;
+			memset(&subscriber, 0x00, sizeof(subscriber));
+			subscriber.pFeedMutex = &s->session->mutex;
+			subscriber.last_bitrate = s->last_bitrate;
+			subscriber.pSimContext = &s->sim_context;
 
-		/* VP8 Simulcasting implementation is loosen from the videoroom, so we need to hand over certain properties*/
-		/* Details for the subscriber peerConnection */
-		janus_vp8_remb_subscriber subscriber;
-		memset(&subscriber, 0x00, sizeof(subscriber));
-		subscriber.pFeedMutex = &s->session->mutex;
-		subscriber.last_remb = s->last_remb;
-		subscriber.pSimContext = &s->sim_context;
+			/* Details for the publisher peerConnection
+			   The callbacks allow the helper to validate stuff and to execute the stream switching
+			*/
+			janus_vp8_remb_publisher publisher;
+			memset(&publisher, 0x00, sizeof(publisher));
+			publisher.display = s->feed->display;
+			publisher.user_id_str = s->feed->user_id_str;
+			publisher.pOriginalPublisherObject = s->feed;
+			publisher.isMultiCasting = &janus_videoroom_is_publisher_simulcasting;
+			publisher.sendPLI = &janus_videoroom_send_pli;
+			subscriber.pFeed = &publisher;
 
-		/* Details for the publisher peerConnection
-		   The callbacks allow the helper to validate stuff and to execute the stream switching
-		*/
-		janus_vp8_remb_publisher publisher;
-		memset(&publisher, 0x00, sizeof(publisher));
-		publisher.display = s->feed->display;
-		publisher.user_id_str = s->feed->user_id_str;
-		publisher.pOriginalPublisherObject = s->feed;
-		publisher.isMultiCasting = &janus_videoroom_is_publisher_simulcasting;
-		publisher.sendPLI = &janus_videoroom_send_pli;
-		subscriber.pFeed = &publisher;
-
-		/* Call the implementation, everything is handled inside */
-		janus_vp8_remb_simulcast_based_subscriber_simulcast_switching(&subscriber, remb);
-
-		s->last_remb = remb;
+			/* Call the implementation, everything is handled inside */
+			janus_vp8_remb_simulcast_based_subscriber_simulcast_switching(&subscriber, bitrate);
+		}
+		s->last_bitrate = bitrate;
 
 		janus_refcount_decrease_nodebug(&s->ref);
 	}
