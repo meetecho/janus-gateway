@@ -133,6 +133,8 @@ janus_SOURCES = \
 	version.h \
 	text2pcap.c \
 	text2pcap.h \
+	vp8_remb_simulcast.c \
+	vp8_remb_simulcast.h \
 	plugins/plugin.c \
 	plugins/plugin.h \
 	transports/transport.h \
