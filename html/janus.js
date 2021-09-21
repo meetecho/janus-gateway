@@ -97,7 +97,6 @@ Janus.useDefaultDependencies = function (deps) {
 		newWebSocket: function(server, proto) { return new socketCls(server, proto); },
 		extension: (deps && deps.extension) || defaultExtension,
 		isArray: function(arr) { return Array.isArray(arr); },
-		/*global adapter */
 		webRTCAdapter: (deps && deps.adapter) || adapter,
 		httpAPICall: function(url, options) {
 			var fetchOptions = {
@@ -165,7 +164,6 @@ Janus.useDefaultDependencies = function (deps) {
 };
 
 Janus.useOldDependencies = function (deps) {
-	/*global jQuery */
 	var jq = (deps && deps.jQuery) || jQuery;
 	var socketCls = (deps && deps.WebSocket) || WebSocket;
 	return {
@@ -400,7 +398,6 @@ Janus.init = function(options) {
 				Janus.webRTCAdapter.browserDetails.version >= 72) {
 			// Chrome does, but it's only usable from version 72 on
 			Janus.unifiedPlan = true;
-		/*global RTCRtpTransceiver */
 		} else if(!window.RTCRtpTransceiver || !('currentDirection' in RTCRtpTransceiver.prototype)) {
 			// Safari supports addTransceiver() but not Unified Plan when
 			// currentDirection is not defined (see codepen above).
