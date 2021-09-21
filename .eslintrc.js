@@ -5,9 +5,6 @@ module.exports = {
         "jquery": true
     },
     "extends": "eslint:recommended",
-    "parserOptions": {
-        "ecmaVersion": 2018
-    },
     "rules": {
         "no-console": "off",
         "no-empty": "off",
