@@ -108,6 +108,7 @@ static struct janus_json_parameter jsep_parameters[] = {
 	{"sdp", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"trickle", JANUS_JSON_BOOL, 0},
 	{"rid_order", JSON_STRING, 0},
+	{"force_relay", JANUS_JSON_BOOL, 0},
 	{"e2ee", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter add_token_parameters[] = {
@@ -1480,6 +1481,16 @@ int janus_process_incoming_request(janus_request *request) {
 						goto jsondone;
 					}
 				}
+				/* If for some reason the user is asking us to force using a relay, do that. Notice
+				 * that this only works with libnice >= 0.1.14, and will cause the PeerConnection
+				 * to fail if Janus itself is not configured to use a TURN server. Don't use this
+				 * feature if you don't know what you're doing! You will almost always NOT want
+				 * Janus itself to use TURN: https://janus.conf.meetecho.com/docs/FAQ.html#turn */
+				if(json_is_true(json_object_get(jsep, "force_relay"))) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing Janus to use a TURN server\n", handle->handle_id);
+					g_object_set(G_OBJECT(handle->agent), "force-relay", TRUE, NULL);
+				}
+				/* Process the remote SDP */
 				if(janus_sdp_process(handle, parsed_sdp, rids_hml, FALSE) < 0) {
 					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
 					janus_sdp_destroy(parsed_sdp);
