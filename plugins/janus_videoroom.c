@@ -8333,9 +8333,9 @@ void janus_videoroom_remb_based_subscriber_simulcast_switching(janus_videoroom_s
 			/* We are above layer 0 and the bitrate is currently lower than we need for the current layer */
 			if(remb < current_bitrate * 0.8)	// If we are 20% below the lower bitrate
 				pRembContext->substream_switch_layer_counter -= 4;
-			else if(remb > current_bitrate * 0.9) // If we are 10% below the lower bitrate
+			else if(remb < current_bitrate * 0.9) // If we are 10% below the lower bitrate
 				pRembContext->substream_switch_layer_counter -= 2;
-			else if(remb > higher_bitrate) // If we are just below the lower bitrate
+			else // If we are just below the lower bitrate
 				pRembContext->substream_switch_layer_counter -= 1;
 		}
 		else if(remb > current_bitrate) {
@@ -8349,7 +8349,7 @@ void janus_videoroom_remb_based_subscriber_simulcast_switching(janus_videoroom_s
 					pRembContext->substream_switch_layer_counter += 4;
 				else if(remb > higher_bitrate * 1.1) // If we are 10% above the higher bitrate
 					pRembContext->substream_switch_layer_counter += 2;
-				else if(remb > higher_bitrate) // If we are just above the higher bitrate
+				else // If we are just above the higher bitrate
 					pRembContext->substream_switch_layer_counter += 1;
 			}
 		}
