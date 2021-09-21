@@ -1737,7 +1737,6 @@ static void janus_videoroom_recorder_close(janus_videoroom_publisher *participan
 /* start - New methods for an REMB based simulcast layer switching on a subscriber peerConnection */
 void janus_videoroom_remb_based_subscriber_simulcast_switching(janus_videoroom_subscriber *pSubscriber, uint32_t remb);
 uint32_t janus_videoroom_remb_get_current_ramp_position(janus_rtp_simulcasting_context *pSim);
-const char* janus_videoroom_remb_get_logtext_for_ramppos(uint32_t rampPosition);
 uint32_t janus_videoroom_remb_get_bitrate_for_ramp_position(janus_rtp_simulcasting_remb_context *pRembContext, uint32_t rampPosition);
 void janus_videoroom_remb_get_neighbour_ramp_positions(janus_rtp_simulcasting_context *pSim, uint32_t rampPosition, uint32_t* pNextLower, uint32_t* pNextUpper);
 double janus_videoroom_remb_calculate_remb_change(janus_videoroom_subscriber *pSubscriber, uint32_t remb);
@@ -8294,10 +8293,7 @@ static void *janus_videoroom_rtp_forwarder_rtcp_thread(void *data) {
  * - Support for VP9 (the current approach only targets VP8)
  */
 
-// TODO: On ramping up store the highest value we achived.
-// TODO: Store wether we faild in ramping up.
 // TODO: If we failed and we achived the same value we need to be 10% above that value to switch
-// TODO: Write a method that hands back the next upper or lower layer
 
 /* This is a correction factor we use to calculate the bitrate if we transport 15fps instead of 3) *
    The bitrates we handshake with the client are for 30fps, so we need to calculate the values for 15fps internally */
@@ -8361,7 +8357,7 @@ void janus_videoroom_remb_based_subscriber_simulcast_switching(janus_videoroom_s
 		double db_since_last_ramp_up = 0;
 		if(pRembContext->tm_last_ramp_up) {
 			db_since_last_ramp_up = (double)(g_get_monotonic_time() - pRembContext->tm_last_ramp_up) / 1000000;
-			if(db_since_last_ramp_up > TIME_RAMP_UP_FAILED && rampPos >= pRembContext->failed_highest_ramp_pos) {
+			if(pRembContext->failed_highest_ramp_pos >= 0 && db_since_last_ramp_up > TIME_RAMP_UP_FAILED && (int)rampPos >= pRembContext->failed_highest_ramp_pos) {
 				/* Ramp up succeeded -> cleanup failing information */
 				pRembContext->failed_highest_ramp_pos = -1;
 				pRembContext->failed_counter = 0;
@@ -8370,12 +8366,11 @@ void janus_videoroom_remb_based_subscriber_simulcast_switching(janus_videoroom_s
 
 		if(lastLayerCounter != pRembContext->substream_switch_layer_counter || remb != pSubscriber->last_remb) {
 			/* Only log if something relevant changed (either the counter or the remb value) */
-			const char* log = janus_videoroom_remb_get_logtext_for_ramppos(rampPos);
 			char szCurrent[10] = {};
 			char szRequested[10] = {};
 			janus_videoroom_get_simulcast_current_debug(szCurrent, 10, pSim);
 			janus_videoroom_get_simulcast_requested_debug(szRequested, 10, pSim);
-			JANUS_LOG(LOG_INFO, "REMB:%d (%.2f/%.2f) ramp:%d(%s) (curr:%s req:%s) curr_br:%d next_br:%d dir:%d tm_ramp_up:%.1fs\n", remb, dbRembChange, pRembContext->last_remb_change, rampPos, log, szCurrent, szRequested, current_bitrate, higher_bitrate, pRembContext->substream_switch_layer_counter, db_since_last_ramp_up);
+			JANUS_LOG(LOG_INFO, "REMB:%d (%.2f/%.2f) rmp:%d (cur:%s req:%s) cur:%d nxt:%d dir:%d t_r_up:%.1fs\n", remb, dbRembChange, pRembContext->last_remb_change, rampPos, szCurrent, szRequested, current_bitrate, higher_bitrate, pRembContext->substream_switch_layer_counter, db_since_last_ramp_up);
 		}
 
 		if(pRembContext->substream_switch_layer_counter <= -20 || pRembContext->substream_switch_layer_counter >= 20) {
@@ -8493,31 +8488,6 @@ uint32_t janus_videoroom_remb_get_current_ramp_position(janus_rtp_simulcasting_c
 	if(pSim->templayer == -1 || pSim->templayer == 2)
 		rampPosition++;
 	return rampPosition;
-}
-
-/*
- * Retrieves the diagnostic log string for a given ramp position
- *
- * @param rampPosition - A given ramp position we want to get the diagnostic log string for
- * @returns - the diagnostic log for a given ramp position
- */
-const char* janus_videoroom_remb_get_logtext_for_ramppos(uint32_t rampPosition) {
-	switch(rampPosition) {
-		case 0:
-			return "L 15fps";
-		case 1:
-			return "L 30fps";
-		case 2:
-			return "M 15fps";
-		case 3:
-			return "M 30fps";
-		case 4:
-			return "H 15fps";
-		case 5:
-			return "H 30fps";
-		default:
-			return "unknown";
-	}
 }
 
 /*
