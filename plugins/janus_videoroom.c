@@ -9769,6 +9769,14 @@ static void *janus_videoroom_handler(void *data) {
 								}
 								if(ps->pt == -1 && janus_sdp_get_codec_pt(offer, m->index, janus_videocodec_name(ps->vcodec)) != -1) {
 									ps->pt = janus_videocodec_pt(ps->vcodec);
+									/* Check if video profile has been set */
+									if((ps->vcodec == JANUS_VIDEOCODEC_H264 && ps->h264_profile == NULL) || (ps->vcodec == JANUS_VIDEOCODEC_VP9 && ps->vp9_profile == NULL)) {
+										const char* vfmtp = janus_sdp_get_fmtp(answer, m->index, janus_sdp_get_codec_pt(answer, m->index, janus_videocodec_name(ps->vcodec)));
+										if(ps->vcodec == JANUS_VIDEOCODEC_H264)
+											ps->h264_profile = g_strdup(vfmtp);
+										if(ps->vcodec == JANUS_VIDEOCODEC_VP9)
+											ps->vp9_profile = g_strdup(vfmtp);
+									}
 								}
 							} else {
 								/* Check the codec priorities in the room configuration */
@@ -9805,6 +9813,14 @@ static void *janus_videoroom_handler(void *data) {
 									if(janus_sdp_get_codec_pt(offer, m->index, janus_videocodec_name(videoroom->vcodec[i])) != -1) {
 										ps->vcodec = videoroom->vcodec[i];
 										ps->pt = janus_videocodec_pt(ps->vcodec);
+										/* Check if video profile has been set */
+										if((ps->vcodec == JANUS_VIDEOCODEC_H264 && ps->h264_profile == NULL) || (ps->vcodec == JANUS_VIDEOCODEC_VP9 && ps->vp9_profile == NULL)) {
+											const char* vfmtp = janus_sdp_get_fmtp(answer, m->index, janus_sdp_get_codec_pt(answer, m->index, janus_videocodec_name(ps->vcodec)));
+											if(ps->vcodec == JANUS_VIDEOCODEC_H264)
+												ps->h264_profile = g_strdup(vfmtp);
+											if(ps->vcodec == JANUS_VIDEOCODEC_VP9)
+												ps->vp9_profile = g_strdup(vfmtp);
+										}
 										break;
 									}
 								}
