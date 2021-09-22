@@ -116,6 +116,15 @@ const char *janus_videocodec_name(janus_videocodec vcodec);
 janus_videocodec janus_videocodec_from_name(const char *name);
 int janus_videocodec_pt(janus_videocodec vcodec);
 
+/* Defines how the subscription shall behave for the remb implementation */
+typedef enum janus_vp8_remb_adoption {
+	// REMB is ignored for this subscription
+	janus_vp8_remb_adoption_ignore = 0,
+	// REMB is starting low substream 0, temporal 15fps, and ramping up
+	janus_vp8_remb_adoption_ramp_up = 1,
+	// REMB is starting with what the subscriber wants to have and then adopting to remb values
+	janus_vp8_remb_adoption_start_high = 2,
+} janus_vp8_remb_adoption;
 
 /*! \brief Helper method to demultiplex RTP from other protocols
  * @param[in] buf Buffer to inspect
@@ -282,6 +291,8 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 
 /*! \brief Helper struct for handling remb based stream switching */
 typedef struct janus_rtp_simulcasting_remb_context {
+	/*! \brief How janus shall handle the remb adoption */
+	janus_vp8_remb_adoption remb_adoption;
 	/*! \brief If using REMB for handshaking simulcast layers this is the currently chosen spatial layer if the bitrate limit forces a lower layer */
 	int substream_limit_by_remb;
 	/*! \brief If using REMB for handshaking simulcast layers this is the currently chosen temporal layer if the bitrate limit forces a lower layer */

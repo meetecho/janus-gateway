@@ -968,6 +968,7 @@ room-<unique room ID>: {
 	"fallback" : <How much time (in us, default 250000) without receiving packets will make us drop to the substream below>,
 	"spatial_layer" : <spatial layer to receive (0-2), in case VP9-SVC is enabled; optional>,
 	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>
+	"remb_adoption" : <how shall janus adopt the requested simulcast layers against the reported remb. "ignore" remb, "ramp_up" start low and ramp up to what has been requested, "start_high" start with the requested simulcast layers and adopt againt remb as soon as it is available. | also ensure that you set the publisher bitrate the subscription has to adopt against>
 }
 \endverbatim
  *
@@ -7089,6 +7090,28 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
+
+				/* Ignore REMB for this subscription, check what the subscriber wants to have in the command */
+				janus_vp8_remb_adoption remb_adoption = janus_vp8_remb_adoption_ignore;
+				json_t *j_remb_adoption = json_object_get(root, "remb_adoption");
+				if(j_remb_adoption) {
+					const char* szRembAdoption = json_string_value(j_remb_adoption);
+					if(!strcasecmp(szRembAdoption, "ignore"))
+						remb_adoption = janus_vp8_remb_adoption_ignore;
+					else if(!strcasecmp(szRembAdoption, "ramp_up"))
+						remb_adoption = janus_vp8_remb_adoption_ramp_up;
+					else if(!strcasecmp(szRembAdoption, "start_high"))
+						remb_adoption = janus_vp8_remb_adoption_start_high;
+					else {
+						JANUS_LOG(LOG_ERR, "Invalid value for remb_adoption. Must be ignore, ramp_up or start_high.\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid value for remb_adoption. Must be ignore, ramp_up or start_high. Was %s", szRembAdoption);
+						janus_refcount_decrease(&subscriber->ref);
+						goto error;
+					}
+				}
+				subscriber->sim_context.remb_context.remb_adoption = remb_adoption;
+
 				json_t *sc_fallback = json_object_get(root, "fallback");
 				/* Update the audio/video/data flags, if set */
 				janus_videoroom_publisher *publisher = subscriber->feed;

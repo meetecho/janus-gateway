@@ -55,8 +55,10 @@
  * - Support for VP9 (the current approach only targets VP8)
  * - We currently start to send the layers as requested by the client
  *
- * - client - show the limits as exposed through the eventing on the client side (if applicapable)
- * - if we switch to a higher layer, let the ramping do the job and not switch instantly
+ * - if i configure or start a subscription i want o be able to:
+ * - - force a certain higher layer to start with (if i am using chromium based or safari, that works out of the box)
+ * - - tell janus to achive that layer through remb ramping up
+ * - - tell janus not to do it for this subscription (e.g. i have ones that must send a certain layer)
  */
 
 #include "vp8_remb_simulcast.h"
