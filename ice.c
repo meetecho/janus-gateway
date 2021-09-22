@@ -70,6 +70,14 @@ char *janus_ice_get_turn_rest_api(void) {
 #endif
 }
 
+/* Force relay settings */
+static gboolean force_relay_allowed = FALSE;
+void janus_ice_allow_force_relay(void) {
+	force_relay_allowed = TRUE;
+}
+gboolean janus_ice_is_force_relay_allowed(void) {
+	return force_relay_allowed;
+}
 
 /* ICE-Lite status */
 static gboolean janus_ice_lite_enabled;

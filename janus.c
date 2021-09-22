@@ -377,6 +377,8 @@ static json_t *janus_info(const char *transaction) {
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_turn_server(), janus_ice_get_turn_port());
 		json_object_set_new(info, "turn-server", json_string(server));
 	}
+	if(janus_ice_is_force_relay_allowed())
+		json_object_set_new(info, "allow-force-relay", json_true());
 	json_object_set_new(info, "static-event-loops", json_integer(janus_ice_get_static_event_loops()));
 	if(janus_ice_get_static_event_loops())
 		json_object_set_new(info, "loop-indication", janus_ice_is_loop_indication_allowed() ? json_true() : json_false());
@@ -1487,8 +1489,12 @@ int janus_process_incoming_request(janus_request *request) {
 				 * feature if you don't know what you're doing! You will almost always NOT want
 				 * Janus itself to use TURN: https://janus.conf.meetecho.com/docs/FAQ.html#turn */
 				if(json_is_true(json_object_get(jsep, "force_relay"))) {
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing Janus to use a TURN server\n", handle->handle_id);
-					g_object_set(G_OBJECT(handle->agent), "force-relay", TRUE, NULL);
+					if(!janus_ice_is_force_relay_allowed()) {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Forcing Janus to use a TURN server is not allowed\n", handle->handle_id);
+					} else {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing Janus to use a TURN server\n", handle->handle_id);
+						g_object_set(G_OBJECT(handle->agent), "force-relay", TRUE, NULL);
+					}
 				}
 				/* Process the remote SDP */
 				if(janus_sdp_process(handle, parsed_sdp, rids_hml, FALSE) < 0) {
@@ -4890,6 +4896,11 @@ gint main(int argc, char *argv[])
 		}
 	}
 #endif
+	item = janus_config_get(config, config_nat, janus_config_type_item, "allow_force_relay");
+	if(item && item->value && janus_is_true(item->value)) {
+		JANUS_LOG(LOG_WARN, "Note: applications/users will be allowed to force Janus to use TURN. Make sure you know what you're doing!\n");
+		janus_ice_allow_force_relay();
+	}
 	/* Do we need a limited number of static event loops, or is it ok to have one per handle (the default)? */
 	item = janus_config_get(config, config_general, janus_config_type_item, "event_loops");
 	if(item && item->value) {
