@@ -171,5 +171,5 @@ jobs:
         npm run rollup -- --o janus.cjs.js --f cjs
     - uses: actions/upload-artifact@v2
       with:
-      name: janus.cjs.js
-      path: npm/janus.cjs.js
+        name: janus.cjs.js
+        path: npm/janus.cjs.js
