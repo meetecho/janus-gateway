@@ -6372,7 +6372,8 @@ static void *janus_videoroom_handler(void *data) {
 					json_integer(publisher->room->room_id));
 					json_object_set_new(info, "id", string_ids ? json_string(user_id_str) : json_integer(user_id));
 					json_object_set_new(info, "private_id", json_integer(publisher->pvt_id));
-					json_object_set_new(info, "token", token);
+                    if (publisher->room->check_allowed)
+    					json_object_set_new(info, "token", token);
 					if(display_text != NULL)
 						json_object_set_new(info, "display", json_string(display_text));
 					if(publisher->user_audio_active_packets)
