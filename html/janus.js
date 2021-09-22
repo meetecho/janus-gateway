@@ -2380,7 +2380,7 @@ function Janus(gatewayCallbacks) {
 					}
 					// We're going to try and use the extension for Chrome 34+, the old approach
 					// for older versions of Chrome, or the experimental support in Firefox 33+
-					function callbackUserMedia (error, stream) { // eslint-disable-line no-inner-declarations
+					const callbackUserMedia = function(error, stream) {
 						pluginHandle.consentDialog(false);
 						if(error) {
 							callbacks.error(error);
@@ -2388,7 +2388,7 @@ function Janus(gatewayCallbacks) {
 							streamsDone(handleId, jsep, media, callbacks, stream);
 						}
 					}
-					function getScreenMedia(constraints, gsmCallback, useAudio) { // eslint-disable-line no-inner-declarations
+					const getScreenMedia = function(constraints, gsmCallback, useAudio) {
 						Janus.log("Adding media constraint (screen capture)");
 						Janus.debug(constraints);
 						navigator.mediaDevices.getUserMedia(constraints)
