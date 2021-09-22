@@ -21,6 +21,8 @@ typedef struct janus_vp8_remb_publisher {
 typedef struct janus_vp8_remb_subscriber {
 	/* The last received remb value */
 	guint32 last_bitrate;
+	/* stores wether we have already received a valid bitrate from remb or not yet, the first valid remb value sets this to true even if the value then drops to 0 afterwards */
+	gboolean last_bitrate_valid;
 	/* Simulcasting context of the subscribers peer Connection */
 	janus_rtp_simulcasting_context *pSimContext;
 	/* Mutex one has to lock to safely access the publishers feed */

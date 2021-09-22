@@ -60,6 +60,8 @@
 #define CORRECTION_FACTOR_15FPS 0.6
 /* If we ramp up and need to ramp down within that period of time we call this ramp up failed */
 #define TIME_RAMP_UP_FAILED 7
+/* Defines how much we increase the bitrate for the failing layer per fail (10%) */
+#define REQUIRED_BITRATE_INCREASE_PER_FAIL 0.1
 
 /* Forward declarations */
 uint32_t janus_vp8_remb_simulcast_get_client_requested_ramp_position(janus_rtp_simulcasting_context *pSim);
@@ -88,8 +90,8 @@ void janus_vp8_remb_simulcast_based_subscriber_simulcast_switching(janus_vp8_rem
 		/*! Calculate the % change from the last to the current remb values */
 		double dbBitrateChange = janus_vp8_remb_simulcast_calculate_bitrate_change(pSubscriber, bitrate);
 		/*! Whats the ramp position we are currently sending and the one the client requested? */
-		uint32_t currentRampPos = janus_vp8_remb_simulcast_get_client_requested_ramp_position(pSim);
-        uint32_t requestedRampPos = janus_vp8_remb_simulcast_get_current_ramp_position(pSim);
+        uint32_t currentRampPos = janus_vp8_remb_simulcast_get_current_ramp_position(pSim);
+		uint32_t requestedRampPos = janus_vp8_remb_simulcast_get_client_requested_ramp_position(pSim);
 
         if((int)requestedRampPos != pRembContext->last_requested_ramp_position) {
             // What the client requested has changed...
@@ -102,46 +104,59 @@ void janus_vp8_remb_simulcast_based_subscriber_simulcast_switching(janus_vp8_rem
                 pRembContext->tm_last_ramp_up = 0;
             }
         }
-		uint32_t nextHigherRampPos = requestedRampPos;
-		uint32_t nextLowerRampPos = requestedRampPos;
-		janus_vp8_remb_simulcast_get_neighbour_ramp_positions(pSim, requestedRampPos, &nextLowerRampPos, &nextHigherRampPos);
-		uint32_t current_bitrate = janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(pRembContext, requestedRampPos);
+		uint32_t nextHigherRampPos = currentRampPos;
+		uint32_t nextLowerRampPos = currentRampPos;
+		janus_vp8_remb_simulcast_get_neighbour_ramp_positions(pSim, currentRampPos, &nextLowerRampPos, &nextHigherRampPos);
+        if(nextLowerRampPos > currentRampPos) {
+		    nextHigherRampPos = currentRampPos;
+		    nextLowerRampPos = currentRampPos;
+		    janus_vp8_remb_simulcast_get_neighbour_ramp_positions(pSim, currentRampPos, &nextLowerRampPos, &nextHigherRampPos);
+        }
+		uint32_t current_bitrate = janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(pRembContext, currentRampPos);
 		uint32_t higher_bitrate = 0;
-		if(nextHigherRampPos > requestedRampPos)
+		if(nextHigherRampPos > currentRampPos)
 			higher_bitrate = janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(pRembContext, nextHigherRampPos);
 
 		int lastLayerCounter = pRembContext->substream_switch_layer_counter;
 
-		/* We have layer bitrates so the remb simulcast switching shall be active */
-		if(requestedRampPos > 0 && bitrate < current_bitrate) {
-            /* We are above layer 0 and the bitrate is currently lower than we need for the current layer */
-			if(bitrate < current_bitrate * 0.8 && dbBitrateChange < 0.2)	// If we are 20% below the lower bitrate and the bitself itself is not increasing by at least 0.2% between two remb messages
-				pRembContext->substream_switch_layer_counter -= 4;
-			else if(bitrate < current_bitrate * 0.9 && dbBitrateChange < 0.5) // If we are 10% below the lower bitrate and the bitself itself is not increasing by at least 0.5% between two remb messages
-				pRembContext->substream_switch_layer_counter -= 2;
-			else if(dbBitrateChange < 1) // If we are just below the lower bitrate and the bitrate is not growing by 1% between two remb messages
-				pRembContext->substream_switch_layer_counter -= 1;
-		}
-		else if(bitrate > current_bitrate) {
-			/* If the current bitrate is sufficient for the current layer increase the switcher value to 0 if it was negative before */
-			if(pRembContext->substream_switch_layer_counter < 0)
-				pRembContext->substream_switch_layer_counter ++;
-			/* We are below the highest layer and the bitrate is currently higher than we need for the current layer */
-			if(higher_bitrate && bitrate > higher_bitrate) {
-				/* The current bitrate is higher than the next layer above */
-				if(bitrate > higher_bitrate * 1.2)	// If we are 20% above the higher bitrate
-					pRembContext->substream_switch_layer_counter += 4;
-				else if(bitrate > higher_bitrate * 1.1) // If we are 10% above the higher bitrate
-					pRembContext->substream_switch_layer_counter += 2;
-				else  // If we are just above the higher bitrate
-					pRembContext->substream_switch_layer_counter += 1;
-			}
-		}
+        // Start if we have a valid last bitrate we can use for calculations (2. remb package allows us to see wether the value goes up or down)
+        if(pSubscriber->last_bitrate_valid) {
+            double compareValue = dbBitrateChange;
+            if(pRembContext->last_bitrate_change > compareValue) {
+                compareValue = pRembContext->last_bitrate_change;
+            }
+
+    		/* We have layer bitrates so the remb simulcast switching shall be active */
+    		if(currentRampPos > 0 && bitrate < current_bitrate) {
+                /* We are above layer 0 and the bitrate is currently lower than we need for the current layer */
+    			if(bitrate < current_bitrate * 0.8 && compareValue < 0.2)	// If we are 20% below the lower bitrate and the bitself itself is not increasing by at least 0.2% between two remb messages
+    				pRembContext->substream_switch_layer_counter -= 4;
+    			else if(bitrate < current_bitrate * 0.9 && compareValue < 0.5) // If we are 10% below the lower bitrate and the bitself itself is not increasing by at least 0.5% between two remb messages
+    				pRembContext->substream_switch_layer_counter -= 2;
+    			else if(compareValue < 1) // If we are just below the lower bitrate and the bitrate is not growing by 1% between two remb messages
+    				pRembContext->substream_switch_layer_counter -= 1;
+    		}
+    		else if(bitrate > current_bitrate) {
+    			/* If the current bitrate is sufficient for the current layer increase the switcher value to 0 if it was negative before */
+    			if(pRembContext->substream_switch_layer_counter < 0)
+    				pRembContext->substream_switch_layer_counter ++;
+    			/* We are below the highest layer and the bitrate is currently higher than we need for the current layer */
+    			if(higher_bitrate && bitrate > higher_bitrate) {
+    				/* The current bitrate is higher than the next layer above */
+    				if(bitrate > higher_bitrate * 1.2)	// If we are 20% above the higher bitrate
+    					pRembContext->substream_switch_layer_counter += 4;
+    				else if(bitrate > higher_bitrate * 1.1) // If we are 10% above the higher bitrate
+    					pRembContext->substream_switch_layer_counter += 2;
+    				else  // If we are just above the higher bitrate
+    					pRembContext->substream_switch_layer_counter += 1;
+    			}
+    		}
+        }
 
 		double db_time_since_last_ramp_up = 0;
 		if(pRembContext->tm_last_ramp_up) {
 			db_time_since_last_ramp_up = (double)(g_get_monotonic_time() - pRembContext->tm_last_ramp_up) / 1000000;
-			if(pRembContext->failed_highest_ramp_pos >= 0 && db_time_since_last_ramp_up > TIME_RAMP_UP_FAILED && (int)requestedRampPos >= pRembContext->failed_highest_ramp_pos) {
+			if(pRembContext->failed_highest_ramp_pos >= 0 && db_time_since_last_ramp_up > TIME_RAMP_UP_FAILED && (int)currentRampPos >= pRembContext->failed_highest_ramp_pos) {
 				/* Ramp up succeeded -> cleanup failing information */
 				pRembContext->failed_highest_ramp_pos = -1;
 				pRembContext->failed_counter = 0;
@@ -154,7 +169,7 @@ void janus_vp8_remb_simulcast_based_subscriber_simulcast_switching(janus_vp8_rem
 			char szRequested[10] = {};
 			janus_vp8_remb_simulcast_get_simulcast_current_debug(szCurrent, 10, pSim);
 			janus_vp8_remb_simulcast_get_simulcast_requested_debug(szRequested, 10, pSim);
-			JANUS_LOG(LOG_INFO, "REMB:%d (%.2f/%.2f) rmp:%d (cur:%s req:%s) cur:%d nxt:%d dir:%d t_r_up:%.1fs\n", bitrate, dbBitrateChange, pRembContext->last_bitrate_change, requestedRampPos, szCurrent, szRequested, current_bitrate, higher_bitrate, pRembContext->substream_switch_layer_counter, db_time_since_last_ramp_up);
+			JANUS_LOG(LOG_INFO, "C-REMB:%d (%.2f/%.2f) rmp:%d (cur:%s req:%s) cur:%d nxt:%d dir:%d t_r_up:%.1fs\n", bitrate, dbBitrateChange, pRembContext->last_bitrate_change, currentRampPos, szCurrent, szRequested, current_bitrate, higher_bitrate, pRembContext->substream_switch_layer_counter, db_time_since_last_ramp_up);
 		}
 
 		if(pRembContext->substream_switch_layer_counter <= -20 || pRembContext->substream_switch_layer_counter >= 20) {
@@ -221,7 +236,7 @@ void janus_vp8_remb_simulcast_based_subscriber_simulcast_switching(janus_vp8_rem
  */
 double janus_vp8_remb_simulcast_calculate_bitrate_change(janus_vp8_remb_subscriber *pSubscriber, uint32_t bitrate) {
 	double change = 0;
-	if(pSubscriber->last_bitrate && bitrate)
+	if(pSubscriber->last_bitrate > 0 && bitrate)
 		change = ((double)bitrate * 100 / (double)pSubscriber->last_bitrate) - 100;
 	return change;
 }
@@ -250,7 +265,8 @@ void janus_vp8_remb_simulcast_update_last_bitrate_change(janus_rtp_simulcasting_
  */
 uint32_t janus_vp8_remb_simulcast_get_client_requested_ramp_position(janus_rtp_simulcasting_context *pSim) {
 	uint32_t rampPos = 0;
-	switch(pSim->substream_target) {
+	int substream = (pSim->substream_target_temp == -1) ? pSim->substream_target : pSim->substream_target_temp;
+	switch(substream) {
 		case 1:
 			rampPos = 2;
 			break;
@@ -273,8 +289,7 @@ uint32_t janus_vp8_remb_simulcast_get_client_requested_ramp_position(janus_rtp_s
  */
 uint32_t janus_vp8_remb_simulcast_get_current_ramp_position(janus_rtp_simulcasting_context *pSim) {
  	uint32_t rampPos = 0;
-	int substream = (pSim->substream_target_temp == -1) ? pSim->substream_target : pSim->substream_target_temp;
-	switch(substream) {
+	switch(pSim->substream) {
 		case 1:
 			rampPos = 2;
 			break;
@@ -331,7 +346,7 @@ uint32_t janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(janus_rtp_simulc
 	// 1. failing we require 5% more
 	// 2. failing we require 10% more ...
 	if(pRembContext->failed_highest_ramp_pos != -1 && pRembContext->failed_highest_ramp_pos == (int)rampPos) {
-		next *= 1 + pRembContext->failed_counter * 0.05;
+		next *= 1 + pRembContext->failed_counter * REQUIRED_BITRATE_INCREASE_PER_FAIL;
 	}
 
 	return next;
@@ -360,8 +375,8 @@ void janus_vp8_remb_simulcast_get_neighbour_ramp_positions(janus_rtp_simulcastin
 			/* 1,3,5 are the layers where we switch to 30fps, */
 			if (pSim->templayer_target == 0 || pSim->templayer_target == 1) {
 				/* if the client is requesting a lower temporal (7fps, 15fps)
-				 * we cannot use it and need to switch directly to the next substream */
-				nextLower++;
+				 * we cannot use it and need to switch directly to the next lower */
+				nextLower--;
 			}
 		}
 

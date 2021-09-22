@@ -1692,7 +1692,8 @@ typedef struct janus_videoroom_subscriber {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
 	guint64 room_id;		/* Unique room ID */
-	guint32 last_bitrate; 		/* The last received REMB bitrate value */
+	guint32 last_bitrate; 	/* The last received REMB bitrate value */
+	gboolean last_bitrate_valid;/* stores wether we have already received a valid bitrate from remb or not yet, the first valid remb value sets this to true even if the value then drops to 0 afterwards */
 	gchar *room_id_str;		/* Unique room ID (when using strings) */
 	janus_videoroom_publisher *feed;	/* Participant this subscriber is subscribed to */
 	gboolean close_pc;		/* Whether we should automatically close the PeerConnection when the publisher goes away */
@@ -5546,13 +5547,14 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 		}
 
 		uint32_t bitrate = janus_rtcp_get_remb(buf, len);
-		if(bitrate > 0) {
+		if(bitrate > 0 && s->feed) {
 			/* VP8 Simulcasting implementation is loosen from the videoroom, so we need to hand over certain properties*/
 			/* Details for the subscriber peerConnection */
 			janus_vp8_remb_subscriber subscriber;
 			memset(&subscriber, 0x00, sizeof(subscriber));
 			subscriber.pFeedMutex = &s->session->mutex;
 			subscriber.last_bitrate = s->last_bitrate;
+			subscriber.last_bitrate_valid = s->last_bitrate_valid;
 			subscriber.pSimContext = &s->sim_context;
 
 			/* Details for the publisher peerConnection
@@ -5569,6 +5571,9 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 
 			/* Call the implementation, everything is handled inside */
 			janus_vp8_remb_simulcast_based_subscriber_simulcast_switching(&subscriber, bitrate);
+
+			/*! We did receive a valid bitrate so we can in the future use this value for calculations */
+			s->last_bitrate_valid = TRUE;
 		}
 		s->last_bitrate = bitrate;
 
@@ -6555,6 +6560,7 @@ static void *janus_videoroom_handler(void *data) {
 					subscriber->room_id = videoroom->room_id;
 					subscriber->room_id_str = videoroom->room_id_str ? g_strdup(videoroom->room_id_str) : NULL;
 					subscriber->room = videoroom;
+					subscriber->last_bitrate = -1;
 					videoroom = NULL;
 					subscriber->feed = publisher;
 					subscriber->e2ee = publisher->e2ee;
