@@ -4,7 +4,7 @@
 
 /* This is a helper object that is used to pass publisher related data to the methods of the vp8_remb_simulcast implementation */
 typedef struct janus_vp8_remb_publisher {
-	/* Unique ID of the publisher (when using strings) */
+	/* Unique ID of the publisher */
 	gchar *user_id_str;
 	/* Display name (just for fun) */
 	gchar *display;
@@ -19,6 +19,8 @@ typedef struct janus_vp8_remb_publisher {
 
 /* This is a helper object that is used to pass subscriber related data to the methods of the vp8_remb_simulcast implementation */
 typedef struct janus_vp8_remb_subscriber {
+	/*! Opaque pointer to the Janus core-level handle */
+	void *gateway_handle;
 	/* The last received remb value */
 	guint32 last_bitrate;
 	/* stores wether we have already received a valid bitrate from remb or not yet, the first valid remb value sets this to true even if the value then drops to 0 afterwards */

@@ -5552,6 +5552,7 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 			/* Details for the subscriber peerConnection */
 			janus_vp8_remb_subscriber subscriber;
 			memset(&subscriber, 0x00, sizeof(subscriber));
+			subscriber.gateway_handle = s->session->handle->gateway_handle;
 			subscriber.pFeedMutex = &s->session->mutex;
 			subscriber.last_bitrate = s->last_bitrate;
 			subscriber.last_bitrate_valid = s->last_bitrate_valid;
