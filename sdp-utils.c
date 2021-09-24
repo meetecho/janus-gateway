@@ -606,6 +606,8 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 		imported = NULL;
 	} else {
 		/* Reverse lists for efficiency */
+		if(mline && mline->attributes)
+			mline->attributes = g_list_reverse(mline->attributes);
 		if(imported->attributes)
 			imported->attributes = g_list_reverse(imported->attributes);
 		if(imported->m_lines)
