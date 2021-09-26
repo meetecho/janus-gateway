@@ -1280,7 +1280,13 @@ static struct janus_json_parameter create_parameters[] = {
 	{"lock_record", JANUS_JSON_BOOL, 0},
 	{"permanent", JANUS_JSON_BOOL, 0},
 	{"notify_joining", JANUS_JSON_BOOL, 0},
-	{"require_e2ee", JANUS_JSON_BOOL, 0}
+	{"require_e2ee", JANUS_JSON_BOOL, 0},
+	{"allowed", JSON_ARRAY, 0},
+	{"allowed_subscribers", JSON_ARRAY, 0},
+	{"allowed_publishers", JSON_ARRAY, 0},
+	{"subscribers", JSON_INTEGER, 0},
+	{"check_allowed", JANUS_JSON_BOOL, 0},
+	{"check_allowed_to_subscribe", JANUS_JSON_BOOL, 0},
 };
 static struct janus_json_parameter edit_parameters[] = {
 	{"secret", JSON_STRING, 0},
@@ -1292,6 +1298,7 @@ static struct janus_json_parameter edit_parameters[] = {
 	{"new_bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"new_fir_freq", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"new_publishers", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"new_subscribers", JSON_INTEGER, 0},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter room_parameters[] = {
@@ -1336,7 +1343,9 @@ static struct janus_json_parameter destroy_parameters[] = {
 static struct janus_json_parameter allowed_parameters[] = {
 	{"secret", JSON_STRING, 0},
 	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"allowed", JSON_ARRAY, 0}
+	{"allowed", JSON_ARRAY, 0},
+	{"allowed_subscribers", JSON_ARRAY, 0},
+	{"allowed_publishers", JSON_ARRAY, 0}
 };
 static struct janus_json_parameter kick_parameters[] = {
 	{"secret", JSON_STRING, 0}
@@ -1505,11 +1514,14 @@ typedef struct janus_videoroom {
 	GHashTable *participants;	/* Map of potential publishers (we get subscribers from them) */
 	GHashTable *private_ids;	/* Map of existing private IDs */
 	volatile gint destroyed;	/* Whether this room has been destroyed */
-	gboolean check_allowed;		/* Whether to check tokens when participants join (see below) */
-	GHashTable *allowed;		/* Map of participants (as tokens) allowed to join */
 	gboolean notify_joining;	/* Whether an event is sent to notify all participants if a new participant joins the room */
 	janus_mutex mutex;			/* Mutex to lock this room instance */
 	janus_refcount ref;			/* Reference counter for this room */
+	gboolean permanent;         /* Whether this room is permanent or not */
+	int max_subscribers;        /* Maximum number of publishers marked as subscriber_only */
+	gboolean check_allowed;		/* Whether to check tokens when participants join (see below) */
+	gboolean check_allowed_to_subscribe; /* Wether to check token when a subscriber try to join */
+	GHashTable *allowed;		/* Map of participants (as tokens) allowed to join */
 } janus_videoroom;
 static GHashTable *rooms;
 static janus_mutex rooms_mutex = JANUS_MUTEX_INITIALIZER;
@@ -1674,6 +1686,7 @@ typedef struct janus_videoroom_publisher {
 	gboolean e2ee;		/* If media from this publisher is end-to-end encrypted */
 	volatile gint destroyed;
 	janus_refcount ref;
+	char *token;    /* The token used by this publisher to join if any */
 } janus_videoroom_publisher;
 static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publisher *p,
 	const gchar *host, int port, int rtcp_port, int pt, uint32_t ssrc,
@@ -1705,6 +1718,7 @@ typedef struct janus_videoroom_subscriber {
 	gboolean e2ee;		/* If media for this subscriber is end-to-end encrypted */
 	volatile gint destroyed;
 	janus_refcount ref;
+	char *token;        /* The token this publisher used to subscribe if any */
 } janus_videoroom_subscriber;
 
 typedef struct janus_videoroom_rtp_relay_packet {
@@ -1738,6 +1752,7 @@ static void janus_videoroom_subscriber_free(const janus_refcount *s_ref) {
 	janus_videoroom_subscriber *s = janus_refcount_containerof(s_ref, janus_videoroom_subscriber, ref);
 	/* This subscriber can be destroyed, free all the resources */
 	g_free(s->room_id_str);
+	g_free(s->token);
 	janus_sdp_destroy(s->sdp);
 	g_free(s);
 }
@@ -1787,6 +1802,7 @@ static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 	janus_videoroom_publisher *p = janus_refcount_containerof(p_ref, janus_videoroom_publisher, ref);
 	g_free(p->room_id_str);
 	g_free(p->user_id_str);
+	g_free(p->token);
 	g_free(p->display);
 	g_free(p->sdp);
 	g_free(p->vfmtp);
@@ -1923,6 +1939,147 @@ static void janus_videoroom_reqpli(janus_videoroom_publisher *publisher, const c
 	publisher->fir_latest = janus_get_monotonic_time();
 }
 
+/* ACL helpers */
+
+/* ACL permission flags */
+const unsigned int JANUS_VIDEOROOM_ACL_PERMISSION_NONE      = 0;
+const unsigned int JANUS_VIDEOROOM_ACL_PERMISSION_PUBLISH   = 1;
+const unsigned int JANUS_VIDEOROOM_ACL_PERMISSION_SUBSCRIBE = 2;
+/* For brievty sakes. */
+const unsigned int JANUS_VIDEOROOM_ACL_PERMISSION_ALL = ~JANUS_VIDEOROOM_ACL_PERMISSION_NONE;
+
+/* Add or remove tokens permissions for each token in acl_array from acl_list */
+static void janus_videoroom_update_acl_list_from_json_array(GHashTable *acl_list, json_t *acl_array, gboolean add, const unsigned int permissions){
+	size_t i = 0;
+	for(i = 0; i < json_array_size(acl_array); i++) {
+		const char *token = json_string_value(json_array_get(acl_array, i));
+		if(permissions == JANUS_VIDEOROOM_ACL_PERMISSION_NONE){
+			g_hash_table_remove(acl_list, token);
+		} else if(add) {
+			if(!g_hash_table_lookup_extended(acl_list, token, NULL, NULL)){
+				g_hash_table_insert(acl_list, g_strdup(token), GUINT_TO_POINTER(permissions));
+			} else {
+				const unsigned int new_permissions = permissions | GPOINTER_TO_UINT(g_hash_table_lookup(acl_list, token));
+				g_hash_table_replace(acl_list, g_strdup(token), GUINT_TO_POINTER(new_permissions));
+			}
+		} else if(g_hash_table_lookup_extended(acl_list, g_strdup(token), NULL, NULL)){
+			const unsigned int new_permissions = (~permissions) & GPOINTER_TO_UINT(g_hash_table_lookup(acl_list, token));
+			
+			if(new_permissions == JANUS_VIDEOROOM_ACL_PERMISSION_NONE){
+				g_hash_table_remove(acl_list, token);
+			} else {
+				g_hash_table_replace(acl_list, g_strdup(token), GUINT_TO_POINTER(new_permissions));
+			}
+		}
+	}
+}
+
+static gboolean janus_videoroom_acl_check_json_array(janus_videoroom *videoroom, json_t *acl_array){
+	gboolean ok = TRUE;
+	if(json_array_size(acl_array) > 0) {
+		size_t i = 0;
+		for(i=0; i<json_array_size(acl_array); i++) {
+			json_t *a = json_array_get(acl_array, i);
+			if(!a || !json_is_string(a)) {
+				ok = FALSE;
+				break;
+			}
+		}
+	}
+
+	if(!ok) {
+		if(videoroom != NULL){
+			janus_mutex_unlock(&videoroom->mutex);
+			janus_refcount_decrease(&videoroom->ref);
+		}
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+/* update an acl list from a json_t array. */
+static gboolean janus_videoroom_acl_update(janus_videoroom *videoroom, GHashTable *acl_list, json_t *acl_array, gboolean add, const unsigned int permissions){
+	if(!janus_videoroom_acl_check_json_array(videoroom, acl_array)) 
+		return FALSE;
+
+	janus_videoroom_update_acl_list_from_json_array(acl_list, acl_array, add, permissions);
+	return TRUE;
+}
+
+/* Add an array of videoroom tokens matching permissions into janus config */
+static void janus_videoroom_acl_set_config(janus_config *config, janus_config_container *c, janus_videoroom *videoroom, const char *name, const unsigned int permissions, gboolean strict){
+	janus_config_array *acl_janus_config_array =  janus_config_array_create(name);
+	janus_config_add(config, c, acl_janus_config_array);
+	GHashTableIter iter;
+	gpointer key;
+	g_hash_table_iter_init(&iter, videoroom->allowed);
+	int nb = 0;
+	while(g_hash_table_iter_next(&iter, &key, NULL)) {
+		const char *token = (char *)key;
+		const unsigned int current_permissions = GPOINTER_TO_UINT(g_hash_table_lookup(videoroom->allowed, token));
+		if((!strict && current_permissions & permissions) || (strict && current_permissions == permissions)){
+			janus_config_add(config, acl_janus_config_array, janus_config_item_create(NULL, g_strdup(token)));
+			nb++;
+		}
+	}
+	if(nb == 0) janus_config_remove(config, c, name);
+}
+
+/* Converts an acl_list hashtable to a json_array containing all tokens that match the permissions_filter */
+static json_t *janus_videoroom_acl_list_to_json_array(GHashTable *acl_list, const unsigned int permissions_filter, gboolean strict){
+	json_t *list = json_array();
+
+	if(g_hash_table_size(acl_list) > 0) {
+		GHashTableIter iter;
+		gpointer key;
+		gpointer value;
+		g_hash_table_iter_init(&iter, acl_list);
+		while(g_hash_table_iter_next(&iter, &key, &value)) {
+			char *token = key;
+			const unsigned int permissions = GPOINTER_TO_UINT(value);
+
+			if((!strict && permissions & permissions_filter) || (strict && permissions_filter == permissions))
+				json_array_append_new(list, json_string(token));
+		}
+	}
+
+	return list;
+}
+
+/* Add a janus_config_array that contains ACL tokens to an acl_list hashtable */
+static void janus_videoroom_acl_janus_conf_array_to_acl_list(janus_config *config, GHashTable *acl_list, janus_config_array *acl_array, const unsigned int permissions){
+	if(acl_array != NULL){
+		GList *tokens = janus_config_get_items(config, acl_array);
+		GList *elem;
+
+		if(tokens != NULL){
+			for(elem = tokens; elem; elem = elem->next){
+				janus_config_item *config_item = (janus_config_item *)elem->data;
+				const gchar *token = config_item->value;
+
+				if(g_hash_table_lookup_extended(acl_list, token, NULL, NULL)){
+					const unsigned int new_permissions = permissions | GPOINTER_TO_UINT(g_hash_table_lookup(acl_list, token));
+					g_hash_table_replace(acl_list, g_strdup(token), GUINT_TO_POINTER(new_permissions));
+				} else {
+					g_hash_table_insert(acl_list, g_strdup(token), GUINT_TO_POINTER(permissions));
+				}
+			}
+		}
+	}
+}
+
+/* Return an ACL permission flag associated to a token */
+static unsigned int janus_videoroom_acl_get_token_permissions(janus_videoroom *videoroom, const char *token){
+	int res = JANUS_VIDEOROOM_ACL_PERMISSION_NONE;
+
+	if(token != NULL && g_hash_table_lookup_extended(videoroom->allowed, token, NULL, NULL)){
+		return GPOINTER_TO_UINT(g_hash_table_lookup(videoroom->allowed, token));
+	}
+
+	return res;
+}
+
 /* Error codes */
 #define JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR		499
 #define JANUS_VIDEOROOM_ERROR_NO_MESSAGE		421
@@ -1942,6 +2099,7 @@ static void janus_videoroom_reqpli(janus_videoroom_publisher *publisher, const c
 #define JANUS_VIDEOROOM_ERROR_NOT_PUBLISHED		435
 #define JANUS_VIDEOROOM_ERROR_ID_EXISTS			436
 #define JANUS_VIDEOROOM_ERROR_INVALID_SDP		437
+#define JANUS_VIDEOROOM_ERROR_SUBSCRIBERS_FULL  438
 
 
 static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publisher *p,
@@ -2267,8 +2425,18 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *record = janus_config_get(config, cat, janus_config_type_item, "record");
 			janus_config_item *rec_dir = janus_config_get(config, cat, janus_config_type_item, "rec_dir");
 			janus_config_item *lock_record = janus_config_get(config, cat, janus_config_type_item, "lock_record");
+			
+			/*Getting ACL configs too*/
+			janus_config_item *check_allowed = janus_config_get(config, cat, janus_config_type_item, "check_allowed");
+			janus_config_item *check_allowed_to_subscribe = janus_config_get(config, cat, janus_config_type_item, "check_allowed_to_subscribe");
+			janus_config_item *max_subscribers_only = janus_config_get(config, cat, janus_config_type_item, "subscribers");
+			janus_config_array *allowed = janus_config_get(config, cat, janus_config_type_array, "allowed");
+			janus_config_array *allowed_publishers = janus_config_get(config, cat, janus_config_type_array, "allowed_publishers");
+			janus_config_array *allowed_subscribers = janus_config_get(config, cat, janus_config_type_array, "allowed_subscribers");
+
 			/* Create the video room */
 			janus_videoroom *videoroom = g_malloc0(sizeof(janus_videoroom));
+			videoroom->permanent = TRUE; /* Since we load it from config file, it's permanent. */
 			const char *room_num = cat->name;
 			if(strstr(room_num, "room-") == room_num)
 				room_num += 5;
@@ -2470,8 +2638,31 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->participants = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
 				(GDestroyNotify)g_free, (GDestroyNotify)janus_videoroom_publisher_dereference);
 			videoroom->private_ids = g_hash_table_new(NULL, NULL);
-			videoroom->check_allowed = FALSE;	/* Static rooms can't have an "allowed" list yet, no hooks to the configuration file */
+
+			/* We load all ACL related configs */
+
+			videoroom->max_subscribers = -1;	/* No limit by default */
+			if(max_subscribers_only != NULL && max_subscribers_only->value != NULL)
+				videoroom->max_subscribers = atol(max_subscribers_only->value);
+			if(videoroom->max_subscribers < -1)
+				videoroom->max_subscribers = -1;
+
+			/* If not excplicitly set to true, NO ACL until an explicit allowed enable request */
+			videoroom->check_allowed = FALSE;
+			if(check_allowed != NULL && check_allowed->value != NULL)
+				videoroom->check_allowed = janus_is_true(check_allowed->value);
+
+			/* If not explicitly set to true in room config, 
+			   We do not check for ACL on join ptype=subscriber until an explicit allowed enable request */
+			videoroom->check_allowed_to_subscribe = FALSE;
+			if(check_allowed_to_subscribe != NULL && check_allowed_to_subscribe->value != NULL)
+				videoroom->check_allowed_to_subscribe = janus_is_true(check_allowed_to_subscribe->value);
+			
 			videoroom->allowed = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
+			janus_videoroom_acl_janus_conf_array_to_acl_list(config, videoroom->allowed, allowed, JANUS_VIDEOROOM_ACL_PERMISSION_ALL);
+			janus_videoroom_acl_janus_conf_array_to_acl_list(config, videoroom->allowed, allowed_publishers, JANUS_VIDEOROOM_ACL_PERMISSION_PUBLISH);
+			janus_videoroom_acl_janus_conf_array_to_acl_list(config, videoroom->allowed, allowed_subscribers, JANUS_VIDEOROOM_ACL_PERMISSION_SUBSCRIBE);
+			
 			janus_mutex_lock(&rooms_mutex);
 			g_hash_table_insert(rooms,
 				string_ids ? (gpointer)g_strdup(videoroom->room_id_str) : (gpointer)janus_uint64_dup(videoroom->room_id),
@@ -2934,6 +3125,106 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 	return info;
 }
 
+static gboolean janus_videoroom_write_videoroom_config(janus_videoroom *videoroom){
+	/* FIXME: We should check if anything fails... */
+	janus_mutex_lock(&config_mutex);
+	char cat[BUFSIZ], value[BUFSIZ];
+	/* The room ID is the category (prefixed by "room-") */
+	g_snprintf(cat, BUFSIZ, "room-%s", videoroom->room_id_str);
+	JANUS_LOG(
+		LOG_VERB,
+		"%s room %s permanently in config file\n",
+		!janus_config_remove(config, NULL, cat) ? "Modifying" : "Saving", 
+		videoroom->room_id_str
+	);
+	janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
+	/* Now for the values */
+	janus_config_add(config, c, janus_config_item_create("description", videoroom->room_name));
+	if(videoroom->is_private)
+		janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
+	if(videoroom->require_pvtid)
+		janus_config_add(config, c, janus_config_item_create("require_pvtid", "yes"));
+	if(videoroom->require_e2ee)
+		janus_config_add(config, c, janus_config_item_create("require_e2ee", "yes"));
+	g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->bitrate);
+	janus_config_add(config, c, janus_config_item_create("bitrate", value));
+	if(videoroom->bitrate_cap)
+		janus_config_add(config, c, janus_config_item_create("bitrate_cap", "yes"));
+	g_snprintf(value, BUFSIZ, "%d", videoroom->max_publishers);
+	janus_config_add(config, c, janus_config_item_create("publishers", value));
+	if(videoroom->fir_freq) {
+		g_snprintf(value, BUFSIZ, "%"SCNu16, videoroom->fir_freq);
+		janus_config_add(config, c, janus_config_item_create("fir_freq", value));
+	}
+	char video_codecs[100];
+	char audio_codecs[100];
+	janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, sizeof(audio_codecs), ",");
+	
+	//We add ACL related config for persistence too
+	if(videoroom->max_subscribers >= 0){
+		g_snprintf(value, BUFSIZ, "%d", videoroom->max_subscribers);
+		janus_config_add(config, c, janus_config_item_create("subscribers", value));
+	}
+
+	if(videoroom->check_allowed)
+		janus_config_add(config, c, janus_config_item_create("check_allowed", "yes"));
+	if(videoroom->check_allowed_to_subscribe)
+		janus_config_add(config, c, janus_config_item_create("check_allowed_to_subscribe", "yes"));
+
+	if(videoroom->allowed){
+		janus_videoroom_acl_set_config(config, c, videoroom, "allowed", JANUS_VIDEOROOM_ACL_PERMISSION_ALL, TRUE);
+		janus_videoroom_acl_set_config(config, c, videoroom, "allowed_publishers", JANUS_VIDEOROOM_ACL_PERMISSION_PUBLISH, TRUE);
+		janus_videoroom_acl_set_config(config, c, videoroom, "allowed_subscribers", JANUS_VIDEOROOM_ACL_PERMISSION_SUBSCRIBE, TRUE);
+	}
+
+	janus_config_add(config, c, janus_config_item_create("audiocodec", audio_codecs));
+	janus_config_add(config, c, janus_config_item_create("videocodec", video_codecs));
+	if(videoroom->vp9_profile)
+		janus_config_add(config, c, janus_config_item_create("vp9_profile", videoroom->vp9_profile));
+	if(videoroom->h264_profile)
+		janus_config_add(config, c, janus_config_item_create("h264_profile", videoroom->h264_profile));
+	if(videoroom->do_opusfec)
+		janus_config_add(config, c, janus_config_item_create("opus_fec", "yes"));
+	if(videoroom->do_svc)
+		janus_config_add(config, c, janus_config_item_create("video_svc", "yes"));
+	if(videoroom->room_secret)
+		janus_config_add(config, c, janus_config_item_create("secret", videoroom->room_secret));
+	if(videoroom->room_pin)
+		janus_config_add(config, c, janus_config_item_create("pin", videoroom->room_pin));
+	if(videoroom->audiolevel_ext) {
+		janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "yes"));
+		if(videoroom->audiolevel_event)
+			janus_config_add(config, c, janus_config_item_create("audiolevel_event", "yes"));
+		if(videoroom->audio_active_packets > 0) {
+			g_snprintf(value, BUFSIZ, "%d", videoroom->audio_active_packets);
+			janus_config_add(config, c, janus_config_item_create("audio_active_packets", value));
+		}
+		if(videoroom->audio_level_average > 0) {
+			g_snprintf(value, BUFSIZ, "%d", videoroom->audio_level_average);
+			janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
+		}
+	} else {
+		janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "no"));
+	}
+	janus_config_add(config, c, janus_config_item_create("videoorient_ext", videoroom->videoorient_ext ? "yes" : "no"));
+	janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", videoroom->playoutdelay_ext ? "yes" : "no"));
+	janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", videoroom->transport_wide_cc_ext ? "yes" : "no"));
+	if(videoroom->notify_joining)
+		janus_config_add(config, c, janus_config_item_create("notify_joining", "yes"));
+	if(videoroom->record)
+		janus_config_add(config, c, janus_config_item_create("record", "yes"));
+	if(videoroom->rec_dir)
+		janus_config_add(config, c, janus_config_item_create("rec_dir", videoroom->rec_dir));
+	if(videoroom->lock_record)
+		janus_config_add(config, c, janus_config_item_create("lock_record", "yes"));
+	
+	/* Save modified configuration */
+	gboolean save = janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE) >= 0;
+	janus_mutex_unlock(&config_mutex);
+
+	return save;
+}
+
 static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboolean check_join, janus_videoroom **videoroom, char *error_cause, int error_cause_size) {
 	/* rooms_mutex has to be locked */
 	int error_code = 0;
@@ -3044,7 +3335,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *bitrate_cap = json_object_get(root, "bitrate_cap");
 		json_t *fir_freq = json_object_get(root, "fir_freq");
 		json_t *publishers = json_object_get(root, "publishers");
+		json_t *subscribers = json_object_get(root, "subscribers");
 		json_t *allowed = json_object_get(root, "allowed");
+		json_t *allowed_publishers = json_object_get(root, "allowed_publishers");
+		json_t *allowed_subscribers = json_object_get(root, "allowed_subscribers");
+		json_t *check_allowed = json_object_get(root, "check_allowed");
+		json_t *check_allowed_to_subscribe = json_object_get(root, "check_allowed_to_subscribe");
 		json_t *audiocodec = json_object_get(root, "audiocodec");
 		if(audiocodec) {
 			const char *audiocodec_value = json_string_value(audiocodec);
@@ -3107,26 +3403,25 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *rec_dir = json_object_get(root, "rec_dir");
 		json_t *lock_record = json_object_get(root, "lock_record");
 		json_t *permanent = json_object_get(root, "permanent");
-		if(allowed) {
-			/* Make sure the "allowed" array only contains strings */
-			gboolean ok = TRUE;
-			if(json_array_size(allowed) > 0) {
-				size_t i = 0;
-				for(i=0; i<json_array_size(allowed); i++) {
-					json_t *a = json_array_get(allowed, i);
-					if(!a || !json_is_string(a)) {
-						ok = FALSE;
-						break;
-					}
-				}
-			}
-			if(!ok) {
-				JANUS_LOG(LOG_ERR, "Invalid element in the allowed array (not a string)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element in the allowed array (not a string)");
-				goto prepare_response;
-			}
+
+		if(allowed && !janus_videoroom_acl_check_json_array(NULL, allowed)){
+			JANUS_LOG(LOG_ERR, "Invalid element in the allowed array (not a string)\n");
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element in the allowed array (not a string)");
+			goto prepare_response;
 		}
+		if(allowed_publishers && !janus_videoroom_acl_check_json_array(NULL, allowed_publishers)){
+			JANUS_LOG(LOG_ERR, "Invalid element in the allowed_publishers array (not a string)\n");
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element in the allowed_publishers array (not a string)");
+			goto prepare_response;
+		}
+		if(allowed_subscribers && !janus_videoroom_acl_check_json_array(NULL, allowed_subscribers)){
+			JANUS_LOG(LOG_ERR, "Invalid element in the allowed_subscribers array (not a string)\n");
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element in the allowed_subscribers array (not a string)");
+			goto prepare_response;
+		}	
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
 		if(save && config == NULL) {
 			JANUS_LOG(LOG_ERR, "No configuration file, can't create permanent room\n");
@@ -3161,6 +3456,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		/* Create the room */
 		janus_videoroom *videoroom = g_malloc0(sizeof(janus_videoroom));
+		videoroom->permanent = save;
 		/* Generate a random ID */
 		gboolean room_id_allocated = FALSE;
 		if(!string_ids && room_id == 0) {
@@ -3344,19 +3640,22 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		videoroom->participants = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
 			(GDestroyNotify)g_free, (GDestroyNotify)janus_videoroom_publisher_dereference);
 		videoroom->private_ids = g_hash_table_new(NULL, NULL);
+
+		/* ACL */
+		videoroom->max_subscribers = -1;	/* By default, no limit for max_subscribers_only */
+		if(subscribers)
+			videoroom->max_subscribers = json_integer_value(subscribers);
+		if(videoroom->max_subscribers < -1)
+			videoroom->max_subscribers = -1;
+
+		videoroom->check_allowed = check_allowed ? json_is_true(check_allowed) : FALSE; 
+		videoroom->check_allowed_to_subscribe = check_allowed_to_subscribe ? json_is_true(check_allowed_to_subscribe) : FALSE;
+		
 		videoroom->allowed = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
-		if(allowed != NULL) {
-			/* Populate the "allowed" list as an ACL for people trying to join */
-			if(json_array_size(allowed) > 0) {
-				size_t i = 0;
-				for(i=0; i<json_array_size(allowed); i++) {
-					const char *token = json_string_value(json_array_get(allowed, i));
-					if(!g_hash_table_lookup(videoroom->allowed, token))
-						g_hash_table_insert(videoroom->allowed, g_strdup(token), GINT_TO_POINTER(TRUE));
-				}
-			}
-			videoroom->check_allowed = TRUE;
-		}
+		janus_videoroom_update_acl_list_from_json_array(videoroom->allowed, allowed, TRUE, JANUS_VIDEOROOM_ACL_PERMISSION_ALL);
+		janus_videoroom_update_acl_list_from_json_array(videoroom->allowed, allowed_publishers, TRUE, JANUS_VIDEOROOM_ACL_PERMISSION_PUBLISH);
+		janus_videoroom_update_acl_list_from_json_array(videoroom->allowed, allowed_subscribers, TRUE, JANUS_VIDEOROOM_ACL_PERMISSION_SUBSCRIBE);
+		
 		/* Compute a list of the supported codecs for the summary */
 		char audio_codecs[100], video_codecs[100];
 		janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, sizeof(audio_codecs), "|");
@@ -3373,81 +3672,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if(videoroom->require_e2ee) {
 			JANUS_LOG(LOG_VERB, "  -- All publishers MUST use end-to-end encryption\n");
 		}
-		if(save) {
-			/* This room is permanent: save to the configuration file too
-			 * FIXME: We should check if anything fails... */
-			JANUS_LOG(LOG_VERB, "Saving room %s permanently in config file\n", videoroom->room_id_str);
-			janus_mutex_lock(&config_mutex);
-			char cat[BUFSIZ], value[BUFSIZ];
-			/* The room ID is the category (prefixed by "room-") */
-			g_snprintf(cat, BUFSIZ, "room-%s", videoroom->room_id_str);
-			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
-			/* Now for the values */
-			janus_config_add(config, c, janus_config_item_create("description", videoroom->room_name));
-			if(videoroom->is_private)
-				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
-			if(videoroom->require_pvtid)
-				janus_config_add(config, c, janus_config_item_create("require_pvtid", "yes"));
-			if(videoroom->require_e2ee)
-				janus_config_add(config, c, janus_config_item_create("require_e2ee", "yes"));
-			g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->bitrate);
-			janus_config_add(config, c, janus_config_item_create("bitrate", value));
-			if(videoroom->bitrate_cap)
-				janus_config_add(config, c, janus_config_item_create("bitrate_cap", "yes"));
-			g_snprintf(value, BUFSIZ, "%d", videoroom->max_publishers);
-			janus_config_add(config, c, janus_config_item_create("publishers", value));
-			if(videoroom->fir_freq) {
-				g_snprintf(value, BUFSIZ, "%"SCNu16, videoroom->fir_freq);
-				janus_config_add(config, c, janus_config_item_create("fir_freq", value));
-			}
-			char video_codecs[100];
-			char audio_codecs[100];
-			janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, sizeof(audio_codecs), ",");
-			janus_config_add(config, c, janus_config_item_create("audiocodec", audio_codecs));
-			janus_config_add(config, c, janus_config_item_create("videocodec", video_codecs));
-			if(videoroom->vp9_profile)
-				janus_config_add(config, c, janus_config_item_create("vp9_profile", videoroom->vp9_profile));
-			if(videoroom->h264_profile)
-				janus_config_add(config, c, janus_config_item_create("h264_profile", videoroom->h264_profile));
-			if(videoroom->do_opusfec)
-				janus_config_add(config, c, janus_config_item_create("opus_fec", "yes"));
-			if(videoroom->do_svc)
-				janus_config_add(config, c, janus_config_item_create("video_svc", "yes"));
-			if(videoroom->room_secret)
-				janus_config_add(config, c, janus_config_item_create("secret", videoroom->room_secret));
-			if(videoroom->room_pin)
-				janus_config_add(config, c, janus_config_item_create("pin", videoroom->room_pin));
-			if(videoroom->audiolevel_ext) {
-				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "yes"));
-				if(videoroom->audiolevel_event)
-					janus_config_add(config, c, janus_config_item_create("audiolevel_event", "yes"));
-				if(videoroom->audio_active_packets > 0) {
-					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_active_packets);
-					janus_config_add(config, c, janus_config_item_create("audio_active_packets", value));
-				}
-				if(videoroom->audio_level_average > 0) {
-					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_level_average);
-					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
-				}
-			} else {
-				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "no"));
-			}
-			janus_config_add(config, c, janus_config_item_create("videoorient_ext", videoroom->videoorient_ext ? "yes" : "no"));
-			janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", videoroom->playoutdelay_ext ? "yes" : "no"));
-			janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", videoroom->transport_wide_cc_ext ? "yes" : "no"));
-			if(videoroom->notify_joining)
-				janus_config_add(config, c, janus_config_item_create("notify_joining", "yes"));
-			if(videoroom->record)
-				janus_config_add(config, c, janus_config_item_create("record", "yes"));
-			if(videoroom->rec_dir)
-				janus_config_add(config, c, janus_config_item_create("rec_dir", videoroom->rec_dir));
-			if(videoroom->lock_record)
-				janus_config_add(config, c, janus_config_item_create("lock_record", "yes"));
-			/* Save modified configuration */
-			if(janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE) < 0)
-				save = FALSE;	/* This will notify the user the room is not permanent */
-			janus_mutex_unlock(&config_mutex);
-		}
+		if(save) save = janus_videoroom_write_videoroom_config(videoroom);
 
 		g_hash_table_insert(rooms,
 			string_ids ? (gpointer)g_strdup(videoroom->room_id_str) : (gpointer)janus_uint64_dup(videoroom->room_id),
@@ -3503,6 +3728,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *bitrate = json_object_get(root, "new_bitrate");
 		json_t *fir_freq = json_object_get(root, "new_fir_freq");
 		json_t *publishers = json_object_get(root, "new_publishers");
+		json_t *subscribers = json_object_get(root, "new_subscribers");
 		json_t *lock_record = json_object_get(root, "new_lock_record");
 		json_t *permanent = json_object_get(root, "permanent");
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
@@ -3519,6 +3745,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_mutex_unlock(&rooms_mutex);
 			goto prepare_response;
 		}
+		videoroom->permanent = save;
 		/* Edit the room properties that were provided */
 		if(desc != NULL && strlen(json_string_value(desc)) > 0) {
 			char *old_description = videoroom->room_name;
@@ -3532,6 +3759,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			videoroom->require_pvtid = json_is_true(req_pvtid);
 		if(publishers)
 			videoroom->max_publishers = json_integer_value(publishers);
+		if(publishers)
+			videoroom->max_subscribers = json_integer_value(subscribers);
 		if(bitrate) {
 			videoroom->bitrate = json_integer_value(bitrate);
 			if(videoroom->bitrate > 0 && videoroom->bitrate < 64000)
@@ -3553,83 +3782,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		if(lock_record)
 			videoroom->lock_record = json_is_true(lock_record);
-		if(save) {
-			/* This room is permanent: save to the configuration file too
-			 * FIXME: We should check if anything fails... */
-			JANUS_LOG(LOG_VERB, "Modifying room %s permanently in config file\n", videoroom->room_id_str);
-			janus_mutex_lock(&config_mutex);
-			char cat[BUFSIZ], value[BUFSIZ];
-			/* The room ID is the category (prefixed by "room-") */
-			g_snprintf(cat, BUFSIZ, "room-%s", videoroom->room_id_str);
-			/* Remove the old category first */
-			janus_config_remove(config, NULL, cat);
-			/* Now write the room details again */
-			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
-			janus_config_add(config, c, janus_config_item_create("description", videoroom->room_name));
-			if(videoroom->is_private)
-				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
-			if(videoroom->require_pvtid)
-				janus_config_add(config, c, janus_config_item_create("require_pvtid", "yes"));
-			if(videoroom->require_e2ee)
-				janus_config_add(config, c, janus_config_item_create("require_e2ee", "yes"));
-			g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->bitrate);
-			janus_config_add(config, c, janus_config_item_create("bitrate", value));
-			if(videoroom->bitrate_cap)
-				janus_config_add(config, c, janus_config_item_create("bitrate_cap", "yes"));
-			g_snprintf(value, BUFSIZ, "%d", videoroom->max_publishers);
-			janus_config_add(config, c, janus_config_item_create("publishers", value));
-			if(videoroom->fir_freq) {
-				g_snprintf(value, BUFSIZ, "%"SCNu16, videoroom->fir_freq);
-				janus_config_add(config, c, janus_config_item_create("fir_freq", value));
-			}
-			char audio_codecs[100];
-			char video_codecs[100];
-			janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, sizeof(audio_codecs), ",");
-			janus_config_add(config, c, janus_config_item_create("audiocodec", audio_codecs));
-			janus_config_add(config, c, janus_config_item_create("videocodec", video_codecs));
-			if(videoroom->vp9_profile)
-				janus_config_add(config, c, janus_config_item_create("vp9_profile", videoroom->vp9_profile));
-			if(videoroom->h264_profile)
-				janus_config_add(config, c, janus_config_item_create("h264_profile", videoroom->h264_profile));
-			if(videoroom->do_opusfec)
-				janus_config_add(config, c, janus_config_item_create("opus_fec", "yes"));
-			if(videoroom->do_svc)
-				janus_config_add(config, c, janus_config_item_create("video_svc", "yes"));
-			if(videoroom->room_secret)
-				janus_config_add(config, c, janus_config_item_create("secret", videoroom->room_secret));
-			if(videoroom->room_pin)
-				janus_config_add(config, c, janus_config_item_create("pin", videoroom->room_pin));
-			if(videoroom->audiolevel_ext) {
-				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "yes"));
-				if(videoroom->audiolevel_event)
-					janus_config_add(config, c, janus_config_item_create("audiolevel_event", "yes"));
-				if(videoroom->audio_active_packets > 0) {
-					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_active_packets);
-					janus_config_add(config, c, janus_config_item_create("audio_active_packets", value));
-				}
-				if(videoroom->audio_level_average > 0) {
-					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_level_average);
-					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
-				}
-			} else {
-				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "no"));
-			}
-			janus_config_add(config, c, janus_config_item_create("videoorient_ext", videoroom->videoorient_ext ? "yes" : "no"));
-			janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", videoroom->playoutdelay_ext ? "yes" : "no"));
-			janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", videoroom->transport_wide_cc_ext ? "yes" : "no"));
-			if(videoroom->notify_joining)
-				janus_config_add(config, c, janus_config_item_create("notify_joining", "yes"));
-			if(videoroom->record)
-				janus_config_add(config, c, janus_config_item_create("record", "yes"));
-			if(videoroom->rec_dir)
-				janus_config_add(config, c, janus_config_item_create("rec_dir", videoroom->rec_dir));
-			if(videoroom->lock_record)
-				janus_config_add(config, c, janus_config_item_create("lock_record", "yes"));
-			/* Save modified configuration */
-			if(janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE) < 0)
-				save = FALSE;	/* This will notify the user the room changes are not permanent */
-			janus_mutex_unlock(&config_mutex);
-		}
+		if(save) save = janus_videoroom_write_videoroom_config(videoroom);
+
 		janus_mutex_unlock(&rooms_mutex);
 		/* Send info back */
 		response = json_object();
@@ -4336,8 +4490,11 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *action = json_object_get(root, "action");
 		json_t *room = json_object_get(root, "room");
 		json_t *allowed = json_object_get(root, "allowed");
+		json_t *allowed_subscribers = json_object_get(root, "allowed_subscribers");
+		json_t *allowed_publishers = json_object_get(root, "allowed_publishers");
 		const char *action_text = json_string_value(action);
 		if(strcasecmp(action_text, "enable") && strcasecmp(action_text, "disable") &&
+				strcasecmp(action_text, "enable_to_subscribe") && strcasecmp(action_text, "disable_to_subscribe") &&
 				strcasecmp(action_text, "add") && strcasecmp(action_text, "remove")) {
 			JANUS_LOG(LOG_ERR, "Unsupported action '%s' (allowed)\n", action_text);
 			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
@@ -4377,62 +4534,51 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		} else if(!strcasecmp(action_text, "disable")) {
 			JANUS_LOG(LOG_VERB, "Disabling the check on allowed authorization tokens for room %s (free entry)\n", room_id_str);
 			videoroom->check_allowed = FALSE;
+		} else if(!strcasecmp(action_text, "enable_to_subscribe")){
+			JANUS_LOG(LOG_VERB, "Enabling the check on allowed authorization tokens to subscribe for room %s\n", room_id_str);
+			videoroom->check_allowed_to_subscribe = TRUE;
+		} else if(!strcasecmp(action_text, "disable_to_subscribe")){
+			JANUS_LOG(LOG_VERB, "Disabling the check on allowed authorization tokens to subscribe for room %s\n", room_id_str);
+			videoroom->check_allowed_to_subscribe = FALSE;
 		} else {
 			gboolean add = !strcasecmp(action_text, "add");
-			if(allowed) {
-				/* Make sure the "allowed" array only contains strings */
-				gboolean ok = TRUE;
-				if(json_array_size(allowed) > 0) {
-					size_t i = 0;
-					for(i=0; i<json_array_size(allowed); i++) {
-						json_t *a = json_array_get(allowed, i);
-						if(!a || !json_is_string(a)) {
-							ok = FALSE;
-							break;
-						}
-					}
-				}
-				if(!ok) {
-					janus_mutex_unlock(&videoroom->mutex);
-					JANUS_LOG(LOG_ERR, "Invalid element in the allowed array (not a string)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element in the allowed array (not a string)");
-					janus_refcount_decrease(&videoroom->ref);
-					goto prepare_response;
-				}
-				size_t i = 0;
-				for(i=0; i<json_array_size(allowed); i++) {
-					const char *token = json_string_value(json_array_get(allowed, i));
-					if(add) {
-						if(!g_hash_table_lookup(videoroom->allowed, token))
-							g_hash_table_insert(videoroom->allowed, g_strdup(token), GINT_TO_POINTER(TRUE));
-					} else {
-						g_hash_table_remove(videoroom->allowed, token);
-					}
-				}
+			
+			if(allowed && !janus_videoroom_acl_update(videoroom, videoroom->allowed, allowed, add, JANUS_VIDEOROOM_ACL_PERMISSION_ALL)){
+				JANUS_LOG(LOG_ERR, "Invalid element in the allowed array (not a string)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element in the allowed array (not a string)");
+				goto prepare_response;
+			} 
+			if(allowed_publishers && !janus_videoroom_acl_update(videoroom, videoroom->allowed, allowed_publishers, add, JANUS_VIDEOROOM_ACL_PERMISSION_PUBLISH)){
+				JANUS_LOG(LOG_ERR, "Invalid element in the allowed_publishers array (not a string)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element in the allowed_publishers array (not a string)");
+				goto prepare_response;
+			}
+			if(allowed_subscribers && !janus_videoroom_acl_update(videoroom, videoroom->allowed, allowed_subscribers, add, JANUS_VIDEOROOM_ACL_PERMISSION_SUBSCRIBE)){
+				JANUS_LOG(LOG_ERR, "Invalid element in the allowed_subscribers array (not a string)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element in the allowed_subscribers array (not a string)");
+				goto prepare_response;
 			}
 		}
 		/* Prepare response */
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
 		json_object_set_new(response, "room", string_ids ? json_string(videoroom->room_id_str) : json_integer(videoroom->room_id));
-		json_t *list = json_array();
+		
 		if(strcasecmp(action_text, "disable")) {
-			if(g_hash_table_size(videoroom->allowed) > 0) {
-				GHashTableIter iter;
-				gpointer key;
-				g_hash_table_iter_init(&iter, videoroom->allowed);
-				while(g_hash_table_iter_next(&iter, &key, NULL)) {
-					char *token = key;
-					json_array_append_new(list, json_string(token));
-				}
-			}
-			json_object_set_new(response, "allowed", list);
+			json_object_set_new(response, "allowed", janus_videoroom_acl_list_to_json_array(videoroom->allowed, JANUS_VIDEOROOM_ACL_PERMISSION_ALL, TRUE));
+			json_object_set_new(response, "allowed_publishers", janus_videoroom_acl_list_to_json_array(videoroom->allowed, JANUS_VIDEOROOM_ACL_PERMISSION_PUBLISH, TRUE));
+			json_object_set_new(response, "allowed_subscribers", janus_videoroom_acl_list_to_json_array(videoroom->allowed, JANUS_VIDEOROOM_ACL_PERMISSION_SUBSCRIBE, TRUE));
 		}
+		/* If videoroom is permanent, we write changes to config file */
+		gboolean save = videoroom->permanent ? TRUE : FALSE;
+		if(save) save = janus_videoroom_write_videoroom_config(videoroom);
+
 		/* Done */
 		janus_mutex_unlock(&videoroom->mutex);
 		janus_refcount_decrease(&videoroom->ref);
-		JANUS_LOG(LOG_VERB, "VideoRoom room allowed list updated\n");
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "kick")) {
 		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing VideoRoom room\n");
@@ -6064,16 +6210,27 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
+				
 				/* A token might be required to join */
-				if(videoroom->check_allowed) {
-					json_t *token = json_object_get(root, "token");
-					const char *token_text = token ? json_string_value(token) : NULL;
-					if(token_text == NULL || g_hash_table_lookup(videoroom->allowed, token_text) == NULL) {
+				json_t *token = json_object_get(root, "token");
+				const char *token_text = token ? json_string_value(token) : NULL;
+				const int acl_permissions = janus_videoroom_acl_get_token_permissions(videoroom, token_text);
+				if(videoroom->check_allowed){
+					gboolean reject = FALSE;
+
+					if(acl_permissions == JANUS_VIDEOROOM_ACL_PERMISSION_NONE){
+						g_snprintf(error_cause, 512, "Unauthorized (not in ACL list)");
+						reject = TRUE;
+					}else if(!strcasecmp(request_text, "joinandconfigure") && !(acl_permissions & JANUS_VIDEOROOM_ACL_PERMISSION_PUBLISH)){
+						g_snprintf(error_cause, 512, "Unauthorized (can't configure : token has no publish permission)");
+						reject = TRUE;
+					}
+
+					if(reject){
 						janus_mutex_unlock(&videoroom->mutex);
 						janus_refcount_decrease(&videoroom->ref);
-						JANUS_LOG(LOG_ERR, "Unauthorized (not in the allowed list)\n");
+						JANUS_LOG(LOG_ERR, "%s\n", error_cause);
 						error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-						g_snprintf(error_cause, 512, "Unauthorized (not in the allowed list)");
 						goto error;
 					}
 				}
@@ -6192,6 +6349,7 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_rtp_forwarder_destroy);
 				publisher->srtp_contexts = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, (GDestroyNotify)janus_videoroom_srtp_context_free);
 				publisher->udp_sock = -1;
+				publisher->token = token_text != NULL ? g_strdup(token_text) : NULL;
 				/* Finally, generate a private ID: this is only needed in case the participant
 				 * wants to allow the plugin to know which subscriptions belong to them */
 				publisher->pvt_id = 0;
@@ -6411,6 +6569,7 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
+
 				janus_mutex_lock(&sessions_mutex);
 				session = janus_videoroom_lookup_session(msg->handle);
 				if(!session) {
@@ -6428,6 +6587,7 @@ static void *janus_videoroom_handler(void *data) {
 					janus_videoroom_message_free(msg);
 					continue;
 				}
+
 				json_t *feed = json_object_get(root, "feed");
 				guint64 feed_id = 0;
 				char feed_id_num[30], *feed_id_str = NULL;
@@ -6450,6 +6610,9 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *offer_data = json_object_get(root, "offer_data");
 				json_t *spatial = json_object_get(root, "spatial_layer");
 				json_t *sc_substream = json_object_get(root, "substream");
+				json_t *token = json_object_get(root, "token");
+				const char *token_text = token ? json_string_value(token) : NULL;
+
 				if(json_integer_value(spatial) < 0 || json_integer_value(spatial) > 2 ||
 						json_integer_value(sc_substream) < 0 || json_integer_value(sc_substream) > 2) {
 					JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");
@@ -6488,7 +6651,22 @@ static void *janus_videoroom_handler(void *data) {
 					/* Increase the refcount before unlocking so that nobody can remove and free the publisher in the meantime. */
 					janus_refcount_increase(&publisher->ref);
 					janus_refcount_increase(&publisher->session->ref);
-					/* First of all, let's check if this room requires valid private_id values */
+					/* First of all, we check if a token is required to subscribe to a feed */
+					if(videoroom->check_allowed_to_subscribe){
+						const int acl_permissions = janus_videoroom_acl_get_token_permissions(videoroom, token_text);
+						if(!(acl_permissions & JANUS_VIDEOROOM_ACL_PERMISSION_SUBSCRIBE)){
+							JANUS_LOG(LOG_ERR, "Unauthorized (permission denied to subscribe)\n");
+							error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+							g_snprintf(error_cause, 512, "Unauthorized (permission denied to subscribe)");
+							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
+							janus_mutex_unlock(&sessions_mutex);
+							janus_mutex_unlock(&videoroom->mutex);
+							janus_refcount_decrease(&videoroom->ref);
+							goto error;	
+						}
+					}
+					/* Then, let's check if this room requires valid private_id values */
 					if(videoroom->require_pvtid) {
 						/* It does, let's make sure this subscription complies */
 						owner = g_hash_table_lookup(videoroom->private_ids, GUINT_TO_POINTER(pvt_id));
@@ -6506,12 +6684,14 @@ static void *janus_videoroom_handler(void *data) {
 						janus_refcount_increase(&owner->ref);
 						janus_refcount_increase(&owner->session->ref);
 					}
+
 					janus_mutex_unlock(&videoroom->mutex);
 					janus_videoroom_subscriber *subscriber = g_malloc0(sizeof(janus_videoroom_subscriber));
 					subscriber->session = session;
 					subscriber->room_id = videoroom->room_id;
 					subscriber->room_id_str = videoroom->room_id_str ? g_strdup(videoroom->room_id_str) : NULL;
 					subscriber->room = videoroom;
+					subscriber->token = token_text != NULL ? g_strdup(token_text) : NULL;
 					videoroom = NULL;
 					subscriber->feed = publisher;
 					subscriber->e2ee = publisher->e2ee;
@@ -6683,6 +6863,19 @@ static void *janus_videoroom_handler(void *data) {
 					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 					g_snprintf(error_cause, 512, "Unauthorized, you have been kicked");
 					goto error;
+				}
+				if(participant->room->check_allowed){
+					const int acl_permissions = janus_videoroom_acl_get_token_permissions(participant->room, participant->token);
+					if(!(acl_permissions & JANUS_VIDEOROOM_ACL_PERMISSION_PUBLISH)){
+						janus_refcount_decrease(&participant->ref);
+						JANUS_LOG(LOG_ERR, "Unauthorized, permission denied to publish\n");
+						error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+						g_snprintf(error_cause, 512, "Unauthorized, permission denied to pulish");
+						/* Since this peer connection have been initiated, we terminate it. */
+						janus_videoroom_hangup_media(session->handle);
+						gateway->close_pc(session->handle);
+						goto error;
+					}
 				}
 				/* Configure (or publish a new feed) audio/video/bitrate for this publisher */
 				JANUS_VALIDATE_JSON_OBJECT(root, publish_parameters,
@@ -6981,6 +7174,17 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
+				/* If ACL enabled, we must check if subscriber have permission to publish any feed */
+				if((audio || video) && subscriber->room->check_allowed){
+					const unsigned int permissions = janus_videoroom_acl_get_token_permissions(subscriber->room, subscriber->token);
+					if(!(permissions & JANUS_VIDEOROOM_ACL_PERMISSION_PUBLISH)){
+						JANUS_LOG(LOG_ERR, "Unauthorized, permission denied to publish\n");
+						error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+						g_snprintf(error_cause, 512, "Unauthorized, permission denied to publish");
+						janus_refcount_decrease(&subscriber->ref);
+						goto error;
+					}
+				}
 				json_t *data = json_object_get(root, "data");
 				json_t *restart = json_object_get(root, "restart");
 				json_t *update = json_object_get(root, "update");
@@ -7463,6 +7667,7 @@ static void *janus_videoroom_handler(void *data) {
 				participant = janus_videoroom_session_get_publisher(session);
 				janus_videoroom *videoroom = participant->room;
 				int count = 0;
+				int count_subscribers = 0;
 				GHashTableIter iter;
 				gpointer value;
 				if(!videoroom) {
@@ -7477,19 +7682,37 @@ static void *janus_videoroom_handler(void *data) {
 				g_hash_table_iter_init(&iter, videoroom->participants);
 				while (!g_atomic_int_get(&videoroom->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
 					janus_videoroom_publisher *p = value;
-					if(p != participant && p->sdp)
-						count++;
+					const int acl_permissions = janus_videoroom_acl_get_token_permissions(videoroom, p->token);
+					if(p != participant){
+						if(p->sdp) count++; /* if already published, no question to ask ourslves : it has publisher permission */
+						else if(videoroom->check_allowed){ /* The subscriber count is only relevant when ACL is enabled */
+							if(acl_permissions & JANUS_VIDEOROOM_ACL_PERMISSION_PUBLISH){
+								count++;
+							}else if(acl_permissions & JANUS_VIDEOROOM_ACL_PERMISSION_SUBSCRIBE){
+								count_subscribers++;
+							}
+						} 
+					}
 				}
 				janus_refcount_increase(&videoroom->ref);
 				janus_mutex_unlock(&videoroom->mutex);
-				if(count == videoroom->max_publishers) {
+				if(count == videoroom->max_publishers || count == (videoroom->max_subscribers)) {
+					gboolean is_publisher;
+
+					if(count == videoroom->max_publishers){
+						is_publisher = TRUE;
+						error_code = JANUS_VIDEOROOM_ERROR_PUBLISHERS_FULL;
+					}else{
+						is_publisher = FALSE;
+						error_code = JANUS_VIDEOROOM_ERROR_SUBSCRIBERS_FULL;
+					}
+
 					janus_refcount_decrease(&videoroom->ref);
 					participant->audio_active = FALSE;
 					participant->video_active = FALSE;
 					participant->data_active = FALSE;
-					JANUS_LOG(LOG_ERR, "Maximum number of publishers (%d) already reached\n", videoroom->max_publishers);
-					error_code = JANUS_VIDEOROOM_ERROR_PUBLISHERS_FULL;
-					g_snprintf(error_cause, 512, "Maximum number of publishers (%d) already reached", videoroom->max_publishers);
+					JANUS_LOG(LOG_ERR, "Maximum number of %s (%d) already reached\n", is_publisher ? "publisher" : "subscriber", videoroom->max_publishers);
+					g_snprintf(error_cause, 512, "Maximum number of %s (%d) already reached", is_publisher ? "publisher" : "subscriber", videoroom->max_publishers);
 					goto error;
 				}
 				if(videoroom->require_e2ee && !e2ee && !participant->e2ee) {
