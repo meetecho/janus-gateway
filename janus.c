@@ -25,6 +25,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <poll.h>
+
+#include <openssl/rand.h>
 #ifdef HAVE_TURNRESTAPI
 #include <curl/curl.h>
 #endif
@@ -96,6 +98,7 @@ static struct janus_json_parameter incoming_request_parameters[] = {
 static struct janus_json_parameter attach_parameters[] = {
 	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"opaque_id", JSON_STRING, 0},
+	{"loop_index", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 };
 static struct janus_json_parameter body_parameters[] = {
 	{"body", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
@@ -105,6 +108,7 @@ static struct janus_json_parameter jsep_parameters[] = {
 	{"sdp", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"trickle", JANUS_JSON_BOOL, 0},
 	{"rid_order", JSON_STRING, 0},
+	{"force_relay", JANUS_JSON_BOOL, 0},
 	{"e2ee", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter add_token_parameters[] = {
@@ -373,7 +377,11 @@ static json_t *janus_info(const char *transaction) {
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_turn_server(), janus_ice_get_turn_port());
 		json_object_set_new(info, "turn-server", json_string(server));
 	}
+	if(janus_ice_is_force_relay_allowed())
+		json_object_set_new(info, "allow-force-relay", json_true());
 	json_object_set_new(info, "static-event-loops", json_integer(janus_ice_get_static_event_loops()));
+	if(janus_ice_get_static_event_loops())
+		json_object_set_new(info, "loop-indication", janus_ice_is_loop_indication_allowed() ? json_true() : json_false());
 	json_object_set_new(info, "api_secret", api_secret ? json_true() : json_false());
 	json_object_set_new(info, "auth_token", janus_auth_is_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "event_handlers", janus_events_is_enabled() ? json_true() : json_false());
@@ -1191,6 +1199,8 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		json_t *opaque = json_object_get(root, "opaque_id");
 		const char *opaque_id = opaque ? json_string_value(opaque) : NULL;
+		json_t *loop = json_object_get(root, "loop_index");
+		int loop_index = loop ? json_integer_value(loop) : -1;
 		/* Create handle */
 		handle = janus_ice_handle_create(session, opaque_id, token_value);
 		if(handle == NULL) {
@@ -1202,7 +1212,7 @@ int janus_process_incoming_request(janus_request *request) {
 		janus_refcount_increase(&handle->ref);
 		/* Attach to the plugin */
 		int error = 0;
-		if((error = janus_ice_handle_attach_plugin(session, handle, plugin_t)) != 0) {
+		if((error = janus_ice_handle_attach_plugin(session, handle, plugin_t, loop_index)) != 0) {
 			/* TODO Make error struct to pass verbose information */
 			janus_session_handles_remove(session, handle);
 			JANUS_LOG(LOG_ERR, "Couldn't attach to plugin '%s', error '%d'\n", plugin_text, error);
@@ -1457,6 +1467,20 @@ int janus_process_incoming_request(janus_request *request) {
 						goto jsondone;
 					}
 				}
+				/* If for some reason the user is asking us to force using a relay, do that. Notice
+				 * that this only works with libnice >= 0.1.14, and will cause the PeerConnection
+				 * to fail if Janus itself is not configured to use a TURN server. Don't use this
+				 * feature if you don't know what you're doing! You will almost always NOT want
+				 * Janus itself to use TURN: https://janus.conf.meetecho.com/docs/FAQ.html#turn */
+				if(json_is_true(json_object_get(jsep, "force_relay"))) {
+					if(!janus_ice_is_force_relay_allowed()) {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Forcing Janus to use a TURN server is not allowed\n", handle->handle_id);
+					} else {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing Janus to use a TURN server\n", handle->handle_id);
+						g_object_set(G_OBJECT(handle->agent), "force-relay", TRUE, NULL);
+					}
+				}
+				/* Process the remote SDP */
 				if(janus_sdp_process_remote(handle, parsed_sdp, rids_hml, FALSE) < 0) {
 					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
 					janus_sdp_destroy(parsed_sdp);
@@ -4873,10 +4897,22 @@ gint main(int argc, char *argv[])
 		}
 	}
 #endif
+	item = janus_config_get(config, config_nat, janus_config_type_item, "allow_force_relay");
+	if(item && item->value && janus_is_true(item->value)) {
+		JANUS_LOG(LOG_WARN, "Note: applications/users will be allowed to force Janus to use TURN. Make sure you know what you're doing!\n");
+		janus_ice_allow_force_relay();
+	}
 	/* Do we need a limited number of static event loops, or is it ok to have one per handle (the default)? */
 	item = janus_config_get(config, config_general, janus_config_type_item, "event_loops");
-	if(item && item->value)
-		janus_ice_set_static_event_loops(atoi(item->value));
+	if(item && item->value) {
+		int loops = atoi(item->value);
+		/* Check if we should allow API calls to specify which loops to use for new handles */
+		gboolean loops_api = FALSE;
+		item = janus_config_get(config, config_general, janus_config_type_item, "allow_loop_indication");
+		if(item && item->value)
+			loops_api = janus_is_true(item->value);
+		janus_ice_set_static_event_loops(loops, loops_api);
+	}
 	/* Initialize the ICE stack now */
 	janus_ice_init(ice_lite, ice_tcp, full_trickle, ignore_mdns, ipv6, ipv6_linklocal, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
@@ -5047,6 +5083,11 @@ gint main(int argc, char *argv[])
 	SSL_library_init();
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
+	/* Check if random pool looks ok (this does not give any guarantees for later, though) */
+	if(RAND_status() != 1) {
+		JANUS_LOG(LOG_FATAL, "Random pool is not properly seeded, cannot generate random numbers\n");
+		exit(1);
+	}
 	/* ... and DTLS-SRTP in particular */
 	const char *dtls_ciphers = NULL;
 	item = janus_config_get(config, config_certs, janus_config_type_item, "dtls_ciphers");

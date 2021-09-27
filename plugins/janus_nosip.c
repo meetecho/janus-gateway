@@ -787,11 +787,6 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 	}
 	JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
-#ifdef HAVE_SRTP_2
-	/* Init randomizer (for randum numbers in SRTP) */
-	RAND_poll();
-#endif
-
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_nosip_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_nosip_message_free);
 	/* This is the callback we'll need to invoke to contact the Janus core */

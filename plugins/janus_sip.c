@@ -1925,11 +1925,6 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	}
 	JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
-#ifdef HAVE_SRTP_2
-	/* Init randomizer (for randum numbers in SRTP) */
-	RAND_poll();
-#endif
-
 	/* Setup sofia */
 	su_init();
 	if(notify_events && callback->events_is_enabled()) {
@@ -4209,8 +4204,8 @@ static void *janus_sip_handler(void *data) {
 				su_free(session->stack->s_home, r);
 				su_free(session->stack->s_home, replaces);
 			}
-			if(refer_to == NULL)
 #pragma GCC diagnostic ignored "-Winline"
+			if(refer_to == NULL)
 				refer_to = sip_refer_to_format(session->stack->s_home, "<%s>", uri_text);
 #pragma GCC diagnostic warning "-Winline"
 			/* Send the REFER */

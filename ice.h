@@ -93,6 +93,11 @@ uint16_t janus_ice_get_turn_port(void);
 /*! \brief Method to get the specified TURN REST API backend, if any
  * @returns The currently specified  TURN REST API backend, if available, or NULL if not */
 char *janus_ice_get_turn_rest_api(void);
+/*! \brief Method to enable applications to force Janus to use TURN */
+void janus_ice_allow_force_relay(void);
+/*! \brief Method to check whether applications are allowed to force Janus to use TURN
+ * @returns TRUE if they're allowed, FALSE otherwise */
+gboolean janus_ice_is_force_relay_allowed(void);
 /*! \brief Helper method to force Janus to overwrite all host candidates with the public IP
  * @param[in] keep_private_host Whether we should keep the original private host as a separate candidate, or replace it */
 void janus_ice_enable_nat_1_1(gboolean keep_private_host);
@@ -621,8 +626,10 @@ janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque
  * @param[in] core_session The core/peer session this ICE handle belongs to
  * @param[in] handle The Janus ICE handle
  * @param[in] plugin The plugin the ICE handle needs to be attached to
+ * @param[in] loop_index In case static event loops are used, an indication on which loop to use for this handle
+ * (-1 will let the core pick one; in case API selection is disabled in the settings, this value is ignored)
  * @returns 0 in case of success, a negative integer otherwise */
-gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle, janus_plugin *plugin);
+gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle, janus_plugin *plugin, int loop_index);
 /*! \brief Method to destroy a Janus ICE handle
  * @param[in] core_session The core/peer session this ICE handle belongs to
  * @param[in] handle The Janus ICE handle to destroy
@@ -723,11 +730,15 @@ void janus_ice_resend_trickles(janus_ice_handle *handle);
 /*! \brief Method to configure the static event loops mechanism at startup
  * @note Check the \c event_loops property in the \c janus.jcfg configuration
  * for an explanation of this feature, and the possible impact on Janus and users
- * @param[in] loops The number of static event loops to start (0 to disable the feature) */
-void janus_ice_set_static_event_loops(int loops);
+ * @param[in] loops The number of static event loops to start (0 to disable the feature)
+ * @param[in] allow_api Whether allocation on a specific loop driven via API should be allowed or not (false by default) */
+void janus_ice_set_static_event_loops(int loops, gboolean allow_api);
 /*! \brief Method to return the number of static event loops, if enabled
  * @returns The number of static event loops, if configured, or 0 if the feature is disabled */
 int janus_ice_get_static_event_loops(void);
+/*! \brief Method to check whether loop indication via API is allowed
+ * @returns true if allowed, false otherwise */
+gboolean janus_ice_is_loop_indication_allowed(void);
 /*! \brief Method to stop all the static event loops, if enabled
  * @note This will wait for the related threads to exit, and so may delay the shutdown process */
 void janus_ice_stop_static_event_loops(void);

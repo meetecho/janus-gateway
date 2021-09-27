@@ -612,9 +612,11 @@ janus_pp_rec_CFLAGS = \
 	-I$(top_builddir)/postprocessing \
 	$(LIBCURL_CFLAGS) \
 	$(POST_PROCESSING_CFLAGS) \
+	$(BORINGSSL_CFLAGS) \
 	$(NULL)
 
 janus_pp_rec_LDADD = \
+	$(BORINGSSL_LIBS) \
 	$(POST_PROCESSING_LIBS) \
 	$(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) \
 	$(NULL)
@@ -639,9 +641,11 @@ mjr2pcap_SOURCES = \
 mjr2pcap_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(POST_PROCESSING_CFLAGS) \
+	$(BORINGSSL_CFLAGS) \
 	$(NULL)
 
 mjr2pcap_LDADD = \
+	$(BORINGSSL_LIBS) \
 	$(POST_PROCESSING_LIBS) \
 	$(POST_PROCESSING_MANUAL_LIBS) \
 	$(NULL)
@@ -661,9 +665,11 @@ pcap2mjr_CFLAGS = \
 	-I$(top_builddir)/postprocessing \
 	$(POST_PROCESSING_CFLAGS) \
 	$(PCAP_CFLAGS) \
+	$(BORINGSSL_CFLAGS) \
 	$(NULL)
 
 pcap2mjr_LDADD = \
+	$(BORINGSSL_LIBS) \
 	$(POST_PROCESSING_LIBS) \
 	$(POST_PROCESSING_MANUAL_LIBS) \
 	$(PCAP_LIBS) \

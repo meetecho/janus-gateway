@@ -1173,12 +1173,14 @@ static duk_ret_t janus_duktape_method_relaytextdata(duk_context *ctx) {
 			janus_duktape_type_string(DUK_TYPE_NUMBER), janus_duktape_type_string(duk_get_type(ctx, 2)));
 		return duk_throw(ctx);
 	}
-	if(n > 3 && duk_get_type(ctx, 3) != DUK_TYPE_STRING) {
+	if(n > 3 && duk_get_type(ctx, 3) != DUK_TYPE_STRING &&
+			duk_get_type(ctx, 3) != DUK_TYPE_UNDEFINED && duk_get_type(ctx, 3) != DUK_TYPE_NULL) {
 		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
 			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 3)));
 		return duk_throw(ctx);
 	}
-	if(n > 4 && duk_get_type(ctx, 4) != DUK_TYPE_STRING) {
+	if(n > 4 && duk_get_type(ctx, 4) != DUK_TYPE_STRING &&
+			duk_get_type(ctx, 4) != DUK_TYPE_UNDEFINED && duk_get_type(ctx, 4) != DUK_TYPE_NULL) {
 		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
 			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 4)));
 		return duk_throw(ctx);
@@ -1193,11 +1195,10 @@ static duk_ret_t janus_duktape_method_relaytextdata(duk_context *ctx) {
 	}
 	/* Check if label and/or protocol were provided as well */
 	const char *label = NULL, *protocol = NULL;
-	if(n > 3) {
+	if(n > 3 && duk_get_type(ctx, 3) == DUK_TYPE_STRING)
 		label = duk_get_string(ctx, 3);
-		if(n > 4)
-			protocol = duk_get_string(ctx, 4);
-	}
+	if(n > 4 && duk_get_type(ctx, 4) == DUK_TYPE_STRING)
+		protocol = duk_get_string(ctx, 4);
 	/* Find the session */
 	janus_mutex_lock(&duktape_sessions_mutex);
 	janus_duktape_session *session = g_hash_table_lookup(duktape_ids, GUINT_TO_POINTER(id));
@@ -1244,14 +1245,16 @@ static duk_ret_t janus_duktape_method_relaybinarydata(duk_context *ctx) {
 			janus_duktape_type_string(DUK_TYPE_NUMBER), janus_duktape_type_string(duk_get_type(ctx, 2)));
 		return duk_throw(ctx);
 	}
-	if(n > 3 && duk_get_type(ctx, 3) != DUK_TYPE_STRING) {
+	if(n > 3 && duk_get_type(ctx, 3) != DUK_TYPE_STRING &&
+			duk_get_type(ctx, 3) != DUK_TYPE_UNDEFINED && duk_get_type(ctx, 3) != DUK_TYPE_NULL) {
 		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
-			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 4)));
+			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 3)));
 		return duk_throw(ctx);
 	}
-	if(n > 4 && duk_get_type(ctx, 4) != DUK_TYPE_STRING) {
+	if(n > 4 && duk_get_type(ctx, 4) != DUK_TYPE_STRING &&
+			duk_get_type(ctx, 4) != DUK_TYPE_UNDEFINED && duk_get_type(ctx, 4) != DUK_TYPE_NULL) {
 		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
-			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 5)));
+			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 4)));
 		return duk_throw(ctx);
 	}
 	uint32_t id = (uint32_t)duk_get_number(ctx, 0);
@@ -1264,11 +1267,10 @@ static duk_ret_t janus_duktape_method_relaybinarydata(duk_context *ctx) {
 	}
 	/* Check if label and/or protocol were provided as well */
 	const char *label = NULL, *protocol = NULL;
-	if(n > 3) {
+	if(n > 3 && duk_get_type(ctx, 3) == DUK_TYPE_STRING)
 		label = duk_get_string(ctx, 3);
-		if(n > 4)
-			protocol = duk_get_string(ctx, 4);
-	}
+	if(n > 4 && duk_get_type(ctx, 4) == DUK_TYPE_STRING)
+		protocol = duk_get_string(ctx, 4);
 	/* Find the session */
 	janus_mutex_lock(&duktape_sessions_mutex);
 	janus_duktape_session *session = g_hash_table_lookup(duktape_ids, GUINT_TO_POINTER(id));
