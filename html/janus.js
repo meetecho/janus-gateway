@@ -1390,6 +1390,8 @@ function Janus(gatewayCallbacks) {
 				request.jsep.e2ee = true;
 			if(jsep.rid_order === "hml" || jsep.rid_order === "lmh")
 				request.jsep.rid_order = jsep.rid_order;
+			if(jsep.force_relay)
+				request.jsep.force_relay = true;
 		}
 		Janus.debug("Sending message to plugin (handle=" + handleId + "):");
 		Janus.debug(request);
