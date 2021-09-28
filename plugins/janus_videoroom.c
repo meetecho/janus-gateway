@@ -1085,7 +1085,8 @@ room-<unique room ID>: {
 	"spatial_layer" : <spatial layer to receive (0-2), in case VP9-SVC is enabled; optional>,
 	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>,
 	"audio_level_average" : "<if provided, overrides the room audio_level_average for this user; optional>",
-	"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>"
+	"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>",
+	"remb_adoption" : <how shall janus adopt the requested simulcast layers against the reported remb. "ignore" remb, "ramp_up" start low and ramp up to what has been requested, "start_high" start with the requested simulcast layers and adopt againt remb as soon as it is available. | also ensure that you set the publisher bitrate the subscription has to adopt against>
 }
 \endverbatim
  *
@@ -6606,6 +6607,19 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_increase(&subscriber->ref);	/* The publisher references the new subscriber too */
 					/* Check if a simulcasting-related request is involved */
 					janus_rtp_simulcasting_context_reset(&subscriber->sim_context);
+					/* Get the remb_adoption config property and set associated flags accordingly */
+					json_t *j_remb_adoption = json_object_get(root, "remb_adoption");
+					if(!janus_vp8_remb_simulcast_get_remb_adoption_config(j_remb_adoption, &subscriber->sim_context.remb_context)) {
+						janus_refcount_decrease(&publisher->session->ref);
+						janus_refcount_decrease(&publisher->ref);
+						JANUS_LOG(LOG_ERR, "Invalid value for remb_adoption. Must be ignore, ramp_up or start_high.\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid value for remb_adoption. Must be ignore, ramp_up or start_high.");
+						janus_mutex_unlock(&sessions_mutex);
+						janus_refcount_decrease(&subscriber->room->ref);
+						g_free(subscriber);
+						goto error;
+					}
 					subscriber->sim_context.rid_ext_id = publisher->rid_extmap_id;
 					subscriber->sim_context.substream_target = sc_substream ? json_integer_value(sc_substream) : 2;
 					subscriber->sim_context.templayer_target = sc_temporal ? json_integer_value(sc_temporal) : 2;
@@ -7090,28 +7104,15 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
-
-				/* Ignore REMB for this subscription, check what the subscriber wants to have in the command */
-				janus_vp8_remb_adoption remb_adoption = janus_vp8_remb_adoption_ignore;
+				/* Get the remb_adoption config property and set associated flags accordingly */
 				json_t *j_remb_adoption = json_object_get(root, "remb_adoption");
-				if(j_remb_adoption) {
-					const char* szRembAdoption = json_string_value(j_remb_adoption);
-					if(!strcasecmp(szRembAdoption, "ignore"))
-						remb_adoption = janus_vp8_remb_adoption_ignore;
-					else if(!strcasecmp(szRembAdoption, "ramp_up"))
-						remb_adoption = janus_vp8_remb_adoption_ramp_up;
-					else if(!strcasecmp(szRembAdoption, "start_high"))
-						remb_adoption = janus_vp8_remb_adoption_start_high;
-					else {
-						JANUS_LOG(LOG_ERR, "Invalid value for remb_adoption. Must be ignore, ramp_up or start_high.\n");
-						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid value for remb_adoption. Must be ignore, ramp_up or start_high. Was %s", szRembAdoption);
-						janus_refcount_decrease(&subscriber->ref);
-						goto error;
-					}
+				if(!janus_vp8_remb_simulcast_get_remb_adoption_config(j_remb_adoption, &subscriber->sim_context.remb_context)) {
+					JANUS_LOG(LOG_ERR, "Invalid value for remb_adoption. Must be ignore, ramp_up or start_high.\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid value for remb_adoption. Must be ignore, ramp_up or start_high.");
+					janus_refcount_decrease(&subscriber->ref);
+					goto error;
 				}
-				subscriber->sim_context.remb_context.remb_adoption = remb_adoption;
-
 				json_t *sc_fallback = json_object_get(root, "fallback");
 				/* Update the audio/video/data flags, if set */
 				janus_videoroom_publisher *publisher = subscriber->feed;
@@ -7388,6 +7389,15 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Invalid element (temporal/temporal_layer should be 0, 1 or 2)\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 					g_snprintf(error_cause, 512, "Invalid value (temporal/temporal_layer should be 0, 1 or 2)");
+					janus_refcount_decrease(&subscriber->ref);
+					goto error;
+				}
+				/* Get the remb_adoption config property and set associated flags accordingly */
+				json_t *j_remb_adoption = json_object_get(root, "remb_adoption");
+				if(!janus_vp8_remb_simulcast_get_remb_adoption_config(j_remb_adoption, &subscriber->sim_context.remb_context)) {
+					JANUS_LOG(LOG_ERR, "Invalid value for remb_adoption. Must be ignore, ramp_up or start_high.\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid value for remb_adoption. Must be ignore, ramp_up or start_high.");
 					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}

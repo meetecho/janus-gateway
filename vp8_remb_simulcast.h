@@ -34,6 +34,10 @@ typedef struct janus_vp8_remb_subscriber {
 } janus_vp8_remb_subscriber;
 
 /* Entry point to allow remb based switching simulcast layers
-   This method needs to be called when the remb value has been aquired from the rtcp data
-*/
+   This method needs to be called when the remb value has been aquired from the rtcp data */
 void janus_vp8_remb_simulcast_based_subscriber_simulcast_switching(janus_vp8_remb_subscriber *pSubscriber, uint32_t bitrate);
+
+/* Reads the remb_adoption property from the handed over json property and sets it
+   accordingliy in the simulcasting_remb_context context, returns false if the property has had
+   an invalid value */
+gboolean janus_vp8_remb_simulcast_get_remb_adoption_config(json_t *config_property, janus_rtp_simulcasting_remb_context *remb_context);

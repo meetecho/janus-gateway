@@ -87,6 +87,37 @@ const char* janus_vp8_remb_simulcast_get_debug_temporal_to_text(uint32_t tempora
 void janus_vp8_remb_simulcast_get_simulcast_requested_debug(char *szBuffer, gsize bufSize, janus_rtp_simulcasting_context *pSim);
 void janus_vp8_remb_simulcast_get_simulcast_current_debug(char *szBuffer, gsize bufSize, janus_rtp_simulcasting_context *pSim);
 
+/* Reads the remb_adoption property from the handed over json property and sets it
+ * accordingliy in the simulcasting_remb_context context, returns false if the property has had
+ * an invalid value
+ * @param config_property - the property that contains the remb_adoption config value
+ * @param pRemb_context - struct where we set the config_property into
+ * @returns false in case the property contained an invalid value, true in any other case (not set or valid configured)
+ */
+gboolean janus_vp8_remb_simulcast_get_remb_adoption_config(json_t *config_property, janus_rtp_simulcasting_remb_context *pRemb_context) {
+	// Set the default
+	pRemb_context->remb_adoption = janus_vp8_remb_adoption_ignore;
+	if(config_property) {
+		const char* szRembAdoption = json_string_value(config_property);
+		if(!strcasecmp(szRembAdoption, "ignore")) {
+			pRemb_context->remb_adoption = janus_vp8_remb_adoption_ignore;
+		} else if(!strcasecmp(szRembAdoption, "ramp_up")) {
+			pRemb_context->remb_adoption = janus_vp8_remb_adoption_ramp_up;
+		} else if(!strcasecmp(szRembAdoption, "start_high")) {
+			pRemb_context->remb_adoption = janus_vp8_remb_adoption_start_high;
+		} else {
+			return FALSE;
+		}
+		if(pRemb_context->remb_adoption == janus_vp8_remb_adoption_ramp_up) {
+			// We start with a low quality stream and 15fps
+			pRemb_context->substream_limit_by_remb = 0;
+			pRemb_context->templayer_limit_by_remb = 1;
+		}
+	}
+
+	return TRUE;
+}
+
 /* This method implements the remb based subscriber simulcast switching as described above
  * @param pSubscriber - the subscriber object we are handling
  * @param bitrate - the received REMB bitrate value on the peerConnection
@@ -95,6 +126,10 @@ void janus_vp8_remb_simulcast_based_subscriber_simulcast_switching(janus_vp8_rem
 	/* start - Implementation for an REMB based simulcast layer switching on a subscriber peerConnection */
 	janus_rtp_simulcasting_context *pSim = pSubscriber->pSimContext;
 	janus_rtp_simulcasting_remb_context *pRembContext = &pSim->remb_context;
+
+	/* Subscriber did not configure remb adoption -> nothing todo */
+	if(pRembContext->remb_adoption == janus_vp8_remb_adoption_ignore)
+		return;
 
 	/* Did the publisher announce layer bitrates via the api? */
 	if(bitrate && pRembContext->publisher_simulcast_layer_count && pSim->substream != -1) {
