@@ -15,5 +15,8 @@
   "homepage": "https://github.com/meetecho/janus-gateway#readme",
   "dependencies": {
     "webrtc-adapter": "8.0.0"
+  },
+  "devDependencies": {
+    "eslint": "5.0.1"
   }
 }

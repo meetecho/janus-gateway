@@ -152,3 +152,24 @@ jobs:
         ./configure $JANUS_CONFIG_COMMON $JANUS_CONFIG_OPTS
          make -j$(nproc)
          make check-fuzzers
+  javascript-lint:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install modules
+      run: npm install --only=dev
+    - name: Run ESLint
+      run: node_modules/.bin/eslint html/janus.js
+  javascript-rollup:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Rollup
+      run: |
+        cd npm
+        npm install
+        npm run rollup -- --o janus.cjs.js --f cjs
+    - uses: actions/upload-artifact@v2
+      with:
+        name: janus.cjs.js
+        path: npm/janus.cjs.js
