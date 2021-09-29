@@ -3595,7 +3595,37 @@ static void janus_videoroom_notify_about_publisher(janus_videoroom_publisher *p,
 		json_object_set_new(info, "event", json_string(update ? "updated" : "published"));
 		json_object_set_new(info, "room", string_ids ? json_string(p->room_id_str) : json_integer(p->room_id));
 		json_object_set_new(info, "id", string_ids ? json_string(p->user_id_str) : json_integer(p->user_id));
-		/* TODO We should notify about the streams being published? */
+		if(p->display)
+				json_object_set_new(info, "display", json_string(p->display));
+		json_t *media = json_array();
+		GList *temp = p->streams;
+		while(temp) {
+			janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+			json_t *mediainfo = json_object();
+			json_object_set_new(mediainfo, "type", json_string(janus_videoroom_media_str(ps->type)));
+			json_object_set_new(mediainfo, "mindex", json_integer(ps->mindex));
+			json_object_set_new(mediainfo, "mid", json_string(ps->mid));
+			if(ps->disabled) {
+				json_object_set_new(mediainfo, "disabled", json_true());
+			} else {
+				if(ps->description)
+					json_object_set_new(mediainfo, "description", json_string(ps->description));
+				if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
+					json_object_set_new(mediainfo, "codec", json_string(janus_audiocodec_name(ps->acodec)));
+				} else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+					json_object_set_new(mediainfo, "codec", json_string(janus_videocodec_name(ps->vcodec)));					
+					if(ps->muted)
+						json_object_set_new(mediainfo, "moderated", json_true());
+					if(ps->simulcast)
+						json_object_set_new(mediainfo, "simulcast", json_true());
+					if(ps->svc)
+						json_object_set_new(mediainfo, "svc", json_true());
+				}
+			}
+			json_array_append_new(media, mediainfo);
+			temp = temp->next;
+		}
+		json_object_set_new(info, "streams", media);
 		gateway->notify_event(&janus_videoroom_plugin, p->session->handle, info);
 	}
 }
