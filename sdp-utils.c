@@ -1330,6 +1330,11 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
 			m->attributes = g_list_append(m->attributes, a);
 		}
+		/* If RED is being offered, add an fmtp line for that */
+		if(opusred_pt > 0) {
+			janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %d/%d", opusred_pt, audio_pt, audio_pt);
+			m->attributes = g_list_append(m->attributes, a);
+		}
 		/* Check if there's a custom fmtp line to add for audio */
 		if(audio_fmtp) {
 			janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", audio_pt, audio_fmtp);
@@ -1512,7 +1517,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	answer->m_lines = NULL;
 
 	/* Now iterate on all media, and let's see what we should do */
-	int audio = 0, video = 0, data = 0;
+	int audio = 0, video = 0, data = 0, red = 0;
 	GList *temp = offer->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -1704,7 +1709,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 				if(codec_rtpmap) {
 					/* If we're supposed to negotiate opus/red as well, check if it's there */
 					if(!strcasecmp(codec, "opus") && audio_opusred) {
-						int red = janus_sdp_get_opusred_pt(offer);
+						red = janus_sdp_get_opusred_pt(offer);
 						if(red > 0) {
 							/* Add rtpmap attribute for opus/red too */
 							am->ptypes = g_list_prepend(am->ptypes, GINT_TO_POINTER(red));
@@ -1723,6 +1728,11 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 							a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
 							am->attributes = g_list_append(am->attributes, a);
 						}
+					}
+					/* If we're negotiating opus/red, add an fmtp line for that */
+					if(audio_opusred && red > 0) {
+						a = janus_sdp_attribute_create("fmtp", "%d %d/%d", red, pt, pt);
+						am->attributes = g_list_append(am->attributes, a);
 					}
 					/* Check if there's a custom fmtp line to add for audio
 					 * FIXME We should actually check if it matches the offer */

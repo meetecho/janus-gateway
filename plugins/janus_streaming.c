@@ -4965,6 +4965,12 @@ done:
 						pt, mp->codecs.audio_rtpmap);
 					g_strlcat(sdptemp, buffer, 2048);
 				}
+				if(mp->codecs.red_pt > 0) {
+					g_snprintf(buffer, 512,
+						"a=fmtp:%d %d/%d\r\n",
+						mp->codecs.red_pt, pt, pt);
+					g_strlcat(sdptemp, buffer, 2048);
+				}
 				if(mp->codecs.audio_fmtp) {
 					g_snprintf(buffer, 512,
 						"a=fmtp:%d %s\r\n",
