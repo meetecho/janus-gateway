@@ -2877,7 +2877,7 @@ Description=Janus WebRTC Server
 After=network.target
 
 [Service]
-Type=simple
+Type=idle
 ExecStart=/opt/janus/bin/janus -o
 Restart=on-abnormal
 LimitNOFILE=65536
