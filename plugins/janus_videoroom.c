@@ -6222,6 +6222,8 @@ static void *janus_videoroom_handler(void *data) {
 							acodec != publisher->room->acodec[4])) {
 						JANUS_LOG(LOG_ERR, "Participant asked for audio codec '%s', but it's not allowed (room %s, user %s)\n",
 							json_string_value(audiocodec), publisher->room_id_str, publisher->user_id_str);
+						janus_mutex_unlock(&publisher->room->mutex);
+						janus_refcount_decrease(&publisher->room->ref);
 						janus_refcount_decrease(&publisher->ref);
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 						g_snprintf(error_cause, 512, "Audio codec unavailable in this room");
@@ -6247,6 +6249,8 @@ static void *janus_videoroom_handler(void *data) {
 							vcodec != publisher->room->vcodec[4])) {
 						JANUS_LOG(LOG_ERR, "Participant asked for video codec '%s', but it's not allowed (room %s, user %s)\n",
 							json_string_value(videocodec), publisher->room_id_str, publisher->user_id_str);
+						janus_mutex_unlock(&publisher->room->mutex);
+						janus_refcount_decrease(&publisher->room->ref);
 						janus_refcount_decrease(&publisher->ref);
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 						g_snprintf(error_cause, 512, "Video codec unavailable in this room");
