@@ -1969,8 +1969,8 @@ function Janus(gatewayCallbacks) {
 					sender = config.pc.addTrack(track, stream);
 				} else if(simulcast2) {
 					Janus.log('Enabling rid-based simulcasting:', track);
-					var maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
-					var tr = config.pc.addTransceiver(track, {
+					let maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
+					let tr = config.pc.addTransceiver(track, {
 						direction: "sendrecv",
 						streams: [stream],
 						sendEncodings: callbacks.sendEncodings || [
@@ -1983,7 +1983,7 @@ function Janus(gatewayCallbacks) {
 						sender = tr.sender;
 				} else {
 					Janus.log('Enabling SVC (' + svc + '):', track);
-					var tr = config.pc.addTransceiver(track, {
+					let tr = config.pc.addTransceiver(track, {
 						direction: "sendrecv",
 						streams: [stream],
 						sendEncodings: [
