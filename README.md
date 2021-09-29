@@ -1,3 +1,6 @@
+
+This is not the original Janus repository, for that please visit : https://github.com/meetecho/janus-gateway
+
 Janus WebRTC Server
 ===================
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-brightgreen.svg)](COPYING)
