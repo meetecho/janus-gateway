@@ -2014,17 +2014,17 @@ playdone:
 			JANUS_LOG(LOG_VERB, "Record&Play: Got pause/resume request\n");
 			if(session->recording) {
 				gboolean pause = !strcasecmp(request_text, "pause");
+				result = json_object();
+				json_object_set_new(result, "status", json_string(pause ? "paused" : "resumed"));
+				json_object_set_new(result, "id", json_integer(session->recording->id));
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string(pause ? "paused" : "resumed"));
+					json_object_set_new(info, "id", json_integer(session->recording->id));
+					gateway->notify_event(&janus_recordplay_plugin, session->handle, info);
+				}
 				if (g_atomic_int_compare_and_exchange(&session->recording->paused, !pause, pause)) {
-					result = json_object();
-					json_object_set_new(result, "status", json_string(pause ? "paused" : "resumed"));
-					json_object_set_new(result, "id", json_integer(session->recording->id));
-					/* Also notify event handlers */
-					if(notify_events && gateway->events_is_enabled()) {
-						json_t *info = json_object();
-						json_object_set_new(info, "event", json_string(pause ? "paused" : "resumed"));
-						json_object_set_new(info, "id", json_integer(session->recording->id));
-						gateway->notify_event(&janus_recordplay_plugin, session->handle, info);
-					}
 					if(pause) {
 						janus_recorder_pause(session->arc);
 						janus_recorder_pause(session->vrc);
@@ -2035,8 +2035,6 @@ playdone:
 						janus_recorder_resume(session->drc);
 						gateway->send_pli(session->handle);
 					}
-				} else {
-					JANUS_LOG(LOG_VERB, "Record&Play: Tried to pause/resume recording of same state, ignoring\n");
 				}
 			} else {
 				JANUS_LOG(LOG_VERB, "Record&Play: Not recording, ignoring pause/resume request\n");
