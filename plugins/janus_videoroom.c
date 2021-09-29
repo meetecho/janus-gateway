@@ -2727,11 +2727,13 @@ static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *partic
 		janus_mutex_unlock(&rooms_mutex);
 		return;
 	}
-	janus_mutex_unlock(&rooms_mutex);
 	janus_videoroom *room = participant->room;
-	if(!room || g_atomic_int_get(&room->destroyed))
+	if(!room || g_atomic_int_get(&room->destroyed)) {
+		janus_mutex_unlock(&rooms_mutex);
 		return;
+	}
 	janus_refcount_increase(&room->ref);
+	janus_mutex_unlock(&rooms_mutex);
 	janus_mutex_lock(&room->mutex);
 	if (!participant->room) {
 		janus_mutex_unlock(&room->mutex);
@@ -4012,10 +4014,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = NULL;
 		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
-		janus_mutex_unlock(&rooms_mutex);
-		if(error_code != 0)
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
 			goto prepare_response;
+		}
 		janus_refcount_increase(&videoroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&videoroom->mutex);
 		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
 			string_ids ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
@@ -4238,11 +4242,13 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = NULL;
 		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
-		janus_mutex_unlock(&rooms_mutex);
-		if(error_code != 0)
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
 			goto prepare_response;
-		janus_mutex_lock(&videoroom->mutex);
+		}
 		janus_refcount_increase(&videoroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&videoroom->mutex);
 		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
 			string_ids ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
 		if(publisher == NULL) {
@@ -4748,10 +4754,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = NULL;
 		error_code = janus_videoroom_access_room(root, FALSE, FALSE, &videoroom, error_cause, sizeof(error_cause));
-		janus_mutex_unlock(&rooms_mutex);
-		if(error_code != 0)
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
 			goto prepare_response;
+		}
 		janus_refcount_increase(&videoroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
 		/* Return a list of all participants (whether they're publishing or not) */
 		json_t *list = json_array();
 		GHashTableIter iter;
@@ -4804,9 +4812,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = NULL;
 		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
-		janus_mutex_unlock(&rooms_mutex);
-		if(error_code != 0)
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
 			goto prepare_response;
+		}
+		janus_refcount_increase(&videoroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
 		/* Return a list of all forwarders */
 		json_t *list = json_array();
 		GHashTableIter iter;
@@ -4877,6 +4888,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			json_array_append_new(list, pl);
 		}
 		janus_mutex_unlock(&videoroom->mutex);
+		janus_refcount_decrease(&videoroom->ref);
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("forwarders"));
 		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
@@ -4900,8 +4912,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_mutex_unlock(&rooms_mutex);
 			goto prepare_response;
 		}
-		janus_mutex_lock(&videoroom->mutex);
+		janus_refcount_increase(&videoroom->ref);
 		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&videoroom->mutex);
 		/* Set recording status */
 		gboolean room_prev_recording_active = recording_active;
 		if (room_prev_recording_active != videoroom->record) {
@@ -4941,6 +4954,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			}
         }
 		janus_mutex_unlock(&videoroom->mutex);
+		janus_refcount_decrease(&videoroom->ref);
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
 		json_object_set_new(response, "record", json_boolean(recording_active));
