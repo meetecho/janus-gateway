@@ -4513,17 +4513,14 @@ static void *janus_sip_handler(void *data) {
 				if(record_peer_video)
 					janus_recorder_pause(session->vrc_peer);
 			} else if(!strcasecmp(action_text, "resume")) {
-				gboolean send_pli = FALSE;
 				if(record_audio)
 					janus_recorder_resume(session->arc);
 				if(record_video && !janus_recorder_resume(session->vrc))
-					send_pli = TRUE;
+					gateway->send_pli(session->handle);
 				if(record_peer_audio)
 					janus_recorder_resume(session->arc_peer);
-				if(record_peer_video && !janus_recorder_resume(session->vrc_peer))
-					send_pli = TRUE;
-				if(send_pli)
-					gateway->send_pli(session->handle);
+				if(record_peer_video)
+					janus_recorder_resume(session->vrc_peer);
 			} else {
 				/* Stop recording something: notice that this never returns an error, even when we were not recording anything */
 				janus_sip_recorder_close(session, record_audio, record_peer_audio, record_video, record_peer_video);
