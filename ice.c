@@ -70,6 +70,14 @@ char *janus_ice_get_turn_rest_api(void) {
 #endif
 }
 
+/* Force relay settings */
+static gboolean force_relay_allowed = FALSE;
+void janus_ice_allow_force_relay(void) {
+	force_relay_allowed = TRUE;
+}
+gboolean janus_ice_is_force_relay_allowed(void) {
+	return force_relay_allowed;
+}
 
 /* ICE-Lite status */
 static gboolean janus_ice_lite_enabled;
@@ -3655,14 +3663,13 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			/* Skip 0.0.0.0, :: and, unless otherwise configured, local scoped addresses  */
 			if(!strcmp(host, "0.0.0.0") || !strcmp(host, "::") || (!janus_ipv6_linklocal_enabled && !strncmp(host, "fe80:", 5)))
 				continue;
-			/* Check if this IP address is in the ignore/enforce list, now: the enforce list has the precedence */
+			/* Check if this IP address is in the ignore/enforce list: the enforce list has the precedence but the ignore list can then discard candidates */
 			if(janus_ice_enforce_list != NULL) {
 				if(ifa->ifa_name != NULL && !janus_ice_is_enforced(ifa->ifa_name) && !janus_ice_is_enforced(host))
 					continue;
-			} else {
-				if(janus_ice_is_ignored(host))
-					continue;
 			}
+			if(janus_ice_is_ignored(host))
+				continue;
 			/* Ok, add interface to the ICE agent */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding %s to the addresses to gather candidates for\n", handle->handle_id, host);
 			NiceAddress addr_local;
