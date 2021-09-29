@@ -453,6 +453,7 @@ function startRecording() {
 		$('#list').unbind('click').attr('disabled', true);
 		$('#recset').attr('disabled', true);
 		$('#recslist').attr('disabled', true);
+		$('#pause-resume').removeClass('hide');
 
 		// bitrate and keyframe interval can be set at any time:
 		// before, after, during recording
@@ -524,6 +525,7 @@ function startPlayout() {
 	$('#list').unbind('click').attr('disabled', true);
 	$('#recset').attr('disabled', true);
 	$('#recslist').attr('disabled', true);
+	$('#pause-resume').addClass('hide');
 	var play = { request: "play", id: parseInt(selectedRecording) };
 	recordplay.send({ message: play });
 }

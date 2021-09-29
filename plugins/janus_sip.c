@@ -4374,10 +4374,27 @@ static void *janus_sip_handler(void *data) {
 			record_peer_audio = peer_audio ? json_is_true(peer_audio) : FALSE;
 			json_t *peer_video = json_object_get(root, "peer_video");
 			record_peer_video = peer_video ? json_is_true(peer_video) : FALSE;
-			if(!record_audio && !record_video && !record_peer_audio && !record_peer_video) {
+			gint update_bitmap =
+				record_audio |
+				record_video << 1 |
+				record_peer_audio << 2 |
+				record_peer_video << 3;
+			if(!update_bitmap) {
 				JANUS_LOG(LOG_ERR, "Invalid request (at least one of audio, video, peer_audio and peer_video should be true)\n");
 				error_code = JANUS_SIP_ERROR_RECORDING_ERROR;
 				g_snprintf(error_cause, 512, "Invalid request (at least one of audio, video, peer_audio and peer_video should be true)");
+				goto error;
+			}
+			gint recorder_bitmap =
+				g_atomic_int_get(&session->arc->paused) |
+				g_atomic_int_get(&session->vrc->paused) << 1 |
+				g_atomic_int_get(&session->arc_peer->paused) << 2 |
+				g_atomic_int_get(&session->vrc_peer->paused) << 3;
+			if ((!strcasecmp(action_text, "pause") && !(~recorder_bitmap & update_bitmap)) ||
+				(!strcasecmp(action_text, "resume") && !(recorder_bitmap & update_bitmap))) {
+				JANUS_LOG(LOG_ERR, "Invalid pause/resume request (at least one of audio, video, peer_audio and peer_video should change recorder state)\n");
+				error_code = JANUS_SIP_ERROR_RECORDING_ERROR;
+				g_snprintf(error_cause, 512, "Invalid pause/resume request (at least one of audio, video, peer_audio and peer_video should change recorder state)");
 				goto error;
 			}
 			json_t *recfile = json_object_get(root, "filename");
@@ -4504,24 +4521,26 @@ static void *janus_sip_handler(void *data) {
 					}
 				}
 			} else if(!strcasecmp(action_text, "pause")) {
-				if(record_audio)
+				gint pause_bitmap = ~recorder_bitmap & update_bitmap;
+				if(pause_bitmap & 1)
 					janus_recorder_pause(session->arc);
-				if(record_video)
+				if(pause_bitmap & 2)
 					janus_recorder_pause(session->vrc);
-				if(record_peer_audio)
+				if(pause_bitmap & 4)
 					janus_recorder_pause(session->arc_peer);
-				if(record_peer_video)
+				if(pause_bitmap & 8)
 					janus_recorder_pause(session->vrc_peer);
 			} else if(!strcasecmp(action_text, "resume")) {
-				if(record_audio)
+				gint resume_bitmap = recorder_bitmap & update_bitmap;
+				if(resume_bitmap & 1)
 					janus_recorder_resume(session->arc);
-				if(record_video)
+				if(resume_bitmap & 2)
 					janus_recorder_resume(session->vrc);
-				if(record_peer_audio)
+				if(resume_bitmap & 4)
 					janus_recorder_resume(session->arc_peer);
-				if(record_peer_video)
+				if(resume_bitmap & 8)
 					janus_recorder_resume(session->vrc_peer);
-				if(record_video || record_peer_video)
+				if(resume_bitmap & 10)
 					gateway->send_pli(session->handle);
 			} else {
 				/* Stop recording something: notice that this never returns an error, even when we were not recording anything */
