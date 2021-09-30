@@ -4128,8 +4128,10 @@ gint main(int argc, char *argv[])
 	}
 	if(args_info.configs_folder_given) {
 		configs_folder = g_strdup(args_info.configs_folder_arg);
+#ifdef CONFDIR
 	} else {
 		configs_folder = g_strdup(CONFDIR);
+#endif
 	}
 	if(config_file == NULL) {
 		char file[255];
@@ -4304,7 +4306,9 @@ gint main(int argc, char *argv[])
 	DIR *dir = NULL;
 	/* External loggers are usually disabled by default: they need to be enabled in the configuration */
 	gchar **disabled_loggers = NULL;
+#ifdef LOGGERDIR
 	path = LOGGERDIR;
+#endif
 	item = janus_config_get(config, config_general, janus_config_type_item, "loggers_folder");
 	if(item && item->value)
 		path = (char *)item->value;
@@ -5171,7 +5175,9 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Event handlers support disabled\n");
 	} else {
 		gchar **disabled_eventhandlers = NULL;
+#ifdef EVENTDIR
 		path = EVENTDIR;
+#endif
 		item = janus_config_get(config, config_general, janus_config_type_item, "events_folder");
 		if(item && item->value)
 			path = (char *)item->value;
@@ -5312,7 +5318,9 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Load plugins */
+#ifdef PLUGINDIR
 	path = PLUGINDIR;
+#endif
 	item = janus_config_get(config, config_general, janus_config_type_item, "plugins_folder");
 	if(item && item->value)
 		path = (char *)item->value;
@@ -5431,7 +5439,9 @@ gint main(int argc, char *argv[])
 
 	/* Load transports */
 	gboolean janus_api_enabled = FALSE, admin_api_enabled = FALSE;
+#ifdef TRANSPORTDIR
 	path = TRANSPORTDIR;
+#endif
 	item = janus_config_get(config, config_general, janus_config_type_item, "transports_folder");
 	if(item && item->value)
 		path = (char *)item->value;
