@@ -5195,6 +5195,15 @@ gint main(int argc, char *argv[])
 					JANUS_LOG(LOG_INFO, "Setting event handlers statistics period to %d seconds\n", period);
 				}
 			}
+
+			item = janus_config_get(config, config_events, janus_config_type_item, "combine_media_stats");
+			if(item && item->value) {
+				gboolean combine = janus_is_true(item->value);
+				janus_ice_set_combine_media_stats_to_one_event(combine);
+				if(combine)
+					JANUS_LOG(LOG_INFO, "Event handler configured to send media statistics events combined in a single event\n");
+			}
+
 			/* Any event handlers to ignore? */
 			item = janus_config_get(config, config_events, janus_config_type_item, "disable");
 			if(item && item->value)
