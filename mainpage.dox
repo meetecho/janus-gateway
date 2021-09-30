@@ -2874,10 +2874,11 @@ screen -r janus
  \verbatim
 [Unit]
 Description=Janus WebRTC Server
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
-Type=idle
+Type=simple
 ExecStart=/opt/janus/bin/janus -o
 Restart=on-abnormal
 LimitNOFILE=65536
