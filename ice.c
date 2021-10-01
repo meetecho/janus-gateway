@@ -4190,8 +4190,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 		if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 			if(stream && stream->audio_rtcp_ctx) {
 				json_t *info = json_object();
-				if(!combinedEvent)
-					json_object_set_new(info, "media", json_string("audio"));
+				json_object_set_new(info, "media", json_string("audio"));
 				json_object_set_new(info, "base", json_integer(stream->audio_rtcp_ctx->tb));
 				json_object_set_new(info, "rtt", json_integer(janus_rtcp_context_get_rtt(stream->audio_rtcp_ctx)));
 				json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, FALSE)));
@@ -4214,7 +4213,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 					json_object_set_new(info, "retransmissions-received", json_integer(stream->audio_rtcp_ctx->retransmitted));
 				}
 				if(combinedEvent)
-					json_object_set(combinedEvent, "audio", info);
+					json_array_append_new(combinedEvent, info);
 				else {
 					janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
 						session->session_id, handle->handle_id, handle->opaque_id, info);
@@ -4227,15 +4226,12 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 			for(vindex=0; vindex<3; vindex++) {
 				if(stream && stream->video_rtcp_ctx[vindex]) {
 					json_t *info = json_object();
-					const char* szElement = NULL;
 					if(vindex == 0)
-						szElement = "video";
+						json_object_set_new(info, "media", json_string("video"));
 					else if(vindex == 1)
-						szElement = "video-sim1";
+						json_object_set_new(info, "media", json_string("video-sim1"));
 					else
-						szElement = "video-sim2";
-					if(!combinedEvent)
-						json_object_set_new(info, "media", json_string(szElement));
+						json_object_set_new(info, "media", json_string("video-sim2"));
 					json_object_set_new(info, "base", json_integer(stream->video_rtcp_ctx[vindex]->tb));
 					if(vindex == 0)
 						json_object_set_new(info, "rtt", json_integer(janus_rtcp_context_get_rtt(stream->video_rtcp_ctx[vindex])));
@@ -4259,7 +4255,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 						json_object_set_new(info, "retransmissions-received", json_integer(stream->video_rtcp_ctx[vindex]->retransmitted));
 					}
 					if(combinedEvent)
-						json_object_set(combinedEvent, szElement, info);
+						json_array_append_new(combinedEvent, info);
 					else {
 						janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
 							session->session_id, handle->handle_id, handle->opaque_id, info);
