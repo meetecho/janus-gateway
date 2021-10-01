@@ -4184,7 +4184,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 		json_t *combinedEvent = NULL;
 		/* Shall janus send dedicated events per media or one per peerConnection */
 		if(janus_events_is_enabled() && janus_ice_get_combine_media_stats_to_one_event())
-			combinedEvent = json_object();
+			combinedEvent = json_array();
 
 		/* Audio */
 		if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
