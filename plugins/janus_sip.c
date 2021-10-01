@@ -4637,7 +4637,10 @@ static void *janus_sip_handler(void *data) {
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 
+			/* message_callid will be used to implement delivery notification for the message */
+			char *message_callid = NULL;
 			if(in_dialog_message) {
+				message_callid = g_strdup(session->callid) ;
 				nua_message(session->stack->s_nh_i,
 					SIPTAG_CONTENT_TYPE_STR(content_type),
 					SIPTAG_PAYLOAD_STR(msg_content),
@@ -4656,6 +4659,16 @@ static void *janus_sip_handler(void *data) {
 					session->stack->s_nh_m = nua_handle(session->stack->s_nua, session, TAG_END());
 				}
 				janus_mutex_unlock(&session->stack->smutex);
+				/* call_id is set to be later used in the delivery recepit */
+				json_t *request_callid = json_object_get(root, "call_id");
+				/* Take call-id from request, if it exists */
+				if(request_callid) {
+					message_callid = g_strdup(json_string_value(request_callid));
+				} else {
+					/* If call-id does not exist in request, create a random one */
+					message_callid = g_malloc0(24);
+					janus_sip_random_string(24, message_callid);
+				}
 				nua_message(session->stack->s_nh_m,
 					SIPTAG_TO_STR(uri_text),
 					SIPTAG_CONTENT_TYPE_STR(content_type),
@@ -4663,11 +4676,20 @@ static void *janus_sip_handler(void *data) {
 					NUTAG_PROXY(session->helper && session->master ?
 						session->master->account.outbound_proxy : session->account.outbound_proxy),
 					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
+					SIPTAG_CALL_ID_STR(message_callid),
 					TAG_END());
 			}
 			/* Notify the operation */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("messagesent"));
+			/* message_callid will be later used to return the delivery status of the message */
+			json_object_set_new(result, "call_id", json_string(message_callid));
+			if (session->callid == NULL) {
+				session->callid = g_strdup(message_callid);
+			}
+			if(message_callid != NULL) {
+				g_free(message_callid);
+			}
 		} else if(!strcasecmp(request_text, "dtmf_info")) {
 			/* Send DMTF tones using SIP INFO
 			 * (https://tools.ietf.org/html/draft-kaplan-dispatch-info-dtmf-package-00)
@@ -5419,7 +5441,78 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_r_message:
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we notify the user, in case the SIP MESSAGE returned an error? */
+			/* Handle authetntication for SIP MESSAGE - eg. SippySoft Softswitch requires 401 authentication even if SIP user is registerered */
+			if(status == 401 || status == 407) {
+				const char *scheme = NULL;
+				const char *realm = NULL;
+				if(status == 401) {
+					/* Get scheme/realm from 401 error */
+					sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
+					scheme = www_auth->au_scheme;
+					realm = msg_params_find(www_auth->au_params, "realm=");
+				} else {
+					/* Get scheme/realm from 407 error, proxy-auth */
+					sip_proxy_authenticate_t const* proxy_auth = sip->sip_proxy_authenticate;
+					scheme = proxy_auth->au_scheme;
+					realm = msg_params_find(proxy_auth->au_params, "realm=");
+				}
+				char authuser[100], secret[100];
+				memset(authuser, 0, sizeof(authuser));
+				memset(secret, 0, sizeof(secret));
+				if(session->helper) {
+					/* This is an helper session, we'll need the credentials from the master */
+					if(session->master == NULL) {
+						JANUS_LOG(LOG_WARN, "No master session for this helper, authentication will fail...\n");
+					} else {
+						session = session->master;
+					}
+				}
+				if(session->account.authuser && strchr(session->account.authuser, ':')) {
+					/* The authuser contains a colon: wrap it in quotes */
+					g_snprintf(authuser, sizeof(authuser), "\"%s\"", session->account.authuser);
+				} else {
+					g_snprintf(authuser, sizeof(authuser), "%s", session->account.authuser);
+				}
+				if(session->account.secret && strchr(session->account.secret, ':')) {
+					/* The secret contains a colon: wrap it in quotes */
+					g_snprintf(secret, sizeof(secret), "\"%s\"", session->account.secret);
+				} else {
+					g_snprintf(secret, sizeof(secret), "%s", session->account.secret);
+				}
+				char auth[256];
+				memset(auth, 0, sizeof(auth));
+				g_snprintf(auth, sizeof(auth), "%s%s:%s:%s:%s%s",
+					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
+					scheme,
+					realm,
+					authuser,
+					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
+					secret);
+				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
+				/* Authenticate */
+				nua_authenticate(nh,
+					NUTAG_AUTH(auth),
+					TAG_END());
+			}  else {
+				/* message response, notify the application */
+				json_t *result = json_object();
+				/* sip code and reason */
+				json_object_set_new(result, "event", json_string("messagedelivery"));
+				json_object_set_new(result, "code", json_integer(status));
+				json_object_set_new(result, "reason", json_string(phrase));
+				/* 200 OK, message delivered */
+				json_object_set_new(result, "delivered", (status == 200 ? json_true() : json_false()));
+				json_object_set_new(result, "call_id", json_string(sip->sip_call_id->i_id));
+				/* builds the delivery receipt */
+				json_t *dr = json_object();
+				json_object_set_new(dr, "sip", json_string("event"));
+				json_object_set_new(dr, "result", result);
+				json_object_set_new(dr, "call_id", json_string(sip->sip_call_id->i_id));
+				/* report the delivery notification */
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, dr, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				json_decref(dr);
+			}
 			break;
 		case nua_r_refer: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
