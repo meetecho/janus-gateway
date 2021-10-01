@@ -4181,95 +4181,93 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 	handle->last_event_stats++;
 	if(janus_ice_event_stats_period > 0 && handle->last_event_stats >= janus_ice_event_stats_period) {
 		handle->last_event_stats = 0;
-		if(janus_events_is_enabled()) {
-			/* Shall janus send dedicated events per media or one per peerConnection */
-			json_t *combinedEvent = NULL;
-			if(janus_ice_get_combine_media_stats_to_one_event())
-				combinedEvent = json_object();
+		json_t *combinedEvent = NULL;
+		/* Shall janus send dedicated events per media or one per peerConnection */
+		if(janus_events_is_enabled() && janus_ice_get_combine_media_stats_to_one_event())
+			combinedEvent = json_object();
 
-			/* Audio */
-			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
-				if(stream && stream->audio_rtcp_ctx) {
+		/* Audio */
+		if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
+			if(stream && stream->audio_rtcp_ctx) {
+				json_t *info = json_object();
+				if(!combinedEvent)
+					json_object_set_new(info, "media", json_string("audio"));
+				json_object_set_new(info, "base", json_integer(stream->audio_rtcp_ctx->tb));
+				json_object_set_new(info, "rtt", json_integer(janus_rtcp_context_get_rtt(stream->audio_rtcp_ctx)));
+				json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, FALSE)));
+				json_object_set_new(info, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, TRUE)));
+				json_object_set_new(info, "jitter-local", json_integer(janus_rtcp_context_get_jitter(stream->audio_rtcp_ctx, FALSE)));
+				json_object_set_new(info, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(stream->audio_rtcp_ctx, TRUE)));
+				json_object_set_new(info, "in-link-quality", json_integer(janus_rtcp_context_get_in_link_quality(stream->audio_rtcp_ctx)));
+				json_object_set_new(info, "in-media-link-quality", json_integer(janus_rtcp_context_get_in_media_link_quality(stream->audio_rtcp_ctx)));
+				json_object_set_new(info, "out-link-quality", json_integer(janus_rtcp_context_get_out_link_quality(stream->audio_rtcp_ctx)));
+				json_object_set_new(info, "out-media-link-quality", json_integer(janus_rtcp_context_get_out_media_link_quality(stream->audio_rtcp_ctx)));
+				if(stream->component) {
+					json_object_set_new(info, "packets-received", json_integer(stream->component->in_stats.audio.packets));
+					json_object_set_new(info, "packets-sent", json_integer(stream->component->out_stats.audio.packets));
+					json_object_set_new(info, "bytes-received", json_integer(stream->component->in_stats.audio.bytes));
+					json_object_set_new(info, "bytes-sent", json_integer(stream->component->out_stats.audio.bytes));
+					json_object_set_new(info, "bytes-received-lastsec", json_integer(stream->component->in_stats.audio.bytes_lastsec));
+					json_object_set_new(info, "bytes-sent-lastsec", json_integer(stream->component->out_stats.audio.bytes_lastsec));
+					json_object_set_new(info, "nacks-received", json_integer(stream->component->in_stats.audio.nacks));
+					json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.audio.nacks));
+					json_object_set_new(info, "retransmissions-received", json_integer(stream->audio_rtcp_ctx->retransmitted));
+				}
+				if(combinedEvent)
+					json_object_set(combinedEvent, "audio", info);
+				else {
+					janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
+						session->session_id, handle->handle_id, handle->opaque_id, info);
+				}
+			}
+		}
+		/* Do the same for video */
+		if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+			int vindex=0;
+			for(vindex=0; vindex<3; vindex++) {
+				if(stream && stream->video_rtcp_ctx[vindex]) {
 					json_t *info = json_object();
+					const char* szElement = NULL;
+					if(vindex == 0)
+						szElement = "video";
+					else if(vindex == 1)
+						szElement = "video-sim1";
+					else
+						szElement = "video-sim2";
 					if(!combinedEvent)
-						json_object_set_new(info, "media", json_string("audio"));
-					json_object_set_new(info, "base", json_integer(stream->audio_rtcp_ctx->tb));
-					json_object_set_new(info, "rtt", json_integer(janus_rtcp_context_get_rtt(stream->audio_rtcp_ctx)));
-					json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, FALSE)));
-					json_object_set_new(info, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, TRUE)));
-					json_object_set_new(info, "jitter-local", json_integer(janus_rtcp_context_get_jitter(stream->audio_rtcp_ctx, FALSE)));
-					json_object_set_new(info, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(stream->audio_rtcp_ctx, TRUE)));
-					json_object_set_new(info, "in-link-quality", json_integer(janus_rtcp_context_get_in_link_quality(stream->audio_rtcp_ctx)));
-					json_object_set_new(info, "in-media-link-quality", json_integer(janus_rtcp_context_get_in_media_link_quality(stream->audio_rtcp_ctx)));
-					json_object_set_new(info, "out-link-quality", json_integer(janus_rtcp_context_get_out_link_quality(stream->audio_rtcp_ctx)));
-					json_object_set_new(info, "out-media-link-quality", json_integer(janus_rtcp_context_get_out_media_link_quality(stream->audio_rtcp_ctx)));
+						json_object_set_new(info, "media", json_string(szElement));
+					json_object_set_new(info, "base", json_integer(stream->video_rtcp_ctx[vindex]->tb));
+					if(vindex == 0)
+						json_object_set_new(info, "rtt", json_integer(janus_rtcp_context_get_rtt(stream->video_rtcp_ctx[vindex])));
+					json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[vindex], FALSE)));
+					json_object_set_new(info, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[vindex], TRUE)));
+					json_object_set_new(info, "jitter-local", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx[vindex], FALSE)));
+					json_object_set_new(info, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx[vindex], TRUE)));
+					json_object_set_new(info, "in-link-quality", json_integer(janus_rtcp_context_get_in_link_quality(stream->video_rtcp_ctx[vindex])));
+					json_object_set_new(info, "in-media-link-quality", json_integer(janus_rtcp_context_get_in_media_link_quality(stream->video_rtcp_ctx[vindex])));
+					json_object_set_new(info, "out-link-quality", json_integer(janus_rtcp_context_get_out_link_quality(stream->video_rtcp_ctx[vindex])));
+					json_object_set_new(info, "out-media-link-quality", json_integer(janus_rtcp_context_get_out_media_link_quality(stream->video_rtcp_ctx[vindex])));
 					if(stream->component) {
-						json_object_set_new(info, "packets-received", json_integer(stream->component->in_stats.audio.packets));
-						json_object_set_new(info, "packets-sent", json_integer(stream->component->out_stats.audio.packets));
-						json_object_set_new(info, "bytes-received", json_integer(stream->component->in_stats.audio.bytes));
-						json_object_set_new(info, "bytes-sent", json_integer(stream->component->out_stats.audio.bytes));
-						json_object_set_new(info, "bytes-received-lastsec", json_integer(stream->component->in_stats.audio.bytes_lastsec));
-						json_object_set_new(info, "bytes-sent-lastsec", json_integer(stream->component->out_stats.audio.bytes_lastsec));
-						json_object_set_new(info, "nacks-received", json_integer(stream->component->in_stats.audio.nacks));
-						json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.audio.nacks));
-						json_object_set_new(info, "retransmissions-received", json_integer(stream->audio_rtcp_ctx->retransmitted));
+						json_object_set_new(info, "packets-received", json_integer(stream->component->in_stats.video[vindex].packets));
+						json_object_set_new(info, "packets-sent", json_integer(stream->component->out_stats.video[vindex].packets));
+						json_object_set_new(info, "bytes-received", json_integer(stream->component->in_stats.video[vindex].bytes));
+						json_object_set_new(info, "bytes-sent", json_integer(stream->component->out_stats.video[vindex].bytes));
+						json_object_set_new(info, "bytes-received-lastsec", json_integer(stream->component->in_stats.video[vindex].bytes_lastsec));
+						json_object_set_new(info, "bytes-sent-lastsec", json_integer(stream->component->out_stats.video[vindex].bytes_lastsec));
+						json_object_set_new(info, "nacks-received", json_integer(stream->component->in_stats.video[vindex].nacks));
+						json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.video[vindex].nacks));
+						json_object_set_new(info, "retransmissions-received", json_integer(stream->video_rtcp_ctx[vindex]->retransmitted));
 					}
 					if(combinedEvent)
-						json_object_set(combinedEvent, "audio", info);
+						json_object_set(combinedEvent, szElement, info);
 					else {
 						janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
 							session->session_id, handle->handle_id, handle->opaque_id, info);
 					}
 				}
 			}
-			/* Do the same for video */
-			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
-				int vindex=0;
-				for(vindex=0; vindex<3; vindex++) {
-					if(stream && stream->video_rtcp_ctx[vindex]) {
-						json_t *info = json_object();
-						const char* szElement = NULL;
-						if(vindex == 0)
-							szElement = "video";
-						else if(vindex == 1)
-							szElement = "video-sim1";
-						else
-							szElement = "video-sim2";
-						if(!combinedEvent)
-							json_object_set_new(info, "media", json_string(szElement));
-						json_object_set_new(info, "base", json_integer(stream->video_rtcp_ctx[vindex]->tb));
-						if(vindex == 0)
-							json_object_set_new(info, "rtt", json_integer(janus_rtcp_context_get_rtt(stream->video_rtcp_ctx[vindex])));
-						json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[vindex], FALSE)));
-						json_object_set_new(info, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[vindex], TRUE)));
-						json_object_set_new(info, "jitter-local", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx[vindex], FALSE)));
-						json_object_set_new(info, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx[vindex], TRUE)));
-						json_object_set_new(info, "in-link-quality", json_integer(janus_rtcp_context_get_in_link_quality(stream->video_rtcp_ctx[vindex])));
-						json_object_set_new(info, "in-media-link-quality", json_integer(janus_rtcp_context_get_in_media_link_quality(stream->video_rtcp_ctx[vindex])));
-						json_object_set_new(info, "out-link-quality", json_integer(janus_rtcp_context_get_out_link_quality(stream->video_rtcp_ctx[vindex])));
-						json_object_set_new(info, "out-media-link-quality", json_integer(janus_rtcp_context_get_out_media_link_quality(stream->video_rtcp_ctx[vindex])));
-						if(stream->component) {
-							json_object_set_new(info, "packets-received", json_integer(stream->component->in_stats.video[vindex].packets));
-							json_object_set_new(info, "packets-sent", json_integer(stream->component->out_stats.video[vindex].packets));
-							json_object_set_new(info, "bytes-received", json_integer(stream->component->in_stats.video[vindex].bytes));
-							json_object_set_new(info, "bytes-sent", json_integer(stream->component->out_stats.video[vindex].bytes));
-							json_object_set_new(info, "bytes-received-lastsec", json_integer(stream->component->in_stats.video[vindex].bytes_lastsec));
-							json_object_set_new(info, "bytes-sent-lastsec", json_integer(stream->component->out_stats.video[vindex].bytes_lastsec));
-							json_object_set_new(info, "nacks-received", json_integer(stream->component->in_stats.video[vindex].nacks));
-							json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.video[vindex].nacks));
-							json_object_set_new(info, "retransmissions-received", json_integer(stream->video_rtcp_ctx[vindex]->retransmitted));
-						}
-						if(combinedEvent)
-							json_object_set(combinedEvent, szElement, info);
-						else {
-							janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
-								session->session_id, handle->handle_id, handle->opaque_id, info);
-						}
-					}
-				}
-			}
 
-			if(combinedEvent) {
+			if(combinedEvent && json_object_size(combinedEvent)) {
 				janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
 					session->session_id, handle->handle_id, handle->opaque_id, combinedEvent);
 			}
