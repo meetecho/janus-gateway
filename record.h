@@ -27,6 +27,7 @@
 
 #include "mutex.h"
 #include "refcount.h"
+#include "rtp.h"
 
 
 /*! \brief Media types we can record */
@@ -60,6 +61,10 @@ typedef struct janus_recorder {
 	volatile int header;
 	/*! \brief Whether this recorder instance can be used for writing or not */
 	volatile int writable;
+	/*! \brief Whether writing s/RTP packets/data is paused */
+	volatile int paused;
+	/*! \brief RTP switching context for rewriting RTP headers */
+	janus_rtp_switching_context context;
 	/*! \brief Mutex to lock/unlock this recorder instance */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
@@ -92,6 +97,16 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
  * @param[in] filename Filename to use for the recording
  * @returns A valid janus_recorder instance in case of success, NULL otherwise */
 janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, const char *fmtp, const char *filename);
+/*! \brief Pause recording packets
+ * \note This is to allow pause and resume recorder functionality.
+ * @param[in] recorder The janus_recorder to pause
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_recorder_pause(janus_recorder *recorder);
+/*! \brief Resume recording packets
+ * \note This is to allow pause and resume recorder functionality.
+ * @param[in] recorder The janus_recorder to resume
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_recorder_resume(janus_recorder *recorder);
 /*! \brief Add an RTP extension to this recording
  * \note This will only be possible BEFORE the first frame is written, as it needs to
  * be reflected in the .mjr header: doing this after that will return an error.
