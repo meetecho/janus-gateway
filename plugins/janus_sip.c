@@ -4687,9 +4687,7 @@ static void *janus_sip_handler(void *data) {
 			if (session->callid == NULL) {
 				session->callid = g_strdup(message_callid);
 			}
-			if(message_callid != NULL) {
-				g_free(message_callid);
-			}
+			g_free(message_callid);
 		} else if(!strcasecmp(request_text, "dtmf_info")) {
 			/* Send DMTF tones using SIP INFO
 			 * (https://tools.ietf.org/html/draft-kaplan-dispatch-info-dtmf-package-00)
