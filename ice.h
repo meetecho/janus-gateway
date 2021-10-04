@@ -442,6 +442,8 @@ struct janus_ice_stream {
 	janus_rtcp_context *audio_rtcp_ctx;
 	/*! \brief RTCP context(s) for the video stream (may be simulcasting) */
 	janus_rtcp_context *video_rtcp_ctx[3];
+	/*! \brief Latest REMB feedback we received */
+	uint32_t remb_bitrate;
 	/*! \brief Size of the NACK queue (in ms), dynamically updated per the RTT */
 	uint16_t nack_queue_ms;
 	/*! \brief Map(s) of the NACKed packets (to track retransmissions and avoid duplicates) */

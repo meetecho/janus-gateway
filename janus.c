@@ -3169,6 +3169,8 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 	}
 	if(rtcp_stats != NULL)
 		json_object_set_new(s, "rtcp_stats", rtcp_stats);
+	if(stream->remb_bitrate > 0)
+		json_object_set_new(s, "remb-bitrate", json_integer(stream->remb_bitrate));
 	json_object_set_new(s, "components", components);
 	return s;
 }

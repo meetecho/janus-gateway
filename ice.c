@@ -3073,6 +3073,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					stream->nack_queue_ms = mavg;
 				}
 				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Got %s RTCP (%d bytes)\n", handle->handle_id, video ? "video" : "audio", buflen);
+				/* See if there's any REMB bitrate to track */
+				uint32_t bitrate = janus_rtcp_get_remb(buf, buflen);
+				if(bitrate > 0)
+					stream->remb_bitrate = bitrate;
 
 				/* Now let's see if there are any NACKs to handle */
 				gint64 now = janus_get_monotonic_time();
@@ -4226,6 +4230,8 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 					json_object_set_new(info, "in-media-link-quality", json_integer(janus_rtcp_context_get_in_media_link_quality(stream->video_rtcp_ctx[vindex])));
 					json_object_set_new(info, "out-link-quality", json_integer(janus_rtcp_context_get_out_link_quality(stream->video_rtcp_ctx[vindex])));
 					json_object_set_new(info, "out-media-link-quality", json_integer(janus_rtcp_context_get_out_media_link_quality(stream->video_rtcp_ctx[vindex])));
+					if(vindex == 0 && stream->remb_bitrate > 0)
+						json_object_set_new(info, "remb-bitrate", json_integer(stream->remb_bitrate));
 					if(stream->component) {
 						json_object_set_new(info, "packets-received", json_integer(stream->component->in_stats.video[vindex].packets));
 						json_object_set_new(info, "packets-sent", json_integer(stream->component->out_stats.video[vindex].packets));
