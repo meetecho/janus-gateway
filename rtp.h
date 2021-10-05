@@ -241,7 +241,7 @@ int janus_rtp_header_extension_replace_id(char *buf, int len, int id, int new_id
 typedef struct janus_rtp_switching_context {
 	uint32_t last_ssrc, last_ts, base_ts, base_ts_prev, prev_ts, target_ts, start_ts;
 	uint16_t last_seq, prev_seq, base_seq, base_seq_prev;
-	gboolean seq_reset, new_ssrc;
+	gboolean ts_reset, seq_reset, new_ssrc;
 	gint16 seq_offset;
 	gint32 prev_delay, active_delay, ts_offset;
 	gint64 last_time, reference_time, start_time, evaluating_start_time;

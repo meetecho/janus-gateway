@@ -2918,6 +2918,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					medium->nack_queue_ms = mavg;
 				}
 				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Got %s RTCP (%d bytes)\n", handle->handle_id, video ? "video" : "audio", buflen);
+				/* See if there's any REMB bitrate to track */
+				uint32_t bitrate = janus_rtcp_get_remb(buf, buflen);
+				if(bitrate > 0)
+					pc->remb_bitrate = bitrate;
 
 				/* Now let's see if there are any NACKs to handle */
 				gint64 now = janus_get_monotonic_time();
@@ -3919,6 +3923,8 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 						json_object_set_new(info, "nacks-received", json_integer(medium->in_stats.info[vindex].nacks));
 						json_object_set_new(info, "nacks-sent", json_integer(medium->out_stats.info[vindex].nacks));
 						json_object_set_new(info, "retransmissions-received", json_integer(medium->rtcp_ctx[vindex]->retransmitted));
+						if(medium->mindex == 0 && pc->remb_bitrate > 0)
+							json_object_set_new(info, "remb-bitrate", json_integer(pc->remb_bitrate));
 						janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
 							session->session_id, handle->handle_id, handle->opaque_id, info);
 					}

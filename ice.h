@@ -452,6 +452,8 @@ struct janus_ice_peerconnection {
 	guint transport_wide_cc_feedback_count;
 	/*! \brief GLib list of transport wide cc stats in reverse received order */
 	GSList *transport_wide_received_seq_nums;
+	/*! \brief Latest REMB feedback we received */
+	uint32_t remb_bitrate;
 	/*! \brief DTLS role of the server for this stream */
 	janus_dtls_role dtls_role;
 	/*! \brief Data exchanged for DTLS handshakes and messages */
