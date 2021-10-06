@@ -819,7 +819,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				}
 				ip = iface;
 			}
-			item = janus_config_get(config, config_general, janus_config_type_item, "admin_ws_unix");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws_unix");
 #if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
 			char *unixpath = NULL;
 			if(item && item->value)
@@ -898,7 +898,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				}
 				ip = iface;
 			}
-			item = janus_config_get(config, config_general, janus_config_type_item, "admin_wss_unix");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss_unix");
 #if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
 			char *unixpath = NULL;
 			if(item && item->value)
