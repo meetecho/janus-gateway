@@ -378,6 +378,7 @@ static struct lws_vhost* janus_websockets_create_ws_server(
 		const char *prefix,
 		const char *name,
 		struct lws_protocols ws_protocols[],
+		gboolean secure,
 		uint16_t default_port)
 {
 	janus_config_item *item;
@@ -436,7 +437,7 @@ static struct lws_vhost* janus_websockets_create_ws_server(
 	char *password = NULL;
 	char *ciphers = NULL;
 
-	if (config_certs) {
+	if (secure) {
 		item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pem");
 		if(!item || !item->value) {
 			JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
@@ -746,14 +747,14 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 
 		/* Setup the Janus API WebSockets server(s) */
 		wss = janus_websockets_create_ws_server(config, config_general, NULL, "ws",
-				"Websockets", ws_protocols, 8188);
+				"Websockets", ws_protocols, FALSE, 8188);
 		swss = janus_websockets_create_ws_server(config, config_general, config_certs, "wss",
-				"Secure Websockets", sws_protocols, 8989);
+				"Secure Websockets", sws_protocols, TRUE, 8989);
 		/* Do the same for the Admin API, if enabled */
 		admin_wss = janus_websockets_create_ws_server(config, config_admin, NULL, "admin_ws",
-				"Admin Websockets", admin_ws_protocols, 7188);
+				"Admin Websockets", admin_ws_protocols, FALSE, 7188);
 		admin_swss = janus_websockets_create_ws_server(config, config_admin, config_certs, "admin_wss",
-				"Secure Admin Websockets", admin_sws_protocols, 7989);
+				"Secure Admin Websockets", admin_sws_protocols, TRUE, 7989);
 	}
 	janus_config_destroy(config);
 	config = NULL;
