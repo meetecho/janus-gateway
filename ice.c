@@ -3332,7 +3332,7 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 }
 
 int janus_ice_setup_local(janus_ice_handle *handle, gboolean offer, gboolean trickle) {
-	if(!handle)
+	if(!handle || g_atomic_int_get(&handle->destroyed))
 		return -1;
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT)) {
 		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Agent already exists?\n", handle->handle_id);
