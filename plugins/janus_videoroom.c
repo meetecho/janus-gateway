@@ -2847,38 +2847,33 @@ static void janus_videoroom_subscriber_stream_remove(janus_videoroom_subscriber_
 		/* Unsubscribe from this stream in particular (datachannels can have multiple sources) */
 		if(g_slist_find(s->publisher_streams, ps) != NULL) {
 			/* Remove the subscription from the list of recipients */
-			s->publisher_streams = g_slist_remove(s->publisher_streams, ps);
-			if(s->publisher_streams == NULL)
-				g_atomic_int_set(&s->ready, 0);
-			s->opusfec = FALSE;
 			if(lock_ps)
 				janus_mutex_lock(&ps->subscribers_mutex);
-			ps->subscribers = g_slist_remove(ps->subscribers, s);
+			gboolean unref_ps = FALSE, unref_ss = FALSE;
+			if(g_slist_find(s->publisher_streams, ps) != NULL) {
+				s->publisher_streams = g_slist_remove(s->publisher_streams, ps);
+				unref_ps = TRUE;
+				if(s->publisher_streams == NULL)
+					g_atomic_int_set(&s->ready, 0);
+			}
+			s->opusfec = FALSE;
+			if(g_slist_find(ps->subscribers, s) != NULL) {
+				ps->subscribers = g_slist_remove(ps->subscribers, s);
+				unref_ss = TRUE;
+			}
 			if(lock_ps)
 				janus_mutex_unlock(&ps->subscribers_mutex);
 			/* Unref the two streams, as they're not related anymore */
-			janus_refcount_decrease(&ps->ref);
-			janus_refcount_decrease(&s->ref);
+			if(unref_ps)
+				janus_refcount_decrease(&ps->ref);
+			if(unref_ss)
+				janus_refcount_decrease(&s->ref);
 		}
 	} else {
 		/* Unsubscribe from all sources (which will be one for audio/video, potentially more for datachannels) */
 		while(s->publisher_streams) {
 			ps = s->publisher_streams->data;
-			s->publisher_streams = g_slist_remove(s->publisher_streams, ps);
-			if(ps) {
-				/* Remove the subscription from the list of recipients */
-				if(s->publisher_streams == NULL)
-					g_atomic_int_set(&s->ready, 0);
-				s->opusfec = FALSE;
-				if(lock_ps)
-					janus_mutex_lock(&ps->subscribers_mutex);
-				ps->subscribers = g_slist_remove(ps->subscribers, s);
-				if(lock_ps)
-					janus_mutex_unlock(&ps->subscribers_mutex);
-				/* Unref the two streams, as they're not related anymore */
-				janus_refcount_decrease(&ps->ref);
-				janus_refcount_decrease(&s->ref);
-			}
+			janus_videoroom_subscriber_stream_remove(s, ps, lock_ps);
 		}
 	}
 }
@@ -6999,13 +6994,14 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 				janus_videoroom_subscriber_stream *ss = (janus_videoroom_subscriber_stream *)temp2->data;
 				temp2 = temp2->next;
 				if(ss) {
-					/* Remove the subscription (turns the m-line to inactive) */
-					janus_videoroom_subscriber_stream_remove(ss, ps, FALSE);
 					/* Take note of the subscriber, so that we can send an updated offer */
 					if(ss->type != JANUS_VIDEOROOM_MEDIA_DATA && g_list_find(subscribers, ss->subscriber) == NULL) {
 						janus_refcount_increase(&ss->subscriber->ref);
+						janus_refcount_increase(&ss->subscriber->session->ref);
 						subscribers = g_list_append(subscribers, ss->subscriber);
 					}
+					/* Remove the subscription (turns the m-line to inactive) */
+					janus_videoroom_subscriber_stream_remove(ss, ps, FALSE);
 				}
 			}
 			g_slist_free(ps->subscribers);
@@ -7061,6 +7057,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 						gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 					}
 				}
+				janus_refcount_decrease(&subscriber->session->ref);
 				janus_refcount_decrease(&subscriber->ref);
 				temp = temp->next;
 			}
