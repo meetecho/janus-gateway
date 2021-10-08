@@ -351,12 +351,12 @@ int janus_ice_get_event_stats_period(void) {
 }
 
 /* How to handle media statistic events (one per media or one per peerConnection) */
-static gboolean janus_ice_event_combine_media_stats_to_one_event = false;
-void janus_ice_set_combine_media_stats_to_one_event(gboolean combine_media_stats_to_one_event) {
-	janus_ice_event_combine_media_stats_to_one_event = combine_media_stats_to_one_event;
+static gboolean janus_ice_event_combine_media_stats = false;
+void janus_ice_event_set_combine_media_stats(gboolean combine_media_stats_to_one_event) {
+	janus_ice_event_combine_media_stats = combine_media_stats_to_one_event;
 }
-gboolean janus_ice_get_combine_media_stats_to_one_event(void) {
-	return janus_ice_event_combine_media_stats_to_one_event;
+gboolean janus_ice_event_get_combine_media_stats(void) {
+	return janus_ice_event_combine_media_stats;
 }
 
 /* RTP/RTCP port range */
@@ -4183,7 +4183,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 		handle->last_event_stats = 0;
 		json_t *combinedEvent = NULL;
 		/* Shall janus send dedicated events per media or one per peerConnection */
-		if(janus_events_is_enabled() && janus_ice_get_combine_media_stats_to_one_event())
+		if(janus_events_is_enabled() && janus_ice_event_get_combine_media_stats())
 			combinedEvent = json_array();
 
 		/* Audio */
@@ -4212,9 +4212,9 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 					json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.audio.nacks));
 					json_object_set_new(info, "retransmissions-received", json_integer(stream->audio_rtcp_ctx->retransmitted));
 				}
-				if(combinedEvent)
+				if(combinedEvent) {
 					json_array_append_new(combinedEvent, info);
-				else {
+				} else {
 					janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
 						session->session_id, handle->handle_id, handle->opaque_id, info);
 				}
@@ -4254,9 +4254,9 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 						json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.video[vindex].nacks));
 						json_object_set_new(info, "retransmissions-received", json_integer(stream->video_rtcp_ctx[vindex]->retransmitted));
 					}
-					if(combinedEvent)
+					if(combinedEvent) {
 						json_array_append_new(combinedEvent, info);
-					else {
+					} else {
 						janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
 							session->session_id, handle->handle_id, handle->opaque_id, info);
 					}

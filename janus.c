@@ -5199,9 +5199,9 @@ gint main(int argc, char *argv[])
 			item = janus_config_get(config, config_events, janus_config_type_item, "combine_media_stats");
 			if(item && item->value) {
 				gboolean combine = janus_is_true(item->value);
-				janus_ice_set_combine_media_stats_to_one_event(combine);
+				janus_ice_event_set_combine_media_stats(combine);
 				if(combine)
-					JANUS_LOG(LOG_INFO, "Event handler configured to send media statistics events combined in a single event\n");
+					JANUS_LOG(LOG_INFO, "Event handler configured to send media stats combined in a single event\n");
 			}
 
 			/* Any event handlers to ignore? */
