@@ -350,6 +350,14 @@ int janus_ice_get_event_stats_period(void) {
 	return janus_ice_event_stats_period;
 }
 
+/* How to handle media statistic events (one per media or one per peerConnection) */
+static gboolean janus_ice_event_combine_media_stats = false;
+void janus_ice_event_set_combine_media_stats(gboolean combine_media_stats_to_one_event) {
+	janus_ice_event_combine_media_stats = combine_media_stats_to_one_event;
+}
+gboolean janus_ice_event_get_combine_media_stats(void) {
+	return janus_ice_event_combine_media_stats;
+}
 
 /* RTP/RTCP port range */
 uint16_t rtp_range_min = 0;
@@ -4177,6 +4185,11 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 	handle->last_event_stats++;
 	if(janus_ice_event_stats_period > 0 && handle->last_event_stats >= janus_ice_event_stats_period) {
 		handle->last_event_stats = 0;
+		json_t *combinedEvent = NULL;
+		/* Shall janus send dedicated events per media or one per peerConnection */
+		if(janus_events_is_enabled() && janus_ice_event_get_combine_media_stats())
+			combinedEvent = json_array();
+
 		/* Audio */
 		if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 			if(stream && stream->audio_rtcp_ctx) {
@@ -4203,8 +4216,12 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 					json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.audio.nacks));
 					json_object_set_new(info, "retransmissions-received", json_integer(stream->audio_rtcp_ctx->retransmitted));
 				}
-				janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
-					session->session_id, handle->handle_id, handle->opaque_id, info);
+				if(combinedEvent) {
+					json_array_append_new(combinedEvent, info);
+				} else {
+					janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
+						session->session_id, handle->handle_id, handle->opaque_id, info);
+				}
 			}
 		}
 		/* Do the same for video */
@@ -4243,9 +4260,18 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 						json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.video[vindex].nacks));
 						json_object_set_new(info, "retransmissions-received", json_integer(stream->video_rtcp_ctx[vindex]->retransmitted));
 					}
-					janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
-						session->session_id, handle->handle_id, handle->opaque_id, info);
+					if(combinedEvent) {
+						json_array_append_new(combinedEvent, info);
+					} else {
+						janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
+							session->session_id, handle->handle_id, handle->opaque_id, info);
+					}
 				}
+			}
+
+			if(combinedEvent && json_object_size(combinedEvent)) {
+				janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
+					session->session_id, handle->handle_id, handle->opaque_id, combinedEvent);
 			}
 		}
 	}
