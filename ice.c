@@ -3866,7 +3866,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 	/* Iterate on all media */
 	handle->last_event_stats++;
 	janus_ice_peerconnection_medium *medium = NULL;
-	json_t *combinedEvent = NULL;
+	json_t *combined_event = NULL;
 	uint mi=0;
 	for(mi=0; mi<g_hash_table_size(pc->media); mi++) {
 		medium = g_hash_table_lookup(pc->media, GUINT_TO_POINTER(mi));
@@ -3901,8 +3901,8 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 		if(janus_ice_event_stats_period > 0 && handle->last_event_stats >= janus_ice_event_stats_period) {
 			if(janus_events_is_enabled()) {
 				/* Check if we should send dedicated events per media, or one per peerConnection */
-				if(janus_events_is_enabled() && janus_ice_event_get_combine_media_stats() && combinedEvent == NULL)
-					combinedEvent = json_array();
+				if(janus_events_is_enabled() && janus_ice_event_get_combine_media_stats() && combined_event == NULL)
+					combined_event = json_array();
 				int vindex=0;
 				for(vindex=0; vindex<3; vindex++) {
 					if(medium && medium->rtcp_ctx[vindex]) {
@@ -3937,8 +3937,8 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 						json_object_set_new(info, "retransmissions-received", json_integer(medium->rtcp_ctx[vindex]->retransmitted));
 						if(medium->mindex == 0 && pc->remb_bitrate > 0)
 							json_object_set_new(info, "remb-bitrate", json_integer(pc->remb_bitrate));
-						if(combinedEvent) {
-							json_array_append_new(combinedEvent, info);
+						if(combined_event != NULL) {
+							json_array_append_new(combined_event, info);
 						} else {
 							janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
 								session->session_id, handle->handle_id, handle->opaque_id, info);
@@ -3948,9 +3948,9 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 			}
 		}
 	}
-	if(combinedEvent != NULL) {
+	if(combined_event != NULL) {
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
-			session->session_id, handle->handle_id, handle->opaque_id, combinedEvent);
+			session->session_id, handle->handle_id, handle->opaque_id, combined_event);
 	}
 	/* Reset stats event counter */
 	if(handle->last_event_stats >= janus_ice_event_stats_period)
