@@ -401,7 +401,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							if(strstr(line, "/inactive"))
 								a->direction = JANUS_SDP_INACTIVE;
 						}
-						imported->attributes = g_list_append(imported->attributes, a);
+						imported->attributes = g_list_prepend(imported->attributes, a);
 						break;
 					}
 					case 'm': {
@@ -447,13 +447,13 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 									continue;
 								}
 								/* Add string fmt */
-								m->fmts = g_list_append(m->fmts, g_strdup(mline_parts[mindex]));
+								m->fmts = g_list_prepend(m->fmts, g_strdup(mline_parts[mindex]));
 								/* Add numeric payload type */
 								int ptype = atoi(mline_parts[mindex]);
 								if(ptype < 0) {
 									JANUS_LOG(LOG_ERR, "Invalid payload type (%s)\n", mline_parts[mindex]);
 								} else {
-									m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(ptype));
+									m->ptypes = g_list_prepend(m->ptypes, GINT_TO_POINTER(ptype));
 								}
 								mindex++;
 							}
@@ -465,9 +465,11 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 								success = FALSE;
 								break;
 							}
+							m->fmts = g_list_reverse(m->fmts);
+							m->ptypes = g_list_reverse(m->ptypes);
 						}
 						/* Append to the list of m-lines */
-						imported->m_lines = g_list_append(imported->m_lines, m);
+						imported->m_lines = g_list_prepend(imported->m_lines, m);
 						/* From now on, we parse this m-line */
 						mline = m;
 						break;
@@ -567,11 +569,13 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							if(strstr(line, "/inactive"))
 								a->direction = JANUS_SDP_INACTIVE;
 						}
-						mline->attributes = g_list_append(mline->attributes, a);
+						mline->attributes = g_list_prepend(mline->attributes, a);
 						break;
 					}
 					case 'm': {
 						/* Current m-line ended, back to global parsing */
+						if(mline && mline->attributes)
+							mline->attributes = g_list_reverse(mline->attributes);
 						mline = NULL;
 						continue;
 					}
@@ -600,6 +604,14 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 			JANUS_LOG(LOG_ERR, "%s\n", error);
 		janus_sdp_destroy(imported);
 		imported = NULL;
+	} else {
+		/* Reverse lists for efficiency */
+		if(mline && mline->attributes)
+			mline->attributes = g_list_reverse(mline->attributes);
+		if(imported->attributes)
+			imported->attributes = g_list_reverse(imported->attributes);
+		if(imported->m_lines)
+			imported->m_lines = g_list_reverse(imported->m_lines);
 	}
 	return imported;
 }

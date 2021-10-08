@@ -49,7 +49,8 @@
  * out of the box Janus supports printing the output to \c stdout and saving
  * to a local file, but logging can also be extended via additional plugins:
  * refer to the \ref loggerapi for more details, and to learn how to write
- * your own.
+ * your own. You can check the \ref ide page for some details about how
+ * to setup your local development environment for Janus..
  *
  * Janus also supports \ref recordings out of the box, so check the
  * related documentation to know more about how that works.
@@ -2874,7 +2875,8 @@ screen -r janus
  \verbatim
 [Unit]
 Description=Janus WebRTC Server
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -3740,6 +3742,69 @@ ldd janus | grep asan
  *
  */
 
+/*! \page ide Writing code for Janus
+ *
+ * Janus is open source, which means the whole source code is available for
+ * both its core internals and all plugins. As such, it's easy to write code
+ * to fix issues, add new features, implement new modules and so on.
+ *
+ * You don't really need any integrated development environment (IDE) to
+ * write code for Janus, but in case you do want to make use of one, you
+ * may need to tweak your development environment accordingly. The Janus
+ * codebase makes use of many macros defined at <code>configure</code> time
+ * to figure out what's available and what should be compiled, for instance,
+ * and the IDE you're using may need to be aware of those to do its job.
+ *
+ * The following snippet is an example of how you can configure, for instance,
+ * Visual Studio Code on Ubuntu 20.04:
+ *
+\verbatim
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu11",
+            "cppStandard": "gnu++17",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/lib/x86_64-linux-gnu/glib-2.0/include",
+                "/usr/include/glib-2.0",
+                "/usr/include/nice",
+                "/usr/include/sofia-sip-1.12"
+            ],
+            "intelliSenseMode": "linux-gcc-x64",
+            "systemIncludePath": [
+                "/usr/lib/gcc/x86_64-linux-gnu/9/include",
+                "/usr/local/include",
+                "/usr/include/x86_64-linux-gnu",
+                "/usr/include"
+            ],
+            "defines": [
+                "CONFDIR=\"\"",
+                "EVENTDIR=\"\"",
+                "HAVE_CLOSE_ASYNC=1",
+                "HAS_DTLS_WINDOW_SIZE=1",
+                "HAVE_ICE_NOMINATION=1",
+                "HAVE_LIBCURL=1",
+                "HAVE_LIBNICE_TCP=1",
+                "HAVE_LIBOGG=1",
+                "HAVE_LIBOPUS=1",
+                "HAVE_LIBWEBSOCKETS_PEER_SIMPLE=1",
+                "HAVE_PORTRANGE=1",
+                "HAVE_SCTP=1",
+                "HAVE_SRTP_2=1",
+                "LOGGERDIR=\"\"",
+                "PLUGINDIR=\"\"",
+                "TRANSPORTDIR=\"\""
+            ]
+        }
+    ],
+    "version": 4
+}
+\endverbatim
+ *
+ */
 
 /*! \page README README
  *  \verbinclude README.md

@@ -89,6 +89,11 @@ uint16_t janus_ice_get_turn_port(void);
 /*! \brief Method to get the specified TURN REST API backend, if any
  * @returns The currently specified  TURN REST API backend, if available, or NULL if not */
 char *janus_ice_get_turn_rest_api(void);
+/*! \brief Method to enable applications to force Janus to use TURN */
+void janus_ice_allow_force_relay(void);
+/*! \brief Method to check whether applications are allowed to force Janus to use TURN
+ * @returns TRUE if they're allowed, FALSE otherwise */
+gboolean janus_ice_is_force_relay_allowed(void);
 /*! \brief Helper method to force Janus to overwrite all host candidates with the public IP
  * @param[in] keep_private_host Whether we should keep the original private host as a separate candidate, or replace it */
 void janus_ice_enable_nat_1_1(gboolean keep_private_host);
@@ -437,6 +442,8 @@ struct janus_ice_stream {
 	janus_rtcp_context *audio_rtcp_ctx;
 	/*! \brief RTCP context(s) for the video stream (may be simulcasting) */
 	janus_rtcp_context *video_rtcp_ctx[3];
+	/*! \brief Latest REMB feedback we received */
+	uint32_t remb_bitrate;
 	/*! \brief Size of the NACK queue (in ms), dynamically updated per the RTT */
 	uint16_t nack_queue_ms;
 	/*! \brief Map(s) of the NACKed packets (to track retransmissions and avoid duplicates) */
