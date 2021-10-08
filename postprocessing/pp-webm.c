@@ -121,7 +121,8 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 		}
 		if(tmp->rotation != -1 && tmp->rotation != rotation) {
 			rotation = tmp->rotation;
-			JANUS_LOG(LOG_INFO, "Video rotation: %d degrees\n", rotation);
+			double ts = (double)(tmp->ts-list->ts)/(double)90000;
+			JANUS_LOG(LOG_INFO, "[%8.3fs] Video rotation: %d degrees\n", ts, rotation);
 		}
 		if(vp8) {
 			/* https://tools.ietf.org/html/draft-ietf-payload-vp8 */
