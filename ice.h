@@ -201,6 +201,14 @@ void janus_ice_set_event_stats_period(int period);
 /*! \brief Method to get the current event handler statistics period (see above)
  * @returns The current event handler stats period */
 int janus_ice_get_event_stats_period(void);
+
+/*! \brief Method to define wether the media stats shall be dispatched in one event (true) or in dedicated single events (false - default)
+ * @param[in] combine_media_stats_to_one_event true to combine media statistics in on event or false to send dedicated events */
+void janus_ice_event_set_combine_media_stats(gboolean combine_media_stats_to_one_event);
+/*! \brief Method to retrieve wether media statistic events shall be dispatched combined or in single events
+ * @returns true to combine events */
+gboolean janus_ice_event_get_combine_media_stats(void);
+
 /*! \brief Method to check whether libnice debugging has been enabled (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html)
  * @returns True if libnice debugging is enabled, FALSE otherwise */
 gboolean janus_ice_is_ice_debugging_enabled(void);

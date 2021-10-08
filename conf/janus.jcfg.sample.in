@@ -423,9 +423,13 @@ loggers: {
 # especially if you have many PeerConnections active. To change this,
 # just set 'stats_period' to the number of seconds that should pass in
 # between statistics for each handle. Setting it to 0 disables them (but
-# not other media-related events).
+# not other media-related events). By default Janus sends single media
+# statistic events per media (audio, video and simulcast layers as separate
+# events): if you'd rather receive a single containing all media stats in a
+# single array, set 'combine_media_stats' to true.
 events: {
 	#broadcast = true
+	#combine_media_stats = true
 	#disable = "libjanus_sampleevh.so"
 	#stats_period = 5
 }
