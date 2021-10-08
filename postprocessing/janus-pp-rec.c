@@ -959,7 +959,8 @@ int main(int argc, char *argv[])
 		}
 		if(ssrc == 0) {
 			ssrc = ntohl(rtp->ssrc);
-			JANUS_LOG(LOG_INFO, "SSRC detected: %"SCNu32"\n", ssrc);
+			if(ssrc > 0)
+				JANUS_LOG(LOG_INFO, "SSRC detected: %"SCNu32"\n", ssrc);
 		}
 		if(ssrc != ntohl(rtp->ssrc)) {
 			JANUS_LOG(LOG_WARN, "Dropping packet with unexpected SSRC: %"SCNu32" != %"SCNu32"\n",

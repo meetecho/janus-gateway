@@ -453,6 +453,7 @@ function startRecording() {
 		$('#list').unbind('click').attr('disabled', true);
 		$('#recset').attr('disabled', true);
 		$('#recslist').attr('disabled', true);
+		$('#pause-resume').removeClass('hide');
 
 		// bitrate and keyframe interval can be set at any time:
 		// before, after, during recording
@@ -497,6 +498,15 @@ function startRecording() {
 					recordplay.hangup();
 				}
 			});
+		$('#pause-resume').unbind('click').on('click', function() {
+			if($(this).text() === 'Pause') {
+				recordplay.send({message: {request: 'pause'}});
+				$(this).text('Resume');
+			} else {
+				recordplay.send({message: {request: 'resume'}});
+				$(this).text('Pause');
+			}
+		});
 	});
 }
 
@@ -515,6 +525,7 @@ function startPlayout() {
 	$('#list').unbind('click').attr('disabled', true);
 	$('#recset').attr('disabled', true);
 	$('#recslist').attr('disabled', true);
+	$('#pause-resume').addClass('hide');
 	var play = { request: "play", id: parseInt(selectedRecording) };
 	recordplay.send({ message: play });
 }
