@@ -1086,9 +1086,16 @@ room-<unique room ID>: {
 	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>,
 	"audio_level_average" : "<if provided, overrides the room audio_level_average for this user; optional>",
 	"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>",
-	"remb_adoption" : <how shall janus adopt the requested simulcast layers against the reported remb. "ignore" remb, "ramp_up" start low and ramp up to what has been requested, "start_high" start with the requested simulcast layers and adopt againt remb as soon as it is available. | also ensure that you set the publisher bitrate the subscription has to adopt against>
+	"remb_adoption" : "<how shall janus adopt the requested simulcast layers against the reported remb."
 }
 \endverbatim
+ *
+ * \subsection remb_adoption
+ * - "ignore" remb,
+ * - "ramp_up" start low and ramp up to what has been requested,
+ * - "start_high" start with the requested simulcast layers and adopt againt remb as soon as it is available.
+ * Ensure that you set the publisher bitrate the subscription has to adopt against
+ *
  *
  * As you can see, the \c audio , \c video and \c data properties can be
  * used as a media-level pause/resume functionality, whereas \c pause
@@ -5521,14 +5528,14 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 	janus_videoroom_publisher_dereference_nodebug(participant);
 }
 
-gboolean janus_videoroom_is_publisher_simulcasting(void *pOriginalPublisherObject) {
-	janus_videoroom_publisher* pPublisher = (janus_videoroom_publisher*)pOriginalPublisherObject;
-	return (pPublisher->ssrc[0] != 0 || pPublisher->rid[0] != NULL);
+gboolean janus_videoroom_is_publisher_simulcasting(void *p_original_publisher_object) {
+	janus_videoroom_publisher* p_publisher = (janus_videoroom_publisher*)p_original_publisher_object;
+	return (p_publisher->ssrc[0] != 0 || p_publisher->rid[0] != NULL);
 }
 
-void janus_videoroom_send_pli(void *pOriginalPublisherObject, const char *reason) {
-	janus_videoroom_publisher* pPublisher = (janus_videoroom_publisher*)pOriginalPublisherObject;
-	janus_videoroom_reqpli(pPublisher, reason);
+void janus_videoroom_send_pli(void *p_original_publisher_object, const char *reason) {
+	janus_videoroom_publisher* p_publisher = (janus_videoroom_publisher*)p_original_publisher_object;
+	janus_videoroom_reqpli(p_publisher, reason);
 }
 
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet) {
@@ -5569,10 +5576,10 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 			janus_vp8_remb_subscriber subscriber;
 			memset(&subscriber, 0x00, sizeof(subscriber));
 			subscriber.gateway_handle = s->session->handle->gateway_handle;
-			subscriber.pFeedMutex = &s->session->mutex;
+			subscriber.p_feed_mutex = &s->session->mutex;
 			subscriber.last_bitrate = s->last_bitrate;
 			subscriber.last_bitrate_valid = s->last_bitrate_valid;
-			subscriber.pSimContext = &s->sim_context;
+			subscriber.p_sim_context = &s->sim_context;
 
 			/* Details for the publisher peerConnection
 			   The callbacks allow the helper to validate stuff and to execute the stream switching
@@ -5581,10 +5588,10 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 			memset(&publisher, 0x00, sizeof(publisher));
 			publisher.display = s->feed->display;
 			publisher.user_id_str = s->feed->user_id_str;
-			publisher.pOriginalPublisherObject = s->feed;
+			publisher.p_original_publisher_object = s->feed;
 			publisher.isMultiCasting = &janus_videoroom_is_publisher_simulcasting;
 			publisher.sendPLI = &janus_videoroom_send_pli;
-			subscriber.pFeed = &publisher;
+			subscriber.p_feed = &publisher;
 
 			/* Call the implementation, everything is handled inside */
 			janus_vp8_remb_simulcast_based_subscriber_simulcast_switching(&subscriber, bitrate);

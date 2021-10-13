@@ -434,11 +434,8 @@ function publishOwnFeed(useAudio) {
 					publish["audiocodec"] = acodec;
 				if(vcodec)
 					publish["videocodec"] = vcodec;
-
-				if (sfutest.webrtcStuff.maxBitrates) {
+				if (sfutest.webrtcStuff.maxBitrates)
 					publish["simulcast_bitrates"] = sfutest.webrtcStuff.maxBitrates;
-				}
-				
 				sfutest.send({ message: publish, jsep: jsep });
 			},
 			error: function(error) {

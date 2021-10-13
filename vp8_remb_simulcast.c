@@ -75,43 +75,40 @@
 #define REQUIRED_BITRATE_INCREASE_PER_FAIL 0.1
 
 /* Forward declarations */
-uint32_t janus_vp8_remb_simulcast_get_client_requested_ramp_position(janus_rtp_simulcasting_context *pSim);
-uint32_t janus_vp8_remb_simulcast_get_current_ramp_position(janus_rtp_simulcasting_context *pSim);
-uint32_t janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(janus_rtp_simulcasting_remb_context *pRembContext, uint32_t rampPos);
-void janus_vp8_remb_simulcast_get_neighbour_ramp_positions(janus_rtp_simulcasting_context *pSim, uint32_t rampPos, uint32_t *pNextLower, uint32_t *pNextUpper);
-double janus_vp8_remb_simulcast_calculate_bitrate_change(janus_vp8_remb_subscriber *pSubscriber, uint32_t remb);
-void janus_vp8_remb_simulcast_update_last_bitrate_change(janus_rtp_simulcasting_remb_context *pRempContext, double change);
-gboolean janus_vp8_remb_simulcast_set_flags_for_ramp_position(janus_rtp_simulcasting_remb_context *pRembContext, uint32_t position);
+uint32_t janus_vp8_remb_simulcast_get_client_requested_ramp_position(janus_rtp_simulcasting_context *p_sim);
+uint32_t janus_vp8_remb_simulcast_get_current_ramp_position(janus_rtp_simulcasting_context *p_sim);
+uint32_t janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(janus_rtp_simulcasting_remb_context *p_remb_context, uint32_t ramp_pos);
+void janus_vp8_remb_simulcast_get_neighbour_ramp_positions(janus_rtp_simulcasting_context *p_sim, uint32_t ramp_pos, uint32_t *p_next_lower, uint32_t *p_next_upper);
+double janus_vp8_remb_simulcast_calculate_bitrate_change(janus_vp8_remb_subscriber *p_subscriber, uint32_t remb);
+void janus_vp8_remb_simulcast_update_last_bitrate_change(janus_rtp_simulcasting_remb_context *p_remp_context, double change);
+gboolean janus_vp8_remb_simulcast_set_flags_for_ramp_position(janus_rtp_simulcasting_remb_context *p_remb_context, uint32_t position);
 const char* janus_vp8_remb_simulcast_get_debug_substream_to_text(uint32_t substream);
 const char* janus_vp8_remb_simulcast_get_debug_temporal_to_text(uint32_t temporal);
-void janus_vp8_remb_simulcast_get_simulcast_requested_debug(char *szBuffer, gsize bufSize, janus_rtp_simulcasting_context *pSim);
-void janus_vp8_remb_simulcast_get_simulcast_current_debug(char *szBuffer, gsize bufSize, janus_rtp_simulcasting_context *pSim);
+void janus_vp8_remb_simulcast_get_simulcast_requested_debug(char *sz_buffer, gsize buf_size, janus_rtp_simulcasting_context *p_sim);
+void janus_vp8_remb_simulcast_get_simulcast_current_debug(char *sz_buffer, gsize buf_size, janus_rtp_simulcasting_context *p_sim);
 
 /* Reads the remb_adoption property from the handed over json property and sets it
  * accordingliy in the simulcasting_remb_context context, returns false if the property has had
  * an invalid value
- * @param config_property - the property that contains the remb_adoption config value
- * @param pRemb_context - struct where we set the config_property into
- * @returns false in case the property contained an invalid value, true in any other case (not set or valid configured)
  */
-gboolean janus_vp8_remb_simulcast_get_remb_adoption_config(json_t *config_property, janus_rtp_simulcasting_remb_context *pRemb_context) {
+gboolean janus_vp8_remb_simulcast_get_remb_adoption_config(json_t *config_property, janus_rtp_simulcasting_remb_context *remb_context) {
 	// Set the default
-	pRemb_context->remb_adoption = janus_vp8_remb_adoption_ignore;
+	remb_context->remb_adoption = janus_vp8_remb_adoption_ignore;
 	if(config_property) {
-		const char* szRembAdoption = json_string_value(config_property);
-		if(!strcasecmp(szRembAdoption, "ignore")) {
-			pRemb_context->remb_adoption = janus_vp8_remb_adoption_ignore;
-		} else if(!strcasecmp(szRembAdoption, "ramp_up")) {
-			pRemb_context->remb_adoption = janus_vp8_remb_adoption_ramp_up;
-		} else if(!strcasecmp(szRembAdoption, "start_high")) {
-			pRemb_context->remb_adoption = janus_vp8_remb_adoption_start_high;
+		const char *sz_remb_adoption = json_string_value(config_property);
+		if(!strcasecmp(sz_remb_adoption, "ignore")) {
+			remb_context->remb_adoption = janus_vp8_remb_adoption_ignore;
+		} else if(!strcasecmp(sz_remb_adoption, "ramp_up")) {
+			remb_context->remb_adoption = janus_vp8_remb_adoption_ramp_up;
+		} else if(!strcasecmp(sz_remb_adoption, "start_high")) {
+			remb_context->remb_adoption = janus_vp8_remb_adoption_start_high;
 		} else {
 			return FALSE;
 		}
-		if(pRemb_context->remb_adoption == janus_vp8_remb_adoption_ramp_up) {
+		if(remb_context->remb_adoption == janus_vp8_remb_adoption_ramp_up) {
 			// We start with a low quality stream and 15fps
-			pRemb_context->substream_limit_by_remb = 0;
-			pRemb_context->templayer_limit_by_remb = 1;
+			remb_context->substream_limit_by_remb = 0;
+			remb_context->templayer_limit_by_remb = 1;
 		}
 	}
 
@@ -119,161 +116,159 @@ gboolean janus_vp8_remb_simulcast_get_remb_adoption_config(json_t *config_proper
 }
 
 /* This method implements the remb based subscriber simulcast switching as described above
- * @param pSubscriber - the subscriber object we are handling
- * @param bitrate - the received REMB bitrate value on the peerConnection
  */
-void janus_vp8_remb_simulcast_based_subscriber_simulcast_switching(janus_vp8_remb_subscriber *pSubscriber, uint32_t bitrate) {
+void janus_vp8_remb_simulcast_based_subscriber_simulcast_switching(janus_vp8_remb_subscriber *p_subscriber, uint32_t bitrate) {
 	/* start - Implementation for an REMB based simulcast layer switching on a subscriber peerConnection */
-	janus_rtp_simulcasting_context *pSim = pSubscriber->pSimContext;
-	janus_rtp_simulcasting_remb_context *pRembContext = &pSim->remb_context;
+	janus_rtp_simulcasting_context *p_sim = p_subscriber->p_sim_context;
+	janus_rtp_simulcasting_remb_context *p_remb_context = &p_sim->remb_context;
 
 	/* Subscriber did not configure remb adoption -> nothing todo */
-	if(pRembContext->remb_adoption == janus_vp8_remb_adoption_ignore)
+	if(p_remb_context->remb_adoption == janus_vp8_remb_adoption_ignore)
 		return;
 
 	/* Did the publisher announce layer bitrates via the api? */
-	if(bitrate && pRembContext->publisher_simulcast_layer_count && pSim->substream != -1) {
+	if(bitrate && p_remb_context->publisher_simulcast_layer_count && p_sim->substream != -1) {
 		/*! Calculate the % change from the last to the current remb values */
-		double dbBitrateChange = janus_vp8_remb_simulcast_calculate_bitrate_change(pSubscriber, bitrate);
+		double db_bitrate_change = janus_vp8_remb_simulcast_calculate_bitrate_change(p_subscriber, bitrate);
 		/*! Whats the ramp position we are currently sending and the one the client requested? */
-        uint32_t currentRampPos = janus_vp8_remb_simulcast_get_current_ramp_position(pSim);
-		uint32_t requestedRampPos = janus_vp8_remb_simulcast_get_client_requested_ramp_position(pSim);
+        uint32_t current_ramp_pos = janus_vp8_remb_simulcast_get_current_ramp_position(p_sim);
+		uint32_t requested_ramp_pos = janus_vp8_remb_simulcast_get_client_requested_ramp_position(p_sim);
 
-        if((int)requestedRampPos != pRembContext->last_requested_ramp_position) {
+        if((int)requested_ramp_pos != p_remb_context->last_requested_ramp_position) {
             // What the client requested has changed...
-            pRembContext->last_requested_ramp_position = requestedRampPos;
-            if(requestedRampPos < currentRampPos) {
+            p_remb_context->last_requested_ramp_position = requested_ramp_pos;
+            if(requested_ramp_pos < current_ramp_pos) {
                 // Client is requesting something that is lower than what we currently dispatch
                 // Reset the last ramp up values
-				pRembContext->failed_highest_ramp_pos = -1;
-				pRembContext->failed_counter = 0;
-                pRembContext->tm_last_ramp_up = 0;
+				p_remb_context->failed_highest_ramp_pos = -1;
+				p_remb_context->failed_counter = 0;
+                p_remb_context->tm_last_ramp_up = 0;
             }
         }
-		uint32_t nextHigherRampPos = currentRampPos;
-		uint32_t nextLowerRampPos = currentRampPos;
-		janus_vp8_remb_simulcast_get_neighbour_ramp_positions(pSim, currentRampPos, &nextLowerRampPos, &nextHigherRampPos);
-        if(nextLowerRampPos > currentRampPos) {
-		    nextHigherRampPos = currentRampPos;
-		    nextLowerRampPos = currentRampPos;
-		    janus_vp8_remb_simulcast_get_neighbour_ramp_positions(pSim, currentRampPos, &nextLowerRampPos, &nextHigherRampPos);
+		uint32_t next_higher_ramp_pos = current_ramp_pos;
+		uint32_t next_lower_ramp_pos = current_ramp_pos;
+		janus_vp8_remb_simulcast_get_neighbour_ramp_positions(p_sim, current_ramp_pos, &next_lower_ramp_pos, &next_higher_ramp_pos);
+        if(next_lower_ramp_pos > current_ramp_pos) {
+		    next_higher_ramp_pos = current_ramp_pos;
+		    next_lower_ramp_pos = current_ramp_pos;
+		    janus_vp8_remb_simulcast_get_neighbour_ramp_positions(p_sim, current_ramp_pos, &next_lower_ramp_pos, &next_higher_ramp_pos);
         }
-		uint32_t current_bitrate = janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(pRembContext, currentRampPos);
+		uint32_t current_bitrate = janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(p_remb_context, current_ramp_pos);
 		uint32_t higher_bitrate = 0;
-		if(nextHigherRampPos > currentRampPos)
-			higher_bitrate = janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(pRembContext, nextHigherRampPos);
+		if(next_higher_ramp_pos > current_ramp_pos)
+			higher_bitrate = janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(p_remb_context, next_higher_ramp_pos);
 
-		int lastLayerCounter = pRembContext->substream_switch_layer_counter;
+		int last_layer_counter = p_remb_context->substream_switch_layer_counter;
 
         // Start if we have a valid last bitrate we can use for calculations (2. remb package allows us to see wether the value goes up or down)
-        if(pSubscriber->last_bitrate_valid) {
-            double compareValue = dbBitrateChange;
-            if(pRembContext->last_bitrate_change > compareValue) {
-                compareValue = pRembContext->last_bitrate_change;
+        if(p_subscriber->last_bitrate_valid) {
+            double compare_value = db_bitrate_change;
+            if(p_remb_context->last_bitrate_change > compare_value) {
+                compare_value = p_remb_context->last_bitrate_change;
             }
 
     		/* We have layer bitrates so the remb simulcast switching shall be active */
-    		if(currentRampPos > 0 && bitrate < current_bitrate) {
+    		if(current_ramp_pos > 0 && bitrate < current_bitrate) {
                 /* We are above layer 0 and the bitrate is currently lower than we need for the current layer */
-    			if(bitrate < current_bitrate * 0.8 && compareValue < 0.2)	// If we are 20% below the lower bitrate and the bitself itself is not increasing by at least 0.2% between two remb messages
-    				pRembContext->substream_switch_layer_counter -= 4;
-    			else if(bitrate < current_bitrate * 0.9 && compareValue < 0.5) // If we are 10% below the lower bitrate and the bitself itself is not increasing by at least 0.5% between two remb messages
-    				pRembContext->substream_switch_layer_counter -= 2;
-    			else if(compareValue < 1) // If we are just below the lower bitrate and the bitrate is not growing by 1% between two remb messages
-    				pRembContext->substream_switch_layer_counter -= 1;
+    			if(bitrate < current_bitrate * 0.8 && compare_value < 0.2)	// If we are 20% below the lower bitrate and the bitself itself is not increasing by at least 0.2% between two remb messages
+    				p_remb_context->substream_switch_layer_counter -= 4;
+    			else if(bitrate < current_bitrate * 0.9 && compare_value < 0.5) // If we are 10% below the lower bitrate and the bitself itself is not increasing by at least 0.5% between two remb messages
+    				p_remb_context->substream_switch_layer_counter -= 2;
+    			else if(compare_value < 1) // If we are just below the lower bitrate and the bitrate is not growing by 1% between two remb messages
+    				p_remb_context->substream_switch_layer_counter -= 1;
     		}
     		else if(bitrate > current_bitrate) {
     			/* If the current bitrate is sufficient for the current layer increase the switcher value to 0 if it was negative before */
-    			if(pRembContext->substream_switch_layer_counter < 0)
-    				pRembContext->substream_switch_layer_counter ++;
+    			if(p_remb_context->substream_switch_layer_counter < 0)
+    				p_remb_context->substream_switch_layer_counter ++;
     			/* We are below the highest layer and the bitrate is currently higher than we need for the current layer */
     			if(higher_bitrate && bitrate > higher_bitrate) {
     				/* The current bitrate is higher than the next layer above */
     				if(bitrate > higher_bitrate * 1.2)	// If we are 20% above the higher bitrate
-    					pRembContext->substream_switch_layer_counter += 4;
+    					p_remb_context->substream_switch_layer_counter += 4;
     				else if(bitrate > higher_bitrate * 1.1) // If we are 10% above the higher bitrate
-    					pRembContext->substream_switch_layer_counter += 2;
+    					p_remb_context->substream_switch_layer_counter += 2;
     				else  // If we are just above the higher bitrate
-    					pRembContext->substream_switch_layer_counter += 1;
+    					p_remb_context->substream_switch_layer_counter += 1;
     			}
     		}
         }
 
 		double db_time_since_last_ramp_up = 0;
-		if(pRembContext->tm_last_ramp_up) {
-			db_time_since_last_ramp_up = (double)(g_get_monotonic_time() - pRembContext->tm_last_ramp_up) / 1000000;
-			if(pRembContext->failed_highest_ramp_pos >= 0 && db_time_since_last_ramp_up > TIME_RAMP_UP_FAILED && (int)currentRampPos >= pRembContext->failed_highest_ramp_pos) {
+		if(p_remb_context->tm_last_ramp_up) {
+			db_time_since_last_ramp_up = (double)(g_get_monotonic_time() - p_remb_context->tm_last_ramp_up) / 1000000;
+			if(p_remb_context->failed_highest_ramp_pos >= 0 && db_time_since_last_ramp_up > TIME_RAMP_UP_FAILED && (int)current_ramp_pos >= p_remb_context->failed_highest_ramp_pos) {
 				/* Ramp up succeeded -> cleanup failing information */
-				pRembContext->failed_highest_ramp_pos = -1;
-				pRembContext->failed_counter = 0;
+				p_remb_context->failed_highest_ramp_pos = -1;
+				p_remb_context->failed_counter = 0;
 			}
 		}
 
 #ifdef REMB_CONSOLE_DEBUGGING
-		if(lastLayerCounter != pRembContext->substream_switch_layer_counter || bitrate != pSubscriber->last_bitrate) {
+		if(last_layer_counter != p_remb_context->substream_switch_layer_counter || bitrate != p_subscriber->last_bitrate) {
 			/* Only log if something relevant changed (either the counter or the remb value) */
 			char szCurrent[10] = {};
 			char szRequested[10] = {};
-			janus_ice_handle *pCoreHandle = (janus_ice_handle*)pSubscriber->gateway_handle;
-			janus_vp8_remb_simulcast_get_simulcast_current_debug(szCurrent, 10, pSim);
-			janus_vp8_remb_simulcast_get_simulcast_requested_debug(szRequested, 10, pSim);
-			JANUS_LOG(LOG_INFO, "%lu - br:%d (%.2f/%.2f) rmp:%d (cur:%s req:%s) cur:%d nxt:%d dir:%d t_r_up:%.1fs\n", pCoreHandle->handle_id, bitrate, dbBitrateChange, pRembContext->last_bitrate_change, currentRampPos, szCurrent, szRequested, current_bitrate, higher_bitrate, pRembContext->substream_switch_layer_counter, db_time_since_last_ramp_up);
+			janus_ice_handle *p_core_handle = (janus_ice_handle*)p_subscriber->gateway_handle;
+			janus_vp8_remb_simulcast_get_simulcast_current_debug(szCurrent, 10, p_sim);
+			janus_vp8_remb_simulcast_get_simulcast_requested_debug(szRequested, 10, p_sim);
+			JANUS_LOG(LOG_INFO, "%lu - br:%d (%.2f/%.2f) rmp:%d (cur:%s req:%s) cur:%d nxt:%d dir:%d t_r_up:%.1fs\n", p_core_handle->handle_id, bitrate, db_bitrate_change, p_remb_context->last_bitrate_change, current_ramp_pos, szCurrent, szRequested, current_bitrate, higher_bitrate, p_remb_context->substream_switch_layer_counter, db_time_since_last_ramp_up);
 		}
 #endif
 
-		if(pRembContext->substream_switch_layer_counter <= -20 || pRembContext->substream_switch_layer_counter >= 20) {
+		if(p_remb_context->substream_switch_layer_counter <= -20 || p_remb_context->substream_switch_layer_counter >= 20) {
 			/* Retrieve the publisher */
-			janus_mutex_lock(pSubscriber->pFeedMutex);
-			janus_vp8_remb_publisher *pPublisher = pSubscriber->pFeed;
+			janus_mutex_lock(p_subscriber->p_feed_mutex);
+			janus_vp8_remb_publisher *p_publisher = p_subscriber->p_feed;
 
 			/* Is the publisher really simulcasting? */
-			if(pPublisher->isMultiCasting(pPublisher->pOriginalPublisherObject)) {
-				if(pRembContext->substream_switch_layer_counter < 0) {
-					if(pRembContext->tm_last_ramp_up) {
+			if(p_publisher->isMultiCasting(p_publisher->p_original_publisher_object)) {
+				if(p_remb_context->substream_switch_layer_counter < 0) {
+					if(p_remb_context->tm_last_ramp_up) {
 						if(db_time_since_last_ramp_up < TIME_RAMP_UP_FAILED) {
 							/* Ramping up failed -> let's store that to tune the next possible ramp up */
-							pRembContext->failed_highest_ramp_pos = currentRampPos;
-							pRembContext->failed_counter++;
-							JANUS_LOG(LOG_WARN, "Ramping up to %d failed (%d. time%s) after %.2fs\n", currentRampPos, pRembContext->failed_counter, pRembContext->failed_counter > 1 ? "s" : "", db_time_since_last_ramp_up);
+							p_remb_context->failed_highest_ramp_pos = current_ramp_pos;
+							p_remb_context->failed_counter++;
+							JANUS_LOG(LOG_WARN, "Ramping up to %d failed (%d. time%s) after %.2fs\n", current_ramp_pos, p_remb_context->failed_counter, p_remb_context->failed_counter > 1 ? "s" : "", db_time_since_last_ramp_up);
 						}
-						pRembContext->tm_last_ramp_up = 0;
+						p_remb_context->tm_last_ramp_up = 0;
 					}
 
-					if(janus_vp8_remb_simulcast_set_flags_for_ramp_position(pRembContext, nextLowerRampPos)) {
-						uint32_t lower_bitrate = janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(&pSim->remb_context, nextLowerRampPos);
+					if(janus_vp8_remb_simulcast_set_flags_for_ramp_position(p_remb_context, next_lower_ramp_pos)) {
+						uint32_t lower_bitrate = janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(&p_sim->remb_context, next_lower_ramp_pos);
 						/* Switching down */
 						JANUS_LOG(LOG_WARN, "Current bitrate forces to switch to a lower ramp pos: %d (%s %s %d)) \n",
-							nextLowerRampPos,
-							janus_vp8_remb_simulcast_get_debug_substream_to_text(pRembContext->substream_limit_by_remb != -1 ? pRembContext->substream_limit_by_remb : pSim->substream_target),
-							janus_vp8_remb_simulcast_get_debug_temporal_to_text(pRembContext->templayer_limit_by_remb != -1 ? pRembContext->templayer_limit_by_remb : pSim->templayer_target),
+							next_lower_ramp_pos,
+							janus_vp8_remb_simulcast_get_debug_substream_to_text(p_remb_context->substream_limit_by_remb != -1 ? p_remb_context->substream_limit_by_remb : p_sim->substream_target),
+							janus_vp8_remb_simulcast_get_debug_temporal_to_text(p_remb_context->templayer_limit_by_remb != -1 ? p_remb_context->templayer_limit_by_remb : p_sim->templayer_target),
 							lower_bitrate);
 
-						pPublisher->sendPLI(pPublisher->pOriginalPublisherObject, "Simulcasting substream change");
+						p_publisher->sendPLI(p_publisher->p_original_publisher_object, "Simulcasting substream change");
 					}
 				} else {
-					if(janus_vp8_remb_simulcast_set_flags_for_ramp_position(pRembContext, nextHigherRampPos)) {
+					if(janus_vp8_remb_simulcast_set_flags_for_ramp_position(p_remb_context, next_higher_ramp_pos)) {
 						/* Store the time when we ramped up (to get to know if it failed) */
-						pRembContext->tm_last_ramp_up = g_get_monotonic_time();
+						p_remb_context->tm_last_ramp_up = g_get_monotonic_time();
 						/* Switching up */
 						JANUS_LOG(LOG_INFO, "Current bitrate allows to switch to a higher ramp pos: %d (%s %s %d)) \n",
-							nextHigherRampPos,
-							janus_vp8_remb_simulcast_get_debug_substream_to_text(pRembContext->substream_limit_by_remb != -1 ? pRembContext->substream_limit_by_remb : pSim->substream_target),
-							janus_vp8_remb_simulcast_get_debug_temporal_to_text(pRembContext->templayer_limit_by_remb != -1 ? pRembContext->templayer_limit_by_remb : pSim->templayer_target),
+							next_higher_ramp_pos,
+							janus_vp8_remb_simulcast_get_debug_substream_to_text(p_remb_context->substream_limit_by_remb != -1 ? p_remb_context->substream_limit_by_remb : p_sim->substream_target),
+							janus_vp8_remb_simulcast_get_debug_temporal_to_text(p_remb_context->templayer_limit_by_remb != -1 ? p_remb_context->templayer_limit_by_remb : p_sim->templayer_target),
 							higher_bitrate);
 
-						pPublisher->sendPLI(pPublisher->pOriginalPublisherObject, "Simulcasting substream change");
+						p_publisher->sendPLI(p_publisher->p_original_publisher_object, "Simulcasting substream change");
 					}
 				}
-				pRembContext->substream_switch_layer_counter = 0;
+				p_remb_context->substream_switch_layer_counter = 0;
 			} else {
-				JANUS_LOG(LOG_ERR, "REMB values trigger to switch to a differnt layer but it looks like the publisher (%s, %s) is not doing simulcast\n", pPublisher->user_id_str, pPublisher->display ? pPublisher->display : "??");
-				pRembContext->publisher_simulcast_layer_count = 0;
+				JANUS_LOG(LOG_ERR, "REMB values trigger to switch to a differnt layer but it looks like the publisher (%s, %s) is not doing simulcast\n", p_publisher->user_id_str, p_publisher->display ? p_publisher->display : "??");
+				p_remb_context->publisher_simulcast_layer_count = 0;
 			}
-			janus_mutex_unlock(pSubscriber->pFeedMutex);
+			janus_mutex_unlock(p_subscriber->p_feed_mutex);
 		}
-		janus_vp8_remb_simulcast_update_last_bitrate_change(pRembContext, dbBitrateChange);
+		janus_vp8_remb_simulcast_update_last_bitrate_change(p_remb_context, db_bitrate_change);
 	} else {
-		JANUS_LOG(LOG_INFO, "Nothing todo: remb:%d, publisher layercount:%d, substream:%d substream_target:%d\n", bitrate, pRembContext->publisher_simulcast_layer_count, pSim->substream, pSim->substream_target);
+		JANUS_LOG(LOG_INFO, "Nothing todo: remb:%d, publisher layercount:%d, substream:%d substream_target:%d\n", bitrate, p_remb_context->publisher_simulcast_layer_count, p_sim->substream, p_sim->substream_target);
 	}
 }
 
@@ -283,10 +278,10 @@ void janus_vp8_remb_simulcast_based_subscriber_simulcast_switching(janus_vp8_rem
  * @param bitrate - the received REMB bitrate value on the peerConnection
  * @returns the delta between the last and the current remb value as signed % value (-100 <-> +100)
  */
-double janus_vp8_remb_simulcast_calculate_bitrate_change(janus_vp8_remb_subscriber *pSubscriber, uint32_t bitrate) {
+double janus_vp8_remb_simulcast_calculate_bitrate_change(janus_vp8_remb_subscriber *p_subscriber, uint32_t bitrate) {
 	double change = 0;
-	if(pSubscriber->last_bitrate > 0 && bitrate)
-		change = ((double)bitrate * 100 / (double)pSubscriber->last_bitrate) - 100;
+	if(p_subscriber->last_bitrate > 0 && bitrate)
+		change = ((double)bitrate * 100 / (double)p_subscriber->last_bitrate) - 100;
 	return change;
 }
 
@@ -298,12 +293,12 @@ double janus_vp8_remb_simulcast_calculate_bitrate_change(janus_vp8_remb_subscrib
  * @param pRembContext - the currently used REMB simulcasting context
  * @param change - the % change value as calculated above
  */
-void janus_vp8_remb_simulcast_update_last_bitrate_change(janus_rtp_simulcasting_remb_context *pRempContext, double change) {
-	if(pRempContext->last_bitrate_change) {
-		pRempContext->last_bitrate_change += change;
-		pRempContext->last_bitrate_change /= 2;
+void janus_vp8_remb_simulcast_update_last_bitrate_change(janus_rtp_simulcasting_remb_context *p_remp_context, double change) {
+	if(p_remp_context->last_bitrate_change) {
+		p_remp_context->last_bitrate_change += change;
+		p_remp_context->last_bitrate_change /= 2;
 	} else {
-		pRempContext->last_bitrate_change += change;
+		p_remp_context->last_bitrate_change += change;
 	}
 }
 
@@ -312,9 +307,9 @@ void janus_vp8_remb_simulcast_update_last_bitrate_change(janus_rtp_simulcasting_
  * @param pSim - the currently used simulcasting context
  * @returns the current ramp position based on the currently send substream and temporal layer
  */
-uint32_t janus_vp8_remb_simulcast_get_client_requested_ramp_position(janus_rtp_simulcasting_context *pSim) {
+uint32_t janus_vp8_remb_simulcast_get_client_requested_ramp_position(janus_rtp_simulcasting_context *p_sim) {
 	uint32_t rampPos = 0;
-	int substream = (pSim->substream_target_temp == -1) ? pSim->substream_target : pSim->substream_target_temp;
+	int substream = (p_sim->substream_target_temp == -1) ? p_sim->substream_target : p_sim->substream_target_temp;
 	switch(substream) {
 		case 1:
 			rampPos = 2;
@@ -326,7 +321,7 @@ uint32_t janus_vp8_remb_simulcast_get_client_requested_ramp_position(janus_rtp_s
 			rampPos = 0;
 			break;
 	}
-	if(pSim->templayer_target == -1 || pSim->templayer_target == 2)
+	if(p_sim->templayer_target == -1 || p_sim->templayer_target == 2)
 		rampPos++;
 	return rampPos;
 }
@@ -336,9 +331,9 @@ uint32_t janus_vp8_remb_simulcast_get_client_requested_ramp_position(janus_rtp_s
  * @param pSim - the currently used simulcasting context
  * @returns the current ramp position based on the client requested and possible limits
  */
-uint32_t janus_vp8_remb_simulcast_get_current_ramp_position(janus_rtp_simulcasting_context *pSim) {
+uint32_t janus_vp8_remb_simulcast_get_current_ramp_position(janus_rtp_simulcasting_context *p_sim) {
  	uint32_t rampPos = 0;
-	switch(pSim->substream) {
+	switch(p_sim->substream) {
 		case 1:
 			rampPos = 2;
 			break;
@@ -349,7 +344,7 @@ uint32_t janus_vp8_remb_simulcast_get_current_ramp_position(janus_rtp_simulcasti
 			rampPos = 0;
 			break;
 	}
-	if(pSim->templayer == -1 || pSim->templayer == 2)
+	if(p_sim->templayer == -1 || p_sim->templayer == 2)
 		rampPos++;
 	return rampPos;
 }
@@ -362,30 +357,30 @@ uint32_t janus_vp8_remb_simulcast_get_current_ramp_position(janus_rtp_simulcasti
  * @param rampPos - The ramp position we want to get the bitrate for
  * @returns - the bitrate value
  */
-uint32_t janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(janus_rtp_simulcasting_remb_context *pRembContext, uint32_t rampPos) {
+uint32_t janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(janus_rtp_simulcasting_remb_context *p_remb_context, uint32_t ramp_pos) {
 	uint32_t next = 0;
-	switch(rampPos) {
+	switch(ramp_pos) {
 		case 0: /* Substream 0 L - Temporal 15fps */
-			next = pRembContext->publisher_simulcast_bitrates[0] * CORRECTION_FACTOR_15FPS;
+			next = p_remb_context->publisher_simulcast_bitrates[0] * CORRECTION_FACTOR_15FPS;
 			break;
 		case 1: /* Substream 0 L - Temporal 30fps */
-			next = pRembContext->publisher_simulcast_bitrates[0];
+			next = p_remb_context->publisher_simulcast_bitrates[0];
 			break;
 		case 2: /* Substream 1 M - Temporal 15fps */
-			if(pRembContext->publisher_simulcast_layer_count > 1)
-				next = pRembContext->publisher_simulcast_bitrates[1] * CORRECTION_FACTOR_15FPS;
+			if(p_remb_context->publisher_simulcast_layer_count > 1)
+				next = p_remb_context->publisher_simulcast_bitrates[1] * CORRECTION_FACTOR_15FPS;
 			break;
 		case 3: /* Substream 1 M - Temporal 30fps */
-			if(pRembContext->publisher_simulcast_layer_count > 1)
-				next = pRembContext->publisher_simulcast_bitrates[1];
+			if(p_remb_context->publisher_simulcast_layer_count > 1)
+				next = p_remb_context->publisher_simulcast_bitrates[1];
 			break;
 		case 4: /* Substream 2 H - Temporal 15fps */
-			if(pRembContext->publisher_simulcast_layer_count > 2)
-				next = pRembContext->publisher_simulcast_bitrates[2] * CORRECTION_FACTOR_15FPS;
+			if(p_remb_context->publisher_simulcast_layer_count > 2)
+				next = p_remb_context->publisher_simulcast_bitrates[2] * CORRECTION_FACTOR_15FPS;
 			break;
 		case 5: /* Substream 2 H - Temporal 30fps */
-			if(pRembContext->publisher_simulcast_layer_count > 2)
-				next = pRembContext->publisher_simulcast_bitrates[2];
+			if(p_remb_context->publisher_simulcast_layer_count > 2)
+				next = p_remb_context->publisher_simulcast_bitrates[2];
 			break;
 		default:
 			break;
@@ -394,8 +389,8 @@ uint32_t janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(janus_rtp_simulc
 	// We had a failing in ramping up, so we adopt the bitrate of the failing layer by 5% for each failing
 	// 1. failing we require 5% more
 	// 2. failing we require 10% more ...
-	if(pRembContext->failed_highest_ramp_pos != -1 && pRembContext->failed_highest_ramp_pos == (int)rampPos) {
-		next *= 1 + pRembContext->failed_counter * REQUIRED_BITRATE_INCREASE_PER_FAIL;
+	if(p_remb_context->failed_highest_ramp_pos != -1 && p_remb_context->failed_highest_ramp_pos == (int)ramp_pos) {
+		next *= 1 + p_remb_context->failed_counter * REQUIRED_BITRATE_INCREASE_PER_FAIL;
 	}
 
 	return next;
@@ -411,59 +406,59 @@ uint32_t janus_vp8_remb_simulcast_get_bitrate_for_ramp_position(janus_rtp_simulc
  * @param pNextHigher - The next upper ramp position value
  * @returns - the bitrate value
  */
-void janus_vp8_remb_simulcast_get_neighbour_ramp_positions(janus_rtp_simulcasting_context *pSim, uint32_t rampPos, uint32_t *pNextLower, uint32_t *pNextHigher) {
-	int nextLower = rampPos;
-	int nextHigher = rampPos;
+void janus_vp8_remb_simulcast_get_neighbour_ramp_positions(janus_rtp_simulcasting_context *p_sim, uint32_t ramp_pos, uint32_t *p_next_lower, uint32_t *p_next_higher) {
+	int next_lower = ramp_pos;
+	int next_higher = ramp_pos;
 
-	if(nextLower > 0) {
+	if(next_lower > 0) {
 		/* Decrease the ramp Position */
-		nextLower--;
+		next_lower--;
 
 		/* Check that a preselected temporal from the client does not conflict our ramping up */
-		if(nextLower % 2) {
+		if(next_lower % 2) {
 			/* 1,3,5 are the layers where we switch to 30fps, */
-			if (pSim->templayer_target == 0 || pSim->templayer_target == 1) {
+			if (p_sim->templayer_target == 0 || p_sim->templayer_target == 1) {
 				/* if the client is requesting a lower temporal (7fps, 15fps)
 				 * we cannot use it and need to switch directly to the next lower */
-				nextLower--;
+				next_lower--;
 			}
 		}
 
-		if(nextLower < 0)
-			nextLower = 0;
+		if(next_lower < 0)
+			next_lower = 0;
 	}
 
-	if(nextHigher < 5) {
+	if(next_higher < 5) {
 		/* Increase the ramp Position */
-		nextHigher++;
+		next_higher++;
 
 		/* Check that a preselected temporal from the client does not conflict our ramping up */
-		if(nextHigher % 2) {
+		if(next_higher % 2) {
 			/* 1,3,5 are the layers where we switch to 30fps, */
-			if (pSim->templayer_target == 0 || pSim->templayer_target == 1) {
+			if (p_sim->templayer_target == 0 || p_sim->templayer_target == 1) {
 				/* if the client is requesting a lower temporal (7fps, 15fps)
 				 * we cannot use it and need to switch directly to the next substream */
-				nextHigher++;
+				next_higher++;
 			}
 		}
 
 		/* whats the currently selected substream target layer from the client? (-1 means not defined, so we say highest) */
-		int substream_target = pSim->substream_target;
+		int substream_target = p_sim->substream_target;
 		if (substream_target == -1)
 			substream_target = 2;
 
 		/* Check that a preselected substream layer from the client does not conflict our ramping up
 		 * Ramping up next would be substream high (2), but the client requested low or mid */
-		if (nextHigher > 3 && substream_target < 2)
-			nextHigher = 0;
+		if (next_higher > 3 && substream_target < 2)
+			next_higher = 0;
 
 		/* Ramping up next would be substream mid (1), but the client requested low */
-		else if (nextHigher > 1 && substream_target < 1)
-			nextHigher = 0;
+		else if (next_higher > 1 && substream_target < 1)
+			next_higher = 0;
 	}
 
-	*pNextLower = (uint32_t)nextLower;
-	*pNextHigher = (uint32_t)nextHigher;
+	*p_next_lower = (uint32_t)next_lower;
+	*p_next_higher = (uint32_t)next_higher;
 }
 
 /*
@@ -473,31 +468,31 @@ void janus_vp8_remb_simulcast_get_neighbour_ramp_positions(janus_rtp_simulcastin
  * @param rampPos - The ramp position to set the flags for
  * @returns - true in case the value was set or false
  */
-gboolean janus_vp8_remb_simulcast_set_flags_for_ramp_position(janus_rtp_simulcasting_remb_context *pRembContext, uint32_t position) {
+gboolean janus_vp8_remb_simulcast_set_flags_for_ramp_position(janus_rtp_simulcasting_remb_context *p_remb_context, uint32_t position) {
 	switch(position) {
 		case 0: /* Substream 0 - Temporal 15fps */
-			pRembContext->substream_limit_by_remb = 0;
-			pRembContext->templayer_limit_by_remb = 1;
+			p_remb_context->substream_limit_by_remb = 0;
+			p_remb_context->templayer_limit_by_remb = 1;
 			return TRUE;
 		case 1: /* Substream 0 - Temporal 30fps */
-			pRembContext->substream_limit_by_remb = 0;
-			pRembContext->templayer_limit_by_remb = -1;
+			p_remb_context->substream_limit_by_remb = 0;
+			p_remb_context->templayer_limit_by_remb = -1;
 			return TRUE;
 		case 2: /* Substream 1 - Temporal 15fps */
-			pRembContext->substream_limit_by_remb = 1;
-			pRembContext->templayer_limit_by_remb = 1;
+			p_remb_context->substream_limit_by_remb = 1;
+			p_remb_context->templayer_limit_by_remb = 1;
 			return TRUE;
 		case 3: /* Substream 1 - Temporal 30fps */
-			pRembContext->substream_limit_by_remb = 1;
-			pRembContext->templayer_limit_by_remb = -1;
+			p_remb_context->substream_limit_by_remb = 1;
+			p_remb_context->templayer_limit_by_remb = -1;
 			return TRUE;
 		case 4: /* Substream 2 - Temporal 15fps */
-			pRembContext->substream_limit_by_remb = -1;
-			pRembContext->templayer_limit_by_remb = 1;
+			p_remb_context->substream_limit_by_remb = -1;
+			p_remb_context->templayer_limit_by_remb = 1;
 			return TRUE;
 		case 5: /* Substream 2 - Temporal 30fps */
-			pRembContext->substream_limit_by_remb = -1;
-			pRembContext->templayer_limit_by_remb = -1;
+			p_remb_context->substream_limit_by_remb = -1;
+			p_remb_context->templayer_limit_by_remb = -1;
 			return TRUE;
 		default:
 			return FALSE;
@@ -551,10 +546,10 @@ const char* janus_vp8_remb_simulcast_get_debug_temporal_to_text(uint32_t tempora
  * @param bufSize - the buffer size in bytes
  * @param pSim - the simulcasting context
  */
-void janus_vp8_remb_simulcast_get_simulcast_requested_debug(char *szBuffer, gsize bufSize, janus_rtp_simulcasting_context *pSim) {
-	g_strlcat(szBuffer, janus_vp8_remb_simulcast_get_debug_substream_to_text(pSim->substream_target), bufSize);
-	g_strlcat(szBuffer, " ", bufSize);
-	g_strlcat(szBuffer, janus_vp8_remb_simulcast_get_debug_temporal_to_text(pSim->templayer_target), bufSize);
+void janus_vp8_remb_simulcast_get_simulcast_requested_debug(char *sz_buffer, gsize buf_size, janus_rtp_simulcasting_context *p_sim) {
+	g_strlcat(sz_buffer, janus_vp8_remb_simulcast_get_debug_substream_to_text(p_sim->substream_target), buf_size);
+	g_strlcat(sz_buffer, " ", buf_size);
+	g_strlcat(sz_buffer, janus_vp8_remb_simulcast_get_debug_temporal_to_text(p_sim->templayer_target), buf_size);
 }
 
 /*
@@ -564,8 +559,8 @@ void janus_vp8_remb_simulcast_get_simulcast_requested_debug(char *szBuffer, gsiz
  * @param bufSize - the buffer size in bytes
  * @param pSim - the simulcasting context
  */
-void janus_vp8_remb_simulcast_get_simulcast_current_debug(char *szBuffer, gsize bufSize, janus_rtp_simulcasting_context *pSim) {
-	g_strlcat(szBuffer, janus_vp8_remb_simulcast_get_debug_substream_to_text(pSim->substream), bufSize);
-	g_strlcat(szBuffer, " ", bufSize);
-	g_strlcat(szBuffer, janus_vp8_remb_simulcast_get_debug_temporal_to_text(pSim->templayer), bufSize);
+void janus_vp8_remb_simulcast_get_simulcast_current_debug(char *sz_buffer, gsize buf_size, janus_rtp_simulcasting_context *p_sim) {
+	g_strlcat(sz_buffer, janus_vp8_remb_simulcast_get_debug_substream_to_text(p_sim->substream), buf_size);
+	g_strlcat(sz_buffer, " ", buf_size);
+	g_strlcat(sz_buffer, janus_vp8_remb_simulcast_get_debug_temporal_to_text(p_sim->templayer), buf_size);
 }
