@@ -1049,6 +1049,7 @@ typedef struct janus_sip_session {
 static GHashTable *sessions;
 static GHashTable *identities;
 static GHashTable *callids;
+static GHashTable *messageids;
 static GHashTable *masters;
 static GHashTable *transfers;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
@@ -1936,6 +1937,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sip_session_destroy);
 	identities = g_hash_table_new(g_str_hash, g_str_equal);
 	callids = g_hash_table_new(g_str_hash, g_str_equal);
+	messageids = g_hash_table_new(g_str_hash, g_str_equal);
 	masters = g_hash_table_new(NULL, NULL);
 	transfers = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sip_transfer_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_sip_message_free);
@@ -1972,11 +1974,13 @@ void janus_sip_destroy(void) {
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
 	g_hash_table_destroy(callids);
+	g_hash_table_destroy(messageids);
 	g_hash_table_destroy(identities);
 	g_hash_table_destroy(masters);
 	g_hash_table_destroy(transfers);
 	sessions = NULL;
 	callids = NULL;
+	messageids = NULL:
 	identities = NULL;
 	masters = NULL;
 	transfers = NULL;
@@ -4637,9 +4641,9 @@ static void *janus_sip_handler(void *data) {
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 
-			/* message_callid will be used to implement delivery notification for the message */
 			char *message_callid = NULL;
 			if(in_dialog_message) {
+				/* Take Call-ID, later used to report delivery status */
 				message_callid = g_strdup(session->callid) ;
 				nua_message(session->stack->s_nh_i,
 					SIPTAG_CONTENT_TYPE_STR(content_type),
@@ -4659,9 +4663,8 @@ static void *janus_sip_handler(void *data) {
 					session->stack->s_nh_m = nua_handle(session->stack->s_nua, session, TAG_END());
 				}
 				janus_mutex_unlock(&session->stack->smutex);
-				/* call_id is set to be later used in the delivery recepit */
 				json_t *request_callid = json_object_get(root, "call_id");
-				/* Take call-id from request, if it exists */
+				/* Use call-id from the request, if it exists */
 				if(request_callid) {
 					message_callid = g_strdup(json_string_value(request_callid));
 				} else {
@@ -4679,14 +4682,14 @@ static void *janus_sip_handler(void *data) {
 					SIPTAG_CALL_ID_STR(message_callid),
 					TAG_END());
 			}
-			/* Notify the operation */
+			/* Notify the application */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("messagesent"));
-			/* message_callid will be later used to return the delivery status of the message */
 			json_object_set_new(result, "call_id", json_string(message_callid));
-			if (session->callid == NULL) {
-				session->callid = g_strdup(message_callid);
-			}
+			/* Store message id and session */
+			janus_mutex_lock(&sessions_mutex);
+			g_hash_table_insert(messageids, message_callid, session);
+			janus_mutex_unlock(&sessions_mutex);
 			g_free(message_callid);
 		} else if(!strcasecmp(request_text, "dtmf_info")) {
 			/* Send DMTF tones using SIP INFO
@@ -5492,22 +5495,32 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					NUTAG_AUTH(auth),
 					TAG_END());
 			}  else {
-				/* message response, notify the application */
+				/* Find session associated with the message */
+				janus_mutex_lock(&sessions_mutex);
+				janus_sip_session *message_session = g_hash_table_lookup(messageids, sip->sip_call_id->i_id);
+				janus_mutex_unlock(&sessions_mutex);
+				if (!message_session) {
+					message_session = session
+					JANUS_LOG(LOG_VERB, "Message (%s) not associated with any session, event will be reported to master\n", sip->sip_call_id->i_id);
+				} else {
+					/* Session was found in messageids, removes from hashtable */
+					janus_mutex_lock(&sessions_mutex);
+					g_hash_table_remove(messageids, sip->sip_call_id->i_id);
+					janus_mutex_unlock(&sessions_mutex);
+				}
+				/* MESSAGE response, notify the application */
 				json_t *result = json_object();
-				/* sip code and reason */
+				/* SIP code and reason */
 				json_object_set_new(result, "event", json_string("messagedelivery"));
 				json_object_set_new(result, "code", json_integer(status));
 				json_object_set_new(result, "reason", json_string(phrase));
-				/* 200 OK, message delivered */
-				json_object_set_new(result, "delivered", (status == 200 ? json_true() : json_false()));
-				json_object_set_new(result, "call_id", json_string(sip->sip_call_id->i_id));
-				/* builds the delivery receipt */
+				/* Build the delivery receipt */
 				json_t *dr = json_object();
 				json_object_set_new(dr, "sip", json_string("event"));
 				json_object_set_new(dr, "result", result);
 				json_object_set_new(dr, "call_id", json_string(sip->sip_call_id->i_id));
-				/* report the delivery notification */
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, dr, NULL);
+				/* Report delivery */
+				int ret = gateway->push_event(message_session->handle, &janus_sip_plugin, message_session->transaction, dr, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(dr);
 			}
