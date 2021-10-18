@@ -1,4 +1,4 @@
-#Janus-pp-rec 0.11.5 gengetopt file
+#Janus-pp-rec 0.11.6 gengetopt file
 usage "janus-pp-rec [OPTIONS] source.mjr [destination.[opus|ogg|mka|wav|webm|mkv|h264|srt]]"
 option "file-extensions" F "Only print the supported target file extensions per codec" flag off
 option "json" j "Only print JSON header" flag off
