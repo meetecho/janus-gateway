@@ -68,7 +68,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Server © 2014-2021 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2021 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -3812,7 +3812,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Server © 2014-2021 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2021 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -3935,7 +3935,7 @@ ldd janus | grep asan
  * \anchor janus
  * -# <b>What is Janus?</b>\n
  *    .
- *    Janus is an open source WebRTC server written by <a href="http://www.meetecho.com">Meetecho</a>,
+ *    Janus is an open source WebRTC server written by <a href="https://www.meetecho.com">Meetecho</a>,
  *    conceived as modular and, as much as possible,
  *    general purpose. It acts as a WebRTC endpoint browsers can interact
  *    with, and different modules can determine what should be done with
@@ -4262,7 +4262,7 @@ ldd janus | grep asan
  *    protocol that can be used to poll information on existing sessions and
  *    handles, and which also provides a lot of useful WebRTC-related information
  *    on PeerConnections Janus is managing. You can also find a very useful
- *    <a href="http://www.meetecho.com/blog/understanding-the-janus-admin-api">blog post</a>
+ *    <a href="https://www.meetecho.com/blog/understanding-the-janus-admin-api">blog post</a>
  *    where we describe in detail how the Admin API can be used to investigate issues. \n\n
  *    A more recent, and potentially much more powerful, addition to Janus
  *    are the Event Handlers. Unlike the Admin API, which is query-based,
@@ -4367,7 +4367,7 @@ ldd janus | grep asan
  *    much sense unless you contextualise the scenarios.\n\n
  *    You can find some results on tests we made ourselves in a couple of
  *    publications we wrote and available
- *    <a href="http://janus.conf.meetecho.com/citeus">here</a>. One of those
+ *    <a href="https://janus.conf.meetecho.com/citeus">here</a>. One of those
  *    introduces a WebRTC stress testing tool we implemented called Jattack,
  *    for which a <a href="https://www.youtube.com/watch?v=UwNq8p0m1js">video of the presentation</a>
  *    is available. You can find some more details and considerations in an older
