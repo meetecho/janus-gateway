@@ -914,23 +914,23 @@ char *janus_sdp_write(janus_sdp *imported) {
 	*sdp = '\0';
 	/* v= */
 	g_snprintf(buffer, sizeof(buffer), "v=%d\r\n", imported->version);
-	g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+	janus_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	/* o= */
 	g_snprintf(buffer, sizeof(buffer), "o=%s %"SCNu64" %"SCNu64" IN %s %s\r\n",
 		imported->o_name, imported->o_sessid, imported->o_version,
 		imported->o_ipv4 ? "IP4" : "IP6", imported->o_addr);
-	g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+	janus_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	/* s= */
 	g_snprintf(buffer, sizeof(buffer), "s=%s\r\n", imported->s_name);
-	g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+	janus_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	/* t= */
 	g_snprintf(buffer, sizeof(buffer), "t=%"SCNu64" %"SCNu64"\r\n", imported->t_start, imported->t_stop);
-	g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+	janus_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	/* c= */
 	if(imported->c_addr != NULL) {
 		g_snprintf(buffer, sizeof(buffer), "c=IN %s %s\r\n",
 			imported->c_ipv4 ? "IP4" : "IP6", imported->c_addr);
-		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+		janus_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	}
 	/* a= */
 	GList *temp = imported->attributes;
@@ -941,7 +941,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 		} else {
 			g_snprintf(buffer, sizeof(buffer), "a=%s\r\n", a->name);
 		}
-		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+		janus_strlcat(sdp, buffer, JANUS_BUFSIZE);
 		temp = temp->next;
 	}
 	/* m= */
@@ -949,7 +949,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		g_snprintf(buffer, sizeof(buffer), "m=%s %d %s", m->type_str, m->port, m->proto);
-		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+		janus_strlcat(sdp, buffer, JANUS_BUFSIZE);
 		if(m->port == 0 && m->type != JANUS_SDP_APPLICATION) {
 			/* Remove all payload types/formats if we're rejecting the media */
 			g_list_free_full(m->fmts, (GDestroyNotify)g_free);
@@ -957,14 +957,14 @@ char *janus_sdp_write(janus_sdp *imported) {
 			g_list_free(m->ptypes);
 			m->ptypes = NULL;
 			m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(0));
-			g_strlcat(sdp, " 0", JANUS_BUFSIZE);
+			janus_strlcat(sdp, " 0", JANUS_BUFSIZE);
 		} else {
 			if(m->proto != NULL && strstr(m->proto, "RTP") != NULL) {
 				/* RTP profile, use payload types */
 				GList *ptypes = m->ptypes;
 				while(ptypes) {
 					g_snprintf(buffer, sizeof(buffer), " %d", GPOINTER_TO_INT(ptypes->data));
-					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+					janus_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					ptypes = ptypes->next;
 				}
 			} else {
@@ -972,30 +972,30 @@ char *janus_sdp_write(janus_sdp *imported) {
 				GList *fmts = m->fmts;
 				while(fmts) {
 					g_snprintf(buffer, sizeof(buffer), " %s", (char *)(fmts->data));
-					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+					janus_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					fmts = fmts->next;
 				}
 			}
 		}
-		g_strlcat(sdp, "\r\n", JANUS_BUFSIZE);
+		janus_strlcat(sdp, "\r\n", JANUS_BUFSIZE);
 		/* c= */
 		if(m->c_addr != NULL) {
 			g_snprintf(buffer, sizeof(buffer), "c=IN %s %s\r\n",
 				m->c_ipv4 ? "IP4" : "IP6", m->c_addr);
-			g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+			janus_strlcat(sdp, buffer, JANUS_BUFSIZE);
 		}
 		if(m->port > 0) {
 			/* b= */
 			if(m->b_name != NULL) {
 				g_snprintf(buffer, sizeof(buffer), "b=%s:%"SCNu32"\r\n", m->b_name, m->b_value);
-				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+				janus_strlcat(sdp, buffer, JANUS_BUFSIZE);
 			}
 		}
 		/* a= (note that we don't format the direction if it's JANUS_SDP_DEFAULT) */
 		const char *direction = m->direction != JANUS_SDP_DEFAULT ? janus_sdp_mdirection_str(m->direction) : NULL;
 		if(direction != NULL) {
 			g_snprintf(buffer, sizeof(buffer), "a=%s\r\n", direction);
-			g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+			janus_strlcat(sdp, buffer, JANUS_BUFSIZE);
 		}
 		GList *temp2 = m->attributes;
 		while(temp2) {
@@ -1010,7 +1010,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 			} else {
 				g_snprintf(buffer, sizeof(buffer), "a=%s\r\n", a->name);
 			}
-			g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+			janus_strlcat(sdp, buffer, JANUS_BUFSIZE);
 			temp2 = temp2->next;
 		}
 		temp = temp->next;
