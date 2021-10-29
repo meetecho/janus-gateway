@@ -915,15 +915,13 @@ const char *janus_sdp_get_fmtp(janus_sdp *sdp, int pt) {
  * @returns the size of the buffer (may exceed size if it was resized)
  */
 gsize dynamic_strlcat(char** buffer, const char* add, gsize size) {
-	size_t len = strlen(*buffer);
-	size_t adding = strlen(add);
-	if(size < len + adding + 1) {
-		char* newbuf = g_malloc(size + JANUS_BUFSIZE);
-		memcpy(newbuf, *buffer, len);
-		newbuf[len] = '\0';
-		size += JANUS_BUFSIZE;
-		g_free(*buffer);
-		*buffer = newbuf;
+	// What is the resulting length (current used buffer size + length of the addition + null byte)
+	size_t required = strlen(*buffer) + strlen(add) + 1;
+	// In case the buffer is not large enough
+	if(required > size) {
+		// Either we double the size, or we increase by the required size
+		size = MAX(size * 2, required);
+		*buffer = g_realloc(*buffer, size);
 	}
 	g_strlcat(*buffer, add, size);
 	return size;
