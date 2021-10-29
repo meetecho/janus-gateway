@@ -20,6 +20,7 @@
 #include "debug.h"
 
 #define JANUS_BUFSIZE	8192
+#define MAX_JANUS_BUFSIZE	1048576
 
 gsize dynamic_strlcat(char** buffer, const char* add, gsize size);
 
@@ -919,8 +920,12 @@ gsize dynamic_strlcat(char** buffer, const char* add, gsize size) {
 	size_t required = strlen(*buffer) + strlen(add) + 1;
 	// In case the buffer is not large enough
 	if(required > size) {
+		if(required > MAX_JANUS_BUFSIZE)
+			JANUS_LOG(LOG_ERR, "dynamic_strlcat - Required buffer size %ld exceeds MAX_JANUS_BUFSIZE (%ld)", required, MAX_JANUS_BUFSIZE);
 		// Either we double the size, or we increase by the required size
 		size = MAX(size * 2, required);
+		if(size > MAX_JANUS_BUFSIZE)
+			size = MAX_JANUS_BUFSIZE;
 		*buffer = g_realloc(*buffer, size);
 	}
 	g_strlcat(*buffer, add, size);
