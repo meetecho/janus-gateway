@@ -921,12 +921,15 @@ gsize dynamic_strlcat(char** dynamic_buffer, const char* add, gsize size) {
 	// In case the buffer is not large enough
 	if(required > size) {
 		if(required > MAX_JANUS_BUFSIZE)
-			JANUS_LOG(LOG_ERR, "dynamic_strlcat - Required buffer size %ld exceeds MAX_JANUS_BUFSIZE (%ld)", required, MAX_JANUS_BUFSIZE);
+			JANUS_LOG(LOG_ERR, "dynamic_strlcat - Required buffer size %ld exceeds MAX_JANUS_BUFSIZE (%d)", required, MAX_JANUS_BUFSIZE);
 		// Either we double the size, or we increase by the required size
-		size = MAX(size * 2, required);
-		if(size > MAX_JANUS_BUFSIZE)
-			size = MAX_JANUS_BUFSIZE;
-		*dynamic_buffer = g_realloc(*dynamic_buffer, size);
+		size_t newsize = MAX(size * 2, required);
+		if(newsize > MAX_JANUS_BUFSIZE)
+			newsize = MAX_JANUS_BUFSIZE;
+		if(newsize > size) {
+			size = newsize;
+			*dynamic_buffer = g_realloc(*dynamic_buffer, size);
+		}
 	}
 	g_strlcat(*dynamic_buffer, add, size);
 	return size;
