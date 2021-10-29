@@ -910,14 +910,14 @@ const char *janus_sdp_get_fmtp(janus_sdp *sdp, int pt) {
 }
 
 /*! \brief Concatenates a string to another and dynamically increases the buffer if it is too small
- * @param buffer - Pointer to the buffer for the target string
+ * @param dynamic_buffer - Pointer to the dynamic buffer for the target string. This must be a dynamic allocated memory.
  * @param add - String to add
  * @param size - Current size of the buffer
  * @returns the size of the buffer (may exceed size if it was resized)
  */
-gsize dynamic_strlcat(char** buffer, const char* add, gsize size) {
+gsize dynamic_strlcat(char** dynamic_buffer, const char* add, gsize size) {
 	// What is the resulting length (current used buffer size + length of the addition + null byte)
-	size_t required = strlen(*buffer) + strlen(add) + 1;
+	size_t required = strlen(*dynamic_buffer) + strlen(add) + 1;
 	// In case the buffer is not large enough
 	if(required > size) {
 		if(required > MAX_JANUS_BUFSIZE)
@@ -926,9 +926,9 @@ gsize dynamic_strlcat(char** buffer, const char* add, gsize size) {
 		size = MAX(size * 2, required);
 		if(size > MAX_JANUS_BUFSIZE)
 			size = MAX_JANUS_BUFSIZE;
-		*buffer = g_realloc(*buffer, size);
+		*dynamic_buffer = g_realloc(*dynamic_buffer, size);
 	}
-	g_strlcat(*buffer, add, size);
+	g_strlcat(*dynamic_buffer, add, size);
 	return size;
 }
 
