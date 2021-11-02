@@ -3669,6 +3669,7 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 	janus_ice_peerconnection_medium *medium = NULL;
 	if(pc) {
 		/* Find inbound video medium */
+		janus_mutex_lock(&handle->mutex);
 		GHashTableIter iter;
 		gpointer value;
 		g_hash_table_iter_init(&iter, pc->media_bymid);
@@ -3679,6 +3680,7 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 				break;
 			}
 		}
+		janus_mutex_unlock(&handle->mutex);
 	}
 
 	if(pc && pc->do_transport_wide_cc && medium) {
