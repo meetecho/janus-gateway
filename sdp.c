@@ -1272,7 +1272,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		medium = g_hash_table_lookup(pc->media, GINT_TO_POINTER(m->index));
 		if(medium && m->port > 0) {
 			g_snprintf(buffer_part, sizeof(buffer_part), " %s", medium->mid);
-			g_strlcat(buffer, buffer_part, sizeof(buffer));
+			janus_strlcat(buffer, buffer_part, sizeof(buffer));
 		}
 		temp = temp->next;
 	}
@@ -1470,10 +1470,10 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				a = janus_sdp_attribute_create("rid", "%s recv", medium->rid[index]);
 				m->attributes = g_list_append(m->attributes, a);
 				if(strlen(rids) == 0) {
-					g_strlcat(rids, medium->rid[index], sizeof(rids));
+					janus_strlcat(rids, medium->rid[index], sizeof(rids));
 				} else {
-					g_strlcat(rids, ";", sizeof(rids));
-					g_strlcat(rids, medium->rid[index], sizeof(rids));
+					janus_strlcat(rids, ";", sizeof(rids));
+					janus_strlcat(rids, medium->rid[index], sizeof(rids));
 				}
 			}
 			if(medium->legacy_rid) {

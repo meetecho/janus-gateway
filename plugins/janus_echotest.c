@@ -1072,8 +1072,10 @@ static void *janus_echotest_handler(void *data) {
 				g_snprintf(error_cause, 512, "Error parsing offer: %s", error_str);
 				goto error;
 			}
-			/* Check if we need to negotiate Opus FEC */
-			gboolean opus_fec = FALSE;
+			/* Check if we need to negotiate Opus FEC and/or DTX */
+			gboolean opus_fec = FALSE, opus_dtx = FALSE;
+			char custom_fmtp[256];
+			custom_fmtp[0] = '\0';
 			GList *temp = offer->m_lines;
 			while(temp) {
 				/* Which media are available? */
@@ -1084,9 +1086,31 @@ static void *janus_echotest_handler(void *data) {
 					while(ma) {
 						janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
 						if(a->value) {
-							if(m->type == JANUS_SDP_AUDIO && !strcasecmp(a->name, "fmtp") &&
-									strstr(a->value, "useinbandfec=1")) {
-								opus_fec = TRUE;
+							if(m->type == JANUS_SDP_AUDIO && !strcasecmp(a->name, "fmtp")) {
+								if(strstr(a->value, "useinbandfec=1")) {
+									opus_fec = TRUE;
+									if(strlen(custom_fmtp) == 0) {
+										g_snprintf(custom_fmtp, sizeof(custom_fmtp), "useinbandfec=1");
+									} else {
+										g_strlcat(custom_fmtp, ";useinbandfec=1", sizeof(custom_fmtp));
+									}
+								}
+								if(strstr(a->value, "usedtx=1")) {
+									opus_dtx = TRUE;
+									if(strlen(custom_fmtp) == 0) {
+										g_snprintf(custom_fmtp, sizeof(custom_fmtp), "usedtx=1");
+									} else {
+										g_strlcat(custom_fmtp, ";usedtx=1", sizeof(custom_fmtp));
+									}
+								}
+								if(strstr(a->value, "stereo=1")) {
+									opus_dtx = TRUE;
+									if(strlen(custom_fmtp) == 0) {
+										g_snprintf(custom_fmtp, sizeof(custom_fmtp), "usedtx=1");
+									} else {
+										g_strlcat(custom_fmtp, ";usedtx=1", sizeof(custom_fmtp));
+									}
+								}
 							}
 						}
 						ma = ma->next;
@@ -1102,7 +1126,7 @@ static void *janus_echotest_handler(void *data) {
 					JANUS_SDP_OA_MLINE, m->type,
 					JANUS_SDP_OA_CODEC, (m->type == JANUS_SDP_AUDIO ? json_string_value(audiocodec) :
 						(m->type == JANUS_SDP_VIDEO ? json_string_value(videocodec) : NULL)),
-					JANUS_SDP_OA_FMTP, (m->type == JANUS_SDP_AUDIO && opus_fec ? "useinbandfec=1" : NULL),
+					JANUS_SDP_OA_FMTP, ((m->type == JANUS_SDP_AUDIO && (opus_fec || opus_dtx)) ? custom_fmtp : NULL),
 					JANUS_SDP_OA_VP9_PROFILE, json_string_value(videoprofile),
 					JANUS_SDP_OA_H264_PROFILE, json_string_value(videoprofile),
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,

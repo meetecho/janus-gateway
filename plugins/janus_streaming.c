@@ -5616,11 +5616,11 @@ done:
 			g_snprintf(buffer, 512,
 				"v=0\r\no=%s %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n",
 					"-", session->sdp_sessid, session->sdp_version);
-			g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+			janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 			g_snprintf(buffer, 512,
 				"s=Mountpoint %s\r\n", mp->id_str);
-			g_strlcat(sdptemp, buffer, sizeof(sdptemp));
-			g_strlcat(sdptemp, "t=0 0\r\n", sizeof(sdptemp));
+			janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
+			janus_strlcat(sdptemp, "t=0 0\r\n", sizeof(sdptemp));
 			if(mp->streaming_source == janus_streaming_source_file) {
 				janus_streaming_file_source *source = mp->source;
 				/* Add audio line */
@@ -5628,20 +5628,20 @@ done:
 					"m=audio 1 RTP/SAVPF %d\r\n"
 					"c=IN IP4 1.1.1.1\r\n",
 					source->codecs.pt);
-				g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+				janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 				if(source->codecs.rtpmap) {
 					g_snprintf(buffer, 512,
 						"a=rtpmap:%d %s\r\n",
 						source->codecs.pt, source->codecs.rtpmap);
-					g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+					janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 				}
 				if(source->codecs.fmtp) {
 					g_snprintf(buffer, 512,
 						"a=fmtp:%d %s\r\n",
 						source->codecs.pt, source->codecs.fmtp);
-					g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+					janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 				}
-				g_strlcat(sdptemp, "a=sendonly\r\n", sizeof(sdptemp));
+				janus_strlcat(sdptemp, "a=sendonly\r\n", sizeof(sdptemp));
 			} else {
 				/* Iterate on all media streams */
 				GList *temp = session->streams;
@@ -5654,58 +5654,58 @@ done:
 						g_snprintf(buffer, 512,
 							"m=audio 1 RTP/SAVPF %d\r\n"
 							"c=IN IP4 1.1.1.1\r\n", pt);
-						g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+						janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 						g_snprintf(buffer, 512, "a=mid:%s\r\n", stream->mid);
-						g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+						janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 						if(stream->codecs.rtpmap) {
 							g_snprintf(buffer, 512,
 								"a=rtpmap:%d %s\r\n",
 								pt, stream->codecs.rtpmap);
-							g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+							janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 						}
 						if(stream->codecs.fmtp) {
 							g_snprintf(buffer, 512,
 								"a=fmtp:%d %s\r\n",
 								pt, stream->codecs.fmtp);
-							g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+							janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 						}
-						g_strlcat(sdptemp, "a=sendonly\r\n", sizeof(sdptemp));
+						janus_strlcat(sdptemp, "a=sendonly\r\n", sizeof(sdptemp));
 						g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 1, JANUS_RTP_EXTMAP_MID);
-						g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+						janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 					} else if(stream->type == JANUS_STREAMING_MEDIA_VIDEO && video) {
 						/* Add video line */
 						g_snprintf(buffer, 512,
 							"m=video 1 RTP/SAVPF %d\r\n"
 							"c=IN IP4 1.1.1.1\r\n", pt);
-						g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+						janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 						g_snprintf(buffer, 512, "a=mid:%s\r\n", stream->mid);
-						g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+						janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 						if(stream->codecs.rtpmap) {
 							g_snprintf(buffer, 512,
 								"a=rtpmap:%d %s\r\n",
 								pt, stream->codecs.rtpmap);
-							g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+							janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 						}
 						if(stream->codecs.fmtp) {
 							g_snprintf(buffer, 512,
 								"a=fmtp:%d %s\r\n",
 								pt, stream->codecs.fmtp);
-							g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+							janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 						}
 						g_snprintf(buffer, 512,
 							"a=rtcp-fb:%d nack\r\n", pt);
-						g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+						janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 						g_snprintf(buffer, 512,
 							"a=rtcp-fb:%d nack pli\r\n", pt);
-						g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+						janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 						g_snprintf(buffer, 512,
 							"a=rtcp-fb:%d goog-remb\r\n", pt);
-						g_strlcat(sdptemp, buffer, sizeof(sdptemp));
-						g_strlcat(sdptemp, "a=sendonly\r\n", sizeof(sdptemp));
+						janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
+						janus_strlcat(sdptemp, "a=sendonly\r\n", sizeof(sdptemp));
 						g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 1, JANUS_RTP_EXTMAP_MID);
-						g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+						janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 						g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 2, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
-						g_strlcat(sdptemp, buffer, 2048);
+						janus_strlcat(sdptemp, buffer, 2048);
 					}
 #ifdef HAVE_SCTP
 					else if(stream->type == JANUS_STREAMING_MEDIA_DATA && data) {
@@ -5715,7 +5715,7 @@ done:
 							"c=IN IP4 1.1.1.1\r\n"
 							"a=mid:%s\r\n"
 							"a=sctp-port:5000\r\n", stream->mid);
-						g_strlcat(sdptemp, buffer, sizeof(sdptemp));
+						janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 					}
 #endif
 					temp = temp->next;

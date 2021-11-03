@@ -1569,7 +1569,7 @@ static void janus_sip_parse_custom_headers(json_t *root, char *custom_headers, s
 				char h[255];
 				g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
 				JANUS_LOG(LOG_VERB, "Adding custom header, %s\n", h);
-				g_strlcat(custom_headers, h, size);
+				janus_strlcat(custom_headers, h, size);
 				iter = json_object_iter_next(headers, iter);
 			}
 		}
@@ -1602,7 +1602,7 @@ static void janus_sip_parse_custom_contact_params(json_t *root, char *custom_par
 					g_snprintf(h, 255, ";%s=%s", key, json_string_value(value));
 				}
 				JANUS_LOG(LOG_VERB, "Adding custom param, %s\n", h);
-				g_strlcat(custom_params, h, size);
+				janus_strlcat(custom_params, h, size);
 				iter = json_object_iter_next(params, iter);
 			}
 		}
@@ -1692,7 +1692,7 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 		}
 		if(strlen(line) == 1) {
 			/* Append a carriage and return */
-			g_strlcat(sofia_log, "\r\n", sizeof(sofia_log));
+			janus_strlcat(sofia_log, "\r\n", sizeof(sofia_log));
 		} else {
 			/* If this is an OPTIONS, we don't care: drop it */
 			char *header = &line[3];
@@ -1705,7 +1705,7 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 				g_snprintf(call_id, sizeof(call_id), "%s", header+9);
 			}
 			/* Append the line to our buffer, skipping the indent */
-			g_strlcat(sofia_log, &line[3], sizeof(sofia_log));
+			janus_strlcat(sofia_log, &line[3], sizeof(sofia_log));
 		}
 		return;
 	}
@@ -3586,7 +3586,7 @@ static void *janus_sip_handler(void *data) {
 					session->refer_id = refer_id;
 					referred_by = transfer->referred_by ? g_strdup(transfer->referred_by) : NULL;
 					/* Any custom headers we should include? (e.g., Replaces) */
-					g_strlcat(custom_headers, transfer->custom_headers, sizeof(custom_headers));
+					janus_strlcat(custom_headers, transfer->custom_headers, sizeof(custom_headers));
 				}
 			}
 			/* If the user negotiated simulcasting, just stick with the base substream */
@@ -6904,9 +6904,9 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	g_snprintf(sips_url, sizeof(sips_url), "sips:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
 	char outbound_options[256] = "use-rport no-validate";
 	if(keepalive_interval > 0)
-		g_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
+		janus_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
 	if(!behind_nat)
-		g_strlcat(outbound_options, " no-natify", sizeof(outbound_options));
+		janus_strlcat(outbound_options, " no-natify", sizeof(outbound_options));
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,

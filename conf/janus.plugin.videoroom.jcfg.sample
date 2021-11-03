@@ -3,7 +3,7 @@
 # is_private = true|false (whether this room should be in the public list, default=true)
 # secret = <optional password needed for manipulating (e.g. destroying) the room>
 # pin = <optional password needed for joining the room>
-# require_pvtid = true|false (whether subscriptions are required to provide a valid private_id 
+# require_pvtid = true|false (whether subscriptions are required to provide a valid private_id
 #			to associate with a publisher, default=false)
 # publishers = <max number of concurrent senders> (e.g., 6 for a video
 #              conference or 1 for a webinar)
@@ -17,7 +17,8 @@
 #			can be a comma separated list in order of preference, e.g., vp9,vp8,h264)
 # vp9_profile = VP9-specific profile to prefer (e.g., "2" for "profile-id=2")
 # h264_profile = H.264-specific profile to prefer (e.g., "42e01f" for "profile-level-id=42e01f")
-# opus_fec = true|false (whether inband FEC must be negotiated; only works for Opus, default=false)
+# opus_fec = true|false (whether inband FEC must be negotiated; only works for Opus, default=true)
+# opus_dtx = true|false (whether DTX must be negotiated; only works for Opus, default=false)
 # video_svc = true|false (whether SVC support must be enabled; only works for VP9, default=false)
 # audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must
 #		be negotiated/used or not for new publishers, default=true)
