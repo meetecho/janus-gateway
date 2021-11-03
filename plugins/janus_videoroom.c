@@ -2949,7 +2949,7 @@ static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscr
 /* Helper to generate a new offer with the subscriber streams */
 static json_t *janus_videoroom_subscriber_offer(janus_videoroom_subscriber *subscriber) {
 	g_atomic_int_set(&subscriber->answered, 0);
-	char s_name[100];
+	char s_name[100], audio_fmtp[256];
 	g_snprintf(s_name, sizeof(s_name), "VideoRoom %s", subscriber->room->room_id_str);
 	janus_sdp *offer = janus_sdp_generate_offer(s_name, "0.0.0.0",
 		JANUS_SDP_OA_DONE);
@@ -2959,6 +2959,25 @@ static json_t *janus_videoroom_subscriber_offer(janus_videoroom_subscriber *subs
 		janus_videoroom_publisher_stream *ps = stream->publisher_streams ? stream->publisher_streams->data : NULL;
 		int pt = -1;
 		const char *codec = NULL;
+		audio_fmtp[0] = '\0';
+		if(stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
+			if(ps->opusfec)
+				g_snprintf(audio_fmtp, sizeof(audio_fmtp), "useinbandfec=1");
+			if(ps->opusdtx) {
+				if(strlen(audio_fmtp) == 0) {
+					g_snprintf(audio_fmtp, sizeof(audio_fmtp), "usedtx=1");
+				} else {
+					janus_strlcat(audio_fmtp, ";usedtx=1", sizeof(audio_fmtp));
+				}
+			}
+			if(ps->opusstereo) {
+				if(strlen(audio_fmtp) == 0) {
+					g_snprintf(audio_fmtp, sizeof(audio_fmtp), "stereo=1");
+				} else {
+					janus_strlcat(audio_fmtp, ";stereo=1", sizeof(audio_fmtp));
+				}
+			}
+		}
 		if(stream->type != JANUS_VIDEOROOM_MEDIA_DATA) {
 			pt = stream->pt;
 			codec = (stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO ?
@@ -2969,9 +2988,7 @@ static json_t *janus_videoroom_subscriber_offer(janus_videoroom_subscriber *subs
 			JANUS_SDP_OA_MID, stream->mid,
 			JANUS_SDP_OA_PT, pt,
 			JANUS_SDP_OA_CODEC, codec,
-			JANUS_SDP_OA_FMTP, (stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO && stream->opusfec ? "useinbandfec=1" :
-				//~ (stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO ? vprofile : NULL)),
-				NULL),
+			JANUS_SDP_OA_FMTP, (stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO && strlen(audio_fmtp) ? audio_fmtp : NULL),
 			JANUS_SDP_OA_H264_PROFILE, (stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO ? stream->h264_profile : NULL),
 			JANUS_SDP_OA_VP9_PROFILE, (stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO ? stream->vp9_profile : NULL),
 			JANUS_SDP_OA_DIRECTION, ((ps && !ps->disabled) || stream->type == JANUS_VIDEOROOM_MEDIA_DATA) ? JANUS_SDP_SENDONLY : JANUS_SDP_INACTIVE,
