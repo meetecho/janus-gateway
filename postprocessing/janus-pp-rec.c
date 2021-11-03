@@ -80,6 +80,8 @@ Usage: janus-pp-rec [OPTIONS] source.mjr
                                   compensation, disabled if 0 (default=0)
   -C, --silence-distance=count  RTP packets distance used to detect RTP silence
                                   suppression, disabled if 0 (default=100)
+  -X, --dtx                     Enable DTX mode (disables code to handle
+                                  silence suppression)  (default=off)
   -r, --restamp=count           If the latency of a packet is bigger than the
                                   `moving_average_latency * (<restamp>/1000)`
                                   the timestamps will be corrected, disabled if
@@ -312,6 +314,8 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			silence_distance = val;
 	}
+	if(args_info.dtx_given)
+		silence_distance = 0;
 	if(args_info.restamp_given || (g_getenv("JANUS_PPREC_RESTAMP") != NULL)) {
 		int val = args_info.restamp_given ? args_info.restamp_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP"));
 		if(val >= 0)
@@ -803,8 +807,8 @@ int main(int argc, char *argv[])
 	int ignored = 0;
 	offset = 0;
 	gboolean started = FALSE;
-	/* DTX stuff */
-	gboolean dtx_on = FALSE;
+	/* Silence suppression stuff */
+	gboolean ssup_on = FALSE;
 	/* Extensions, if any */
 	int audiolevel = 0, rotation = 0, last_rotation = -1, rotated = -1;
 	uint16_t rtp_header_len, rtp_read_n;
@@ -989,9 +993,11 @@ int main(int argc, char *argv[])
 			p->ts = (times_resetted*max32)+rtp_ts;
 		} else {
 			if(!video && !data) {
-				if(dtx_on) {
-					/* Leaving DTX mode (RTP started flowing again) */
-					dtx_on = FALSE;
+				/* Check if we need to handle the SIP silence suppression mode,
+				 * see https://github.com/meetecho/janus-gateway/pull/2328 */
+				if(ssup_on) {
+					/* Leaving silence suppression mode (RTP started flowing again) */
+					ssup_on = FALSE;
 					JANUS_LOG(LOG_WARN, "Leaving RTP silence suppression (seq=%"SCNu16", rtp_ts=%"SCNu32")\n", ntohs(rtp->seq_number), rtp_ts);
 				} else if(rtp->markerbit == 1) {
 					/* Try to detect RTP silence suppression */
@@ -1002,8 +1008,8 @@ int main(int argc, char *argv[])
 						int32_t expected_rtp_distance = inter_rtp_ts * seq_distance;
 						int32_t rtp_distance = abs((int32_t)(rtp_ts - highest_rtp_ts));
 						if(rtp_distance > 10 * expected_rtp_distance) {
-							/* Entering DTX mode (RTP will stop) */
-							dtx_on = TRUE;
+							/* Entering silence suppression mode (RTP will stop) */
+							ssup_on = TRUE;
 							/* This is a close packet with not coherent RTP ts -> silence suppression */
 							JANUS_LOG(LOG_WARN, "Dropping audio RTP silence suppression (seq_distance=%d, rtp_distance=%d)\n", seq_distance, rtp_distance);
 							/* Skip data */
