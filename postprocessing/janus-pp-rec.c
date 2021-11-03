@@ -119,6 +119,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr
 #include <jansson.h>
 
 #include "../debug.h"
+#include "../utils.h"
 #include "../version.h"
 #include "pp-cmdline.h"
 #include "pp-rtp.h"
@@ -209,15 +210,15 @@ static char *janus_pp_extensions_string(const char **allowed, char *supported, s
 	if(allowed == NULL || supported == NULL || suplen == 0)
 		return NULL;
 	supported[0] = '\0';
-	g_strlcat(supported, "[", suplen);
+	janus_strlcat(supported, "[", suplen);
 	const char **ext = allowed;
 	while(*ext != NULL) {
 		if(strlen(supported) > 1)
-			g_strlcat(supported, ", ", suplen);
-		g_strlcat(supported, *ext, suplen);
+			janus_strlcat(supported, ", ", suplen);
+		janus_strlcat(supported, *ext, suplen);
 		ext++;
 	}
-	g_strlcat(supported, "]", suplen);
+	janus_strlcat(supported, "]", suplen);
 	return supported;
 }
 

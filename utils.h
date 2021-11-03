@@ -377,6 +377,13 @@ int janus_vp9_parse_svc(char *buffer, int len, gboolean *found, janus_vp9_svc_in
  * @returns 0  New word value*/
 guint32 janus_push_bits(guint32 word, size_t num, guint32 val);
 
+/*! \brief Helper method to concatenate strings and log an error if truncation occured
+ * @param[in] dest destination buffer, already containing one nul-terminated string
+ * @param[in] src source buffer
+ * @param[in] dest_size length of dest buffer in bytes (not length of existing string inside dest)
+ * @returns size of attempted result, if retval >= dest_size, truncation occurred (and an error will be logged). */
+gsize janus_strlcat(gchar *dest, const gchar *src, gsize dest_size);
+
 /*! \brief Helper method to set one byte at a memory position
  * @param[in] data memory data pointer
  * @param[in] i position in memory to change

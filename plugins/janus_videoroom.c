@@ -1879,40 +1879,40 @@ static void janus_videoroom_codecstr(janus_videoroom *videoroom, char *audio_cod
 		audio_codecs[0] = 0;
 		g_snprintf(audio_codecs, str_len, "%s", janus_audiocodec_name(videoroom->acodec[0]));
 		if (videoroom->acodec[1] != JANUS_AUDIOCODEC_NONE) {
-			g_strlcat(audio_codecs, split, str_len);
-			g_strlcat(audio_codecs, janus_audiocodec_name(videoroom->acodec[1]), str_len);
+			janus_strlcat(audio_codecs, split, str_len);
+			janus_strlcat(audio_codecs, janus_audiocodec_name(videoroom->acodec[1]), str_len);
 		}
 		if (videoroom->acodec[2] != JANUS_AUDIOCODEC_NONE) {
-			g_strlcat(audio_codecs, split, str_len);
-			g_strlcat(audio_codecs, janus_audiocodec_name(videoroom->acodec[2]), str_len);
+			janus_strlcat(audio_codecs, split, str_len);
+			janus_strlcat(audio_codecs, janus_audiocodec_name(videoroom->acodec[2]), str_len);
 		}
 		if (videoroom->acodec[3] != JANUS_AUDIOCODEC_NONE) {
-			g_strlcat(audio_codecs, split, str_len);
-			g_strlcat(audio_codecs, janus_audiocodec_name(videoroom->acodec[3]), str_len);
+			janus_strlcat(audio_codecs, split, str_len);
+			janus_strlcat(audio_codecs, janus_audiocodec_name(videoroom->acodec[3]), str_len);
 		}
 		if (videoroom->acodec[4] != JANUS_AUDIOCODEC_NONE) {
-			g_strlcat(audio_codecs, split, str_len);
-			g_strlcat(audio_codecs, janus_audiocodec_name(videoroom->acodec[4]), str_len);
+			janus_strlcat(audio_codecs, split, str_len);
+			janus_strlcat(audio_codecs, janus_audiocodec_name(videoroom->acodec[4]), str_len);
 		}
 	}
 	if (video_codecs) {
 		video_codecs[0] = 0;
 		g_snprintf(video_codecs, str_len, "%s", janus_videocodec_name(videoroom->vcodec[0]));
 		if (videoroom->vcodec[1] != JANUS_VIDEOCODEC_NONE) {
-			g_strlcat(video_codecs, split, str_len);
-			g_strlcat(video_codecs, janus_videocodec_name(videoroom->vcodec[1]), str_len);
+			janus_strlcat(video_codecs, split, str_len);
+			janus_strlcat(video_codecs, janus_videocodec_name(videoroom->vcodec[1]), str_len);
 		}
 		if (videoroom->vcodec[2] != JANUS_VIDEOCODEC_NONE) {
-			g_strlcat(video_codecs, split, str_len);
-			g_strlcat(video_codecs, janus_videocodec_name(videoroom->vcodec[2]), str_len);
+			janus_strlcat(video_codecs, split, str_len);
+			janus_strlcat(video_codecs, janus_videocodec_name(videoroom->vcodec[2]), str_len);
 		}
 		if (videoroom->vcodec[3] != JANUS_VIDEOCODEC_NONE) {
-			g_strlcat(video_codecs, split, str_len);
-			g_strlcat(video_codecs, janus_videocodec_name(videoroom->vcodec[3]), str_len);
+			janus_strlcat(video_codecs, split, str_len);
+			janus_strlcat(video_codecs, janus_videocodec_name(videoroom->vcodec[3]), str_len);
 		}
 		if (videoroom->vcodec[4] != JANUS_VIDEOCODEC_NONE) {
-			g_strlcat(video_codecs, split, str_len);
-			g_strlcat(video_codecs, janus_videocodec_name(videoroom->vcodec[4]), str_len);
+			janus_strlcat(video_codecs, split, str_len);
+			janus_strlcat(video_codecs, janus_videocodec_name(videoroom->vcodec[4]), str_len);
 		}
 	}
 }

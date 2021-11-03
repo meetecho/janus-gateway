@@ -4898,33 +4898,33 @@ done:
 			g_snprintf(buffer, 512,
 				"v=0\r\no=%s %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n",
 					"-", session->sdp_sessid, session->sdp_version);
-			g_strlcat(sdptemp, buffer, 2048);
+			janus_strlcat(sdptemp, buffer, 2048);
 			g_snprintf(buffer, 512,
 				"s=Mountpoint %s\r\n", mp->id_str);
-			g_strlcat(sdptemp, buffer, 2048);
-			g_strlcat(sdptemp, "t=0 0\r\n", 2048);
+			janus_strlcat(sdptemp, buffer, 2048);
+			janus_strlcat(sdptemp, "t=0 0\r\n", 2048);
 			if(mp->codecs.audio_pt >= 0 && session->audio) {
 				int pt = session->audio_pt >= 0 ? session->audio_pt : mp->codecs.audio_pt;
 				/* Add audio line */
 				g_snprintf(buffer, 512,
 					"m=audio 1 RTP/SAVPF %d\r\n"
 					"c=IN IP4 1.1.1.1\r\n", pt);
-				g_strlcat(sdptemp, buffer, 2048);
+				janus_strlcat(sdptemp, buffer, 2048);
 				if(mp->codecs.audio_rtpmap) {
 					g_snprintf(buffer, 512,
 						"a=rtpmap:%d %s\r\n",
 						pt, mp->codecs.audio_rtpmap);
-					g_strlcat(sdptemp, buffer, 2048);
+					janus_strlcat(sdptemp, buffer, 2048);
 				}
 				if(mp->codecs.audio_fmtp) {
 					g_snprintf(buffer, 512,
 						"a=fmtp:%d %s\r\n",
 						pt, mp->codecs.audio_fmtp);
-					g_strlcat(sdptemp, buffer, 2048);
+					janus_strlcat(sdptemp, buffer, 2048);
 				}
-				g_strlcat(sdptemp, "a=sendonly\r\n", 2048);
+				janus_strlcat(sdptemp, "a=sendonly\r\n", 2048);
 				g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 1, JANUS_RTP_EXTMAP_MID);
-				g_strlcat(sdptemp, buffer, 2048);
+				janus_strlcat(sdptemp, buffer, 2048);
 			}
 			if(mp->codecs.video_pt > 0 && session->video) {
 				int pt = session->video_pt > 0 ? session->video_pt : mp->codecs.video_pt;
@@ -4932,33 +4932,33 @@ done:
 				g_snprintf(buffer, 512,
 					"m=video 1 RTP/SAVPF %d\r\n"
 					"c=IN IP4 1.1.1.1\r\n", pt);
-				g_strlcat(sdptemp, buffer, 2048);
+				janus_strlcat(sdptemp, buffer, 2048);
 				if(mp->codecs.video_rtpmap) {
 					g_snprintf(buffer, 512,
 						"a=rtpmap:%d %s\r\n",
 						pt, mp->codecs.video_rtpmap);
-					g_strlcat(sdptemp, buffer, 2048);
+					janus_strlcat(sdptemp, buffer, 2048);
 				}
 				if(mp->codecs.video_fmtp) {
 					g_snprintf(buffer, 512,
 						"a=fmtp:%d %s\r\n",
 						pt, mp->codecs.video_fmtp);
-					g_strlcat(sdptemp, buffer, 2048);
+					janus_strlcat(sdptemp, buffer, 2048);
 				}
 				g_snprintf(buffer, 512,
 					"a=rtcp-fb:%d nack\r\n", pt);
-				g_strlcat(sdptemp, buffer, 2048);
+				janus_strlcat(sdptemp, buffer, 2048);
 				g_snprintf(buffer, 512,
 					"a=rtcp-fb:%d nack pli\r\n", pt);
-				g_strlcat(sdptemp, buffer, 2048);
+				janus_strlcat(sdptemp, buffer, 2048);
 				g_snprintf(buffer, 512,
 					"a=rtcp-fb:%d goog-remb\r\n", pt);
-				g_strlcat(sdptemp, buffer, 2048);
-				g_strlcat(sdptemp, "a=sendonly\r\n", 2048);
+				janus_strlcat(sdptemp, buffer, 2048);
+				janus_strlcat(sdptemp, "a=sendonly\r\n", 2048);
 				g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 1, JANUS_RTP_EXTMAP_MID);
-				g_strlcat(sdptemp, buffer, 2048);
+				janus_strlcat(sdptemp, buffer, 2048);
 				g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 2, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
-				g_strlcat(sdptemp, buffer, 2048);
+				janus_strlcat(sdptemp, buffer, 2048);
 			}
 #ifdef HAVE_SCTP
 			if(mp->data && session->data) {
@@ -4967,7 +4967,7 @@ done:
 					"m=application 1 UDP/DTLS/SCTP webrtc-datachannel\r\n"
 					"c=IN IP4 1.1.1.1\r\n"
 					"a=sctp-port:5000\r\n");
-				g_strlcat(sdptemp, buffer, 2048);
+				janus_strlcat(sdptemp, buffer, 2048);
 			}
 #endif
 			sdp = g_strdup(sdptemp);
