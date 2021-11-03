@@ -1092,7 +1092,7 @@ static void *janus_echotest_handler(void *data) {
 									if(strlen(custom_fmtp) == 0) {
 										g_snprintf(custom_fmtp, sizeof(custom_fmtp), "useinbandfec=1");
 									} else {
-										g_strlcat(custom_fmtp, ";useinbandfec=1", sizeof(custom_fmtp));
+										janus_strlcat(custom_fmtp, ";useinbandfec=1", sizeof(custom_fmtp));
 									}
 								}
 								if(strstr(a->value, "usedtx=1")) {
@@ -1100,7 +1100,7 @@ static void *janus_echotest_handler(void *data) {
 									if(strlen(custom_fmtp) == 0) {
 										g_snprintf(custom_fmtp, sizeof(custom_fmtp), "usedtx=1");
 									} else {
-										g_strlcat(custom_fmtp, ";usedtx=1", sizeof(custom_fmtp));
+										janus_strlcat(custom_fmtp, ";usedtx=1", sizeof(custom_fmtp));
 									}
 								}
 								if(strstr(a->value, "stereo=1")) {
@@ -1108,7 +1108,7 @@ static void *janus_echotest_handler(void *data) {
 									if(strlen(custom_fmtp) == 0) {
 										g_snprintf(custom_fmtp, sizeof(custom_fmtp), "usedtx=1");
 									} else {
-										g_strlcat(custom_fmtp, ";usedtx=1", sizeof(custom_fmtp));
+										janus_strlcat(custom_fmtp, ";usedtx=1", sizeof(custom_fmtp));
 									}
 								}
 							}
