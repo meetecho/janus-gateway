@@ -5468,8 +5468,10 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 			/* We're doing SVC: let's parse this packet to see which layers are there */
 			int plen = 0;
 			char *payload = janus_rtp_payload(buf, len, &plen);
-			if(payload == NULL)
+			if(payload == NULL) {
+				janus_videoroom_publisher_dereference_nodebug(participant);
 				return;
+			}
 			gboolean found = FALSE;
 			memset(&packet.svc_info, 0, sizeof(packet.svc_info));
 			if(janus_vp9_parse_svc(payload, plen, &found, &packet.svc_info) == 0) {
@@ -5518,8 +5520,10 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 				/* First check if this is a keyframe, though: if so, we reset the timer */
 				int plen = 0;
 				char *payload = janus_rtp_payload(buf, len, &plen);
-				if(payload == NULL)
+				if(payload == NULL) {
+					janus_videoroom_publisher_dereference_nodebug(participant);
 					return;
+				}
 				if(participant->vcodec == JANUS_VIDEOCODEC_VP8) {
 					if(janus_vp8_is_keyframe(payload, plen))
 						participant->fir_latest = now;
