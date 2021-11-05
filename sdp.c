@@ -1261,14 +1261,14 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			if(audio == 1 && m->port > 0) {
 				g_snprintf(buffer_part, sizeof(buffer_part),
 					" %s", handle->audio_mid ? handle->audio_mid : "audio");
-				g_strlcat(buffer, buffer_part, sizeof(buffer));
+				janus_strlcat(buffer, buffer_part, sizeof(buffer));
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			video++;
 			if(video == 1 && m->port > 0) {
 				g_snprintf(buffer_part, sizeof(buffer_part),
 					" %s", handle->video_mid ? handle->video_mid : "video");
-				g_strlcat(buffer, buffer_part, sizeof(buffer));
+				janus_strlcat(buffer, buffer_part, sizeof(buffer));
 			}
 #ifdef HAVE_SCTP
 		} else if(m->type == JANUS_SDP_APPLICATION) {
@@ -1277,7 +1277,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			if(data == 1 && m->port > 0) {
 				g_snprintf(buffer_part, sizeof(buffer_part),
 					" %s", handle->data_mid ? handle->data_mid : "data");
-				g_strlcat(buffer, buffer_part, sizeof(buffer));
+				janus_strlcat(buffer, buffer_part, sizeof(buffer));
 			}
 #endif
 		}
@@ -1528,10 +1528,10 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				a = janus_sdp_attribute_create("rid", "%s recv", stream->rid[index]);
 				m->attributes = g_list_append(m->attributes, a);
 				if(strlen(rids) == 0) {
-					g_strlcat(rids, stream->rid[index], sizeof(rids));
+					janus_strlcat(rids, stream->rid[index], sizeof(rids));
 				} else {
-					g_strlcat(rids, ";", sizeof(rids));
-					g_strlcat(rids, stream->rid[index], sizeof(rids));
+					janus_strlcat(rids, ";", sizeof(rids));
+					janus_strlcat(rids, stream->rid[index], sizeof(rids));
 				}
 			}
 			if(stream->legacy_rid) {

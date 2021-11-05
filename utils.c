@@ -604,22 +604,22 @@ void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name) {
 	}
 	switch(jtype) {
 		case JSON_TRUE:
-			g_strlcat(type_name, "boolean", req_size);
+			janus_strlcat(type_name, "boolean", req_size);
 			break;
 		case JSON_INTEGER:
-			g_strlcat(type_name, "integer", req_size);
+			janus_strlcat(type_name, "integer", req_size);
 			break;
 		case JSON_REAL:
-			g_strlcat(type_name, "real", req_size);
+			janus_strlcat(type_name, "real", req_size);
 			break;
 		case JSON_STRING:
-			g_strlcat(type_name, "string", req_size);
+			janus_strlcat(type_name, "string", req_size);
 			break;
 		case JSON_ARRAY:
-			g_strlcat(type_name, "array", req_size);
+			janus_strlcat(type_name, "array", req_size);
 			break;
 		case JSON_OBJECT:
-			g_strlcat(type_name, "object", req_size);
+			janus_strlcat(type_name, "object", req_size);
 			break;
 		default:
 			break;
@@ -1231,3 +1231,13 @@ size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compr
 	return zs.total_out;
 }
 #endif
+
+
+gsize janus_strlcat(gchar *dest, const gchar *src, gsize dest_size) {
+	gsize ret = g_strlcat(dest, src, dest_size);
+	if (ret >= dest_size) {
+		JANUS_LOG(LOG_ERR, "janus_strlcat: truncation occurred, %lu >= %lu\n", ret, dest_size);
+	}
+
+	return ret;
+}
