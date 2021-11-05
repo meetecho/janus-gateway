@@ -286,6 +286,13 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 	}
 }
 
+size_t janus_strlcat(char *dest, const char *src, size_t dest_size) {
+	size_t ret = g_strlcat(dest, src, dest_size);
+	if(ret >= dest_size)
+		JANUS_LOG(LOG_ERR, "janus_strlcat: truncation occurred, %lu >= %lu\n", ret, dest_size);
+	return ret;
+}
+
 int janus_mkdir(const char *dir, mode_t mode) {
 	char tmp[256];
 	char *p = NULL;
@@ -1231,13 +1238,3 @@ size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compr
 	return zs.total_out;
 }
 #endif
-
-
-gsize janus_strlcat(gchar *dest, const gchar *src, gsize dest_size) {
-	gsize ret = g_strlcat(dest, src, dest_size);
-	if (ret >= dest_size) {
-		JANUS_LOG(LOG_ERR, "janus_strlcat: truncation occurred, %lu >= %lu\n", ret, dest_size);
-	}
-
-	return ret;
-}
