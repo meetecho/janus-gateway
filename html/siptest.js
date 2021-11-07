@@ -446,6 +446,16 @@ $(document).ready(function() {
 											$('#call').removeAttr('disabled').html('Call')
 												.removeClass("btn-danger").addClass("btn-success")
 												.unbind('click').click(doCall);
+										} else if(event === 'messagedelivery') {
+											// message delivery status
+											let reason = result["reason"];
+											let code = result["code"];
+											let callid = msg['call_id'];
+											if (code == 200) {
+												toastr.success(`${callid} Delivery Status: ${code} ${reason}`);
+											} else {
+												toastr.error(`${callid} Delivery Status: ${code} ${reason}`);
+											}
 										}
 									}
 								},
@@ -961,10 +971,12 @@ function addHelper(helperCreated) {
 		'					<span class="input-group-addon"><i class="fa fa-phone fa-fw"></i></span>' +
 		'					<input disabled class="form-control" type="text" placeholder="SIP URI to call (e.g., sip:1000@example.com)" autocomplete="off" id="peer' + helperId + '" onkeypress="return checkEnter(this, event, ' + helperId + ');"></input>' +
 		'				</div>' +
-		'				<button disabled class="btn btn-success margin-bottom-sm" autocomplete="off" id="call' + helperId + '">Call</button> <input autocomplete="off" id="dovideo' + helperId + '" type="checkbox">Use Video</input>' +
+		'				<input class="form-control" type="text" placeholder="any text message" autocomplete="off" id="message' + helperId + '" ></input>' +
+		'				<button disabled class="btn btn-success margin-bottom-sm" autocomplete="off" id="call' + helperId + '">Call</button> <input autocomplete="off" id="dovideo' + helperId + '" type="checkbox">Use Video</input><br />' +
+		'				<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="sendmessage' + helperId + '" onclick="return doMessage('+helperId+');">Message</button>' +
 		'			</div>' +
 		'		</div>' +
-		'	<div/>' +
+		'	</div>' +
 		'	<div id="videos' + helperId + '" class="hide">' +
 		'		<div class="col-md-6">' +
 		'			<div class="panel panel-default">' +
@@ -1313,6 +1325,16 @@ function addHelper(helperCreated) {
 						$('#call' + helperId).removeAttr('disabled').html('Call')
 							.removeClass("btn-danger").addClass("btn-success")
 							.unbind('click').click(doCall);
+					} else if(event === 'messagedelivery') {
+						// message delivery status
+						let reason = result["reason"];
+						let code = result["code"];
+						let callid = msg['call_id'];
+						if (code == 200) {
+							toastr.success(`${callid}/${helperId} Delivery Status: ${code} ${reason}`);
+						} else {
+							toastr.error(`${callid}/${helperId} Delivery Status: ${code} ${reason}`);
+						}
 					}
 				}
 			},
@@ -1518,4 +1540,34 @@ function removeHelper(helperId) {
 		// Remove the related UI too
 		$('#sipcall'+helperId).remove();
 	}
+}
+/**
+ * send message function
+ *
+ * @param {number} suffix helper id
+ */
+function doMessage(suffix) {
+	if (suffix === undefined) {
+		suffix = '';
+	}
+	$('#peer' + suffix).attr('disabled', true);
+	$('#message' + suffix).attr('disabled', true);
+	$('#sendmessage' + suffix).attr('disabled', true);
+	let to = $('#peer' + suffix).val();
+	let body = $('#message' + suffix).val();
+
+	if(to === "" || to.indexOf("sip:") != 0 || to.indexOf("@") < 0) {
+		bootbox.alert('Please insert a valid SIP address (e.g., sip:pluto@example.com)');
+	} else {
+		let handle = sipcall;
+		if(suffix && helpers[suffix] && helpers[suffix]) {
+			handle = helpers[suffix].sipcall;
+		}
+		var msg = { request: "message", uri: to, content: body };
+		handle.send({ message: msg });
+	}
+	$('#peer' + suffix).removeAttr('disabled').val("");
+	$('#message' + suffix).removeAttr('disabled').val("");
+	$('#sendmessage' + suffix).removeAttr('disabled');
+	return;
 }

@@ -108,10 +108,12 @@
 								<span class="input-group-addon"><i class="fa fa-phone fa-fw"></i></span>
 								<input class="form-control" type="text" placeholder="SIP URI to call (e.g., sip:1000@example.com)" autocomplete="off" id="peer" onkeypress="return checkEnter(this, event);" />
 							</div>
-							<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="call">Call</button> <input autocomplete="off" id="dovideo" type="checkbox" />Use Video
+							<input class="form-control" type="text" placeholder="any text message" autocomplete="off" id="message" ></input>
+							<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="call">Call</button> <input autocomplete="off" id="dovideo" type="checkbox" />Use Video<br />
+							<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="sendmessage" onclick="return doMessage();" >Message</button>
 						</div>
 					</div>
-				<div/>
+				</div>
 				<div id="videos" class="hide">
 					<div class="col-md-6">
 						<div class="panel panel-default">

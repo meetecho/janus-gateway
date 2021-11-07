@@ -413,6 +413,7 @@
 \verbatim
 {
 	"request" : "message",
+	"call_id" : "<user-defined value of Call-ID SIP header used to send the message; optional>",
 	"content_type" : "<content type; optional>"
 	"content" : "<text to send>",
  	"uri" : "<SIP URI of the peer; optional; if set, the message will be sent out of dialog>",
@@ -433,6 +434,21 @@
 		"content_type" : "<content type of the message>",
 		"content" : "<content of the message>",
 		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
+	}
+}
+\endverbatim
+ *
+ * After delivery a \c messagedelivery event will be sent back with the SIP server response.
+ * Used to track the delivery status of the message.
+ *
+\verbatim
+{
+	"sip" : "event",
+	"call_id" : "<value of SIP Call-ID header for related message>",
+	"result" : {
+		"event" : "messagedelivery",
+		"code" : "<SIP error code>",
+		"reason" : "<SIP error reason>",
 	}
 }
 \endverbatim
@@ -1075,6 +1091,11 @@ static void janus_sip_media_reset(janus_sip_session *session);
 static void janus_sip_session_destroy(janus_sip_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
 		janus_refcount_decrease(&session->ref);
+}
+
+static void janus_sip_message_key_destroy(char *key) {
+	if (key)
+		g_free(key);
 }
 
 static void janus_sip_session_free(const janus_refcount *session_ref) {
@@ -1937,7 +1958,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sip_session_destroy);
 	identities = g_hash_table_new(g_str_hash, g_str_equal);
 	callids = g_hash_table_new(g_str_hash, g_str_equal);
-	messageids = g_hash_table_new(g_str_hash, g_str_equal);
+	messageids = g_hash_table_new_full(NULL, NULL, (GDestroyNotify)janus_sip_message_key_destroy, (GDestroyNotify)janus_sip_session_destroy);
 	masters = g_hash_table_new(NULL, NULL);
 	transfers = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sip_transfer_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_sip_message_free);
@@ -1980,7 +2001,7 @@ void janus_sip_destroy(void) {
 	g_hash_table_destroy(transfers);
 	sessions = NULL;
 	callids = NULL;
-	messageids = NULL:
+	messageids = NULL;
 	identities = NULL;
 	masters = NULL;
 	transfers = NULL;
@@ -4651,18 +4672,37 @@ static void *janus_sip_handler(void *data) {
 					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 					TAG_END());
 			} else {
-				janus_mutex_lock(&session->stack->smutex);
-				if(session->stack->s_nh_m == NULL) {
-					if (session->stack->s_nua == NULL) {
+				/* Get appropriate handle */
+				nua_handle_t *nh = NULL;
+				if(!session->helper) {
+					janus_mutex_lock(&session->stack->smutex);
+					if(session->stack->s_nua == NULL) {
 						janus_mutex_unlock(&session->stack->smutex);
 						JANUS_LOG(LOG_ERR, "NUA destroyed while sending message?\n");
 						error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
 						g_snprintf(error_cause, 512, "Invalid NUA");
 						goto error;
 					}
-					session->stack->s_nh_m = nua_handle(session->stack->s_nua, session, TAG_END());
+					nh = nua_handle(session->stack->s_nua, session, TAG_END());
+					janus_mutex_unlock(&session->stack->smutex);
+				} else {
+					/* This is a helper, we need to use the master's SIP stack */
+					if(session->master == NULL || session->master->stack == NULL) {
+						error_code = JANUS_SIP_ERROR_HELPER_ERROR;
+						g_snprintf(error_cause, 512, "Invalid master SIP stack");
+						goto error;
+					}
+					janus_mutex_lock(&session->master->stack->smutex);
+					if(session->master->stack->s_nua == NULL) {
+						janus_mutex_unlock(&session->master->stack->smutex);
+						JANUS_LOG(LOG_ERR, "NUA destroyed while sending message?\n");
+						error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
+						g_snprintf(error_cause, 512, "Invalid NUA");
+						goto error;
+					}
+					nh = nua_handle(session->master->stack->s_nua, session, TAG_END());
+					janus_mutex_unlock(&session->master->stack->smutex);
 				}
-				janus_mutex_unlock(&session->stack->smutex);
 				json_t *request_callid = json_object_get(root, "call_id");
 				/* Use call-id from the request, if it exists */
 				if(request_callid) {
@@ -4672,7 +4712,7 @@ static void *janus_sip_handler(void *data) {
 					message_callid = g_malloc0(24);
 					janus_sip_random_string(24, message_callid);
 				}
-				nua_message(session->stack->s_nh_m,
+				nua_message(nh,
 					SIPTAG_TO_STR(uri_text),
 					SIPTAG_CONTENT_TYPE_STR(content_type),
 					SIPTAG_PAYLOAD_STR(msg_content),
@@ -4688,7 +4728,8 @@ static void *janus_sip_handler(void *data) {
 			json_object_set_new(result, "call_id", json_string(message_callid));
 			/* Store message id and session */
 			janus_mutex_lock(&sessions_mutex);
-			g_hash_table_insert(messageids, message_callid, session);
+			janus_refcount_increase(&session->ref);
+			g_hash_table_insert(messageids, g_strdup(message_callid), session);
 			janus_mutex_unlock(&sessions_mutex);
 			g_free(message_callid);
 		} else if(!strcasecmp(request_text, "dtmf_info")) {
@@ -5495,19 +5536,15 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					NUTAG_AUTH(auth),
 					TAG_END());
 			}  else {
+				char *messageid = g_strdup(sip->sip_call_id->i_id);
 				/* Find session associated with the message */
 				janus_mutex_lock(&sessions_mutex);
-				janus_sip_session *message_session = g_hash_table_lookup(messageids, sip->sip_call_id->i_id);
-				janus_mutex_unlock(&sessions_mutex);
+				janus_sip_session *message_session = g_hash_table_lookup(messageids, messageid);
 				if (!message_session) {
-					message_session = session
-					JANUS_LOG(LOG_VERB, "Message (%s) not associated with any session, event will be reported to master\n", sip->sip_call_id->i_id);
-				} else {
-					/* Session was found in messageids, removes from hashtable */
-					janus_mutex_lock(&sessions_mutex);
-					g_hash_table_remove(messageids, sip->sip_call_id->i_id);
-					janus_mutex_unlock(&sessions_mutex);
+					message_session = session;
+					JANUS_LOG(LOG_VERB, "Message (%s) not associated with any session, event will be reported to master\n", messageid);
 				}
+				janus_mutex_unlock(&sessions_mutex);
 				/* MESSAGE response, notify the application */
 				json_t *result = json_object();
 				/* SIP code and reason */
@@ -5518,11 +5555,15 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_t *dr = json_object();
 				json_object_set_new(dr, "sip", json_string("event"));
 				json_object_set_new(dr, "result", result);
-				json_object_set_new(dr, "call_id", json_string(sip->sip_call_id->i_id));
+				json_object_set_new(dr, "call_id", json_string(messageid));
 				/* Report delivery */
 				int ret = gateway->push_event(message_session->handle, &janus_sip_plugin, message_session->transaction, dr, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(dr);
+				janus_mutex_lock(&sessions_mutex);
+				g_hash_table_remove(messageids, messageid);
+				janus_mutex_unlock(&sessions_mutex);
+				g_free(messageid);
 			}
 			break;
 		case nua_r_refer: {
