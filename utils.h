@@ -49,6 +49,13 @@ gint64 janus_get_real_time(void);
  * @returns A pointer to the updated text string (re-allocated or just updated) */
 char *janus_string_replace(char *message, const char *old_string, const char *new_string) G_GNUC_WARN_UNUSED_RESULT;
 
+/*! \brief Helper method to concatenate strings and log an error if truncation occured
+ * @param[in] dest destination buffer, already containing one nul-terminated string
+ * @param[in] src source buffer
+ * @param[in] dest_size length of dest buffer in bytes (not length of existing string inside dest)
+ * @returns size of attempted result, if retval >= dest_size, truncation occurred (and an error will be logged). */
+size_t janus_strlcat(char *dest, const char *src, size_t dest_size);
+
 /*! \brief Helper to parse yes/no|true/false configuration values
  * @param value The configuration value to parse
  * @returns true if the value contains a "yes", "YES", "true", TRUE", "1", false otherwise */
@@ -376,13 +383,6 @@ int janus_vp9_parse_svc(char *buffer, int len, gboolean *found, janus_vp9_svc_in
  * @param[in] val Value of bits to push
  * @returns 0  New word value*/
 guint32 janus_push_bits(guint32 word, size_t num, guint32 val);
-
-/*! \brief Helper method to concatenate strings and log an error if truncation occured
- * @param[in] dest destination buffer, already containing one nul-terminated string
- * @param[in] src source buffer
- * @param[in] dest_size length of dest buffer in bytes (not length of existing string inside dest)
- * @returns size of attempted result, if retval >= dest_size, truncation occurred (and an error will be logged). */
-gsize janus_strlcat(gchar *dest, const gchar *src, gsize dest_size);
 
 /*! \brief Helper method to set one byte at a memory position
  * @param[in] data memory data pointer
