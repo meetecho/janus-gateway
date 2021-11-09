@@ -39,7 +39,7 @@ room-<unique room ID>: {
 	audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 	audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 	default_prebuffering = number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)
-	default_expectedloss = percent of packets we expect participants may miss, to help with FEC (default=0)
+	default_expectedloss = percent of packets we expect participants may miss, to help with FEC (default=0; automatically used for forwarders too)
 	record = true|false (whether this room should be recorded, default=false)
 	record_file = /path/to/recording.wav (where to save the recording)
 	record_dir = /path/to/ (path to save the recording to, makes record_file a relative path if provided)
@@ -139,7 +139,7 @@ room-<unique room ID>: {
 	"audio_active_packets" : <number of packets with audio level (default=100, 2 seconds)>,
 	"audio_level_average" : <average value of audio level (127=muted, 0='too loud', default=25)>,
 	"default_prebuffering" : <number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)>,
-	"default_expectedloss" : <percent of packets we expect participants may miss, to help with FEC (default=0)>
+	"default_expectedloss" : <percent of packets we expect participants may miss, to help with FEC (default=0; automatically used for forwarders too)>
 	"record" : <true|false, whether to record the room or not, default=false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
 	"record_dir" : "</path/to/, optional; makes record_file a relative path, if provided>",
@@ -2064,6 +2064,12 @@ static int janus_audiobridge_create_opus_encoder_if_needed(janus_audiobridge_roo
 	} else {
 		JANUS_LOG(LOG_WARN, "Unsupported sampling rate %d, setting 16kHz\n", audiobridge->sampling_rate);
 		opus_encoder_ctl(audiobridge->rtp_encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
+	}
+
+	/* Check if we need FEC */
+	if(audiobridge->default_expectedloss > 0) {
+		opus_encoder_ctl(audiobridge->rtp_encoder, OPUS_SET_INBAND_FEC(TRUE));
+		opus_encoder_ctl(audiobridge->rtp_encoder, OPUS_SET_PACKET_LOSS_PERC(audiobridge->default_expectedloss));
 	}
 
 	return 0;
@@ -7529,6 +7535,11 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			} else {
 				JANUS_LOG(LOG_WARN, "Unsupported sampling rate %d, setting 16kHz\n", audiobridge->sampling_rate);
 				opus_encoder_ctl(rtp_encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
+			}
+			/* Check if we need FEC */
+			if(audiobridge->default_expectedloss > 0) {
+				opus_encoder_ctl(rtp_encoder, OPUS_SET_INBAND_FEC(TRUE));
+				opus_encoder_ctl(rtp_encoder, OPUS_SET_PACKET_LOSS_PERC(audiobridge->default_expectedloss));
 			}
 			groupEncoders[index] = rtp_encoder;
 		}
