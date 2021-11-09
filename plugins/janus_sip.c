@@ -1093,9 +1093,9 @@ static void janus_sip_session_destroy(janus_sip_session *session) {
 		janus_refcount_decrease(&session->ref);
 }
 
-static void janus_sip_message_key_destroy(char *key) {
-	if (key)
-		g_free(key);
+static void janus_sip_session_dereference(janus_sip_session *session) {
+	/* This is used to decrease the reference when removing to the messageids hashtable. janus_refcount_increase(&session->ref) must be called before inserting into messageids hashtable  */
+	janus_refcount_decrease(&session->ref);
 }
 
 static void janus_sip_session_free(const janus_refcount *session_ref) {
@@ -1958,7 +1958,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sip_session_destroy);
 	identities = g_hash_table_new(g_str_hash, g_str_equal);
 	callids = g_hash_table_new(g_str_hash, g_str_equal);
-	messageids = g_hash_table_new_full(NULL, NULL, (GDestroyNotify)janus_sip_message_key_destroy, (GDestroyNotify)janus_sip_session_destroy);
+	messageids = g_hash_table_new_full(NULL, NULL, (GDestroyNotify)g_free, (GDestroyNotify)janus_sip_session_dereference);
 	masters = g_hash_table_new(NULL, NULL);
 	transfers = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sip_transfer_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_sip_message_free);

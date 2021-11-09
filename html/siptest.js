@@ -853,14 +853,14 @@ function doCall(ev) {
 		bootbox.alert('Please insert a valid SIP address (e.g., sip:pluto@example.com)');
 		$('#peer' + suffix).removeAttr('disabled');
 		$('#dovideo' + suffix).removeAttr('disabled');
-		$('#call' + suffix).removeAttr('disabled').click(function() { doCall(helperId); });
+		$('#call' + suffix).removeAttr('disabled').click(function(ev) { doCall(ev); });
 		return;
 	}
 	if(username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
 		bootbox.alert('Please insert a valid SIP address (e.g., sip:pluto@example.com)');
 		$('#peer' + suffix).removeAttr('disabled').val("");
 		$('#dovideo' + suffix).removeAttr('disabled').val("");
-		$('#call' + suffix).removeAttr('disabled').click(function() { doCall(helperId); });
+		$('#call' + suffix).removeAttr('disabled').click(function(ev) { doCall(ev); });
 		return;
 	}
 	// Call this URI
@@ -1541,33 +1541,29 @@ function removeHelper(helperId) {
 		$('#sipcall'+helperId).remove();
 	}
 }
-/**
- * send message function
- *
- * @param {number} suffix helper id
- */
-function doMessage(suffix) {
-	if (suffix === undefined) {
-		suffix = '';
+// Send out-of-dialog messages
+function doMessage(helperId) {
+	if (helperId === undefined) {
+		helperId = '';
 	}
-	$('#peer' + suffix).attr('disabled', true);
-	$('#message' + suffix).attr('disabled', true);
-	$('#sendmessage' + suffix).attr('disabled', true);
-	let to = $('#peer' + suffix).val();
-	let body = $('#message' + suffix).val();
+	$('#peer' + helperId).attr('disabled', true);
+	$('#message' + helperId).attr('disabled', true);
+	$('#sendmessage' + helperId).attr('disabled', true);
+	let to = $('#peer' + helperId).val();
+	let body = $('#message' + helperId).val();
 
 	if(to === "" || to.indexOf("sip:") != 0 || to.indexOf("@") < 0) {
 		bootbox.alert('Please insert a valid SIP address (e.g., sip:pluto@example.com)');
 	} else {
 		let handle = sipcall;
-		if(suffix && helpers[suffix] && helpers[suffix]) {
-			handle = helpers[suffix].sipcall;
+		if(helperId && helpers[helperId] && helpers[helperId]) {
+			handle = helpers[helperId].sipcall;
 		}
 		var msg = { request: "message", uri: to, content: body };
 		handle.send({ message: msg });
 	}
-	$('#peer' + suffix).removeAttr('disabled').val("");
-	$('#message' + suffix).removeAttr('disabled').val("");
-	$('#sendmessage' + suffix).removeAttr('disabled');
+	$('#peer' + helperId).removeAttr('disabled').val("");
+	$('#message' + helperId).removeAttr('disabled').val("");
+	$('#sendmessage' + helperId).removeAttr('disabled');
 	return;
 }
