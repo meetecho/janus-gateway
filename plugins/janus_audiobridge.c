@@ -39,6 +39,7 @@ room-<unique room ID>: {
 	audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 	audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 	default_prebuffering = number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)
+	default_expectedloss = percent of packets we expect participants may miss, to help with FEC (default=0)
 	record = true|false (whether this room should be recorded, default=false)
 	record_file = /path/to/recording.wav (where to save the recording)
 	record_dir = /path/to/ (path to save the recording to, makes record_file a relative path if provided)
@@ -138,6 +139,7 @@ room-<unique room ID>: {
 	"audio_active_packets" : <number of packets with audio level (default=100, 2 seconds)>,
 	"audio_level_average" : <average value of audio level (127=muted, 0='too loud', default=25)>,
 	"default_prebuffering" : <number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)>,
+	"default_expectedloss" : <percent of packets we expect participants may miss, to help with FEC (default=0)>
 	"record" : <true|false, whether to record the room or not, default=false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
 	"record_dir" : "</path/to/, optional; makes record_file a relative path, if provided>",
@@ -690,6 +692,7 @@ room-<unique room ID>: {
 	"codec" : "<codec to use, among opus (default), pcma (A-Law) or pcmu (mu-Law)>",
 	"prebuffer" : <number of packets to buffer before decoding this participant (default=room value, or DEFAULT_PREBUFFERING)>,
 	"quality" : <0-10, Opus-related complexity to use, the higher the value, the better the quality (but more CPU); optional, default is 4>,
+	"expected_loss" : <0-100, a percentage of the expected loss, only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>,
 	"volume" : <percent value, <100 reduces volume, >100 increases volume; optional, default is 100 (no volume change)>,
 	"spatial_position" : <in case spatial audio is enabled for the room, panning of this participant (0=left, 50=center, 100=right)>,
 	"secret" : "<room management password; optional, if provided the user is an admin and can't be globally muted with mute_room>",
@@ -738,7 +741,7 @@ room-<unique room ID>: {
 		"port" : <port you want media to be sent to>,
 		"payload_type" : <payload type to use for RTP packets (optional; only needed in case Opus is used, automatic for G.711)>,
 		"audiolevel_ext" : <ID of the audiolevel RTP extension, if used (optional)>,
-		"fec" : <true|false, whether FEC should be enabled for the Opus stream (optional; only needed in case Opus is used)
+		"fec" : <true|false, whether FEC should be enabled for the Opus stream (optional; only needed in case Opus is used)>
 	}
 }
 \endverbatim
@@ -776,6 +779,7 @@ room-<unique room ID>: {
 	"display" : "<new display name to have in the room>",
 	"prebuffer" : <new number of packets to buffer before decoding this participant (see "join" for more info)>,
 	"quality" : <new Opus-related complexity to use (see "join" for more info)>,
+	"expected_loss" : <new value for the expected loss (see "join" for more info)>
 	"volume" : <new volume percent value (see "join" for more info)>,
 	"spatial_position" : <in case spatial audio is enabled for the room, new panning of this participant (0=left, 50=center, 100=right)>,
 	"record": <true|false, whether to record this user's contribution to a .mjr file (mixer not involved),
@@ -875,7 +879,8 @@ room-<unique room ID>: {
 	"display" : "<display name to have in the room; optional>",
 	"token" : "<invitation token, in case the new room has an ACL; optional>",
 	"muted" : <true|false, whether to start unmuted or muted>,
-	"quality" : <0-10, Opus-related complexity to use, higher is higher quality; optional, default is 4>
+	"quality" : <0-10, Opus-related complexity to use, higher is higher quality; optional, default is 4>,
+	"expected_loss" : <0-100, a percentage of the expected loss, only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>
 }
 \endverbatim
  *
@@ -1105,6 +1110,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_level_average", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"default_prebuffering", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"default_expectedloss", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"groups", JSON_ARRAY, 0}
 };
 static struct janus_json_parameter edit_parameters[] = {
@@ -1134,6 +1140,7 @@ static struct janus_json_parameter join_parameters[] = {
 	{"codec", JSON_STRING, 0},
 	{"prebuffer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"expected_loss", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"spatial_position", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_level_average", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1160,6 +1167,7 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"muted", JANUS_JSON_BOOL, 0},
 	{"prebuffer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"expected_loss", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"group", JSON_STRING, 0},
 	{"spatial_position", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1247,6 +1255,7 @@ typedef struct janus_audiobridge_room {
 	gboolean audiolevel_ext;	/* Whether the ssrc-audio-level extension must be negotiated or not for new joins */
 	gboolean audiolevel_event;	/* Whether to emit event to other users about audiolevel */
 	uint default_prebuffering;	/* Number of packets to buffer before decoding each participant */
+	uint default_expectedloss;	/* Percent of packets we expect participants may miss, to help with FEC: can be overridden per-participant */
 	int audio_active_packets;	/* Amount of packets with audio level for checkup */
 	int audio_level_average;	/* Average audio level */
 	volatile gint record;		/* Whether this room has to be recorded or not */
@@ -1505,6 +1514,7 @@ typedef struct janus_audiobridge_participant {
 	OpusEncoder *encoder;		/* Opus encoder instance */
 	OpusDecoder *decoder;		/* Opus decoder instance */
 	gboolean fec;				/* Opus FEC status */
+	int expected_loss;			/* Percentage of expected loss, to configure libopus FEC behaviour (default=0, no FEC even if negotiated) */
 	uint16_t expected_seq;		/* Expected sequence number */
 	uint16_t probation; 		/* Used to determine new ssrc validity */
 	uint32_t last_timestamp;	/* Last in seq timestamp */
@@ -2359,6 +2369,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *audio_active_packets = janus_config_get(config, cat, janus_config_type_item, "audio_active_packets");
 			janus_config_item *audio_level_average = janus_config_get(config, cat, janus_config_type_item, "audio_level_average");
 			janus_config_item *default_prebuffering = janus_config_get(config, cat, janus_config_type_item, "default_prebuffering");
+			janus_config_item *default_expectedloss = janus_config_get(config, cat, janus_config_type_item, "default_expectedloss");
 			janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
 			janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
 			janus_config_array *groups = janus_config_get(config, cat, janus_config_type_array, "groups");
@@ -2461,6 +2472,15 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 					JANUS_LOG(LOG_WARN, "Invalid default_prebuffering value provided, using default: %d\n", audiobridge->default_prebuffering);
 				} else {
 					audiobridge->default_prebuffering = prebuffering;
+				}
+			}
+			audiobridge->default_expectedloss = 0;
+			if(default_expectedloss != NULL && default_expectedloss->value != NULL) {
+				int expectedloss = atoi(default_expectedloss->value);
+				if(expectedloss < 0 || expectedloss > 100) {
+					JANUS_LOG(LOG_WARN, "Invalid expectedloss value provided, using default: 0\n");
+				} else {
+					audiobridge->default_expectedloss = expectedloss;
 				}
 			}
 			audiobridge->room_ssrc = janus_random_uint32();
@@ -2779,6 +2799,8 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 			json_object_set_new(info, "talking", participant->talking ? json_true() : json_false());
 		}
 		json_object_set_new(info, "fec", participant->fec ? json_true() : json_false());
+		if(participant->fec)
+			json_object_set_new(info, "expected-loss", json_integer(participant->expected_loss));
 		if(participant->plainrtp_media.audio_rtp_fd != -1) {
 			json_t *rtp = json_object();
 			if(local_ip)
@@ -2903,6 +2925,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_t *audio_active_packets = json_object_get(root, "audio_active_packets");
 		json_t *audio_level_average = json_object_get(root, "audio_level_average");
 		json_t *default_prebuffering = json_object_get(root, "default_prebuffering");
+		json_t *default_expectedloss = json_object_get(root, "default_expectedloss");
 		json_t *groups = json_object_get(root, "groups");
 		json_t *record = json_object_get(root, "record");
 		json_t *recfile = json_object_get(root, "record_file");
@@ -3057,6 +3080,15 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			audiobridge->default_prebuffering = DEFAULT_PREBUFFERING;
 			JANUS_LOG(LOG_WARN, "Invalid default_prebuffering value provided (too high), using default: %d\n",
 				audiobridge->default_prebuffering);
+		}
+		audiobridge->default_expectedloss = 0;
+		if(default_expectedloss != NULL) {
+			int expectedloss = json_integer_value(default_expectedloss);
+			if(expectedloss > 100) {
+				JANUS_LOG(LOG_WARN, "Invalid expectedloss value provided, using default: 0\n");
+			} else {
+				audiobridge->default_expectedloss = expectedloss;
+			}
 		}
 		switch(audiobridge->sampling_rate) {
 			case 8000:
@@ -5897,6 +5929,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *gain = json_object_get(root, "volume");
 			json_t *spatial = json_object_get(root, "spatial_position");
 			json_t *quality = json_object_get(root, "quality");
+			json_t *exploss = json_object_get(root, "expected_loss");
 			json_t *acodec = json_object_get(root, "codec");
 			json_t *user_audio_level_average = json_object_get(root, "audio_level_average");
 			json_t *user_audio_active_packets = json_object_get(root, "audio_active_packets");
@@ -5918,6 +5951,15 @@ static void *janus_audiobridge_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Invalid element (quality should be a positive integer between 1 and 10)\n");
 				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid element (quality should be a positive integer between 1 and 10)");
+				goto error;
+			}
+			int expected_loss = exploss ? json_integer_value(exploss) : audiobridge->default_expectedloss;
+			if(expected_loss > 100) {
+				janus_mutex_unlock(&audiobridge->mutex);
+				janus_refcount_decrease(&audiobridge->ref);
+				JANUS_LOG(LOG_ERR, "Invalid element (expected_loss should be a positive integer between 0 and 100)\n");
+				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (expected_loss should be a positive integer between 0 and 100)");
 				goto error;
 			}
 			janus_audiocodec codec = JANUS_AUDIOCODEC_OPUS;
@@ -6018,6 +6060,7 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->prebuffer_count = prebuffer_count;
 			participant->volume_gain = volume;
 			participant->opus_complexity = complexity;
+			participant->expected_loss = expected_loss;
 			participant->stereo = audiobridge->spatial_audio;
 			if(participant->stereo) {
 				if(spatial_position > 100)
@@ -6073,6 +6116,7 @@ static void *janus_audiobridge_handler(void *data) {
 					opus_encoder_ctl(participant->encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
 				}
 				opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
+				opus_encoder_ctl(participant->encoder, OPUS_SET_PACKET_LOSS_PERC(participant->expected_loss));
 			}
 			opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
 			if(participant->decoder == NULL) {
@@ -6159,6 +6203,7 @@ static void *janus_audiobridge_handler(void *data) {
 				if(participant->codec == JANUS_AUDIOCODEC_OPUS && fec) {
 					participant->fec = TRUE;
 					opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
+					opus_encoder_ctl(participant->encoder, OPUS_SET_PACKET_LOSS_PERC(participant->expected_loss));
 				}
 				/* Create the socket */
 				janus_mutex_lock(&participant->pmutex);
@@ -6351,6 +6396,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *muted = json_object_get(root, "muted");
 			json_t *prebuffer = json_object_get(root, "prebuffer");
 			json_t *quality = json_object_get(root, "quality");
+			json_t *exploss = json_object_get(root, "expected_loss");
 			json_t *gain = json_object_get(root, "volume");
 			json_t *spatial = json_object_get(root, "spatial_position");
 			json_t *record = json_object_get(root, "record");
@@ -6398,6 +6444,18 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->opus_complexity = complexity;
 				if(participant->encoder)
 					opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
+			}
+			if(exploss) {
+				int expected_loss = json_integer_value(exploss);
+				if(expected_loss > 100) {
+					JANUS_LOG(LOG_ERR, "Invalid element (expected_loss should be a positive integer between 0 and 100)\n");
+					error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (expected_loss should be a positive integer between 0 and 100)");
+					goto error;
+				}
+				participant->expected_loss = expected_loss;
+				if(participant->encoder)
+					opus_encoder_ctl(participant->encoder, OPUS_SET_PACKET_LOSS_PERC(participant->expected_loss));
 			}
 			if(group && participant->room && participant->room->groups != NULL) {
 				const char *group_name = json_string_value(group);
@@ -6681,6 +6739,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *gain = json_object_get(root, "volume");
 			json_t *spatial = json_object_get(root, "spatial_position");
 			json_t *quality = json_object_get(root, "quality");
+			json_t *exploss = json_object_get(root, "expected_loss");
 			int volume = gain ? json_integer_value(gain) : 100;
 			int spatial_position = spatial ? json_integer_value(spatial) : 64;
 			int complexity = quality ? json_integer_value(quality) : DEFAULT_COMPLEXITY;
@@ -6691,6 +6750,16 @@ static void *janus_audiobridge_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Invalid element (quality should be a positive integer between 1 and 10)\n");
 				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid element (quality should be a positive integer between 1 and 10)");
+				goto error;
+			}
+			int expected_loss = exploss ? json_integer_value(exploss) : audiobridge->default_expectedloss;
+			if(expected_loss > 100) {
+				janus_mutex_unlock(&audiobridge->mutex);
+				janus_refcount_decrease(&audiobridge->ref);
+				janus_mutex_unlock(&rooms_mutex);
+				JANUS_LOG(LOG_ERR, "Invalid element (expected_loss should be a positive integer between 0 and 100)\n");
+				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (expected_loss should be a positive integer between 0 and 100)");
 				goto error;
 			}
 			guint64 user_id = 0;
@@ -6799,7 +6868,6 @@ static void *janus_audiobridge_handler(void *data) {
 					opus_encoder_ctl(new_encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
 				}
 				opus_encoder_ctl(new_encoder, OPUS_SET_INBAND_FEC(participant->fec));
-				opus_encoder_ctl(new_encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
 				/* Opus decoder */
 				error = 0;
 				OpusDecoder *new_decoder = opus_decoder_create(audiobridge->sampling_rate,
@@ -6835,6 +6903,10 @@ static void *janus_audiobridge_handler(void *data) {
 					opus_decoder_destroy(participant->decoder);
 				participant->decoder = new_decoder;
 			}
+			if(quality)
+				opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
+			if(exploss)
+				opus_encoder_ctl(participant->encoder, OPUS_SET_PACKET_LOSS_PERC(participant->expected_loss));
 			/* Everything looks fine, start by telling the folks in the old room this participant is going away */
 			event = json_object();
 			json_object_set_new(event, "audiobridge", json_string("event"));
