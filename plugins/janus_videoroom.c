@@ -2960,7 +2960,7 @@ static json_t *janus_videoroom_subscriber_offer(janus_videoroom_subscriber *subs
 		int pt = -1;
 		const char *codec = NULL;
 		audio_fmtp[0] = '\0';
-		if(stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
+		if(ps && stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
 			if(ps->opusfec)
 				g_snprintf(audio_fmtp, sizeof(audio_fmtp), "useinbandfec=1");
 			if(ps->opusdtx) {
