@@ -5107,7 +5107,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(session->callid)
 				json_object_set_new(calling, "call_id", json_string(session->callid));
 			if(sip->sip_from->a_display) {
-				json_object_set_new(calling, "displayname", json_string(sip->sip_from->a_display));
+				json_object_set_new(calling, "displayname", sip->sip_from->a_display);
 			}
 			char *callee_text = url_as_string(session->stack->s_home, sip->sip_to->a_url);
 			json_object_set_new(calling, "callee", json_string(callee_text));
