@@ -7754,8 +7754,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&videoroom->ref);
@@ -7775,8 +7775,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&videoroom->ref);
@@ -7801,8 +7801,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&videoroom->ref);
@@ -7821,8 +7821,8 @@ static void *janus_videoroom_handler(void *data) {
 							/* Unref publishers we may have taken note of so far */
 							while(publishers) {
 								publisher = (janus_videoroom_publisher *)publishers->data;
-								janus_refcount_decrease(&publisher->ref);
 								janus_refcount_decrease(&publisher->session->ref);
+								janus_refcount_decrease(&publisher->ref);
 								publishers = g_list_remove(publishers, publisher);
 							}
 							janus_refcount_decrease(&videoroom->ref);
@@ -7841,8 +7841,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&videoroom->ref);
@@ -7859,8 +7859,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&videoroom->ref);
@@ -7888,8 +7888,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers */
 						while(publishers) {
 							janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&videoroom->ref);
@@ -8045,8 +8045,8 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					while(publishers) {
 						janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
-						janus_refcount_decrease(&publisher->ref);
 						janus_refcount_decrease(&publisher->session->ref);
+						janus_refcount_decrease(&publisher->ref);
 						publishers = g_list_remove(publishers, publisher);
 					}
 					JANUS_LOG(LOG_ERR, "Can't offer an SDP with no stream\n");
@@ -8102,8 +8102,8 @@ static void *janus_videoroom_handler(void *data) {
 				/* Decrease the references we took before */
 				while(publishers) {
 					janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
-					janus_refcount_decrease(&publisher->ref);
 					janus_refcount_decrease(&publisher->session->ref);
+					janus_refcount_decrease(&publisher->ref);
 					publishers = g_list_remove(publishers, publisher);
 				}
 				continue;
@@ -8513,8 +8513,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&subscriber->ref);
@@ -8533,8 +8533,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&subscriber->ref);
@@ -8562,8 +8562,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&subscriber->ref);
@@ -8581,8 +8581,8 @@ static void *janus_videoroom_handler(void *data) {
 							/* Unref publishers we may have taken note of so far */
 							while(publishers) {
 								publisher = (janus_videoroom_publisher *)publishers->data;
-								janus_refcount_decrease(&publisher->ref);
 								janus_refcount_decrease(&publisher->session->ref);
+								janus_refcount_decrease(&publisher->ref);
 								publishers = g_list_remove(publishers, publisher);
 							}
 							janus_refcount_decrease(&subscriber->ref);
@@ -8601,8 +8601,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&subscriber->ref);
@@ -8619,8 +8619,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&subscriber->ref);
@@ -8745,8 +8745,8 @@ static void *janus_videoroom_handler(void *data) {
 					/* Decrease the references we took before */
 					while(publishers) {
 						janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
-						janus_refcount_decrease(&publisher->ref);
 						janus_refcount_decrease(&publisher->session->ref);
+						janus_refcount_decrease(&publisher->ref);
 						publishers = g_list_remove(publishers, publisher);
 					}
 					continue;
@@ -8759,8 +8759,8 @@ static void *janus_videoroom_handler(void *data) {
 					/* Decrease the references we took before */
 					while(publishers) {
 						janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
-						janus_refcount_decrease(&publisher->ref);
 						janus_refcount_decrease(&publisher->session->ref);
+						janus_refcount_decrease(&publisher->ref);
 						publishers = g_list_remove(publishers, publisher);
 					}
 					janus_refcount_decrease(&subscriber->ref);
@@ -8796,8 +8796,8 @@ static void *janus_videoroom_handler(void *data) {
 				/* Decrease the references we took before */
 				while(publishers) {
 					janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
-					janus_refcount_decrease(&publisher->ref);
 					janus_refcount_decrease(&publisher->session->ref);
+					janus_refcount_decrease(&publisher->ref);
 					publishers = g_list_remove(publishers, publisher);
 				}
 				/* Done */
@@ -9302,8 +9302,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&subscriber->ref);
@@ -9322,8 +9322,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&subscriber->ref);
@@ -9352,8 +9352,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&subscriber->ref);
@@ -9370,8 +9370,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
 							publisher = (janus_videoroom_publisher *)publishers->data;
-							janus_refcount_decrease(&publisher->ref);
 							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
 						janus_refcount_decrease(&subscriber->ref);
@@ -9490,8 +9490,8 @@ static void *janus_videoroom_handler(void *data) {
 				/* Decrease the references we took before */
 				while(publishers) {
 					janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
-					janus_refcount_decrease(&publisher->ref);
 					janus_refcount_decrease(&publisher->session->ref);
+					janus_refcount_decrease(&publisher->ref);
 					publishers = g_list_remove(publishers, publisher);
 				}
 				/* Done */
