@@ -119,7 +119,7 @@
 	"user_agent" : "<user agent to use when sending SIP REGISTER; optional>",
 	"proxy" : "<server to register at; optional, as won't be needed in case the REGISTER is not goint to be sent (e.g., guests)>",
 	"outbound_proxy" : "<outbound proxy to use, if any; optional>",
-	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
+	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP REGISTER; optional>",
 	"contact_params" : "<array of key/value objects, to specify custom Contact URI params to add to the SIP REGISTER; optional>",
 	"incoming_header_prefixes" : "<array of strings, to specify custom (non-standard) headers to read on incoming SIP events; optional>",
 	"refresh" : "<true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
@@ -185,7 +185,7 @@
 	"call_id" : "<user-defined value of Call-ID SIP header used in all SIP requests throughout the call; optional>",
 	"uri" : "<SIP URI to call; mandatory>",
 	"refer_id" : <in case this is the result of a REFER, the unique identifier that addresses it; optional>,
-	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP INVITE; optional>",
+	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP INVITE; optional>",
 	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
 	"srtp_profile" : "<SRTP profile to negotiate, in case SRTP is offered; optional>",
 	"secret" : "<password to use to call, only needed in case authentication is needed and no REGISTER was sent; optional>",
@@ -304,7 +304,7 @@
 {
 	"request" : "accept",
 	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
-	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP OK; optional>"
+	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP OK; optional>"
 	"autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
 }
 \endverbatim
@@ -356,14 +356,14 @@
 {
 	"request" : "decline",
 	"code" : <SIP code to be sent, if not set, 486 is used; optional>",
- 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP request; optional>"
+ 	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP request; optional>"
 }
 \endverbatim
  *
 \verbatim
 {
 	"request" : "hangup",
-	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP BYE; optional>"
+	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP BYE; optional>"
 }
 \endverbatim
  *
@@ -416,7 +416,7 @@
 	"content_type" : "<content type; optional>"
 	"content" : "<text to send>",
  	"uri" : "<SIP URI of the peer; optional; if set, the message will be sent out of dialog>",
- 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP MESSAGE; optional>"
+ 	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP MESSAGE; optional>"
 }
 \endverbatim
  *
@@ -445,7 +445,7 @@
 	"request" : "info",
 	"type" : "<content type>"
 	"content" : "<message to send>",
-  	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP INFO; optional>"
+  	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP INFO; optional>"
 }
 \endverbatim
  *
