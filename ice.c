@@ -2731,9 +2731,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				if(buflen > 0) {
 					gint64 now = janus_get_monotonic_time();
 					if(!video) {
-						if(component->in_stats.audio.bytes == 0 || component->in_stats.audio.notified_lastsec) {
+						if(component->in_stats.audio.bytes == 0 ||
+							component->in_stats.audio.notified_lastsec ||
+							component->in_stats.audio.last_notified != JANUS_ICE_MEDIA_STATE_UP) {
 							/* We either received our first audio packet, or we started receiving it again after missing more than a second */
 							component->in_stats.audio.notified_lastsec = FALSE;
+							component->in_stats.audio.last_notified = JANUS_ICE_MEDIA_STATE_UP;
 							janus_ice_notify_media(handle, FALSE, 0, TRUE);
 						}
 						/* Overall audio data */
@@ -2750,9 +2753,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						}
 						component->in_stats.audio.bytes_lastsec_temp += buflen;
 					} else {
-						if(component->in_stats.video[vindex].bytes == 0 || component->in_stats.video[vindex].notified_lastsec) {
+						if(component->in_stats.video[vindex].bytes == 0 ||
+							component->in_stats.video[vindex].notified_lastsec ||
+							component->in_stats.video[vindex].last_notified != JANUS_ICE_MEDIA_STATE_UP) {
 							/* We either received our first video packet, or we started receiving it again after missing more than a second */
 							component->in_stats.video[vindex].notified_lastsec = FALSE;
+							component->in_stats.video[vindex].last_notified = JANUS_ICE_MEDIA_STATE_UP;
 							janus_ice_notify_media(handle, TRUE, vindex, TRUE);
 						}
 						/* Overall video data for this SSRC */
@@ -4159,11 +4165,12 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 	if(no_media_timer > 0 && component->dtls && component->dtls->dtls_connected > 0 && (now - component->dtls->dtls_connected >= G_USEC_PER_SEC)) {
 		/* Audio */
 		gint64 last = component->in_stats.audio.updated;
-		if(!component->in_stats.audio.notified_lastsec && last &&
-				!component->in_stats.audio.bytes_lastsec && !component->in_stats.audio.bytes_lastsec_temp &&
+		if((!component->in_stats.audio.notified_lastsec || component->in_stats.audio.last_notified != JANUS_ICE_MEDIA_STATE_DOWN) &&
+				last && !component->in_stats.audio.bytes_lastsec && !component->in_stats.audio.bytes_lastsec_temp &&
 					now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 			/* We missed more than no_second_timer seconds of audio! */
 			component->in_stats.audio.notified_lastsec = TRUE;
+			component->in_stats.audio.last_notified = JANUS_ICE_MEDIA_STATE_DOWN;
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio for more than %d seconds...\n", handle->handle_id, no_media_timer);
 			janus_ice_notify_media(handle, FALSE, 0, FALSE);
 		}
@@ -4171,11 +4178,12 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 		int vindex=0;
 		for(vindex=0; vindex<3; vindex++) {
 			last = component->in_stats.video[vindex].updated;
-			if(!component->in_stats.video[vindex].notified_lastsec && last &&
-					!component->in_stats.video[vindex].bytes_lastsec && !component->in_stats.video[vindex].bytes_lastsec_temp &&
+			if((!component->in_stats.video[vindex].notified_lastsec || component->in_stats.video[vindex].last_notified != JANUS_ICE_MEDIA_STATE_DOWN) &&
+					last && !component->in_stats.video[vindex].bytes_lastsec && !component->in_stats.video[vindex].bytes_lastsec_temp &&
 						now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 				/* We missed more than no_second_timer seconds of this video stream! */
 				component->in_stats.video[vindex].notified_lastsec = TRUE;
+				component->in_stats.video[vindex].last_notified = JANUS_ICE_MEDIA_STATE_DOWN;
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video #%d for more than a second...\n", handle->handle_id, vindex);
 				janus_ice_notify_media(handle, TRUE, vindex, FALSE);
 			}

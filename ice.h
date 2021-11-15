@@ -260,6 +260,12 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_NEW_DATACHAN_SDP	(1 << 20)
 #define JANUS_ICE_HANDLE_WEBRTC_E2EE				(1 << 21)
 
+/*! \brief The information about the media state (are we sending receiving, are we down or are we unknown (after an sdp exchange) */
+typedef enum janus_ice_media_state {
+	JANUS_ICE_MEDIA_STATE_UNKNOWN = 0,
+	JANUS_ICE_MEDIA_STATE_UP = 1,
+	JANUS_ICE_MEDIA_STATE_DOWN = 2
+} janus_ice_media_state;
 
 /*! \brief Janus media statistics
  * \note To improve with more stuff */
@@ -274,6 +280,8 @@ typedef struct janus_ice_stats_info {
 	gint64 updated;
 	/*! \brief Whether or not we notified about lastsec issues already */
 	gboolean notified_lastsec;
+	/*! \brief This is the state we have notified before */
+	janus_ice_media_state last_notified;
 	/*! \brief Number of NACKs sent or received */
 	guint32 nacks;
 } janus_ice_stats_info;
