@@ -3466,6 +3466,12 @@ ldd janus | grep asan
  * <tr><th>Language</th><th>Author</th><th>Project</th><th>Description</th></tr>
  * <tr>
  * 		<td>JavaScript/node</td>
+ * 		<td><a href="https://github.com/meetecho">Meetecho</a></td>
+ * 		<td><a href="https://github.com/meetecho/janode">janode</a></td>
+ *		<td>A Node.js adapter for the Janus WebRTC server</td>
+ * </tr>
+ * <tr>
+ * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/ndarilek">Nolan Darilek</a></td>
  * 		<td><a href="https://github.com/ndarilek/node-janus">node-janus</a></td>
  *		<td>node and browserify compatible integration layer for the Janus WebRTC server</td>
