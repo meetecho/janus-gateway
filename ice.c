@@ -2772,6 +2772,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							/* We either received our first audio packet, or we started receiving it again after missing more than a second */
 							component->in_stats.audio.temporarily_down = FALSE;
 							component->in_stats.audio.last_notified = JANUS_ICE_MEDIA_STATE_UP;
+							component->in_stats.audio.send_update_after = 0;
 							janus_ice_notify_media(handle, FALSE, 0, TRUE);
 						}
 						/* Overall audio data */
@@ -2792,6 +2793,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							/* We either received our first video packet, or we started receiving it again after missing more than a second */
 							component->in_stats.video[vindex].temporarily_down = FALSE;
 							component->in_stats.video[vindex].last_notified = JANUS_ICE_MEDIA_STATE_UP;
+							component->in_stats.video[vindex].send_update_after = 0;
 							janus_ice_notify_media(handle, TRUE, vindex, TRUE);
 						}
 						/* Overall video data for this SSRC */
@@ -4201,6 +4203,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 			/* We missed more than no_second_timer seconds of audio! */
 			component->in_stats.audio.temporarily_down = TRUE;
 			component->in_stats.audio.last_notified = JANUS_ICE_MEDIA_STATE_DOWN;
+			component->in_stats.audio.send_update_after = 0;
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio for more than %d seconds...\n", handle->handle_id, no_media_timer);
 			janus_ice_notify_media(handle, FALSE, 0, FALSE);
 		}
@@ -4211,6 +4214,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 				/* We missed more than no_second_timer seconds of this video stream! */
 				component->in_stats.video[vindex].temporarily_down = TRUE;
 				component->in_stats.video[vindex].last_notified = JANUS_ICE_MEDIA_STATE_DOWN;
+				component->in_stats.video[vindex].send_update_after = 0;
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video #%d for more than a second...\n", handle->handle_id, vindex);
 				janus_ice_notify_media(handle, TRUE, vindex, FALSE);
 			}
