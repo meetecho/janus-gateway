@@ -284,7 +284,7 @@ typedef struct janus_ice_stats_info {
 	/*! \brief Time we last updated the last second counter */
 	gint64 updated;
 	/*! \brief Whether or not we notified about lastsec issues already */
-	gboolean notified_lastsec;
+	gboolean temporarily_down;
 	/*! \brief This is the state we have notified before */
 	janus_ice_media_state last_notified;
 	/*! \brief Stores the timestamp when the media state has to get resend if last_notified is set to JANUS_ICE_MEDIA_STATE_UPDATE_PENDIG */

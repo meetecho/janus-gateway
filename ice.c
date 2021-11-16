@@ -667,22 +667,39 @@ static int janus_seq_in_range(guint16 seqn, guint16 start, guint16 len) {
 	return (s <= n && n < e) || (s <= nh && nh < e);
 }
 
-/* Checks wether based on the conditions in the stats an update to the mediastate needs to get dispatched
+/* Checks whether based on the conditions in the stats an update to the mediastate needs to get dispatched
  * stats - the stats object we are inspecting
  * now - the current monotonic time
  * targetstate - the state we would like to travers to
  * returns true in case the mediastate shall get send
  */
-gboolean janus_ice_event_check_send_mediastate(janus_ice_stats_info *stats, gint64 now, janus_ice_media_state targetstate) {
+static gboolean janus_ice_event_check_send_mediastate(janus_ice_stats_info *stats, gint64 now, janus_ice_media_state targetstate) {
 	if(targetstate == JANUS_ICE_MEDIA_STATE_UP) {
-		if(stats->bytes == 0 || stats->notified_lastsec || stats->last_notified != JANUS_ICE_MEDIA_STATE_UP)
+		// This method is called when the stream has receive data which is about to get updated within the stats
+		if(stats->bytes == 0) {
+			// First data is beeing received (bytes currently pointing to 0 as we are right after init)
 			return TRUE;
+		} else if(stats->temporarily_down) {
+			// Was notified as temporarily down before
+			return TRUE;
+		} else if(stats->last_notified == JANUS_ICE_MEDIA_STATE_UPDATE_PENDIG && now > stats->send_update_after) {
+			// A SDP change changed the transport for this media (inactive or active again) thus we retransmit the status after time
+			return TRUE;
+		}
 	} else if(targetstate == JANUS_ICE_MEDIA_STATE_DOWN) {
 		gint64 last = stats->updated;
-		if((!stats->notified_lastsec || stats->last_notified != JANUS_ICE_MEDIA_STATE_DOWN) &&
-				last && !stats->bytes_lastsec && !stats->bytes_lastsec_temp &&
-					now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
-			return TRUE;
+		if(last && !stats->bytes_lastsec && !stats->bytes_lastsec_temp && now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+			// The stream is currently not receiving any media
+			if(!stats->temporarily_down) {
+				// Was not notified as temporarily down before
+				return true;
+			} else if(stats->last_notified == JANUS_ICE_MEDIA_STATE_UNKNOWN || stats->last_notified == JANUS_ICE_MEDIA_STATE_UP) {
+				// The media state is currently unknown (after init) or notified as up
+				return TRUE;
+			} else if(stats->last_notified == JANUS_ICE_MEDIA_STATE_UPDATE_PENDIG && now > stats->send_update_after) {
+				// A SDP change changed the transport for this media (inactive or active again) thus we retransmit the status after time
+				return TRUE;
+			}
 		}
 	}
 	return FALSE;
@@ -2753,7 +2770,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					if(!video) {
 						if(janus_ice_event_check_send_mediastate(&component->in_stats.audio, now, JANUS_ICE_MEDIA_STATE_UP)) {
 							/* We either received our first audio packet, or we started receiving it again after missing more than a second */
-							component->in_stats.audio.notified_lastsec = FALSE;
+							component->in_stats.audio.temporarily_down = FALSE;
 							component->in_stats.audio.last_notified = JANUS_ICE_MEDIA_STATE_UP;
 							janus_ice_notify_media(handle, FALSE, 0, TRUE);
 						}
@@ -2773,7 +2790,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					} else {
 						if(janus_ice_event_check_send_mediastate(&component->in_stats.video[vindex], now, JANUS_ICE_MEDIA_STATE_UP)) {
 							/* We either received our first video packet, or we started receiving it again after missing more than a second */
-							component->in_stats.video[vindex].notified_lastsec = FALSE;
+							component->in_stats.video[vindex].temporarily_down = FALSE;
 							component->in_stats.video[vindex].last_notified = JANUS_ICE_MEDIA_STATE_UP;
 							janus_ice_notify_media(handle, TRUE, vindex, TRUE);
 						}
@@ -4182,7 +4199,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 		/* Audio */
 		if(janus_ice_event_check_send_mediastate(&component->in_stats.audio, now, JANUS_ICE_MEDIA_STATE_DOWN)) {
 			/* We missed more than no_second_timer seconds of audio! */
-			component->in_stats.audio.notified_lastsec = TRUE;
+			component->in_stats.audio.temporarily_down = TRUE;
 			component->in_stats.audio.last_notified = JANUS_ICE_MEDIA_STATE_DOWN;
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio for more than %d seconds...\n", handle->handle_id, no_media_timer);
 			janus_ice_notify_media(handle, FALSE, 0, FALSE);
@@ -4192,7 +4209,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 		for(vindex=0; vindex<3; vindex++) {
 			if(janus_ice_event_check_send_mediastate(&component->in_stats.video[vindex], now, JANUS_ICE_MEDIA_STATE_DOWN)) {
 				/* We missed more than no_second_timer seconds of this video stream! */
-				component->in_stats.video[vindex].notified_lastsec = TRUE;
+				component->in_stats.video[vindex].temporarily_down = TRUE;
 				component->in_stats.video[vindex].last_notified = JANUS_ICE_MEDIA_STATE_DOWN;
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video #%d for more than a second...\n", handle->handle_id, vindex);
 				janus_ice_notify_media(handle, TRUE, vindex, FALSE);
