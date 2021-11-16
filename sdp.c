@@ -180,6 +180,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 						stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
 					}
 				}
+				gboolean audio_recv_old = stream->audio_recv;
 				switch(m->direction) {
 					case JANUS_SDP_INACTIVE:
 					case JANUS_SDP_INVALID:
@@ -202,6 +203,13 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 						stream->audio_send = TRUE;
 						stream->audio_recv = TRUE;
 						break;
+				}
+				if(audio_recv_old != stream->audio_recv) {
+					/* The audio state has changed
+	 				 * -> we need to rest the last notified so that the media state is properly signalled again */
+					stream->component->in_stats.audio.last_notified = JANUS_ICE_MEDIA_STATE_UPDATE_PENDIG;
+					/* returns uSeconds -> +2000000 = 2 seconds */
+					stream->component->in_stats.audio.send_update_after = janus_get_monotonic_time() + 2000000;
 				}
 				if(m->ptypes != NULL) {
 					g_list_free(stream->audio_payload_types);
@@ -230,6 +238,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 						stream->video_rtcp_ctx[0]->tb = 90000;	/* May change later */
 					}
 				}
+				gboolean video_recv_old = stream->video_recv;
 				switch(m->direction) {
 					case JANUS_SDP_INACTIVE:
 					case JANUS_SDP_INVALID:
@@ -252,6 +261,13 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 						stream->video_send = TRUE;
 						stream->video_recv = TRUE;
 						break;
+				}
+				if(video_recv_old != stream->video_recv) {
+					/* The video state has changed
+	 				 * -> we need to rest the last notified so that the media state is properly signalled again */
+					stream->component->in_stats.video[0].last_notified = JANUS_ICE_MEDIA_STATE_UPDATE_PENDIG;
+					/* returns uSeconds -> +2000000 = 2 seconds */
+					stream->component->in_stats.video[0].send_update_after = janus_get_monotonic_time() + 2000000;
 				}
 				if(m->ptypes != NULL) {
 					g_list_free(stream->video_payload_types);

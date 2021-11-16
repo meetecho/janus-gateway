@@ -262,9 +262,14 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 
 /*! \brief The information about the media state (are we sending receiving, are we down or are we unknown (after an sdp exchange) */
 typedef enum janus_ice_media_state {
+	/* Default state if the object is initialized */
 	JANUS_ICE_MEDIA_STATE_UNKNOWN = 0,
+	/* Media is currently transported, the api signalled media receiving: true */
 	JANUS_ICE_MEDIA_STATE_UP = 1,
-	JANUS_ICE_MEDIA_STATE_DOWN = 2
+	/* Media is currently not transported, the api signalled media receiving: false */
+	JANUS_ICE_MEDIA_STATE_DOWN = 2,
+	/* The SDP has changed an forces an update or resend of the status after time */
+	JANUS_ICE_MEDIA_STATE_UPDATE_PENDIG = 3,
 } janus_ice_media_state;
 
 /*! \brief Janus media statistics
@@ -282,6 +287,8 @@ typedef struct janus_ice_stats_info {
 	gboolean notified_lastsec;
 	/*! \brief This is the state we have notified before */
 	janus_ice_media_state last_notified;
+	/*! \brief Stores the timestamp when the media state has to get resend if last_notified is set to JANUS_ICE_MEDIA_STATE_UPDATE_PENDIG */
+	gint64 send_update_after;
 	/*! \brief Number of NACKs sent or received */
 	guint32 nacks;
 } janus_ice_stats_info;

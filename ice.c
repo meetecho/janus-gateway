@@ -667,6 +667,26 @@ static int janus_seq_in_range(guint16 seqn, guint16 start, guint16 len) {
 	return (s <= n && n < e) || (s <= nh && nh < e);
 }
 
+/* Checks wether based on the conditions in the stats an update to the mediastate needs to get dispatched
+ * stats - the stats object we are inspecting
+ * now - the current monotonic time
+ * targetstate - the state we would like to travers to
+ * returns true in case the mediastate shall get send
+ */
+gboolean janus_ice_event_check_send_mediastate(janus_ice_stats_info *stats, gint64 now, janus_ice_media_state targetstate) {
+	if(targetstate == JANUS_ICE_MEDIA_STATE_UP) {
+		if(stats->bytes == 0 || stats->notified_lastsec || stats->last_notified != JANUS_ICE_MEDIA_STATE_UP)
+			return TRUE;
+	} else if(targetstate == JANUS_ICE_MEDIA_STATE_DOWN) {
+		gint64 last = stats->updated;
+		if((!stats->notified_lastsec || stats->last_notified != JANUS_ICE_MEDIA_STATE_DOWN) &&
+				last && !stats->bytes_lastsec && !stats->bytes_lastsec_temp &&
+					now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
 
 /* Internal method for relaying RTCP messages, optionally filtering them in case they come from plugins */
 void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_plugin_rtcp *packet, gboolean filter_rtcp);
@@ -2731,9 +2751,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				if(buflen > 0) {
 					gint64 now = janus_get_monotonic_time();
 					if(!video) {
-						if(component->in_stats.audio.bytes == 0 ||
-							component->in_stats.audio.notified_lastsec ||
-							component->in_stats.audio.last_notified != JANUS_ICE_MEDIA_STATE_UP) {
+						if(janus_ice_event_check_send_mediastate(&component->in_stats.audio, now, JANUS_ICE_MEDIA_STATE_UP)) {
 							/* We either received our first audio packet, or we started receiving it again after missing more than a second */
 							component->in_stats.audio.notified_lastsec = FALSE;
 							component->in_stats.audio.last_notified = JANUS_ICE_MEDIA_STATE_UP;
@@ -2753,9 +2771,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						}
 						component->in_stats.audio.bytes_lastsec_temp += buflen;
 					} else {
-						if(component->in_stats.video[vindex].bytes == 0 ||
-							component->in_stats.video[vindex].notified_lastsec ||
-							component->in_stats.video[vindex].last_notified != JANUS_ICE_MEDIA_STATE_UP) {
+						if(janus_ice_event_check_send_mediastate(&component->in_stats.video[vindex], now, JANUS_ICE_MEDIA_STATE_UP)) {
 							/* We either received our first video packet, or we started receiving it again after missing more than a second */
 							component->in_stats.video[vindex].notified_lastsec = FALSE;
 							component->in_stats.video[vindex].last_notified = JANUS_ICE_MEDIA_STATE_UP;
@@ -4164,10 +4180,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 	/* Now let's see if we need to notify the user about no incoming audio or video */
 	if(no_media_timer > 0 && component->dtls && component->dtls->dtls_connected > 0 && (now - component->dtls->dtls_connected >= G_USEC_PER_SEC)) {
 		/* Audio */
-		gint64 last = component->in_stats.audio.updated;
-		if((!component->in_stats.audio.notified_lastsec || component->in_stats.audio.last_notified != JANUS_ICE_MEDIA_STATE_DOWN) &&
-				last && !component->in_stats.audio.bytes_lastsec && !component->in_stats.audio.bytes_lastsec_temp &&
-					now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+		if(janus_ice_event_check_send_mediastate(&component->in_stats.audio, now, JANUS_ICE_MEDIA_STATE_DOWN)) {
 			/* We missed more than no_second_timer seconds of audio! */
 			component->in_stats.audio.notified_lastsec = TRUE;
 			component->in_stats.audio.last_notified = JANUS_ICE_MEDIA_STATE_DOWN;
@@ -4177,10 +4190,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 		/* Video */
 		int vindex=0;
 		for(vindex=0; vindex<3; vindex++) {
-			last = component->in_stats.video[vindex].updated;
-			if((!component->in_stats.video[vindex].notified_lastsec || component->in_stats.video[vindex].last_notified != JANUS_ICE_MEDIA_STATE_DOWN) &&
-					last && !component->in_stats.video[vindex].bytes_lastsec && !component->in_stats.video[vindex].bytes_lastsec_temp &&
-						now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+			if(janus_ice_event_check_send_mediastate(&component->in_stats.video[vindex], now, JANUS_ICE_MEDIA_STATE_DOWN)) {
 				/* We missed more than no_second_timer seconds of this video stream! */
 				component->in_stats.video[vindex].notified_lastsec = TRUE;
 				component->in_stats.video[vindex].last_notified = JANUS_ICE_MEDIA_STATE_DOWN;
