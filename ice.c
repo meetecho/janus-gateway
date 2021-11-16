@@ -682,7 +682,7 @@ static gboolean janus_ice_event_check_send_mediastate(janus_ice_stats_info *stat
 		} else if(stats->last_notified == JANUS_ICE_MEDIA_STATE_DOWN) {
 			// Was notified as temporarily down before
 			return TRUE;
-		} else if(stats->last_notified == JANUS_ICE_MEDIA_STATE_UPDATE_PENDIG && now > stats->send_update_after) {
+		} else if(stats->last_notified == JANUS_ICE_MEDIA_STATE_UPDATE_PENDING && now > stats->send_update_after) {
 			// A SDP change changed the transport for this media (inactive or active again) thus we retransmit the status after time
 			return TRUE;
 		}
@@ -693,7 +693,7 @@ static gboolean janus_ice_event_check_send_mediastate(janus_ice_stats_info *stat
 			if(stats->last_notified == JANUS_ICE_MEDIA_STATE_UNKNOWN || stats->last_notified == JANUS_ICE_MEDIA_STATE_UP) {
 				// The media state is currently unknown (after init) or notified as up
 				return TRUE;
-			} else if(stats->last_notified == JANUS_ICE_MEDIA_STATE_UPDATE_PENDIG && now > stats->send_update_after) {
+			} else if(stats->last_notified == JANUS_ICE_MEDIA_STATE_UPDATE_PENDING && now > stats->send_update_after) {
 				// A SDP change changed the transport for this media (inactive or active again) thus we retransmit the status after time
 				return TRUE;
 			}

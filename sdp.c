@@ -207,7 +207,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 				if(audio_recv_old != stream->audio_recv) {
 					/* The audio state has changed
 	 				 * -> we need to rest the last notified so that the media state is properly signalled again */
-					stream->component->in_stats.audio.last_notified = JANUS_ICE_MEDIA_STATE_UPDATE_PENDIG;
+					stream->component->in_stats.audio.last_notified = JANUS_ICE_MEDIA_STATE_UPDATE_PENDING;
 					/* returns uSeconds -> +2000000 = 2 seconds */
 					stream->component->in_stats.audio.send_update_after = janus_get_monotonic_time() + 2000000;
 				}
@@ -265,7 +265,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 				if(video_recv_old != stream->video_recv) {
 					/* The video state has changed
 	 				 * -> we need to rest the last notified so that the media state is properly signalled again */
-					stream->component->in_stats.video[0].last_notified = JANUS_ICE_MEDIA_STATE_UPDATE_PENDIG;
+					stream->component->in_stats.video[0].last_notified = JANUS_ICE_MEDIA_STATE_UPDATE_PENDING;
 					/* returns uSeconds -> +2000000 = 2 seconds */
 					stream->component->in_stats.video[0].send_update_after = janus_get_monotonic_time() + 2000000;
 				}

@@ -269,7 +269,7 @@ typedef enum janus_ice_media_state {
 	/* Media is currently not transported, the api signalled media receiving: false */
 	JANUS_ICE_MEDIA_STATE_DOWN = 2,
 	/* The SDP has changed an forces an update or resend of the status after time */
-	JANUS_ICE_MEDIA_STATE_UPDATE_PENDIG = 3,
+	JANUS_ICE_MEDIA_STATE_UPDATE_PENDING = 3,
 } janus_ice_media_state;
 
 /*! \brief Janus media statistics
