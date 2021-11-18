@@ -6140,6 +6140,7 @@ static void *janus_videoroom_handler(void *data) {
 			JANUS_VALIDATE_JSON_OBJECT(root, join_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+			janus_check_param_checksum(root, "join");
 			if(error_code != 0)
 				goto error;
 			janus_mutex_lock(&rooms_mutex);
