@@ -440,7 +440,7 @@ int main(int argc, char *argv[])
 	gboolean has_timestamps = FALSE;
 	gboolean parsed_header = FALSE;
 	gboolean video = FALSE, data = FALSE, textdata = FALSE;
-	gboolean opus = FALSE, g711 = FALSE, g722 = FALSE,
+	gboolean opus = FALSE, multiopus = FALSE, g711 = FALSE, g722 = FALSE,
 		vp8 = FALSE, vp9 = FALSE, h264 = FALSE, av1 = FALSE, h265 = FALSE;
 	gboolean e2ee = FALSE;
 	gint64 c_time = 0, w_time = 0;
@@ -648,20 +648,17 @@ int main(int argc, char *argv[])
 						exit(1);
 					}
 				} else if(!video && !data) {
-					if(!strcasecmp(c, "opus")) {
+					if(!strcasecmp(c, "opus") || !strcasecmp(c, "multiopus")) {
 						opus = TRUE;
+						multiopus = !strcasecmp(c, "multiopus");
 						if(extension && !janus_pp_extension_check(extension, janus_pp_opus_get_extensions())) {
-							JANUS_LOG(LOG_ERR, "Opus RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+							JANUS_LOG(LOG_ERR, "%s RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								multiopus ? "Multiopus" : "Opus",
 								janus_pp_extensions_string(janus_pp_opus_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
-					} else if(!strcasecmp(c, "multiopus")) {
-						JANUS_LOG(LOG_ERR, "Surround Opus RTP packets are not supported, at the moment\n");
-						json_decref(info);
-						cmdline_parser_free(&args_info);
-						exit(1);
 					} else if(!strcasecmp(c, "g711") || !strcasecmp(c, "pcmu") || !strcasecmp(c, "pcma")) {
 						g711 = TRUE;
 						if(extension && !janus_pp_extension_check(extension, janus_pp_g711_get_extensions())) {
@@ -1304,7 +1301,7 @@ int main(int argc, char *argv[])
 
 	if(!video && !data) {
 		if(opus) {
-			if(janus_pp_opus_create(destination, metadata, extension) < 0) {
+			if(janus_pp_opus_create(destination, metadata, multiopus, extension) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .opus file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
