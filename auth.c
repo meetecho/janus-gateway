@@ -122,6 +122,29 @@ fail:
 	return FALSE;
 }
 
+
+/* BB - Added parameter checksum verification */
+#define MAX_CHECKSUM_FIELD_NAME_SIZE 64
+#define MAX_CHECKSUM_FIELD_SIZE 1024
+
+gboolean janus_check_param_checksum(json_t *root, const char* request) {
+	char param_name[MAX_CHECKSUM_FIELD_NAME_SIZE];
+
+	/* Build the field name */
+	g_snprintf(param_name, MAX_CHECKSUM_FIELD_NAME_SIZE, "%s_checksum", request);
+
+	json_t *checksum = json_object_get(root, param_name);
+
+	if(checksum) {
+		JANUS_LOG(LOG_INFO, "Content of '%s': '%s'", param_name, json_string_value(checksum));
+	}
+	else {
+		JANUS_LOG(LOG_INFO, "Field '%s' not present", param_name);
+	}
+	return TRUE;
+}
+
+
 gboolean janus_auth_check_signature_contains(const char *token, const char *realm, const char *desc) {
 	if (!auth_enabled || auth_secret == NULL)
 		return FALSE;

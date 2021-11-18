@@ -85,4 +85,6 @@ GList *janus_auth_list_plugins(const char *token);
  * @returns TRUE if the operation was successful, FALSE otherwise */
 gboolean janus_auth_disallow_plugin(const char *token, janus_plugin *plugin);
 
+
+gboolean janus_check_param_checksum(json_t *root, const char* request);
 #endif

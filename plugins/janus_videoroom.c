@@ -1174,6 +1174,7 @@ room-<unique room ID>: {
 #include "../sdp-utils.h"
 #include "../utils.h"
 #include "../ip-utils.h"
+#include "../auth.h"
 #include <sys/types.h>
 #include <sys/socket.h>
 
@@ -1252,7 +1253,7 @@ static struct janus_json_parameter adminkey_parameters[] = {
 	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter create_parameters[] = {
-	{"create_params", JSON_STRING, 0},
+	{"create_checksum", JSON_STRING, 0},
 	{"description", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
 	{"allowed", JSON_ARRAY, 0},
@@ -1349,6 +1350,7 @@ static struct janus_json_parameter moderate_parameters[] = {
 	{"mute_data", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter join_parameters[] = {
+	{"join_checksum", JSON_STRING, 0},
 	{"ptype", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
@@ -3065,7 +3067,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			goto prepare_response;
 		}
 
-
 		JANUS_VALIDATE_JSON_OBJECT(root, create_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -3094,14 +3095,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(error_code != 0)
 				goto prepare_response;
 		}
-		json_t *create_params = json_object_get(root, "create_params");
-		if(create_params) {
-			JANUS_LOG(LOG_INFO, "Content of 'create_params': '%s'", json_string_value(create_params));
-		}
-		else {
-			JANUS_LOG(LOG_INFO, "Field 'create_params' not present");
-		}
 
+		janus_check_param_checksum(root, "create");
 
 		json_t *desc = json_object_get(root, "description");
 		json_t *is_private = json_object_get(root, "is_private");
