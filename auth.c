@@ -136,10 +136,10 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 	json_t *checksum = json_object_get(root, param_name);
 
 	if(checksum) {
-		JANUS_LOG(LOG_INFO, "Content of '%s': '%s'", param_name, json_string_value(checksum));
+		JANUS_LOG(LOG_INFO, "Content of '%s': '%s'\n", param_name, json_string_value(checksum));
 	}
 	else {
-		JANUS_LOG(LOG_INFO, "Field '%s' not present", param_name);
+		JANUS_LOG(LOG_INFO, "Field '%s' not present\n", param_name);
 	}
 	return TRUE;
 }
