@@ -693,7 +693,7 @@ room-<unique room ID>: {
 	"prebuffer" : <number of packets to buffer before decoding this participant (default=room value, or DEFAULT_PREBUFFERING)>,
 	"bitrate" : <bitrate to use for the Opus stream in bps; optional, default=0 (libopus decides)>,
 	"quality" : <0-10, Opus-related complexity to use, the higher the value, the better the quality (but more CPU); optional, default is 4>,
-	"expected_loss" : <0-100, a percentage of the expected loss, only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>,
+	"expected_loss" : <0-20, a percentage of the expected loss (capped at 20%), only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>,
 	"volume" : <percent value, <100 reduces volume, >100 increases volume; optional, default is 100 (no volume change)>,
 	"spatial_position" : <in case spatial audio is enabled for the room, panning of this participant (0=left, 50=center, 100=right)>,
 	"secret" : "<room management password; optional, if provided the user is an admin and can't be globally muted with mute_room>",
@@ -883,7 +883,7 @@ room-<unique room ID>: {
 	"muted" : <true|false, whether to start unmuted or muted>,
 	"bitrate" : <bitrate to use for the Opus stream in bps; optional, default=0 (libopus decides)>,
 	"quality" : <0-10, Opus-related complexity to use, higher is higher quality; optional, default is 4>,
-	"expected_loss" : <0-100, a percentage of the expected loss, only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>
+	"expected_loss" : <0-20, a percentage of the expected loss (capped at 20%), only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>
 }
 \endverbatim
  *
@@ -5972,12 +5972,12 @@ static void *janus_audiobridge_handler(void *data) {
 				goto error;
 			}
 			int expected_loss = exploss ? json_integer_value(exploss) : audiobridge->default_expectedloss;
-			if(expected_loss > 100) {
+			if(expected_loss > 20) {
 				janus_mutex_unlock(&audiobridge->mutex);
 				janus_refcount_decrease(&audiobridge->ref);
-				JANUS_LOG(LOG_ERR, "Invalid element (expected_loss should be a positive integer between 0 and 100)\n");
+				JANUS_LOG(LOG_ERR, "Invalid element (expected_loss should be a positive integer between 0 and 20)\n");
 				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (expected_loss should be a positive integer between 0 and 100)");
+				g_snprintf(error_cause, 512, "Invalid element (expected_loss should be a positive integer between 0 and 20)");
 				goto error;
 			}
 			janus_audiocodec codec = JANUS_AUDIOCODEC_OPUS;
@@ -6479,10 +6479,10 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			if(exploss) {
 				int expected_loss = json_integer_value(exploss);
-				if(expected_loss > 100) {
-					JANUS_LOG(LOG_ERR, "Invalid element (expected_loss should be a positive integer between 0 and 100)\n");
+				if(expected_loss > 20) {
+					JANUS_LOG(LOG_ERR, "Invalid element (expected_loss should be a positive integer between 0 and 20)\n");
 					error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (expected_loss should be a positive integer between 0 and 100)");
+					g_snprintf(error_cause, 512, "Invalid element (expected_loss should be a positive integer between 0 and 20)");
 					goto error;
 				}
 				participant->expected_loss = expected_loss;
@@ -6793,13 +6793,13 @@ static void *janus_audiobridge_handler(void *data) {
 				goto error;
 			}
 			int expected_loss = exploss ? json_integer_value(exploss) : audiobridge->default_expectedloss;
-			if(expected_loss > 100) {
+			if(expected_loss > 20) {
 				janus_mutex_unlock(&audiobridge->mutex);
 				janus_refcount_decrease(&audiobridge->ref);
 				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Invalid element (expected_loss should be a positive integer between 0 and 100)\n");
+				JANUS_LOG(LOG_ERR, "Invalid element (expected_loss should be a positive integer between 0 and 20)\n");
 				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (expected_loss should be a positive integer between 0 and 100)");
+				g_snprintf(error_cause, 512, "Invalid element (expected_loss should be a positive integer between 0 and 20)");
 				goto error;
 			}
 			guint64 user_id = 0;
