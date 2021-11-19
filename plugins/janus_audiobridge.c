@@ -691,6 +691,7 @@ room-<unique room ID>: {
 	"muted" : <true|false, whether to start unmuted or muted>,
 	"codec" : "<codec to use, among opus (default), pcma (A-Law) or pcmu (mu-Law)>",
 	"prebuffer" : <number of packets to buffer before decoding this participant (default=room value, or DEFAULT_PREBUFFERING)>,
+	"bitrate" : <bitrate to use for the Opus stream in bps; optional, default=0 (libopus decides)>,
 	"quality" : <0-10, Opus-related complexity to use, the higher the value, the better the quality (but more CPU); optional, default is 4>,
 	"expected_loss" : <0-100, a percentage of the expected loss, only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>,
 	"volume" : <percent value, <100 reduces volume, >100 increases volume; optional, default is 100 (no volume change)>,
@@ -778,6 +779,7 @@ room-<unique room ID>: {
 	"muted" : <true|false, whether to unmute or mute>,
 	"display" : "<new display name to have in the room>",
 	"prebuffer" : <new number of packets to buffer before decoding this participant (see "join" for more info)>,
+	"bitrate" : <new bitrate to use for the Opus stream (see "join" for more info)>,
 	"quality" : <new Opus-related complexity to use (see "join" for more info)>,
 	"expected_loss" : <new value for the expected loss (see "join" for more info)>
 	"volume" : <new volume percent value (see "join" for more info)>,
@@ -879,6 +881,7 @@ room-<unique room ID>: {
 	"display" : "<display name to have in the room; optional>",
 	"token" : "<invitation token, in case the new room has an ACL; optional>",
 	"muted" : <true|false, whether to start unmuted or muted>,
+	"bitrate" : <bitrate to use for the Opus stream in bps; optional, default=0 (libopus decides)>,
 	"quality" : <0-10, Opus-related complexity to use, higher is higher quality; optional, default is 4>,
 	"expected_loss" : <0-100, a percentage of the expected loss, only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>
 }
@@ -1139,6 +1142,7 @@ static struct janus_json_parameter join_parameters[] = {
 	{"muted", JANUS_JSON_BOOL, 0},
 	{"codec", JSON_STRING, 0},
 	{"prebuffer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"expected_loss", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1166,6 +1170,7 @@ static struct janus_json_parameter rtp_parameters[] = {
 static struct janus_json_parameter configure_parameters[] = {
 	{"muted", JANUS_JSON_BOOL, 0},
 	{"prebuffer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"expected_loss", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1488,6 +1493,7 @@ typedef struct janus_audiobridge_participant {
 	volatile gint decoding;	/* Whether this participant is currently decoding */
 	gboolean muted;			/* Whether this participant is muted */
 	int volume_gain;		/* Gain to apply to the input audio (in percentage) */
+	int32_t opus_bitrate;	/* Bitrate to use for the Opus stream */
 	int opus_complexity;	/* Complexity to use in the encoder (by default, DEFAULT_COMPLEXITY) */
 	gboolean stereo;		/* Whether stereo will be used for spatial audio */
 	int spatial_position;	/* Panning of this participant in the mix */
@@ -5934,6 +5940,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *prebuffer = json_object_get(root, "prebuffer");
 			json_t *gain = json_object_get(root, "volume");
 			json_t *spatial = json_object_get(root, "spatial_position");
+			json_t *bitrate = json_object_get(root, "bitrate");
 			json_t *quality = json_object_get(root, "quality");
 			json_t *exploss = json_object_get(root, "expected_loss");
 			json_t *acodec = json_object_get(root, "codec");
@@ -5950,6 +5957,11 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			int volume = gain ? json_integer_value(gain) : 100;
 			int spatial_position = spatial ? json_integer_value(spatial) : 50;
+			int32_t opus_bitrate = bitrate ? json_integer_value(bitrate) : 0;
+			if(opus_bitrate < 500 || opus_bitrate > 512000) {
+				JANUS_LOG(LOG_WARN, "Invalid bitrate %"SCNi32", falling back to auto\n", opus_bitrate);
+				opus_bitrate = 0;
+			}
 			int complexity = quality ? json_integer_value(quality) : DEFAULT_COMPLEXITY;
 			if(complexity < 1 || complexity > 10) {
 				janus_mutex_unlock(&audiobridge->mutex);
@@ -6066,6 +6078,7 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->prebuffer_count = prebuffer_count;
 			participant->volume_gain = volume;
 			participant->opus_complexity = complexity;
+			participant->opus_bitrate = opus_bitrate;
 			participant->expected_loss = expected_loss;
 			participant->stereo = audiobridge->spatial_audio;
 			if(participant->stereo) {
@@ -6125,6 +6138,8 @@ static void *janus_audiobridge_handler(void *data) {
 				opus_encoder_ctl(participant->encoder, OPUS_SET_PACKET_LOSS_PERC(participant->expected_loss));
 			}
 			opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
+			if(participant->opus_bitrate > 0)
+				opus_encoder_ctl(participant->encoder, OPUS_SET_BITRATE(participant->opus_bitrate));
 			if(participant->decoder == NULL) {
 				/* Opus decoder */
 				error = 0;
@@ -6401,6 +6416,7 @@ static void *janus_audiobridge_handler(void *data) {
 				goto error;
 			json_t *muted = json_object_get(root, "muted");
 			json_t *prebuffer = json_object_get(root, "prebuffer");
+			json_t *bitrate = json_object_get(root, "bitrate");
 			json_t *quality = json_object_get(root, "quality");
 			json_t *exploss = json_object_get(root, "expected_loss");
 			json_t *gain = json_object_get(root, "volume");
@@ -6439,6 +6455,16 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			if(gain)
 				participant->volume_gain = json_integer_value(gain);
+			if(bitrate) {
+				int32_t opus_bitrate = bitrate ? json_integer_value(bitrate) : 0;
+				if(opus_bitrate < 500 || opus_bitrate > 512000) {
+					JANUS_LOG(LOG_WARN, "Invalid bitrate %"SCNi32", falling back to auto\n", opus_bitrate);
+					opus_bitrate = 0;
+				}
+				participant->opus_bitrate = opus_bitrate;
+				if(participant->encoder)
+					opus_encoder_ctl(participant->encoder, OPUS_SET_BITRATE(participant->opus_bitrate ? participant->opus_bitrate : OPUS_AUTO));
+			}
 			if(quality) {
 				int complexity = json_integer_value(quality);
 				if(complexity < 1 || complexity > 10) {
@@ -6609,6 +6635,8 @@ static void *janus_audiobridge_handler(void *data) {
 					string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
 				json_object_set_new(info, "display", json_string(participant->display));
 				json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
+				if(participant->opus_bitrate > 0)
+					json_object_set_new(info, "bitrate", json_integer(participant->opus_bitrate));
 				json_object_set_new(info, "quality", json_integer(participant->opus_complexity));
 				if(participant->stereo)
 					json_object_set_new(info, "spatial_position", json_integer(participant->spatial_position));
@@ -6744,10 +6772,16 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *muted = json_object_get(root, "muted");
 			json_t *gain = json_object_get(root, "volume");
 			json_t *spatial = json_object_get(root, "spatial_position");
+			json_t *bitrate = json_object_get(root, "bitrate");
 			json_t *quality = json_object_get(root, "quality");
 			json_t *exploss = json_object_get(root, "expected_loss");
 			int volume = gain ? json_integer_value(gain) : 100;
 			int spatial_position = spatial ? json_integer_value(spatial) : 64;
+			int32_t opus_bitrate = bitrate ? json_integer_value(bitrate) : 0;
+			if(opus_bitrate < 500 || opus_bitrate > 512000) {
+				JANUS_LOG(LOG_WARN, "Invalid bitrate %"SCNi32", falling back to auto\n", opus_bitrate);
+				opus_bitrate = 0;
+			}
 			int complexity = quality ? json_integer_value(quality) : DEFAULT_COMPLEXITY;
 			if(complexity < 1 || complexity > 10) {
 				janus_mutex_unlock(&audiobridge->mutex);
@@ -6911,8 +6945,6 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			if(quality)
 				opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
-			if(exploss)
-				opus_encoder_ctl(participant->encoder, OPUS_SET_PACKET_LOSS_PERC(participant->expected_loss));
 			/* Everything looks fine, start by telling the folks in the old room this participant is going away */
 			event = json_object();
 			json_object_set_new(event, "audiobridge", json_string("event"));
@@ -6970,10 +7002,19 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->spatial_position = 0;
 			else if(participant->spatial_position > 100)
 				participant->spatial_position = 100;
+			if(bitrate) {
+				participant->opus_bitrate = opus_bitrate;
+				if(participant->encoder)
+					opus_encoder_ctl(participant->encoder, OPUS_SET_BITRATE(participant->opus_bitrate ? participant->opus_bitrate : OPUS_AUTO));
+			}
 			if(quality) {
 				participant->opus_complexity = complexity;
 				if(participant->encoder)
 					opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
+			}
+			if(exploss) {
+				participant->expected_loss = expected_loss;
+				opus_encoder_ctl(participant->encoder, OPUS_SET_PACKET_LOSS_PERC(participant->expected_loss));
 			}
 			g_hash_table_insert(audiobridge->participants,
 				string_ids ? (gpointer)g_strdup(participant->user_id_str) : (gpointer)janus_uint64_dup(participant->user_id),
