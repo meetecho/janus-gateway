@@ -971,9 +971,7 @@ function addHelper(helperCreated) {
 		'					<span class="input-group-addon"><i class="fa fa-phone fa-fw"></i></span>' +
 		'					<input disabled class="form-control" type="text" placeholder="SIP URI to call (e.g., sip:1000@example.com)" autocomplete="off" id="peer' + helperId + '" onkeypress="return checkEnter(this, event, ' + helperId + ');"></input>' +
 		'				</div>' +
-		'				<input class="form-control" type="text" placeholder="any text message" autocomplete="off" id="message' + helperId + '" ></input>' +
-		'				<button disabled class="btn btn-success margin-bottom-sm" autocomplete="off" id="call' + helperId + '">Call</button> <input autocomplete="off" id="dovideo' + helperId + '" type="checkbox">Use Video</input><br />' +
-		'				<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="sendmessage' + helperId + '" onclick="return doMessage('+helperId+');">Message</button>' +
+		'				<button disabled class="btn btn-success margin-bottom-sm" autocomplete="off" id="call' + helperId + '">Call</button> <input autocomplete="off" id="dovideo' + helperId + '" type="checkbox">Use Video</input>' +
 		'			</div>' +
 		'		</div>' +
 		'	</div>' +
@@ -1540,30 +1538,4 @@ function removeHelper(helperId) {
 		// Remove the related UI too
 		$('#sipcall'+helperId).remove();
 	}
-}
-// Send out-of-dialog messages
-function doMessage(helperId) {
-	if (helperId === undefined) {
-		helperId = '';
-	}
-	$('#peer' + helperId).attr('disabled', true);
-	$('#message' + helperId).attr('disabled', true);
-	$('#sendmessage' + helperId).attr('disabled', true);
-	let to = $('#peer' + helperId).val();
-	let body = $('#message' + helperId).val();
-
-	if(to === "" || to.indexOf("sip:") != 0 || to.indexOf("@") < 0) {
-		bootbox.alert('Please insert a valid SIP address (e.g., sip:pluto@example.com)');
-	} else {
-		let handle = sipcall;
-		if(helperId && helpers[helperId] && helpers[helperId]) {
-			handle = helpers[helperId].sipcall;
-		}
-		var msg = { request: "message", uri: to, content: body };
-		handle.send({ message: msg });
-	}
-	$('#peer' + helperId).removeAttr('disabled').val("");
-	$('#message' + helperId).removeAttr('disabled').val("");
-	$('#sendmessage' + helperId).removeAttr('disabled');
-	return;
 }
