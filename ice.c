@@ -489,8 +489,11 @@ uint janus_get_no_media_timer(void) {
 }
 
 /* Number of lost packets per seconds on a media stream (uplink or downlink,
- * audio or video), that should result in a slow-link event to the iser */
-#define DEFAULT_SLOWLINK_THRESHOLD	4
+ * audio or video), that should result in a slow-link event to the user.
+ * By default the feature is disabled (threshold=0), as it can be quite
+ * verbose and is often redundant information, since the same info on lost
+ * packets (in and out) can already be retrieved via client-side stats */
+#define DEFAULT_SLOWLINK_THRESHOLD	0
 static uint slowlink_threshold = DEFAULT_SLOWLINK_THRESHOLD;
 void janus_set_slowlink_threshold(uint packets) {
 	slowlink_threshold = packets;

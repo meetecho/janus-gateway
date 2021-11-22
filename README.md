@@ -303,6 +303,7 @@ or on the command line:
 	-W, --slowlink-threshold=number
                                   Number of lost packets (per s) that should
                                   trigger a 'slowlink' Janus API event to users
+                                  (default=0, feature disabled)
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
 	-B, --twcc-period=number      How often (in ms) to send TWCC feedback back to
