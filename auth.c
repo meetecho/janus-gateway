@@ -126,22 +126,83 @@ fail:
 /* BB - Added parameter checksum verification */
 #define MAX_CHECKSUM_FIELD_NAME_SIZE 64
 #define MAX_CHECKSUM_FIELD_SIZE 1024
+#define MIN_CHECKSUM_FIELD_SIZE 20
 
 gboolean janus_check_param_checksum(json_t *root, const char* request) {
+
 	char param_name[MAX_CHECKSUM_FIELD_NAME_SIZE];
+	gchar **parts = NULL;
+	gchar **fields = NULL;
 
 	/* Build the field name */
 	g_snprintf(param_name, MAX_CHECKSUM_FIELD_NAME_SIZE, "%s_checksum", request);
 
+	/* Get the checksum parameter */
 	json_t *checksum = json_object_get(root, param_name);
 
-	if(checksum) {
-		JANUS_LOG(LOG_INFO, "Content of '%s': '%s'\n", param_name, json_string_value(checksum));
+	if(!checksum) {
+		JANUS_LOG(LOG_WARN, "Field '%s' not present\n", param_name);
+		goto fail;
 	}
-	else {
-		JANUS_LOG(LOG_INFO, "Field '%s' not present\n", param_name);
+
+	/* Get the string from the parameter */
+	gchar* checksum_str = json_string_value(checksum);
+
+	if(strlen(checksum_str) < MIN_CHECKSUM_FIELD_SIZE) {
+		JANUS_LOG(LOG_WARN, "Field '%s' too short: '%s'\n", param_name, checksum_str);
+		goto fail;
 	}
-	return TRUE;
+
+	/* Get the three components: fields, time, signature separated by commas */
+	parts = g_strsplit(checksum_str, ":", 3);
+
+	int content_count = 0;
+
+	while(parts[content_count]) {
+		content_count++;
+	}
+
+	if(content_count < 2) {
+		JANUS_LOG(LOG_WARN, "Missing components in '%s': '%s'\n", param_name, checksum_str);
+		goto fail;
+	}
+
+	fields = g_strsplit(checksum_str, ",", -1);
+
+	int field_count = 0;
+
+	while(fields[field_count])
+		field_count++;
+
+	if(field_count < 1) {
+		JANUS_LOG(LOG_WARN, "Missing fields in '%s': '%s'\n", param_name, checksum_str);
+		goto fail;
+	}
+
+	char field_content[MAX_CHECKSUM_FIELD_SIZE];
+	field_content[0] = 0;
+
+	for(int i = 0; i < field_count; i++) {
+		int curr_len = strlen(field_content);
+
+		if( (curr_len + strlen(field_content[i])) >= MAX_CHECKSUM_FIELD_SIZE) {
+			JANUS_LOG(LOG_WARN, "Maximum size (%d) exceeded in '%s': '%s'\n", MAX_CHECKSUM_FIELD_SIZE, param_name, checksum_str);
+			goto fail;
+		}
+		strcat(field_content, field_content[i]);
+	}
+
+	if(strlen(field_content) + strlen(parts[1]) >= MAX_CHECKSUM_FIELD_SIZE) {
+		JANUS_LOG(LOG_WARN, "Maximum size (%d) exceeded when adding time in '%s': '%s'\n", MAX_CHECKSUM_FIELD_SIZE, param_name, checksum_str);
+	}
+
+	JANUS_LOG(LOG_INFO, "Would proceeed with %s: %s, concat: %s\n", param_name, checksum_str, field_content);
+
+
+fail:
+
+	g_strfreev(parts);
+	g_strfreev(fields);
 }
 
 
