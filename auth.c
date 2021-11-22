@@ -195,6 +195,9 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 	if(strlen(field_content) + strlen(parts[1]) >= MAX_CHECKSUM_FIELD_SIZE) {
 		JANUS_LOG(LOG_WARN, "Maximum size (%d) exceeded when adding time in '%s': '%s'\n", MAX_CHECKSUM_FIELD_SIZE, param_name, checksum_str);
 	}
+	else {
+		strcat(field_content, parts[1]);
+	}
 
 	JANUS_LOG(LOG_INFO, "Would proceeed with %s: %s, concat: %s\n", param_name, checksum_str, field_content);
 
