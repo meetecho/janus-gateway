@@ -170,7 +170,7 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 		goto fail;
 	}
 
-	fields = g_strsplit(checksum_str, ",", -1);
+	fields = g_strsplit(parts[0], ",", -1);
 
 	int field_count = 0;
 
