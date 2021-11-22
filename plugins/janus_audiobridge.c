@@ -39,7 +39,7 @@ room-<unique room ID>: {
 	audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 	audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 	default_prebuffering = number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)
-	default_expectedloss = percent of packets we expect participants may miss, to help with FEC (default=0; automatically used for forwarders too)
+	default_expectedloss = percent of packets we expect participants may miss, to help with FEC (default=0, max=20; automatically used for forwarders too)
 	record = true|false (whether this room should be recorded, default=false)
 	record_file = /path/to/recording.wav (where to save the recording)
 	record_dir = /path/to/ (path to save the recording to, makes record_file a relative path if provided)
@@ -2489,7 +2489,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			audiobridge->default_expectedloss = 0;
 			if(default_expectedloss != NULL && default_expectedloss->value != NULL) {
 				int expectedloss = atoi(default_expectedloss->value);
-				if(expectedloss < 0 || expectedloss > 100) {
+				if(expectedloss < 0 || expectedloss > 20) {
 					JANUS_LOG(LOG_WARN, "Invalid expectedloss value provided, using default: 0\n");
 				} else {
 					audiobridge->default_expectedloss = expectedloss;
@@ -3096,7 +3096,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		audiobridge->default_expectedloss = 0;
 		if(default_expectedloss != NULL) {
 			int expectedloss = json_integer_value(default_expectedloss);
-			if(expectedloss > 100) {
+			if(expectedloss > 20) {
 				JANUS_LOG(LOG_WARN, "Invalid expectedloss value provided, using default: 0\n");
 			} else {
 				audiobridge->default_expectedloss = expectedloss;
