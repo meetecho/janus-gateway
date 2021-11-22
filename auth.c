@@ -183,13 +183,17 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 	field_content[0] = 0;
 
 	for(int i = 0; i < field_count; i++) {
-		int curr_len = strlen(field_content);
+		gchar* field = json_string_value(json_object_get(root, fields[i]));
 
-		if( (curr_len + strlen(field_content[i])) >= MAX_CHECKSUM_FIELD_SIZE) {
+		if (!field) {
+			JANUS_LOG(LOG_WARN, "Unexpected field value %s in '%s': '%s'\n", fields[i], param_name, checksum_str);
+			goto fail;
+		}
+		if((strlen(field_content) + strlen(field)) >= MAX_CHECKSUM_FIELD_SIZE) {
 			JANUS_LOG(LOG_WARN, "Maximum size (%d) exceeded in '%s': '%s'\n", MAX_CHECKSUM_FIELD_SIZE, param_name, checksum_str);
 			goto fail;
 		}
-		strcat(field_content, field_content[i]);
+		strcat(field_content, field);
 	}
 
 	if(strlen(field_content) + strlen(parts[1]) >= MAX_CHECKSUM_FIELD_SIZE) {
