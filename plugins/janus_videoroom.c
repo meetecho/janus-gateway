@@ -9631,7 +9631,6 @@ static void *janus_videoroom_handler(void *data) {
 					temp = temp->next;
 				}
 				janus_sdp_destroy(answer);
-				janus_videoroom_message_free(msg);
 				/* Check if we have other pending offers to send for this subscriber */
 				if(g_atomic_int_compare_and_exchange(&subscriber->pending_offer, 1, 0)) {
 					JANUS_LOG(LOG_VERB, "Pending offer, sending it now\n");
@@ -9668,6 +9667,7 @@ static void *janus_videoroom_handler(void *data) {
 					g_atomic_int_set(&subscriber->answered, 1);
 					janus_mutex_unlock(&subscriber->streams_mutex);
 				}
+				janus_videoroom_message_free(msg);
 				continue;
 			} else {
 				/* TODO We don't support anything else right now... */
