@@ -186,10 +186,18 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 	field_content[0] = 0;
 
 	for(int i = 0; i < field_count; i++) {
-		gchar* field = json_string_value(json_object_get(root, fields[i]));
+
+		json_t* json_field = json_object_get(root, fields[i]);
+
+		if (!json_field) {
+			JANUS_LOG(LOG_WARN, "Field '%s' unavailable for '%s': '%s'\n", fields[i], param_name, checksum_str);
+			goto fail;
+		}
+
+		gchar* field = json_string_value(json_field);
 
 		if (!field) {
-			JANUS_LOG(LOG_WARN, "Null field '%s' value in '%s': '%s'\n", fields[i], param_name, checksum_str);
+			JANUS_LOG(LOG_WARN, "Field '%s' null string value for '%s': '%s'\n", fields[i], param_name, checksum_str);
 			goto fail;
 		}
 		if((strlen(field_content) + strlen(field)) >= MAX_CHECKSUM_FIELD_SIZE) {
