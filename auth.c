@@ -227,8 +227,14 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 		strcat(field_content, parts[1]);
 	}
 
-	JANUS_LOG(LOG_INFO, "Would proceeed with %s: %s, concat: %s\n", param_name, checksum_str, field_content);
 
+	unsigned char signature[EVP_MAX_MD_SIZE];
+	unsigned int len;
+	HMAC(EVP_sha256(), auth_secret, strlen(auth_secret), (const unsigned char*)field_content, strlen(field_content), signature, &len);
+	gchar *base64 = g_base64_encode(signature, len);
+
+	JANUS_LOG(LOG_INFO, "Calculated checksum hash '%s' -> '%s'\n", field_content, base64);
+	g_free(base64);
 
 fail:
 
