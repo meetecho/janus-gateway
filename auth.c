@@ -194,10 +194,23 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 			goto fail;
 		}
 
-		gchar* field = json_string_value(json_field);
+		int type = json_typeof(json_field);
+
+		gchar* field = NULL;
+		switch(type) {
+		case JSON_STRING:
+			field = json_string_value(json_field);
+			break;
+		case JSON_TRUE:
+			field = "true";
+			break;
+		case JSON_FALSE:
+			field = "false";
+			break;
+		}
 
 		if (!field) {
-			JANUS_LOG(LOG_WARN, "Field '%s' null string value for '%s': '%s'\n", fields[i], param_name, checksum_str);
+			JANUS_LOG(LOG_WARN, "Field value of '%s' could not be obtained for '%s': '%s'\n", fields[i], param_name, checksum_str);
 			goto fail;
 		}
 		if((strlen(field_content) + strlen(field)) >= MAX_CHECKSUM_FIELD_SIZE) {
@@ -221,6 +234,8 @@ fail:
 
 	g_strfreev(parts);
 	g_strfreev(fields);
+
+	return TRUE;
 }
 
 
