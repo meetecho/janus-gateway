@@ -227,13 +227,13 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 		strcat(field_content, parts[1]);
 	}
 
-
 	unsigned char signature[EVP_MAX_MD_SIZE];
 	unsigned int len;
 	HMAC(EVP_sha256(), auth_secret, strlen(auth_secret), (const unsigned char*)field_content, strlen(field_content), signature, &len);
 	gchar *base64 = g_base64_encode(signature, len);
+	base64ToBase64UrlNoPadding(base64);
 
-	JANUS_LOG(LOG_INFO, "Calculated checksum hash '%s' -> '%s'\n", field_content, base64);
+	JANUS_LOG(LOG_INFO, "Calculated checksum hash '%s' -> '%s' %s\n", field_content, base64, strcmp(parts[2], base64) ? "DOES NOT MATCH" : "MATCHES");
 	g_free(base64);
 
 fail:
