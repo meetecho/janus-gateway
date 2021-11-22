@@ -145,8 +145,11 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 		goto fail;
 	}
 
+
 	/* Get the string from the parameter */
 	gchar* checksum_str = json_string_value(checksum);
+
+	JANUS_LOG(LOG_WARN, "Field '%s', value '%s'\n", param_name, checksum_str);
 
 	if(strlen(checksum_str) < MIN_CHECKSUM_FIELD_SIZE) {
 		JANUS_LOG(LOG_WARN, "Field '%s' too short: '%s'\n", param_name, checksum_str);
@@ -186,7 +189,7 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 		gchar* field = json_string_value(json_object_get(root, fields[i]));
 
 		if (!field) {
-			JANUS_LOG(LOG_WARN, "Unexpected field value %s in '%s': '%s'\n", fields[i], param_name, checksum_str);
+			JANUS_LOG(LOG_WARN, "Null field '%s' value in '%s': '%s'\n", fields[i], param_name, checksum_str);
 			goto fail;
 		}
 		if((strlen(field_content) + strlen(field)) >= MAX_CHECKSUM_FIELD_SIZE) {
