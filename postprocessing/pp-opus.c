@@ -25,6 +25,7 @@
 #include "../debug.h"
 #include "../version.h"
 
+static gboolean multichannel_opus = FALSE;
 static AVFormatContext *fctx;
 static AVStream *vStream;
 
@@ -32,6 +33,14 @@ static const uint8_t opus_extradata[19] = {
 	'O', 'p', 'u', 's', 'H', 'e', 'a', 'd',
 	1, 2, 0, 0, 128, 187,
 	0, 0, 0, 0, 0,
+};
+static const uint8_t multiopus_extradata[27] = {
+	'O', 'p', 'u', 's', 'H', 'e', 'a', 'd',
+	1, 6, 0, 0, 128, 187,
+	0, 0, 0, 0, 1,
+	/* FIXME The following is the mapping of the streams: we should
+	 * check what was negotiated in the SDP, but for now we hardcode it */
+	4, 2, 0, 4, 1, 2, 3, 5
 };
 
 /* Supported target formats */
@@ -43,7 +52,7 @@ const char **janus_pp_opus_get_extensions(void) {
 }
 
 /* Processing methods */
-int janus_pp_opus_create(char *destination, char *metadata, const char *extension) {
+int janus_pp_opus_create(char *destination, char *metadata, gboolean multiopus, const char *extension) {
 	if(destination == NULL)
 		return -1;
 
@@ -61,7 +70,14 @@ int janus_pp_opus_create(char *destination, char *metadata, const char *extensio
 		return -1;
 	}
 
-	vStream = janus_pp_new_audio_avstream(fctx, AV_CODEC_ID_OPUS, 48000, 2, opus_extradata, sizeof(opus_extradata));
+	multichannel_opus = multiopus;
+	if(!multichannel_opus) {
+		/* Regular Opus stream */
+		vStream = janus_pp_new_audio_avstream(fctx, AV_CODEC_ID_OPUS, 48000, 2, opus_extradata, sizeof(opus_extradata));
+	} else {
+		/* Multichannel Opus Stream*/
+		vStream = janus_pp_new_audio_avstream(fctx, AV_CODEC_ID_OPUS, 48000, 6, multiopus_extradata, sizeof(multiopus_extradata));
+	}
 	if(vStream == NULL) {
 		JANUS_LOG(LOG_ERR, "Error adding stream\n");
 		return -1;

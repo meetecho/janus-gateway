@@ -831,7 +831,7 @@ static void *janus_voicemail_handler(void *data) {
 			/* Did the peer negotiate video? */
 			if(strstr(msg_sdp, "m=video") != NULL) {
 				/* If so, reject it */
-				g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", 1024);
+				janus_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", 1024);
 			}
 			json_t *jsep = json_pack("{ssss}", "type", type, "sdp", sdp);
 			/* How long will the Janus core take to push the event? */

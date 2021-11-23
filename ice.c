@@ -350,6 +350,14 @@ int janus_ice_get_event_stats_period(void) {
 	return janus_ice_event_stats_period;
 }
 
+/* How to handle media statistic events (one per media or one per peerConnection) */
+static gboolean janus_ice_event_combine_media_stats = false;
+void janus_ice_event_set_combine_media_stats(gboolean combine_media_stats_to_one_event) {
+	janus_ice_event_combine_media_stats = combine_media_stats_to_one_event;
+}
+gboolean janus_ice_event_get_combine_media_stats(void) {
+	return janus_ice_event_combine_media_stats;
+}
 
 /* RTP/RTCP port range */
 uint16_t rtp_range_min = 0;
@@ -481,8 +489,11 @@ uint janus_get_no_media_timer(void) {
 }
 
 /* Number of lost packets per seconds on a media stream (uplink or downlink,
- * audio or video), that should result in a slow-link event to the iser */
-#define DEFAULT_SLOWLINK_THRESHOLD	4
+ * audio or video), that should result in a slow-link event to the user.
+ * By default the feature is disabled (threshold=0), as it can be quite
+ * verbose and is often redundant information, since the same info on lost
+ * packets (in and out) can already be retrieved via client-side stats */
+#define DEFAULT_SLOWLINK_THRESHOLD	0
 static uint slowlink_threshold = DEFAULT_SLOWLINK_THRESHOLD;
 void janus_set_slowlink_threshold(uint packets) {
 	slowlink_threshold = packets;
@@ -3083,6 +3094,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					stream->nack_queue_ms = mavg;
 				}
 				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Got %s RTCP (%d bytes)\n", handle->handle_id, video ? "video" : "audio", buflen);
+				/* See if there's any REMB bitrate to track */
+				uint32_t bitrate = janus_rtcp_get_remb(buf, buflen);
+				if(bitrate > 0)
+					stream->remb_bitrate = bitrate;
 
 				/* Now let's see if there are any NACKs to handle */
 				gint64 now = janus_get_monotonic_time();
@@ -3509,7 +3524,7 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 }
 
 int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int trickle) {
-	if(!handle)
+	if(!handle || g_atomic_int_get(&handle->destroyed))
 		return -1;
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT)) {
 		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Agent already exists?\n", handle->handle_id);
@@ -4183,6 +4198,10 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 	handle->last_event_stats++;
 	if(janus_ice_event_stats_period > 0 && handle->last_event_stats >= janus_ice_event_stats_period) {
 		handle->last_event_stats = 0;
+		json_t *combined_event = NULL;
+		/* Shall janus send dedicated events per media or one per peerConnection */
+		if(janus_events_is_enabled() && janus_ice_event_get_combine_media_stats())
+			combined_event = json_array();
 		/* Audio */
 		if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 			if(stream && stream->audio_rtcp_ctx) {
@@ -4209,8 +4228,12 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 					json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.audio.nacks));
 					json_object_set_new(info, "retransmissions-received", json_integer(stream->audio_rtcp_ctx->retransmitted));
 				}
-				janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
-					session->session_id, handle->handle_id, handle->opaque_id, info);
+				if(combined_event != NULL) {
+					json_array_append_new(combined_event, info);
+				} else {
+					janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
+						session->session_id, handle->handle_id, handle->opaque_id, info);
+				}
 			}
 		}
 		/* Do the same for video */
@@ -4236,6 +4259,8 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 					json_object_set_new(info, "in-media-link-quality", json_integer(janus_rtcp_context_get_in_media_link_quality(stream->video_rtcp_ctx[vindex])));
 					json_object_set_new(info, "out-link-quality", json_integer(janus_rtcp_context_get_out_link_quality(stream->video_rtcp_ctx[vindex])));
 					json_object_set_new(info, "out-media-link-quality", json_integer(janus_rtcp_context_get_out_media_link_quality(stream->video_rtcp_ctx[vindex])));
+					if(vindex == 0 && stream->remb_bitrate > 0)
+						json_object_set_new(info, "remb-bitrate", json_integer(stream->remb_bitrate));
 					if(stream->component) {
 						json_object_set_new(info, "packets-received", json_integer(stream->component->in_stats.video[vindex].packets));
 						json_object_set_new(info, "packets-sent", json_integer(stream->component->out_stats.video[vindex].packets));
@@ -4247,9 +4272,17 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 						json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.video[vindex].nacks));
 						json_object_set_new(info, "retransmissions-received", json_integer(stream->video_rtcp_ctx[vindex]->retransmitted));
 					}
-					janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
-						session->session_id, handle->handle_id, handle->opaque_id, info);
+					if(combined_event) {
+						json_array_append_new(combined_event, info);
+					} else {
+						janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
+							session->session_id, handle->handle_id, handle->opaque_id, info);
+					}
 				}
+			}
+			if(combined_event) {
+				janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
+					session->session_id, handle->handle_id, handle->opaque_id, combined_event);
 			}
 		}
 	}
