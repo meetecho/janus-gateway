@@ -3002,7 +3002,7 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 			if(!gateway->auth_signature_contains(&janus_videoroom_plugin, json_string_value(token), room_descriptor)) {
 				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 				if(error_cause)
-					g_snprintf(error_cause, error_cause_size, "Unauthorized (wrong token %s)", token);
+					g_snprintf(error_cause, error_cause_size, "Unauthorized (wrong token)");
 				return error_code;
 			}
 		}
