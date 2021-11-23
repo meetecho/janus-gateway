@@ -3470,6 +3470,12 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/meetecho/janode">janode</a></td>
  *		<td>A Node.js adapter for the Janus WebRTC server</td>
  * </tr>
+  * <tr>
+ * 		<td>TypeScript/node</td>
+ * 		<td><a href="https://github.com/smyrgeorge">smyrgeorge</a></td>
+ * 		<td><a href="https://github.com/smyrgeorge/janus-gateway-tsdx">/janus-gateway-tsdx</a></td>
+ *		<td>Modern typescript client for janus gateway. Based on websockets</td>
+ * </tr>
  * <tr>
  * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/ndarilek">Nolan Darilek</a></td>
