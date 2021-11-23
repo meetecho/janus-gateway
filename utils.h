@@ -49,6 +49,13 @@ gint64 janus_get_real_time(void);
  * @returns A pointer to the updated text string (re-allocated or just updated) */
 char *janus_string_replace(char *message, const char *old_string, const char *new_string) G_GNUC_WARN_UNUSED_RESULT;
 
+/*! \brief Helper method to concatenate strings and log an error if truncation occured
+ * @param[in] dest destination buffer, already containing one nul-terminated string
+ * @param[in] src source buffer
+ * @param[in] dest_size length of dest buffer in bytes (not length of existing string inside dest)
+ * @returns size of attempted result, if retval >= dest_size, truncation occurred (and an error will be logged). */
+size_t janus_strlcat(char *dest, const char *src, size_t dest_size);
+
 /*! \brief Helper to parse yes/no|true/false configuration values
  * @param value The configuration value to parse
  * @returns true if the value contains a "yes", "YES", "true", TRUE", "1", false otherwise */
@@ -61,16 +68,37 @@ gboolean janus_is_true(const char *value);
 gboolean janus_strcmp_const_time(const void *str1, const void *str2);
 
 /*! \brief Helper to generate random 32-bit unsigned integers (useful for SSRCs, etc.)
- * @note Currently just wraps g_random_int()
- * @returns A random 32-bit unsigned integer */
+ * @note Warning: this will fall back to a non-cryptographically safe PRNG in case
+ * the crypto library RAND_bytes() call fails.
+ * @returns A (mostly crypto-safe) random 32-bit unsigned integer */
 guint32 janus_random_uint32(void);
 
-/*! \brief Helper to generate random 64-bit unsigned integers (useful for Janus IDs)
- * @returns A random 64-bit unsigned integer */
+/*! \brief Helper to generate random 64-bit unsigned integers
+ * @note Unlike janus_random_uint64(), which actually only generates 52 bits, this
+ * generates the full 64 bits. See the janus_random_uint64() docstring for details.
+ * Warning: this will fall back to a non-cryptographically safe PRNG in case
+ * the crypto library RAND_bytes() call fails.
+ * @returns A (mostly crypto-safe) random 52-bit unsigned integer */
+guint64 janus_random_uint64_full(void);
+
+/*! \brief Helper to generate random 52 bit unsigned integers
+ * @note The reason for 52 instead of 64 bits: Javascript does not have real integers,
+ * its builtin "number" type is a float64. Thus, only integer values up to
+ * <code>Number.MAX_SAFE_INTEGER == 2^53 - 1 == 9007199254740991</code>
+ * can be safely represented in Javascript. This method returns such numbers.
+ * Use this method instead of janus_random_uint64_full() whenever you generate numbers which
+ * might end up in Javascript (via JSON API).
+ * This method is called janus_random_uint64() instead of janus_random_uint52() (or similar)
+ * for backwards compatibility.
+ * Warning: this will fall back to a non-cryptographically safe PRNG in case
+ * the crypto library RAND_bytes() call fails.
+ * @returns A (mostly crypto-safe) random 64-bit unsigned integer */
 guint64 janus_random_uint64(void);
 
 /*! \brief Helper to generate random UUIDs (needed by some plugins)
- * @returns A random UUID string, which must be deallocated with \c g_free */
+ * Warning: this will fall back to a non-cryptographically safe PRNG in case
+ * the crypto library RAND_bytes() call fails.
+ * @returns A (mostly crypto-safe) random UUID string, which must be deallocated with \c g_free */
 char *janus_random_uuid(void);
 
 /*! \brief Helper to generate an allocated copy of a guint64 number
@@ -84,7 +112,7 @@ guint64 *janus_uint64_dup(guint64 num);
 
 /*! \brief Helper to hash a guint64 number to another guint64 number
  * @note We currently only use for event handlers
- * @param
+ * @param num The guint64 number to hash
  * @returns The hashed number */
 guint64 janus_uint64_hash(guint64 num);
 

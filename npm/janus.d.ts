@@ -45,6 +45,11 @@ declare namespace JanusJS {
 		destroyed?: Function;
 	}
 
+	interface ReconnectOptions {
+		success?: Function;
+		error?: (error: any) => void;
+	}
+
 	enum MessageType {
 		Recording = 'recording',
 		Starting = 'starting',
@@ -67,6 +72,7 @@ declare namespace JanusJS {
 	interface PluginOptions {
 		plugin: string;
 		opaqueId?: string;
+		dataChannelOptions?: RTCDataChannelInit;
 		success?: (handle: PluginHandle) => void;
 		error?: (error: any) => void;
 		consentDialog?: (on: boolean) => void;
@@ -133,6 +139,7 @@ declare namespace JanusJS {
 			mySdp: any,
 			mediaConstraints: any,
 			pc: RTCPeerConnection,
+			dataChannelOptions: RTCDataChannelInit,
 			dataChannel: Array<RTCDataChannel>,
 			dtmfSender: any,
 			trickle: boolean,
@@ -182,6 +189,7 @@ declare namespace JanusJS {
 		isConnected(): boolean;
 		getSessionId(): string;
 		attach(options: PluginOptions): void;
+		reconnect(options: ReconnectOptions): void;
 		destroy(): void;
 	}
 }

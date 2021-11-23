@@ -63,6 +63,7 @@ var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStrin
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
+var doDtx = (getQueryStringValue("dtx") === "yes" || getQueryStringValue("dtx") === "true");
 var simulcastStarted = false;
 
 $(document).ready(function() {
@@ -123,6 +124,13 @@ $(document).ready(function() {
 											// the following 'simulcast' property to pass to janus.js to true
 											simulcast: doSimulcast,
 											simulcast2: doSimulcast2,
+											customizeSdp: function(jsep) {
+												// If DTX is enabled, munge the SDP
+												if(doDtx) {
+													jsep.sdp = jsep.sdp
+														.replace("useinbandfec=1", "useinbandfec=1;usedtx=1")
+												}
+											},
 											success: function(jsep) {
 												Janus.debug("Got SDP!", jsep);
 												echotest.send({ message: body, jsep: jsep });

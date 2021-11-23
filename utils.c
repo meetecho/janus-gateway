@@ -21,6 +21,7 @@
 #include <inttypes.h>
 
 #include <zlib.h>
+#include <openssl/rand.h>
 
 #include "utils.h"
 #include "debug.h"
@@ -71,23 +72,25 @@ gboolean janus_strcmp_const_time(const void *str1, const void *str2) {
 }
 
 guint32 janus_random_uint32(void) {
-	return g_random_int();
+	guint32 ret = 0;
+	if(RAND_bytes((void *)&ret, sizeof(ret)) != 1) {
+		JANUS_LOG(LOG_WARN, "Safe RAND_bytes() failed, falling back to unsafe PRNG\n");
+		return g_random_int();
+	}
+	return ret;
+}
+
+guint64 janus_random_uint64_full(void) {
+	guint64 ret = 0;
+	if(RAND_bytes((void *)&ret, sizeof(ret)) != 1) {
+		JANUS_LOG(LOG_WARN, "Safe RAND_bytes() failed, falling back to unsafe PRNG\n");
+		return ((guint64)g_random_int() << 32) | g_random_int();
+	}
+	return ret;
 }
 
 guint64 janus_random_uint64(void) {
-	/*
-	 * FIXME This needs to be improved, and use something that generates
-	 * more strongly random stuff... using /dev/urandom is probably not
-	 * a good idea, as we don't want to make it harder to cross compile Janus
-	 *
-	 * TODO Look into what libssl and/or libcrypto provide in that respect
-	 *
-	 * PS: JavaScript only supports integer up to 2^53, so we need to
-	 * make sure the number is below 9007199254740992 for safety
-	 */
-	guint64 num = g_random_int() & 0x1FFFFF;
-	num = (num << 32) | g_random_int();
-	return num;
+	return janus_random_uint64_full() & 0x1FFFFFFFFFFFFF;
 }
 
 char *janus_random_uuid(void) {
@@ -100,8 +103,8 @@ char *janus_random_uuid(void) {
 	const char *template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx";
 	const char *samples = "0123456789abcdef";
 	union { unsigned char b[16]; uint64_t word[2]; } rnd;
-	rnd.word[0] = janus_random_uint64();
-	rnd.word[1] = janus_random_uint64();
+	rnd.word[0] = janus_random_uint64_full();
+	rnd.word[1] = janus_random_uint64_full();
 	/* Generate the string */
 	char uuid[37], *dst = uuid;
 	const char *p = template;
@@ -267,6 +270,13 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 		outgoing[strlen(outgoing)] = '\0';
 		return outgoing;
 	}
+}
+
+size_t janus_strlcat(char *dest, const char *src, size_t dest_size) {
+	size_t ret = g_strlcat(dest, src, dest_size);
+	if(ret >= dest_size)
+		JANUS_LOG(LOG_ERR, "janus_strlcat: truncation occurred, %lu >= %lu\n", ret, dest_size);
+	return ret;
 }
 
 int janus_mkdir(const char *dir, mode_t mode) {
@@ -587,22 +597,22 @@ void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name) {
 	}
 	switch(jtype) {
 		case JSON_TRUE:
-			g_strlcat(type_name, "boolean", req_size);
+			janus_strlcat(type_name, "boolean", req_size);
 			break;
 		case JSON_INTEGER:
-			g_strlcat(type_name, "integer", req_size);
+			janus_strlcat(type_name, "integer", req_size);
 			break;
 		case JSON_REAL:
-			g_strlcat(type_name, "real", req_size);
+			janus_strlcat(type_name, "real", req_size);
 			break;
 		case JSON_STRING:
-			g_strlcat(type_name, "string", req_size);
+			janus_strlcat(type_name, "string", req_size);
 			break;
 		case JSON_ARRAY:
-			g_strlcat(type_name, "array", req_size);
+			janus_strlcat(type_name, "array", req_size);
 			break;
 		case JSON_OBJECT:
-			g_strlcat(type_name, "object", req_size);
+			janus_strlcat(type_name, "object", req_size);
 			break;
 		default:
 			break;

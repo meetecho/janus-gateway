@@ -66,6 +66,9 @@ Time threshold to trigger an audio skew compensation, disabled if 0 (default=0)
 .BR \-C ", " \-\-silence-distance=count
 RTP packets distance used to detect RTP silence suppression, disabled if 0 (default=100)
 .TP
+.BR \-X ", " \-\-dtx
+Enable DTX mode (disables code to handle silence suppression)  (default=off)
+.TP
 .BR \-r ", " \-\-restamp=count
 If the latency of a packet is bigger than the `moving_average_latency * (<restamp>/1000)` the timestamps will be corrected, disabled if 0 (default=0)
 .TP
@@ -86,15 +89,15 @@ Minimum latency of moving average to reach before starting to correct timestamps
 .TP
 If you think you found a bug or want to contribute a feature, you can issue or a pull request on https://github.com/meetecho/janus-gateway/issues.
 .TP
-Anyway, before doing that make sure you read the documentation at http://janus.conf.meetecho.com/docs/ and that it has not been discussed already at https://groups.google.com/forum/#!forum/meetecho-janus. We only use Github for code issues, and \fBNOT\fR for configuration or usage issues: use the group for that.
+Anyway, before doing that make sure you read the documentation at https://janus.conf.meetecho.com/docs/ and that it has not been discussed already at https://groups.google.com/forum/#!forum/meetecho-janus. We only use Github for code issues, and \fBNOT\fR for configuration or usage issues: use the group for that.
 .SH SEE ALSO
 .TP
 https://github.com/meetecho/janus-gateway \- Official repository
 .TP
-http://janus.conf.meetecho.com \- Demos and documentation
+https://janus.conf.meetecho.com \- Demos and documentation
 .TP
 https://groups.google.com/forum/#!forum/meetecho-janus \- Community
 .TP
-http://www.meetecho.com/blog/ \- Tutorials and blog posts on Janus
+https://www.meetecho.com/blog/ \- Tutorials and blog posts on Janus
 .SH AUTHORS
 Lorenzo Miniero (lorenzo@meetecho.com)

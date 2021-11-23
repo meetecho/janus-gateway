@@ -3,6 +3,38 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.11.5] - 2021-10-18
+
+- Add API to optionally force Janus to use TURN [[PR-2774](https://github.com/meetecho/janus-gateway/pull/2774)]
+- Fixed slow path on SDP parsing [[PR-2776](https://github.com/meetecho/janus-gateway/pull/2776)]
+- Added event handlers option to send stats for a PeerConnection in a single event, rather than per-media (thanks @JanFellner!) [[PR-2785](https://github.com/meetecho/janus-gateway/pull/2785)]
+- Fixed occasional deadlocks on malformed requests in VideoRoom [[Issue-2780](https://github.com/meetecho/janus-gateway/issues/2780)]
+- Fixed AudioBridge plain RTP thread sometimes exiting prematurely
+- Fixed broken upsampling when using G.711 in AudioBridge
+- Add pause/resume recording functionality to Record&Play and SIP plugins (thanks @isnumanagic!) [[PR-2724](https://github.com/meetecho/janus-gateway/pull/2724)]
+- Fixed broken support for Unix Sockets in WebSockets Admin API (thanks @thatsmydoing!) [[PR-2787](https://github.com/meetecho/janus-gateway/pull/2787)]
+- Added timing info for video rotation when post-processing recordings
+- Added linter checks to janus.js (thanks @davel!) [[PR-2272](https://github.com/meetecho/janus-gateway/pull/2272)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+## [v0.11.4] - 2021-09-06
+
+- Fixed ICE restart issues with recent versions of libnice [[PR-2729](https://github.com/meetecho/janus-gateway/pull/2729)]
+- Changed randon number generators to use crypto-safe functions (thanks @jmfotokite!) [[PR-2738](https://github.com/meetecho/janus-gateway/pull/2738)]
+- Added support for abs-send-time RTP extension [[PR-2721](https://github.com/meetecho/janus-gateway/pull/2721)]
+- Added configurable mechanism for manually setting static event loop to use for new handles [[PR-2684](https://github.com/meetecho/janus-gateway/pull/2684)]
+- Fixed datachannel protocol not being sent to plugins for incoming messages [[Issue-2753](https://github.com/meetecho/janus-gateway/issues/2753)]
+- Added ability to specify recordings folder in AudioBridge [[PR-2707](https://github.com/meetecho/janus-gateway/pull/2707)]
+- Added support for forwarding groups in AudioBridge [[PR-2653](https://github.com/meetecho/janus-gateway/pull/2653)]
+- Fixed missing Contact header in SIP plugin when using Sofia >= 1.13 [[PR-2708](https://github.com/meetecho/janus-gateway/pull/2708)]
+- Better SDES-SRTP negotiation in SIP and NoSIP plugins [[PR-2727](https://github.com/meetecho/janus-gateway/pull/2727)]
+- Fixed WebSocket transport and event handler lagging 25/30s when shutting down or reconnecting (thanks @JanFellner!) [[Issue-2734](https://github.com/meetecho/janus-gateway/issues/2734)]
+- Fixed incoming_header_prefixes not working for helper sessions in SIP plugin
+- Fix partial/broken ACL support in TextRoom plugin [[PR-2763](https://github.com/meetecho/janus-gateway/pull/2763)]
+- Fixed potential race condition when reclaiming sessions in HTTP transport plugin
+- Fixed WebSocket event handler reconnect mechanism (thanks @JanFellner!) [[PR-2736](https://github.com/meetecho/janus-gateway/pull/2736)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.11.3] - 2021-06-15
 
 - Fixed rare crash when detaching handles [[Issue-2464](https://github.com/meetecho/janus-gateway/issues/2464)]

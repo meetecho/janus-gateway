@@ -105,6 +105,18 @@ general: {
 									# As such, if you want to use this you should
 									# provision the correct value according to the
 									# available resources (e.g., CPUs available).
+	#allow_loop_indication = true	# In case a static number of event loops is
+									# configured as explained above, by default
+									# new handles will be allocated on one loop or
+									# another by the Janus core itself. In some cases
+									# it may be helpful to manually tell the Janus
+									# core which loop a handle should be added to,
+									# e.g., to group viewers of the same stream on
+									# the same loop. This is possible via the Janus
+									# API when performing the 'attach' request, but
+									# only if allow_loop_indication is set to true;
+									# it's set to false by default to avoid abuses.
+									# Don't change if you don't know what you're doing!
 	#opaqueid_in_api = true			# Opaque IDs set by applications are typically
 									# only passed to event handlers for correlation
 									# purposes, but not sent back to the user or
@@ -187,8 +199,8 @@ certificates: {
 # starting MTU for DTLS (1200 by default, it adapts automatically),
 # how much time, in seconds, should pass with no media (audio or
 # video) being received before Janus notifies you about this (default=1s,
-# 0 disables these events entirely), how many lost packets should trigger
-# a 'slowlink' event to users (default=4), and how often, in milliseconds,
+# 0 disables these events entirely), how many lost packets should trigger a
+# 'slowlink' event to users (default=0, disabled), and how often, in milliseconds,
 # to send the Transport Wide Congestion Control feedback information back
 # to senders, if negotiated (default=200ms). Finally, if you're using BoringSSL
 # you can customize the frequency of retransmissions: OpenSSL has a fixed
@@ -292,14 +304,19 @@ nat: {
 	# You can configure a TURN server in two different ways: specifying a
 	# statically configured TURN server, and thus provide the address of the
 	# TURN server, the transport (udp/tcp/tls) to use, and a set of valid
-	# credentials to authenticate...
+	# credentials to authenticate. Notice that you should NEVER configure
+	# a TURN server for Janus unless it's really what you want! If you want
+	# *users* to use TURN, then you need to configure that on the client
+	# side, and NOT in Janus. The following TURN configuration should ONLY
+	# be enabled when Janus itself is sitting behind a restrictive firewall
+	# (e.g., it's part of a service installed on a box in a private home).
 	#turn_server = "myturnserver.com"
 	#turn_port = 3478
 	#turn_type = "udp"
 	#turn_user = "myuser"
 	#turn_pwd = "mypassword"
 
-	# ... or you can make use of the TURN REST API to get info on one or more
+	# You can also make use of the TURN REST API to get info on one or more
 	# TURN services dynamically. This makes use of the proposed standard of
 	# such an API (https://tools.ietf.org/html/draft-uberti-behave-turn-rest-00)
 	# which is currently available in both rfc5766-turn-server and coturn.
@@ -314,6 +331,11 @@ nat: {
 	#turn_rest_api_key = "anyapikeyyoumayhaveset"
 	#turn_rest_api_method = "GET"
 	#turn_rest_api_timeout = 10
+
+	# In case a TURN server is provided, you can allow applications to force
+	# Janus to use TURN (https://github.com/meetecho/janus-gateway/pull/2774).
+	# This is NOT allowed by default: only enable it if you know what you're doing.
+	#allow_force_relay = true
 
 	# You can also choose which interfaces should be explicitly used by the
 	# gateway for the purpose of ICE candidates gathering, thus excluding
@@ -401,9 +423,13 @@ loggers: {
 # especially if you have many PeerConnections active. To change this,
 # just set 'stats_period' to the number of seconds that should pass in
 # between statistics for each handle. Setting it to 0 disables them (but
-# not other media-related events).
+# not other media-related events). By default Janus sends single media
+# statistic events per media (audio, video and simulcast layers as separate
+# events): if you'd rather receive a single containing all media stats in a
+# single array, set 'combine_media_stats' to true.
 events: {
 	#broadcast = true
+	#combine_media_stats = true
 	#disable = "libjanus_sampleevh.so"
 	#stats_period = 5
 }
