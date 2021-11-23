@@ -121,8 +121,9 @@ fail:
 }
 
 gboolean janus_auth_check_signature_contains(const char *token, const char *realm, const char *desc) {
-	if (!auth_enabled || auth_secret == NULL)
-		return FALSE;
+	if (!auth_enabled || auth_secret == NULL) {
+		return TRUE;
+	}
 	gchar **parts = g_strsplit(token, ":", 2);
 	gchar **data = NULL;
 	/* Token should have exactly one data and one hash part */
