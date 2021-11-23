@@ -1162,6 +1162,7 @@ room-<unique room ID>: {
 
 #include "plugin.h"
 
+#include <string.h>
 #include <jansson.h>
 #include <netdb.h>
 
@@ -2997,7 +2998,7 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 		/* signed tokens bypass pin validation */
 		json_t *token = json_object_get(root, "token");
 		if(token) {
-			char room_descriptor[26];
+			char room_descriptor[100];
 			g_snprintf(room_descriptor, sizeof(room_descriptor), "room=%s", room_id_str);
 			if(gateway->auth_signature_contains(&janus_videoroom_plugin, json_string_value(token), room_descriptor))
 				return 0;
