@@ -292,7 +292,7 @@ gboolean janus_auth_check_signature_contains(const char *token, const char *real
 	/* Verify HMAC-SHA1 */
 	unsigned char signature[EVP_MAX_MD_SIZE];
 	unsigned int len;
-	HMAC(EVP_sha1(), auth_secret, strlen(auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
+	HMAC(EVP_sha256(), auth_secret, strlen(auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
 	gchar *base64 = g_base64_encode(signature, len);
 	/* BB - Added conversion to base64URL removing any padding */
 	base64ToBase64UrlNoPadding(base64);
