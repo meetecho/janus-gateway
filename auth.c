@@ -36,6 +36,7 @@
 /* Hash table to contain the tokens to match */
 static GHashTable *tokens = NULL, *allowed_plugins = NULL;
 static gboolean auth_enabled = FALSE;
+static gboolean auth_checksum_enabled = FALSE;
 static janus_mutex mutex;
 static char *auth_secret = NULL;
 
@@ -44,18 +45,19 @@ static void janus_auth_free_token(char *token) {
 }
 
 /* Setup */
-void janus_auth_init(gboolean enabled, const char *secret) {
+//BB - Added checksum configuration
+void janus_auth_init(gboolean enabled, const char *secret, gboolean checksum_enabled) {
 	if(enabled) {
 		if(secret == NULL) {
 			JANUS_LOG(LOG_INFO, "Stored-Token based authentication enabled\n");
 			tokens = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)janus_auth_free_token, NULL);
 			allowed_plugins = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)janus_auth_free_token, NULL);
-			auth_enabled = TRUE;
 		} else {
 			JANUS_LOG(LOG_INFO, "Signed-Token based authentication enabled\n");
 			auth_secret = g_strdup(secret);
-			auth_enabled = TRUE;
 		}
+		auth_enabled = TRUE;
+		auth_checksum_enabled = checksum_enabled;
 	} else {
 		JANUS_LOG(LOG_INFO, "Token based authentication disabled\n");
 	}
@@ -106,7 +108,7 @@ gboolean janus_auth_check_signature(const char *token, const char *realm) {
 	/* Verify HMAC-SHA1 */
 	unsigned char signature[EVP_MAX_MD_SIZE];
 	unsigned int len;
-	HMAC(EVP_sha1(), auth_secret, strlen(auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
+	HMAC(EVP_sha256(), auth_secret, strlen(auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
 	gchar *base64 = g_base64_encode(signature, len);
 	/* BB - Added conversion to base64URL removing any padding */
 	base64ToBase64UrlNoPadding(base64);
@@ -130,9 +132,15 @@ fail:
 
 gboolean janus_check_param_checksum(json_t *root, const char* request) {
 
+	/* If the authorization is diactivated always return true */
+    if ( (!auth_enabled) || (auth_secret == NULL) ) {
+		return TRUE;
+    }
+
 	char param_name[MAX_CHECKSUM_FIELD_NAME_SIZE];
 	gchar **parts = NULL;
 	gchar **fields = NULL;
+	gboolean success = FALSE;
 
 	/* Build the field name */
 	g_snprintf(param_name, MAX_CHECKSUM_FIELD_NAME_SIZE, "%s_checksum", request);
@@ -145,11 +153,10 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 		goto fail;
 	}
 
-
 	/* Get the string from the parameter */
 	gchar* checksum_str = json_string_value(checksum);
 
-	JANUS_LOG(LOG_WARN, "Field '%s', value '%s'\n", param_name, checksum_str);
+	JANUS_LOG(LOG_INFO, "Field '%s', value '%s'\n", param_name, checksum_str);
 
 	if(strlen(checksum_str) < MIN_CHECKSUM_FIELD_SIZE) {
 		JANUS_LOG(LOG_WARN, "Field '%s' too short: '%s'\n", param_name, checksum_str);
@@ -196,7 +203,7 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 
 		int type = json_typeof(json_field);
 
-		gchar* field = NULL;
+		const gchar* field = NULL;
 		switch(type) {
 		case JSON_STRING:
 			field = json_string_value(json_field);
@@ -233,7 +240,10 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 	gchar *base64 = g_base64_encode(signature, len);
 	base64ToBase64UrlNoPadding(base64);
 
-	JANUS_LOG(LOG_INFO, "Calculated checksum hash '%s' -> '%s' %s\n", field_content, base64, strcmp(parts[2], base64) ? "DOES NOT MATCH" : "MATCHES");
+	if(!strcmp(parts[2], base64)) {
+		success = TRUE;
+	}
+	JANUS_LOG(LOG_INFO, "Calculated checksum hash '%s' -> '%s' %s\n", field_content, base64, success ? "MATCHES" : "DOES NOT MATCH");
 	g_free(base64);
 
 fail:
@@ -241,7 +251,8 @@ fail:
 	g_strfreev(parts);
 	g_strfreev(fields);
 
-	return TRUE;
+	/* If the auth_checksum is deactivated (FALSE) we always return true */
+	return auth_checksum_enabled ? success : TRUE;
 }
 
 

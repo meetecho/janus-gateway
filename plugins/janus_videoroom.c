@@ -3096,7 +3096,10 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				goto prepare_response;
 		}
 		//BB -- Added hook to validate the join_checksum parameter
-		janus_check_param_checksum(root, "create");
+		if(!janus_check_param_checksum(root, "create")) {
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
 
 		json_t *desc = json_object_get(root, "description");
 		json_t *is_private = json_object_get(root, "is_private");
@@ -6158,7 +6161,10 @@ static void *janus_videoroom_handler(void *data) {
 			JANUS_LOG(LOG_INFO, "Request type '%s', ptype '%s'\n", request_text, ptype_text);
 			if(!strcasecmp(ptype_text, "publisher")) {
 				// Verify the checksum only on a publisher join
-				janus_check_param_checksum(root, "join");
+				if(!janus_check_param_checksum(root, "join")) {
+					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+					goto error;
+				}
 			}
 			if(!strcasecmp(ptype_text, "publisher")) {
 				JANUS_LOG(LOG_VERB, "Configuring new publisher\n");

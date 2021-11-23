@@ -4723,13 +4723,16 @@ gint main(int argc, char *argv[])
 		admin_api_secret = g_strdup(item->value);
 	}
 	/* Also check if the token based authentication mechanism needs to be enabled */
+	//BB - Enable parameter signing using the token_auth_secret
+	item = janus_config_get(config, config_general, janus_config_type_item, "token_auth_checksum");
+	gboolean auth_checksum_enabled = item && item->value && janus_is_true(item->value);
 	item = janus_config_get(config, config_general, janus_config_type_item, "token_auth");
 	gboolean auth_enabled = item && item->value && janus_is_true(item->value);
 	item = janus_config_get(config, config_general, janus_config_type_item, "token_auth_secret");
 	const char *auth_secret = NULL;
 	if (item && item->value)
 		auth_secret = item->value;
-	janus_auth_init(auth_enabled, auth_secret);
+	janus_auth_init(auth_enabled, auth_secret, auth_checksum_enabled);
 
 	/* Check if opaque IDs should be sent back in the Janus API too */
 	item = janus_config_get(config, config_general, janus_config_type_item, "opaqueid_in_api");
