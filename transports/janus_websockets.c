@@ -371,6 +371,149 @@ static gboolean janus_websockets_is_allowed(const char *ip, gboolean admin) {
 	return FALSE;
 }
 
+static struct lws_vhost* janus_websockets_create_ws_server(
+		janus_config *config,
+		janus_config_container *config_container,
+		janus_config_container *config_certs,
+		const char *prefix,
+		const char *name,
+		struct lws_protocols ws_protocols[],
+		gboolean secure,
+		uint16_t default_port)
+{
+	janus_config_item *item;
+	char item_name[255];
+
+	item = janus_config_get(config, config_container, janus_config_type_item, prefix);
+	if(!item || !item->value || !janus_is_true(item->value)) {
+		JANUS_LOG(LOG_VERB, "%s server disabled\n", name);
+		return NULL;
+	}
+
+	uint16_t wsport = default_port;
+	g_snprintf(item_name, 255, "%s_port", prefix);
+	item = janus_config_get(config, config_container, janus_config_type_item, item_name);
+	if(item && item->value && janus_string_to_uint16(item->value, &wsport) < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+		wsport = default_port;
+	}
+
+	char *interface = NULL;
+	g_snprintf(item_name, 255, "%s_interface", prefix);
+	item = janus_config_get(config, config_container, janus_config_type_item, item_name);
+	if(item && item->value)
+		interface = (char *)item->value;
+
+	char *ip = NULL;
+	g_snprintf(item_name, 255, "%s_ip", prefix);
+	item = janus_config_get(config, config_container, janus_config_type_item, item_name);
+	if(item && item->value) {
+		ip = (char *)item->value;
+#ifdef __FreeBSD__
+		struct in_addr addr;
+		if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr)) > 0)
+			ipv4_only = 1;
+#endif
+		char *iface = janus_websockets_get_interface_name(ip);
+		if(iface == NULL) {
+			JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
+		}
+		ip = iface;
+	}
+
+	g_snprintf(item_name, 255, "%s_unix", prefix);
+	item = janus_config_get(config, config_container, janus_config_type_item, item_name);
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+	char *unixpath = NULL;
+	if(item && item->value)
+		unixpath = (char *)item->value;
+#else
+	if(item && item->value)
+		JANUS_LOG(LOG_WARN, "WebSockets option '%s' is not supported because libwebsockets compiled without UNIX sockets\n", item_name);
+#endif
+
+	char *server_pem = NULL;
+	char *server_key = NULL;
+	char *password = NULL;
+	char *ciphers = NULL;
+
+	if (secure) {
+		item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pem");
+		if(!item || !item->value) {
+			JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
+			return NULL;
+		}
+		server_pem = (char *)item->value;
+		server_key = (char *)item->value;
+		item = janus_config_get(config, config_certs, janus_config_type_item, "cert_key");
+		if(item && item->value)
+			server_key = (char *)item->value;
+		item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pwd");
+		if(item && item->value)
+			password = (char *)item->value;
+		JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
+		item = janus_config_get(config, config_certs, janus_config_type_item, "ciphers");
+		if(item && item->value)
+			ciphers = (char *)item->value;
+	}
+
+	/* Prepare context */
+	struct lws_context_creation_info info;
+	memset(&info, 0, sizeof info);
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+	info.port = unixpath ? 0 : wsport;
+	info.iface = unixpath ? unixpath : (ip ? ip : interface);
+#else
+	info.port = wsport;
+	info.iface = ip ? ip : interface;
+#endif
+	info.protocols = ws_protocols;
+	info.extensions = NULL;
+	info.ssl_cert_filepath = server_pem;
+	info.ssl_private_key_filepath = server_key;
+	info.ssl_private_key_password = password;
+	info.ssl_cipher_list = ciphers;
+	info.gid = -1;
+	info.uid = -1;
+	info.options = 0;
+
+	if (server_pem) {
+#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
+		info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT | LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
+#elif LWS_LIBRARY_VERSION_MAJOR >= 2
+		info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+#endif
+	}
+
+#ifdef __FreeBSD__
+	if (ipv4_only) {
+		info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
+		ipv4_only = 0;
+	}
+#endif
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+	if (unixpath)
+		info.options |= LWS_SERVER_OPTION_UNIX_SOCK;
+#endif
+#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
+	info.options |= LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
+
+#endif
+	/* Create the WebSocket context */
+	struct lws_vhost *vhost = lws_create_vhost(wsc, &info);
+	if(vhost == NULL) {
+		JANUS_LOG(LOG_FATAL, "Error creating vhost for %s server...\n", name);
+#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
+	} else if (unixpath) {
+		JANUS_LOG(LOG_INFO, "%s server started (UNIX socket %s)...\n", name, unixpath);
+#endif
+	} else {
+		JANUS_LOG(LOG_INFO, "%s server started (port %d)...\n", name, wsport);
+	}
+	g_free(ip);
+	return vhost;
+}
+
 /* Transport implementation */
 int janus_websockets_init(janus_transport_callbacks *callback, const char *config_path) {
 	if(g_atomic_int_get(&stopping)) {
@@ -603,375 +746,15 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		}
 
 		/* Setup the Janus API WebSockets server(s) */
-		item = janus_config_get(config, config_general, janus_config_type_item, "ws");
-		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_VERB, "WebSockets server disabled\n");
-		} else {
-			uint16_t wsport = 8188;
-			item = janus_config_get(config, config_general, janus_config_type_item, "ws_port");
-			if(item && item->value && janus_string_to_uint16(item->value, &wsport) < 0) {
-				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
-				wsport = 8188;
-			}
-			char *interface = NULL;
-			item = janus_config_get(config, config_general, janus_config_type_item, "ws_interface");
-			if(item && item->value)
-				interface = (char *)item->value;
-			char *ip = NULL;
-			item = janus_config_get(config, config_general, janus_config_type_item, "ws_ip");
-			if(item && item->value) {
-				ip = (char *)item->value;
-#ifdef __FreeBSD__
-				struct in_addr addr;
-				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr)) > 0)
-					ipv4_only = 1;
-#endif
-				char *iface = janus_websockets_get_interface_name(ip);
-				if(iface == NULL) {
-					JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
-				}
-				ip = iface;
-			}
-			item = janus_config_get(config, config_general, janus_config_type_item, "ws_unix");
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-			char *unixpath = NULL;
-			if(item && item->value)
-				unixpath = (char *)item->value;
-#else
-			if(item && item->value)
-				JANUS_LOG(LOG_WARN, "WebSockets option 'ws_unix' is not supported because libwebsockets compiled without UNIX sockets\n");
-#endif
-			/* Prepare context */
-			struct lws_context_creation_info info;
-			memset(&info, 0, sizeof info);
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-			info.port = unixpath ? 0 : wsport;
-			info.iface = unixpath ? unixpath : (ip ? ip : interface);
-#else
-			info.port = wsport;
-			info.iface = ip ? ip : interface;
-#endif
-			info.protocols = ws_protocols;
-			info.extensions = NULL;
-			info.ssl_cert_filepath = NULL;
-			info.ssl_private_key_filepath = NULL;
-			info.ssl_private_key_password = NULL;
-			info.gid = -1;
-			info.uid = -1;
-			info.options = 0;
-#ifdef __FreeBSD__
-			if (ipv4_only) {
-				info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
-				ipv4_only = 0;
-			}
-#endif
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-			if (unixpath)
-				info.options |= LWS_SERVER_OPTION_UNIX_SOCK;
-#endif
-#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
-			info.options |= LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
-
-#endif
-			/* Create the WebSocket context */
-			wss = lws_create_vhost(wsc, &info);
-			if(wss == NULL) {
-				JANUS_LOG(LOG_FATAL, "Error creating vhost for WebSockets server...\n");
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-			} else if (unixpath) {
-				JANUS_LOG(LOG_INFO, "WebSockets server started (UNIX socket %s)...\n", unixpath);
-#endif
-			} else {
-				JANUS_LOG(LOG_INFO, "WebSockets server started (port %d)...\n", wsport);
-			}
-			g_free(ip);
-		}
-		item = janus_config_get(config, config_general, janus_config_type_item, "wss");
-		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_VERB, "Secure WebSockets server disabled\n");
-		} else {
-			uint16_t wsport = 8989;
-			item = janus_config_get(config, config_general, janus_config_type_item, "wss_port");
-			if(item && item->value && janus_string_to_uint16(item->value, &wsport) < 0) {
-				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
-				wsport = 8989;
-			}
-			char *interface = NULL;
-			item = janus_config_get(config, config_general, janus_config_type_item, "wss_interface");
-			if(item && item->value)
-				interface = (char *)item->value;
-			char *ip = NULL;
-			item = janus_config_get(config, config_general, janus_config_type_item, "wss_ip");
-			if(item && item->value) {
-				ip = (char *)item->value;
-#ifdef __FreeBSD__
-				struct in_addr addr;
-				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr)) > 0)
-					ipv4_only = 1;
-#endif
-				char *iface = janus_websockets_get_interface_name(ip);
-				if(iface == NULL) {
-					JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
-				}
-				ip = iface;
-			}
-			item = janus_config_get(config, config_general, janus_config_type_item, "wss_unix");
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-			char *unixpath = NULL;
-			if(item && item->value)
-				unixpath = (char *)item->value;
-#else
-			if(item && item->value)
-				JANUS_LOG(LOG_WARN, "WebSockets option 'wss_unix' is not supported because libwebsockets compiled without UNIX sockets\n");
-#endif
-			item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pem");
-			if(!item || !item->value) {
-				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
-			} else {
-				char *server_pem = (char *)item->value;
-				char *server_key = (char *)item->value;
-				char *password = NULL;
-				char *ciphers = NULL;
-				item = janus_config_get(config, config_certs, janus_config_type_item, "cert_key");
-				if(item && item->value)
-					server_key = (char *)item->value;
-				item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pwd");
-				if(item && item->value)
-					password = (char *)item->value;
-				JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
-				item = janus_config_get(config, config_certs, janus_config_type_item, "ciphers");
-				if(item && item->value)
-					ciphers = (char *)item->value;
-				/* Prepare secure context */
-				struct lws_context_creation_info info;
-				memset(&info, 0, sizeof info);
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-				info.port = unixpath ? 0 : wsport;
-				info.iface = unixpath ? unixpath : (ip ? ip : interface);
-#else
-				info.port = wsport;
-				info.iface = ip ? ip : interface;
-#endif
-				info.protocols = sws_protocols;
-				info.extensions = NULL;
-				info.ssl_cert_filepath = server_pem;
-				info.ssl_private_key_filepath = server_key;
-				info.ssl_private_key_password = password;
-				info.ssl_cipher_list = ciphers;
-				info.gid = -1;
-				info.uid = -1;
-#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
-				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT | LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
-#elif LWS_LIBRARY_VERSION_MAJOR >= 2
-				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
-#endif
-#ifdef __FreeBSD__
-				if(ipv4_only) {
-					info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
-					ipv4_only = 0;
-				}
-#endif
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-				if(unixpath)
-					info.options |= LWS_SERVER_OPTION_UNIX_SOCK;
-#endif
-				/* Create the secure WebSocket context */
-				swss = lws_create_vhost(wsc, &info);
-				if(swss == NULL) {
-					JANUS_LOG(LOG_FATAL, "Error creating vhost for Secure WebSockets server...\n");
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-				} else if (unixpath) {
-					JANUS_LOG(LOG_INFO, "Secure WebSockets server started (UNIX socket %s)...\n", unixpath);
-#endif
-				} else {
-					JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
-				}
-			}
-			g_free(ip);
-		}
+		wss = janus_websockets_create_ws_server(config, config_general, NULL, "ws",
+				"Websockets", ws_protocols, FALSE, 8188);
+		swss = janus_websockets_create_ws_server(config, config_general, config_certs, "wss",
+				"Secure Websockets", sws_protocols, TRUE, 8989);
 		/* Do the same for the Admin API, if enabled */
-		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws");
-		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_VERB, "Admin WebSockets server disabled\n");
-		} else {
-			uint16_t wsport = 7188;
-			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws_port");
-			if(item && item->value && janus_string_to_uint16(item->value, &wsport) < 0) {
-				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
-				wsport = 7188;
-			}
-			char *interface = NULL;
-			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws_interface");
-			if(item && item->value)
-				interface = (char *)item->value;
-			char *ip = NULL;
-			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws_ip");
-			if(item && item->value) {
-				ip = (char *)item->value;
-#ifdef __FreeBSD__
-				struct in_addr addr;
-				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr)) > 0)
-					ipv4_only = 1;
-#endif
-				char *iface = janus_websockets_get_interface_name(ip);
-				if(iface == NULL) {
-					JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
-				}
-				ip = iface;
-			}
-			item = janus_config_get(config, config_general, janus_config_type_item, "admin_ws_unix");
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-			char *unixpath = NULL;
-			if(item && item->value)
-				unixpath = (char *)item->value;
-#else
-			if(item && item->value)
-				JANUS_LOG(LOG_WARN, "WebSockets option 'admin_ws_unix' is not supported because libwebsockets compiled without UNIX sockets\n");
-#endif
-			/* Prepare context */
-			struct lws_context_creation_info info;
-			memset(&info, 0, sizeof info);
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-			info.port = unixpath ? 0 : wsport;
-			info.iface = unixpath ? unixpath : (ip ? ip : interface);
-#else
-			info.port = wsport;
-			info.iface = ip ? ip : interface;
-#endif
-			info.protocols = admin_ws_protocols;
-			info.extensions = NULL;
-			info.ssl_cert_filepath = NULL;
-			info.ssl_private_key_filepath = NULL;
-			info.ssl_private_key_password = NULL;
-			info.gid = -1;
-			info.uid = -1;
-			info.options = 0;
-#ifdef __FreeBSD__
-			if (ipv4_only) {
-				info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
-				ipv4_only = 0;
-			}
-#endif
-#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
-			info.options |= LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
-
-#endif
-			/* Create the WebSocket context */
-			admin_wss = lws_create_vhost(wsc, &info);
-			if(admin_wss == NULL) {
-				JANUS_LOG(LOG_FATAL, "Error creating vhost for Admin WebSockets server...\n");
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-			} else if (unixpath) {
-				JANUS_LOG(LOG_INFO, "Admin WebSockets server started (UNIX socket %s)...\n", unixpath);
-#endif
-			} else {
-				JANUS_LOG(LOG_INFO, "Admin WebSockets server started (port %d)...\n", wsport);
-			}
-			g_free(ip);
-		}
-		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss");
-		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_VERB, "Secure Admin WebSockets server disabled\n");
-		} else {
-			uint16_t wsport = 7989;
-			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss_port");
-			if(item && item->value && janus_string_to_uint16(item->value, &wsport) < 0) {
-				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
-				wsport = 7989;
-			}
-			char *interface = NULL;
-			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss_interface");
-			if(item && item->value)
-				interface = (char *)item->value;
-			char *ip = NULL;
-			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss_ip");
-			if(item && item->value) {
-				ip = (char *)item->value;
-#ifdef __FreeBSD__
-				struct in_addr addr;
-				if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr)) > 0)
-					ipv4_only = 1;
-#endif
-				char *iface = janus_websockets_get_interface_name(ip);
-				if(iface == NULL) {
-					JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
-				}
-				ip = iface;
-			}
-			item = janus_config_get(config, config_general, janus_config_type_item, "admin_wss_unix");
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-			char *unixpath = NULL;
-			if(item && item->value)
-				unixpath = (char *)item->value;
-#else
-			if(item && item->value)
-				JANUS_LOG(LOG_WARN, "WebSockets option 'admin_wss_unix' is not supported because libwebsockets compiled without UNIX sockets\n");
-#endif
-			item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pem");
-			if(!item || !item->value) {
-				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
-			} else {
-				char *server_pem = (char *)item->value;
-				char *server_key = (char *)item->value;
-				char *password = NULL;
-				char *ciphers = NULL;
-				item = janus_config_get(config, config_certs, janus_config_type_item, "cert_key");
-				if(item && item->value)
-					server_key = (char *)item->value;
-				item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pwd");
-				if(item && item->value)
-					password = (char *)item->value;
-				JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
-				item = janus_config_get(config, config_certs, janus_config_type_item, "ciphers");
-				if(item && item->value)
-					ciphers = (char *)item->value;
-				/* Prepare secure context */
-				struct lws_context_creation_info info;
-				memset(&info, 0, sizeof info);
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-				info.port = unixpath ? 0 : wsport;
-				info.iface = unixpath ? unixpath : (ip ? ip : interface);
-#else
-				info.port = wsport;
-				info.iface = ip ? ip : interface;
-#endif
-				info.protocols = admin_sws_protocols;
-				info.extensions = NULL;
-				info.ssl_cert_filepath = server_pem;
-				info.ssl_private_key_filepath = server_key;
-				info.ssl_private_key_password = password;
-				info.ssl_cipher_list = ciphers;
-				info.gid = -1;
-				info.uid = -1;
-#if (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR > 3)
-				info.options =  LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT | LWS_SERVER_OPTION_FAIL_UPON_UNABLE_TO_BIND;
-#elif LWS_LIBRARY_VERSION_MAJOR >= 2
-				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
-#endif
-#ifdef __FreeBSD__
-				if (ipv4_only) {
-					info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
-					ipv4_only = 0;
-				}
-#endif
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-				if (unixpath)
-					info.options |= LWS_SERVER_OPTION_UNIX_SOCK;
-#endif
-				/* Create the secure WebSocket context */
-				admin_swss = lws_create_vhost(wsc, &info);
-				if(admin_swss == NULL) {
-					JANUS_LOG(LOG_FATAL, "Error creating vhost for Secure Admin WebSockets server...\n");
-#if defined(LWS_USE_UNIX_SOCK) || defined(LWS_WITH_UNIX_SOCK)
-				} else if (unixpath) {
-					JANUS_LOG(LOG_INFO, "Secure Admin WebSockets server started (UNIX socket %s)...\n", unixpath);
-#endif
-				} else {
-					JANUS_LOG(LOG_INFO, "Secure Admin WebSockets server started (port %d)...\n", wsport);
-				}
-			}
-			g_free(ip);
-		}
+		admin_wss = janus_websockets_create_ws_server(config, config_admin, NULL, "admin_ws",
+				"Admin Websockets", admin_ws_protocols, FALSE, 7188);
+		admin_swss = janus_websockets_create_ws_server(config, config_admin, config_certs, "admin_wss",
+				"Secure Admin Websockets", admin_sws_protocols, TRUE, 7989);
 	}
 	janus_config_destroy(config);
 	config = NULL;

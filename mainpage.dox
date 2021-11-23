@@ -49,7 +49,8 @@
  * out of the box Janus supports printing the output to \c stdout and saving
  * to a local file, but logging can also be extended via additional plugins:
  * refer to the \ref loggerapi for more details, and to learn how to write
- * your own.
+ * your own. You can check the \ref ide page for some details about how
+ * to setup your local development environment for Janus..
  *
  * Janus also supports \ref recordings out of the box, so check the
  * related documentation to know more about how that works.
@@ -67,7 +68,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Server © 2014-2021 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2021 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -2874,7 +2875,8 @@ screen -r janus
  \verbatim
 [Unit]
 Description=Janus WebRTC Server
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -3464,6 +3466,18 @@ ldd janus | grep asan
  * <tr><th>Language</th><th>Author</th><th>Project</th><th>Description</th></tr>
  * <tr>
  * 		<td>JavaScript/node</td>
+ * 		<td><a href="https://github.com/meetecho">Meetecho</a></td>
+ * 		<td><a href="https://github.com/meetecho/janode">janode</a></td>
+ *		<td>A Node.js adapter for the Janus WebRTC server</td>
+ * </tr>
+  * <tr>
+ * 		<td>TypeScript/node</td>
+ * 		<td><a href="https://github.com/smyrgeorge">smyrgeorge</a></td>
+ * 		<td><a href="https://github.com/smyrgeorge/janus-gateway-tsdx">/janus-gateway-tsdx</a></td>
+ *		<td>Modern typescript client for janus gateway. Based on websockets</td>
+ * </tr>
+ * <tr>
+ * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/ndarilek">Nolan Darilek</a></td>
  * 		<td><a href="https://github.com/ndarilek/node-janus">node-janus</a></td>
  *		<td>node and browserify compatible integration layer for the Janus WebRTC server</td>
@@ -3740,6 +3754,69 @@ ldd janus | grep asan
  *
  */
 
+/*! \page ide Writing code for Janus
+ *
+ * Janus is open source, which means the whole source code is available for
+ * both its core internals and all plugins. As such, it's easy to write code
+ * to fix issues, add new features, implement new modules and so on.
+ *
+ * You don't really need any integrated development environment (IDE) to
+ * write code for Janus, but in case you do want to make use of one, you
+ * may need to tweak your development environment accordingly. The Janus
+ * codebase makes use of many macros defined at <code>configure</code> time
+ * to figure out what's available and what should be compiled, for instance,
+ * and the IDE you're using may need to be aware of those to do its job.
+ *
+ * The following snippet is an example of how you can configure, for instance,
+ * Visual Studio Code on Ubuntu 20.04:
+ *
+\verbatim
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu11",
+            "cppStandard": "gnu++17",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/lib/x86_64-linux-gnu/glib-2.0/include",
+                "/usr/include/glib-2.0",
+                "/usr/include/nice",
+                "/usr/include/sofia-sip-1.12"
+            ],
+            "intelliSenseMode": "linux-gcc-x64",
+            "systemIncludePath": [
+                "/usr/lib/gcc/x86_64-linux-gnu/9/include",
+                "/usr/local/include",
+                "/usr/include/x86_64-linux-gnu",
+                "/usr/include"
+            ],
+            "defines": [
+                "CONFDIR=\"\"",
+                "EVENTDIR=\"\"",
+                "HAVE_CLOSE_ASYNC=1",
+                "HAS_DTLS_WINDOW_SIZE=1",
+                "HAVE_ICE_NOMINATION=1",
+                "HAVE_LIBCURL=1",
+                "HAVE_LIBNICE_TCP=1",
+                "HAVE_LIBOGG=1",
+                "HAVE_LIBOPUS=1",
+                "HAVE_LIBWEBSOCKETS_PEER_SIMPLE=1",
+                "HAVE_PORTRANGE=1",
+                "HAVE_SCTP=1",
+                "HAVE_SRTP_2=1",
+                "LOGGERDIR=\"\"",
+                "PLUGINDIR=\"\"",
+                "TRANSPORTDIR=\"\""
+            ]
+        }
+    ],
+    "version": 4
+}
+\endverbatim
+ *
+ */
 
 /*! \page README README
  *  \verbinclude README.md
@@ -3747,7 +3824,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Server © 2014-2021 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2021 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -3870,7 +3947,7 @@ ldd janus | grep asan
  * \anchor janus
  * -# <b>What is Janus?</b>\n
  *    .
- *    Janus is an open source WebRTC server written by <a href="http://www.meetecho.com">Meetecho</a>,
+ *    Janus is an open source WebRTC server written by <a href="https://www.meetecho.com">Meetecho</a>,
  *    conceived as modular and, as much as possible,
  *    general purpose. It acts as a WebRTC endpoint browsers can interact
  *    with, and different modules can determine what should be done with
@@ -3948,7 +4025,8 @@ ldd janus | grep asan
  *    - Presentation on WebRTC (and Janus) as a way to help musicians at <a href="https://fosdem.org/2021/schedule/event/webrtc_musicians/">FOSDEM 2021</a>;
  *    - Workshop on Janus RTP forwarders (lesson/tutorial) at <a href="https://www.youtube.com/watch?v=uW8ztFCkxVk">ClueCon TGI2021</a>;
  *    - Presentation on Janus and NDI at <a href="https://youtu.be/RZ58vapWfUw?t=1755">ClueCon TGI2021</a>;
- *    - Presentation on Janus and multicast at the <a href="https://youtu.be/cT_74CRBsQs?t=5910">MBONED WG session (IETF 110)</a>. \n\n
+ *    - Presentation on Janus and multicast at the <a href="https://youtu.be/cT_74CRBsQs?t=5910">MBONED WG session (IETF 110)</a>;
+ *    - Presentation on how to use WHIP and Janus for broadcasting at <a href="https://www.youtube.com/watch?v=b_QBd3WnGgY">IIT RTC 2021</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
  *    and presentations from <a href="https://januscon.it/2019">JanusCon</a>,
  *    the Janus conference we hosted here in Napoli.
@@ -4197,7 +4275,7 @@ ldd janus | grep asan
  *    protocol that can be used to poll information on existing sessions and
  *    handles, and which also provides a lot of useful WebRTC-related information
  *    on PeerConnections Janus is managing. You can also find a very useful
- *    <a href="http://www.meetecho.com/blog/understanding-the-janus-admin-api">blog post</a>
+ *    <a href="https://www.meetecho.com/blog/understanding-the-janus-admin-api">blog post</a>
  *    where we describe in detail how the Admin API can be used to investigate issues. \n\n
  *    A more recent, and potentially much more powerful, addition to Janus
  *    are the Event Handlers. Unlike the Admin API, which is query-based,
@@ -4302,7 +4380,7 @@ ldd janus | grep asan
  *    much sense unless you contextualise the scenarios.\n\n
  *    You can find some results on tests we made ourselves in a couple of
  *    publications we wrote and available
- *    <a href="http://janus.conf.meetecho.com/citeus">here</a>. One of those
+ *    <a href="https://janus.conf.meetecho.com/citeus">here</a>. One of those
  *    introduces a WebRTC stress testing tool we implemented called Jattack,
  *    for which a <a href="https://www.youtube.com/watch?v=UwNq8p0m1js">video of the presentation</a>
  *    is available. You can find some more details and considerations in an older

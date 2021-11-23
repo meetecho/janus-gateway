@@ -127,7 +127,7 @@ $(document).ready(function() {
 											if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 												if(!simulcastStarted) {
 													simulcastStarted = true;
-													addSimulcastButtons(remoteFeed.videoCodec === "vp8");
+													addSimulcastButtons();
 												}
 												// We just received notice that there's been a switch, update the buttons
 												updateSimulcastButtons(substream, temporal);
@@ -395,7 +395,7 @@ function stopStream() {
 }
 
 // Helpers to create Simulcast-related UI, if enabled
-function addSimulcastButtons(temporal) {
+function addSimulcastButtons() {
 	$('#curres').parent().append(
 		'<div id="simulcast" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
 		'	<div class"row">' +
@@ -444,8 +444,6 @@ function addSimulcastButtons(temporal) {
 				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
 			streaming.send({ message: { request: "configure", substream: 2 }});
 		});
-	if(!temporal)	// No temporal layer support
-		return;
 	$('#tl-0').parent().removeClass('hide');
 	$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -537,7 +535,7 @@ function addSvcButtons() {
 		'	</div>' +
 		'</div>'
 	);
-	// Enable the VP8 simulcast selection buttons
+	// Enable the SVC selection buttons
 	$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			toastr.info("Switching SVC spatial layer, wait for it... (low resolution)", null, {timeOut: 2000});
