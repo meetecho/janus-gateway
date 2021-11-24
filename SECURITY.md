@@ -4,8 +4,8 @@
 
 Notice that, while there are multiple versions of Janus, they're simply
 tagged versions of the master Janus branch. As such, once they're tagged
-as versions, they won't receive security updated. The only way to get
-security updates that are published after a specific version, is to
+as versions, they won't receive security updates. The only way to get
+security updates that are published after a specific version is to
 either use a more recent tagged version (if it includes the security
 fix) or refer to the master branch instead (which is where active
 development focuses on). Refer to the [CHANGELOG.md](CHANGELOG.md)
