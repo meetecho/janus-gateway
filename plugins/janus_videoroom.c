@@ -8087,7 +8087,6 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
 				json_decref(event);
 				json_decref(jsep);
-				janus_videoroom_message_free(msg);
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
@@ -8106,6 +8105,7 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&publisher->ref);
 					publishers = g_list_remove(publishers, publisher);
 				}
+				janus_videoroom_message_free(msg);
 				continue;
 			} else {
 				janus_mutex_unlock(&videoroom->mutex);
@@ -8740,8 +8740,6 @@ static void *janus_videoroom_handler(void *data) {
 					int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, NULL);
 					JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
 					json_decref(event);
-					/* Done */
-					janus_videoroom_message_free(msg);
 					/* Decrease the references we took before */
 					while(publishers) {
 						janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
@@ -8749,6 +8747,8 @@ static void *janus_videoroom_handler(void *data) {
 						janus_refcount_decrease(&publisher->ref);
 						publishers = g_list_remove(publishers, publisher);
 					}
+					/* Done */
+					janus_videoroom_message_free(msg);
 					continue;
 				}
 				if(!g_atomic_int_get(&subscriber->answered)) {
