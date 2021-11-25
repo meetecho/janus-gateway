@@ -465,7 +465,7 @@ function registerUsername() {
 			ptype: "publisher",
 			display: username
 		};
-		myusername = username;
+		myusername = escapeXmlTags(username);
 		sfutest.send({ message: register });
 	}
 }
@@ -568,7 +568,7 @@ function subscribeTo(sources) {
 							feeds[slot] = stream.id;
 							feedStreams[stream.id].slot = slot;
 							feedStreams[stream.id].remoteVideos = 0;
-							$('#remote' + slot).removeClass('hide').html(stream.display).show();
+							$('#remote' + slot).removeClass('hide').html(escapeXmlTags(stream.display)).show();
 							break;
 						}
 					}
@@ -643,7 +643,7 @@ function subscribeTo(sources) {
 									feeds[slot] = stream.id;
 									feedStreams[stream.id].slot = slot;
 									feedStreams[stream.id].remoteVideos = 0;
-									$('#remote' + slot).removeClass('hide').html(stream.display).show();
+									$('#remote' + slot).removeClass('hide').html(escapeXmlTags(stream.display)).show();
 									break;
 								}
 							}
@@ -903,6 +903,15 @@ function getQueryStringValue(name) {
 	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+}
+
+// Helper to escape XML tags
+function escapeXmlTags(value) {
+	if(value) {
+		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
+		return escapedValue;
+	}
 }
 
 // Helpers to create Simulcast-related UI, if enabled

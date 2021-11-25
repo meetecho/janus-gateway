@@ -375,7 +375,7 @@ function updateStreamsList() {
 			Janus.log("Got a list of available streams:", list);
 			streamsList = {};
 			for(var mp in list) {
-				Janus.debug("  >> [" + list[mp]["id"] + "] " + list[mp]["description"] + " (" + list[mp]["type"] + ")");
+				Janus.debug("  >> [" + list[mp]["id"] + "] " + escapeXmlTags(list[mp]["description"]) + " (" + list[mp]["type"] + ")");
 				$('#streamslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + list[mp]["description"] + " (" + list[mp]["type"] + ")" + "</a></li>");
 				// Check the nature of the available streams, and if there are some multistream ones
 				list[mp].legacy = true;
@@ -417,7 +417,7 @@ function getStreamInfo() {
 	var body = { request: "info", id: parseInt(selectedStream) || selectedStream };
 	streaming.send({ message: body, success: function(result) {
 		if(result && result.info && result.info.metadata) {
-			$('#metadata').html(result.info.metadata);
+			$('#metadata').html(escapeXmlTags(result.info.metadata));
 			$('#info').removeClass('hide').show();
 		}
 	}});
@@ -501,6 +501,15 @@ function stopStream() {
 	var body = { request: "stop" };
 	streaming.send({ message: body });
 	streaming.hangup();
+}
+
+// Helper to escape XML tags
+function escapeXmlTags(value) {
+	if(value) {
+		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
+		return escapedValue;
+	}
 }
 
 // Helper to add a new panel to the 'videos' div

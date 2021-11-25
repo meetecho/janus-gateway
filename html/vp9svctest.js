@@ -457,7 +457,7 @@ function registerUsername() {
 			ptype: "publisher",
 			display: username
 		};
-		myusername = username;
+		myusername = escapeXmlTags(username);
 		sfutest.send({ message: register });
 	}
 }
@@ -538,7 +538,7 @@ function newRemoteFeed(id, display, streams) {
 					});
 					// FIXME Right now, this is always the same feed: in the future, it won't
 					remoteFeed.rfid = stream.id;
-					remoteFeed.rfdisplay = stream.display;
+					remoteFeed.rfdisplay = escapeXmlTags(stream.display);
 				}
 				// We wait for the plugin to send us an offer
 				var subscribe = {
@@ -740,6 +740,15 @@ function newRemoteFeed(id, display, streams) {
 				remoteFeed.remoteVideos = 0;
 			}
 		});
+}
+
+// Helper to escape XML tags
+function escapeXmlTags(value) {
+	if(value) {
+		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
+		return escapedValue;
+	}
 }
 
 // Helpers to create SVC-related UI for a new viewer

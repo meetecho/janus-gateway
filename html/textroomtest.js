@@ -153,9 +153,7 @@ $(document).ready(function() {
 									var what = json["textroom"];
 									if(what === "message") {
 										// Incoming message: public or private?
-										var msg = json["text"];
-										msg = msg.replace(new RegExp('<', 'g'), '&lt');
-										msg = msg.replace(new RegExp('>', 'g'), '&gt');
+										var msg = escapeXmlTags(json["text"]);
 										var from = json["from"];
 										var dateString = getDateString(json["date"]);
 										var whisper = json["whisper"];
@@ -170,9 +168,7 @@ $(document).ready(function() {
 										}
 									} else if(what === "announcement") {
 										// Room announcement
-										var msg = json["text"];
-										msg = msg.replace(new RegExp('<', 'g'), '&lt');
-										msg = msg.replace(new RegExp('>', 'g'), '&gt');
+										var msg = escapeXmlTags(json["text"]);
 										var dateString = getDateString(json["date"]);
 										$('#chatroom').append('<p style="color: purple;">[' + dateString + '] <i>' + msg + '</i>');
 										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
@@ -180,7 +176,7 @@ $(document).ready(function() {
 										// Somebody joined
 										var username = json["username"];
 										var display = json["display"];
-										participants[username] = display ? display : username;
+										participants[username] = escapeXmlTags(display ? display : username);
 										if(username !== myid && $('#rp' + username).length === 0) {
 											// Add to the participants list
 											$('#list').append('<li id="rp' + username + '" class="list-group-item">' + participants[username] + '</li>');
@@ -282,7 +278,7 @@ function registerUsername() {
 			username: myid,
 			display: username
 		};
-		myusername = username;
+		myusername = escapeXmlTags(username);
 		transactions[transaction] = function(response) {
 			if(response["textroom"] === "error") {
 				// Something went wrong
@@ -312,7 +308,7 @@ function registerUsername() {
 			if(response.participants && response.participants.length > 0) {
 				for(var i in response.participants) {
 					var p = response.participants[i];
-					participants[p.username] = p.display ? p.display : p.username;
+					participants[p.username] = escapeXmlTags(p.display ? p.display : p.username);
 					if(p.username !== myid && $('#rp' + p.username).length === 0) {
 						// Add to the participants list
 						$('#list').append('<li id="rp' + p.username + '" class="list-group-item">' + participants[p.username] + '</li>');
@@ -417,4 +413,13 @@ function getQueryStringValue(name) {
 	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+}
+
+// Helper to escape XML tags
+function escapeXmlTags(value) {
+	if(value) {
+		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
+		return escapedValue;
+	}
 }
