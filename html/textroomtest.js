@@ -157,7 +157,7 @@ $(document).ready(function() {
 										var from = json["from"];
 										var dateString = getDateString(json["date"]);
 										var whisper = json["whisper"];
-										var sender = participants[from] ? participants[from] : json["display"];
+										var sender = participants[from] ? participants[from] : escapeXmlTags(json["display"]);
 										if(whisper === true) {
 											// Private message
 											$('#chatroom').append('<p style="color: purple;">[' + dateString + '] <b>[whisper from ' + sender + ']</b> ' + msg);
