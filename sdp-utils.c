@@ -988,7 +988,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 	if(!imported)
 		return NULL;
 	janus_refcount_increase(&imported->ref);
-	char *sdp = g_malloc(1024), mline[4096], buffer[512];
+	char *sdp = g_malloc(1024), mline[8192], buffer[512];
 	*sdp = '\0';
 	size_t sdplen = 1024, mlen = sizeof(mline);
 	/* v= */

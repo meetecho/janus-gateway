@@ -375,8 +375,8 @@ function updateStreamsList() {
 			Janus.log("Got a list of available streams:", list);
 			streamsList = {};
 			for(var mp in list) {
-				Janus.debug("  >> [" + list[mp]["id"] + "] " + escapeXmlTags(list[mp]["description"]) + " (" + list[mp]["type"] + ")");
-				$('#streamslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + list[mp]["description"] + " (" + list[mp]["type"] + ")" + "</a></li>");
+				Janus.debug("  >> [" + list[mp]["id"] + "] " + list[mp]["description"] + " (" + list[mp]["type"] + ")");
+				$('#streamslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + escapeXmlTags(list[mp]["description"]) + " (" + list[mp]["type"] + ")" + "</a></li>");
 				// Check the nature of the available streams, and if there are some multistream ones
 				list[mp].legacy = true;
 				if(list[mp].media) {
@@ -528,6 +528,15 @@ function addPanel(panelId, mid, desc) {
 		'	</div>' +
 		'</div>'
 	);
+}
+
+// Helper to escape XML tags
+function escapeXmlTags(value) {
+	if(value) {
+		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
+		return escapedValue;
+	}
 }
 
 // Helpers to create Simulcast-related UI, if enabled

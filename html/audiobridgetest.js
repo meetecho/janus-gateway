@@ -268,7 +268,7 @@ $(document).ready(function() {
 												Janus.debug("Got a list of participants:", list);
 												for(var f in list) {
 													var id = list[f]["id"];
-													var display = escape(list[f]["display"]);
+													var display = escapeXmlTags(list[f]["display"]);
 													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
 													var spatial = list[f]["spatial_position"];

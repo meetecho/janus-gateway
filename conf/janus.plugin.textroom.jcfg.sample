@@ -3,6 +3,7 @@
 # is_private = true|false (whether this room should be in the public list, default=true)
 # secret = <optional password needed for manipulating (e.g. destroying) the room>
 # pin = <optional password needed for joining the room>
+# history = <number of messages to store as a history, and send back to new participants (default=0, no history)>
 # post = <optional backend to contact via HTTP post for all incoming messages>
 #}
 
@@ -24,5 +25,6 @@ room-1234: {
 	# is_private = true
 	secret = "adminpwd"
 	# pin = "roompwd"
+	# history = 10
 	# post = "http://example.com/forward/here"
 }

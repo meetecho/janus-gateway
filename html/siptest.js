@@ -452,6 +452,16 @@ $(document).ready(function() {
 											$('#call').removeAttr('disabled').html('Call')
 												.removeClass("btn-danger").addClass("btn-success")
 												.unbind('click').click(doCall);
+										} else if(event === 'messagedelivery') {
+											// message delivery status
+											let reason = result["reason"];
+											let code = result["code"];
+											let callid = msg['call_id'];
+											if (code == 200) {
+												toastr.success(`${callid} Delivery Status: ${code} ${reason}`);
+											} else {
+												toastr.error(`${callid} Delivery Status: ${code} ${reason}`);
+											}
 										}
 									}
 								},
@@ -916,14 +926,14 @@ function doCall(ev) {
 		bootbox.alert('Please insert a valid SIP address (e.g., sip:pluto@example.com)');
 		$('#peer' + suffix).removeAttr('disabled');
 		$('#dovideo' + suffix).removeAttr('disabled');
-		$('#call' + suffix).removeAttr('disabled').click(function() { doCall(helperId); });
+		$('#call' + suffix).removeAttr('disabled').click(function(ev) { doCall(ev); });
 		return;
 	}
 	if(username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
 		bootbox.alert('Please insert a valid SIP address (e.g., sip:pluto@example.com)');
 		$('#peer' + suffix).removeAttr('disabled').val("");
 		$('#dovideo' + suffix).removeAttr('disabled').val("");
-		$('#call' + suffix).removeAttr('disabled').click(function() { doCall(helperId); });
+		$('#call' + suffix).removeAttr('disabled').click(function(ev) { doCall(ev); });
 		return;
 	}
 	// Call this URI
@@ -1039,7 +1049,7 @@ function addHelper(helperCreated) {
 		'				<button disabled class="btn btn-success margin-bottom-sm" autocomplete="off" id="call' + helperId + '">Call</button> <input autocomplete="off" id="dovideo' + helperId + '" type="checkbox">Use Video</input>' +
 		'			</div>' +
 		'		</div>' +
-		'	<div/>' +
+		'	</div>' +
 		'	<div id="videos' + helperId + '" class="hide">' +
 		'		<div class="col-md-6">' +
 		'			<div class="panel panel-default">' +
@@ -1392,6 +1402,16 @@ function addHelper(helperCreated) {
 						$('#call' + helperId).removeAttr('disabled').html('Call')
 							.removeClass("btn-danger").addClass("btn-success")
 							.unbind('click').click(doCall);
+					} else if(event === 'messagedelivery') {
+						// message delivery status
+						let reason = result["reason"];
+						let code = result["code"];
+						let callid = msg['call_id'];
+						if (code == 200) {
+							toastr.success(`${callid}/${helperId} Delivery Status: ${code} ${reason}`);
+						} else {
+							toastr.error(`${callid}/${helperId} Delivery Status: ${code} ${reason}`);
+						}
 					}
 				}
 			},

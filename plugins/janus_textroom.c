@@ -62,6 +62,7 @@ description = This is my awesome room
 is_private = true|false (whether this room should be in the public list, default=true)
 secret = <optional password needed for manipulating (e.g. destroying) the room>
 pin = <optional password needed for joining the room>
+history = <number of messages to store as a history, and send back to new participants (default=0, no history)>
 post = <optional backend to contact via HTTP post for all incoming messages>
 \endverbatim
  *
@@ -144,6 +145,7 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 	"secret" : "<secret to query/edit the room later; optional>",
 	"pin" : "<PIN required for participants to join room; optional>",
 	"is_private" : <true|false, whether the room should be listable; optional, true by default>,
+	"history" : <number of messages to store as a history, and send back to new participants (default=0, no history)>,
 	"post" : "<backend to contact via HTTP post for all incoming messages; optional>",
 	"permanent" : <true|false, whether the mountpoint should be saved to configuration file or not; false by default>
 }
@@ -334,6 +336,7 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 	"username" : "<unique username to have in the room; mandatory>",
 	"display" : "<display name to use in the room; optional>",
 	"token" : "<invitation token, in case the room has an ACL; optional>",
+	"history" : <true|false, whether to retrieve history messages when available (default=true)>
 }
 \endverbatim
  *
@@ -606,6 +609,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"pin", JSON_STRING, 0},
 	{"post", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
+	{"history", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"allowed", JSON_ARRAY, 0},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
@@ -634,7 +638,8 @@ static struct janus_json_parameter join_parameters[] = {
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"pin", JSON_STRING, 0},
 	{"token", JSON_STRING, 0},
-	{"display", JSON_STRING, 0}
+	{"display", JSON_STRING, 0},
+	{"history", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter message_parameters[] = {
 	{"text", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -674,6 +679,8 @@ typedef struct janus_textroom_room {
 	gboolean is_private;		/* Whether this room is 'private' (as in hidden) or not */
 	gchar *http_backend;		/* Server to contact via HTTP POST for incoming messages, if any */
 	GHashTable *participants;	/* Map of participants */
+	uint16_t history_size;		/* Number of messages we should store in the history */
+	GQueue *history;			/* History of past messages */
 	gboolean check_tokens;		/* Whether to check tokens when participants join (see below) */
 	GHashTable *allowed;		/* Map of participants (as tokens) allowed to join */
 	volatile gint destroyed;	/* Whether this room has been destroyed */
@@ -723,6 +730,8 @@ static void janus_textroom_room_free(const janus_refcount *textroom_ref) {
 	g_free(textroom->http_backend);
 	g_hash_table_destroy(textroom->participants);
 	g_hash_table_destroy(textroom->allowed);
+	if(textroom->history)
+		g_queue_free_full(textroom->history, (GDestroyNotify)g_free);
 	g_free(textroom);
 }
 
@@ -923,6 +932,7 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
 			janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
 			janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
+			janus_config_item *history = janus_config_get(config, cat, janus_config_type_item, "history");
 			janus_config_item *post = janus_config_get(config, cat, janus_config_type_item, "post");
 			/* Create the text room */
 			janus_textroom_room *textroom = g_malloc0(sizeof(janus_textroom_room));
@@ -972,6 +982,14 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 			if(pin != NULL && pin->value != NULL) {
 				textroom->room_pin = g_strdup(pin->value);
 			}
+			if(history != NULL && history->value != NULL) {
+				if(janus_string_to_uint16(history->value, &textroom->history_size) < 0) {
+					JANUS_LOG(LOG_WARN, "Invalid history size value (%s), disabling history...\n", history->value);
+				} else {
+					if(textroom->history_size > 0)
+						textroom->history = g_queue_new();
+				}
+			}
 			if(post != NULL && post->value != NULL) {
 #ifdef HAVE_LIBCURL
 				/* FIXME Should we check if this is a valid HTTP address? */
@@ -986,11 +1004,11 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 			textroom->destroyed = 0;
 			janus_mutex_init(&textroom->mutex);
 			janus_refcount_init(&textroom->ref, janus_textroom_room_free);
-			JANUS_LOG(LOG_VERB, "Created TextRoom: %s (%s, %s, secret: %s, pin: %s)\n",
+			JANUS_LOG(LOG_VERB, "Created TextRoom: %s (%s, %s, secret: %s, pin: %s, history: %"SCNu16" messages)\n",
 				textroom->room_id_str, textroom->room_name,
 				textroom->is_private ? "private" : "public",
 				textroom->room_secret ? textroom->room_secret : "no secret",
-				textroom->room_pin ? textroom->room_pin : "no pin");
+				textroom->room_pin ? textroom->room_pin : "no pin", textroom->history_size);
 			g_hash_table_insert(rooms,
 				string_ids ? (gpointer)g_strdup(textroom->room_id_str) : (gpointer)janus_uint64_dup(textroom->room_id),
 				textroom);
@@ -1519,8 +1537,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		if(username || usernames)
 			json_object_set_new(msg, "whisper", json_true());
 		char *msg_text = json_dumps(msg, json_format);
-		json_decref(msg);
 		if(msg_text == NULL) {
+			json_decref(msg);
 			janus_mutex_unlock(&textroom->mutex);
 			janus_refcount_decrease(&textroom->ref);
 			JANUS_LOG(LOG_ERR, "Failed to stringify message...\n");
@@ -1528,6 +1546,12 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			g_snprintf(error_cause, 512, "Failed to stringify message");
 			goto msg_response;
 		}
+		char *history_text = NULL;
+		if(textroom->history) {
+			json_object_set_new(msg, "display", json_string(participant->display));
+			history_text = json_dumps(msg, json_format);
+		}
+		json_decref(msg);
 		/* Start preparing the response too */
 		reply = json_object();
 		json_object_set_new(reply, "textroom", json_string("success"));
@@ -1584,6 +1608,14 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 					janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
 					gateway->relay_data(top->session->handle, &data);
 					janus_refcount_decrease(&top->ref);
+				}
+			}
+			if(textroom->history && history_text) {
+				/* Store in the history */
+				g_queue_push_tail(textroom->history, history_text);
+				if(g_queue_get_length(textroom->history) > textroom->history_size) {
+					char *text = (char *)g_queue_pop_head(textroom->history);
+					g_free(text);
 				}
 			}
 #ifdef HAVE_LIBCURL
@@ -1731,6 +1763,23 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			participant);
 		janus_refcount_increase(&participant->ref);
 		g_hash_table_insert(textroom->participants, participant->username, participant);
+		/* Check if we need to send some history back */
+		json_t *history = json_object_get(root, "history");
+		gboolean send_history = history ? json_is_true(history) : TRUE;
+		if(send_history) {
+			if(textroom->history != NULL && textroom->history->head != NULL) {
+				GList *temp = textroom->history->head;
+				char *text = NULL;
+				janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = FALSE, .buffer = NULL, .length = 0 };
+				while(temp) {
+					text = (char *)temp->data;
+					data.buffer = text;
+					data.length = strlen(text);
+					gateway->relay_data(handle, &data);
+					temp = temp->next;
+				}
+			}
+		}
 		/* Notify all participants */
 		JANUS_LOG(LOG_VERB, "Notifying all participants about the new join\n");
 		json_t *list = json_array();
@@ -1943,6 +1992,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_object_set_new(rl, "description", json_string(room->room_name));
 			json_object_set_new(rl, "pin_required", room->room_pin ? json_true() : json_false());
 			json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
+			json_object_set_new(rl, "history", json_integer(room->history_size));
 			json_array_append_new(list, rl);
 			janus_mutex_unlock(&room->mutex);
 			janus_refcount_decrease(&room->ref);
@@ -2327,6 +2377,14 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 				janus_refcount_decrease(&top->ref);
 			}
 		}
+		if(textroom->history) {
+			/* Store in the history */
+			g_queue_push_tail(textroom->history, g_strdup(msg_text));
+			if(g_queue_get_length(textroom->history) > textroom->history_size) {
+				char *text = (char *)g_queue_pop_head(textroom->history);
+				g_free(text);
+			}
+		}
 #ifdef HAVE_LIBCURL
 		/* Is there a backend waiting for this message too? */
 		if(textroom->http_backend) {
@@ -2399,6 +2457,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		json_t *allowed = json_object_get(root, "allowed");
 		json_t *secret = json_object_get(root, "secret");
 		json_t *pin = json_object_get(root, "pin");
+		json_t *history = json_object_get(root, "history");
 		json_t *post = json_object_get(root, "post");
 		json_t *permanent = json_object_get(root, "permanent");
 		if(allowed) {
@@ -2492,6 +2551,11 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			textroom->room_secret = g_strdup(json_string_value(secret));
 		if(pin)
 			textroom->room_pin = g_strdup(json_string_value(pin));
+		if(history) {
+			textroom->history_size = json_integer_value(history);
+			if(textroom->history_size > 0)
+				textroom->history = g_queue_new();
+		}
 		if(post) {
 #ifdef HAVE_LIBCURL
 			/* FIXME Should we check if this is a valid HTTP address? */
@@ -2530,7 +2594,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			 * FIXME: We should check if anything fails... */
 			JANUS_LOG(LOG_VERB, "Saving room %s permanently in config file\n", textroom->room_id_str);
 			janus_mutex_lock(&config_mutex);
-			char cat[BUFSIZ];
+			char cat[BUFSIZ], value[BUFSIZ];
 			/* The room ID is the category (prefixed by "room-") */
 			g_snprintf(cat, BUFSIZ, "room-%s", textroom->room_id_str);
 			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
@@ -2542,6 +2606,10 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 				janus_config_add(config, c, janus_config_item_create("secret", textroom->room_secret));
 			if(textroom->room_pin)
 				janus_config_add(config, c, janus_config_item_create("pin", textroom->room_pin));
+			if(textroom->history_size) {
+				g_snprintf(value, BUFSIZ, "%d", textroom->history_size);
+				janus_config_add(config, c, janus_config_item_create("history", value));
+			}
 			if(textroom->http_backend)
 				janus_config_add(config, c, janus_config_item_create("post", textroom->http_backend));
 			/* Save modified configuration */
@@ -2699,7 +2767,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			 * FIXME: We should check if anything fails... */
 			JANUS_LOG(LOG_VERB, "Modifying room %s permanently in config file\n", room_id_str);
 			janus_mutex_lock(&config_mutex);
-			char cat[BUFSIZ];
+			char cat[BUFSIZ], value[BUFSIZ];
 			/* The room ID is the category (prefixed by "room-") */
 			g_snprintf(cat, BUFSIZ, "room-%s", room_id_str);
 			/* Remove the old category first */
@@ -2713,6 +2781,10 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 				janus_config_add(config, c, janus_config_item_create("secret", textroom->room_secret));
 			if(textroom->room_pin)
 				janus_config_add(config, c, janus_config_item_create("pin", textroom->room_pin));
+			if(textroom->history_size) {
+				g_snprintf(value, BUFSIZ, "%d", textroom->history_size);
+				janus_config_add(config, c, janus_config_item_create("history", value));
+			}
 			if(textroom->http_backend)
 				janus_config_add(config, c, janus_config_item_create("post", textroom->http_backend));
 			/* Save modified configuration */
