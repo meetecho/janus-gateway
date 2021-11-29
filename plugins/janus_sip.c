@@ -1089,8 +1089,13 @@ static gboolean janus_sip_call_is_established(janus_sip_session *session) {
 static void janus_sip_media_reset(janus_sip_session *session);
 
 static void janus_sip_session_destroy(janus_sip_session *session) {
-	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
+	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1)) {
+		if(session->master == NULL && session->account.identity)
+			g_hash_table_remove(identities, session->account.identity);
+		if(session->callid)
+			g_hash_table_remove(callids, session->callid);
 		janus_refcount_decrease(&session->ref);
+	}
 }
 
 static void janus_sip_session_dereference(janus_sip_session *session) {
@@ -1104,7 +1109,6 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	if(session->master == NULL && session->account.identity) {
-		g_hash_table_remove(identities, session->account.identity);
 		g_free(session->account.identity);
 		session->account.identity = NULL;
 	}
@@ -1153,7 +1157,6 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 		session->callee = NULL;
 	}
 	if(session->callid) {
-		g_hash_table_remove(callids, session->callid);
 		g_free(session->callid);
 		session->callid = NULL;
 	}
