@@ -37,6 +37,7 @@
 static GHashTable *tokens = NULL, *allowed_plugins = NULL;
 static gboolean auth_enabled = FALSE;
 static gboolean auth_checksum_enabled = FALSE;
+static gboolean auth_field_validation_enabled = FALSE;
 static janus_mutex mutex;
 static char *auth_secret = NULL;
 
@@ -46,7 +47,7 @@ static void janus_auth_free_token(char *token) {
 
 /* Setup */
 //BB - Added checksum configuration
-void janus_auth_init(gboolean enabled, const char *secret, gboolean checksum_enabled) {
+void janus_auth_init(gboolean enabled, const char *secret, gboolean checksum_enabled, gboolean field_validation_enabled) {
 	if(enabled) {
 		if(secret == NULL) {
 			JANUS_LOG(LOG_INFO, "Stored-Token based authentication enabled\n");
@@ -58,11 +59,14 @@ void janus_auth_init(gboolean enabled, const char *secret, gboolean checksum_ena
 		}
 		auth_enabled = TRUE;
 		auth_checksum_enabled = checksum_enabled;
+		auth_field_validation_enabled = field_validation_enabled;
 	} else {
 		JANUS_LOG(LOG_INFO, "Token based authentication disabled\n");
 	}
 	janus_mutex_init(&mutex);
 }
+
+
 
 gboolean janus_auth_is_enabled(void) {
 	return auth_enabled;
@@ -124,6 +128,83 @@ fail:
 	return FALSE;
 }
 
+/* BB - JSON - string object signature validator */
+#define MAX_FIELD_SIZE 1024
+
+gchar* janus_validate_json_str_obj(json_t *obj) {
+
+	gchar* str_obj = NULL;
+	gchar** parts = NULL;
+	gchar* result = NULL;
+
+	if(!obj) {
+		JANUS_LOG(LOG_INFO, "Null parameter, skipping");
+		goto fail;
+	}
+
+	str_obj = json_string_value(obj);
+
+	if(!str_obj) {
+		JANUS_LOG(LOG_INFO, "Null json string, skipping");
+		goto fail;
+	}
+
+	if(!auth_field_validation_enabled) {
+		JANUS_LOG(LOG_INFO, "Skipping validation of field '%s'", str_obj);
+		result = str_obj;
+		goto fail;
+	}
+
+	parts = g_strsplit(str_obj, ":", 3);
+
+	int content_count = 0;
+
+	while(parts[content_count]) {
+		content_count++;
+	}
+
+	if(content_count < 2) {
+		JANUS_LOG(LOG_WARN, "Missing components in '%s'\n", str_obj);
+		goto fail;
+	}
+
+	if( (strlen(parts[0]) + strlen(parts[1])) > MAX_FIELD_SIZE) {
+		JANUS_LOG(LOG_WARN, "Field too long in '%s'\n", str_obj);
+		goto fail;
+
+	}
+
+	gchar* workfield[MAX_FIELD_SIZE];
+	workfield[0] = 0;
+	strcat(workfield, parts[0]);
+	strcat(workfield, parts[1]);
+
+	unsigned char signature[EVP_MAX_MD_SIZE];
+	unsigned int len;
+	HMAC(EVP_sha256(), auth_secret, strlen(auth_secret), (const unsigned char*)workfield, strlen(workfield), signature, &len);
+	gchar *base64 = g_base64_encode(signature, len);
+	base64ToBase64UrlNoPadding(base64);
+	result = (janus_strcmp_const_time(parts[2], base64) ? NULL: str_obj);
+	g_free(base64);
+
+	JANUS_LOG(LOG_INFO, "Validation of field '%s' is %s", str_obj, result == NULL ? "UNSUCESSFUL" : "SUCESSFUL" );
+
+	// Stop the string at the first occurance of ':'
+	if(result) {
+		for(int i = 0; i < strlen(result); i++) {
+			if (result[i] == ':') {
+				result[i] = 0;
+				break;
+			}
+		}
+	}
+
+fail:
+	g_strfreev(parts);
+
+	return result;
+
+}
 
 /* BB - Added parameter checksum verification */
 #define MAX_CHECKSUM_FIELD_NAME_SIZE 64

@@ -2946,13 +2946,16 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 	json_t *room = json_object_get(root, "room");
 	guint64 room_id = 0;
 	char room_id_num[30], *room_id_str = NULL;
+
 	if(!string_ids) {
 		room_id = json_integer_value(room);
 		g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
 		room_id_str = room_id_num;
 	} else {
-		room_id_str = (char *)json_string_value(room);
+		// BB
+		room_id_str = (char *)janus_validate_json_str_obj(room);
 	}
+
 	*videoroom = g_hash_table_lookup(rooms,
 		string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 	if(*videoroom == NULL) {
@@ -3209,10 +3212,16 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
 			room_id_str = room_id_num;
 		} else {
-			room_id_str = (char *)json_string_value(room);
+			// BB added room name validation
+			room_id_str = (char *)janus_validate_json_str_obj(room);
 		}
 		if(room_id == 0 && room_id_str == NULL) {
-			JANUS_LOG(LOG_WARN, "Desired room ID is empty, which is not allowed... picking random ID instead\n");
+			//JANUS_LOG(LOG_WARN, "Desired room ID is empty, which is not allowed... picking random ID instead\n");
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
+		else {
+			JSON_LOG(LOG_INFO, "Room name set to %s", room_id_str);
 		}
 		janus_mutex_lock(&rooms_mutex);
 		if(room_id > 0 || room_id_str != NULL) {
@@ -3268,8 +3277,24 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		videoroom->require_e2ee = req_e2ee ? json_is_true(req_e2ee) : FALSE;
 		if(secret)
 			videoroom->room_secret = g_strdup(json_string_value(secret));
-		if(pin)
-			videoroom->room_pin = g_strdup(json_string_value(pin));
+
+		if(pin) {
+			// BB
+			//videoroom->room_pin = g_strdup(json_string_value(pin));
+			videoroom->room_pin = (char *)janus_validate_json_str_obj(pin);
+		}
+		else {
+			videoroom->room_pin = NULL;
+		}
+		if(!videoroom->room_pin) {
+			JSON_LOG(LOG_ERR, "Room %s is missing pin", videoroom->room_name);
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
+		else {
+			JSON_LOG(LOG_INFO, "Room %s pin set to %s", videoroom->room_name, videoroom->room_pin);
+		}
+
 		videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
 		if(publishers)
 			videoroom->max_publishers = json_integer_value(publishers);
@@ -3396,11 +3421,32 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		/* By default, the VideoRoom plugin does not notify about participants simply joining the room.
 		   It only notifies when the participant actually starts publishing media. */
 		videoroom->notify_joining = notify_joining ? json_is_true(notify_joining) : FALSE;
+
+		// BB - Modified to ignore the record boolean parameter, recording is set to true if the valid non-empty folder value is received or to
+		// false if valid empty folder value is received
 		if(record) {
 			videoroom->record = json_is_true(record);
 		}
 		if(rec_dir) {
-			videoroom->rec_dir = g_strdup(json_string_value(rec_dir));
+			//videoroom->rec_dir = g_strdup(json_string_value(rec_dir));
+			videoroom->rec_dir = g_strdup((char *)janus_validate_json_str_obj(rec_dir));
+		}
+		else {
+			videoroom->rec_dir = NULL;
+		}
+
+		if(!videoroom->rec_dir) {
+			JANUS_LOG(LOG_ERR, "Room %s, recording information is missing", videoroom->room_id_str);
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
+		if(!strlen(videoroom->rec_dir)) {
+			JANUS_LOG(LOG_INFO, "Room %s, setting recordingto FALSE", videoroom->room_id_str);
+			videoroom->record = FALSE;
+		}
+		else {
+			JANUS_LOG(LOG_INFO, "Room %s, setting recordingto TRUE, folder: %s", videoroom->room_id_str, videoroom->rec_dir);
+			videoroom->record = TRUE;
 		}
 		if(lock_record) {
 			videoroom->lock_record = json_is_true(lock_record);
@@ -6204,11 +6250,24 @@ static void *janus_videoroom_handler(void *data) {
 					}
 				}
 				json_t *display = json_object_get(root, "display");
-				const char *display_text = display ? json_string_value(display) : NULL;
+				//BB
+				const char *display_text = display ? janus_validate_json_str_obj(display) : NULL;
+				if(!display_text) {
+					JANUS_LOG(LOG_ERR, "Missing or invalid participant name (display parameter)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+					goto error;
+				}
 				guint64 user_id = 0;
 				char user_id_num[30], *user_id_str = NULL;
 				gboolean user_id_allocated = FALSE;
+				// BB
 				json_t *id = json_object_get(root, "id");
+				user_id_str = janus_validate_json_str_obj(id);
+				if(!user_id_str) {
+					JANUS_LOG(LOG_ERR, "Missing or invalid stream id\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+					goto error;
+				}
 				if(id) {
 					if(!string_ids) {
 						user_id = json_integer_value(id);
