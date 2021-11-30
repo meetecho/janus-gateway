@@ -161,7 +161,7 @@ $(document).ready(function() {
 										if(event === "joined") {
 											myid = msg["id"];
 											$('#session').html(room);
-											$('#title').html(msg["description"]);
+											$('#title').html(escapeXmlTags(msg["description"]));
 											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
 											if(role === "publisher") {
 												// This is our session, publish our stream
@@ -513,4 +513,13 @@ function newRemoteFeed(id, display) {
 				spinner = null;
 			}
 		});
+}
+
+// Helper to escape XML tags
+function escapeXmlTags(value) {
+	if(value) {
+		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
+		return escapedValue;
+	}
 }

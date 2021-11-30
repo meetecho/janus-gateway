@@ -1154,6 +1154,7 @@ function Janus(gatewayCallbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
+		callbacks.dataChannelOptions = callbacks.dataChannelOptions || { ordered: true };
 		callbacks.consentDialog = (typeof callbacks.consentDialog == "function") ? callbacks.consentDialog : Janus.noop;
 		callbacks.iceState = (typeof callbacks.iceState == "function") ? callbacks.iceState : Janus.noop;
 		callbacks.mediaState = (typeof callbacks.mediaState == "function") ? callbacks.mediaState : Janus.noop;
@@ -1211,6 +1212,7 @@ function Janus(gatewayCallbacks) {
 							mySdp : null,
 							mediaConstraints : null,
 							pc : null,
+							dataChannelOptions: callbacks.dataChannelOptions,
 							dataChannel : {},
 							dtmfSender : null,
 							trickle : true,
@@ -1296,6 +1298,7 @@ function Janus(gatewayCallbacks) {
 							mySdp : null,
 							mediaConstraints : null,
 							pc : null,
+							dataChannelOptions: callbacks.dataChannelOptions,
 							dataChannel : {},
 							dtmfSender : null,
 							trickle : true,
@@ -1560,7 +1563,7 @@ function Janus(gatewayCallbacks) {
 		};
 		if(!incoming) {
 			// FIXME Add options (ordered, maxRetransmits, etc.)
-			var dcoptions = { ordered: true };
+			var dcoptions = config.dataChannelOptions;
 			if(dcprotocol)
 				dcoptions.protocol = dcprotocol;
 			config.dataChannel[dclabel] = config.pc.createDataChannel(dclabel, dcoptions);

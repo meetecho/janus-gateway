@@ -44,7 +44,7 @@ declare namespace JanusJS {
 		error?: (error: any) => void;
 		destroyed?: Function;
 	}
-	
+
 	interface ReconnectOptions {
 		success?: Function;
 		error?: (error: any) => void;
@@ -72,6 +72,7 @@ declare namespace JanusJS {
 	interface PluginOptions {
 		plugin: string;
 		opaqueId?: string;
+		dataChannelOptions?: RTCDataChannelInit;
 		success?: (handle: PluginHandle) => void;
 		error?: (error: any) => void;
 		consentDialog?: (on: boolean) => void;
@@ -138,6 +139,7 @@ declare namespace JanusJS {
 			mySdp: any,
 			mediaConstraints: any,
 			pc: RTCPeerConnection,
+			dataChannelOptions: RTCDataChannelInit,
 			dataChannel: Array<RTCDataChannel>,
 			dtmfSender: any,
 			trickle: boolean,
