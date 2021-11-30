@@ -3221,7 +3221,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			goto prepare_response;
 		}
 		else {
-			JSON_LOG(LOG_INFO, "Room name set to %s", room_id_str);
+			JANUS_LOG(LOG_INFO, "Room name set to %s", room_id_str);
 		}
 		janus_mutex_lock(&rooms_mutex);
 		if(room_id > 0 || room_id_str != NULL) {
@@ -3281,18 +3281,18 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if(pin) {
 			// BB
 			//videoroom->room_pin = g_strdup(json_string_value(pin));
-			videoroom->room_pin = (char *)janus_validate_json_str_obj(pin);
+			videoroom->room_pin = g_strdup((char *)janus_validate_json_str_obj(pin));
 		}
 		else {
 			videoroom->room_pin = NULL;
 		}
 		if(!videoroom->room_pin) {
-			JSON_LOG(LOG_ERR, "Room %s is missing pin", videoroom->room_name);
+			JANUS_LOG(LOG_ERR, "Room %s is missing pin", videoroom->room_name);
 			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 			goto prepare_response;
 		}
 		else {
-			JSON_LOG(LOG_INFO, "Room %s pin set to %s", videoroom->room_name, videoroom->room_pin);
+			JANUS_LOG(LOG_INFO, "Room %s pin set to %s", videoroom->room_name, videoroom->room_pin);
 		}
 
 		videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
@@ -3441,11 +3441,11 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			goto prepare_response;
 		}
 		if(!strlen(videoroom->rec_dir)) {
-			JANUS_LOG(LOG_INFO, "Room %s, setting recordingto FALSE", videoroom->room_id_str);
+			JANUS_LOG(LOG_INFO, "Room %s, setting recording to FALSE", videoroom->room_id_str);
 			videoroom->record = FALSE;
 		}
 		else {
-			JANUS_LOG(LOG_INFO, "Room %s, setting recordingto TRUE, folder: %s", videoroom->room_id_str, videoroom->rec_dir);
+			JANUS_LOG(LOG_INFO, "Room %s, setting recording to TRUE, folder: %s", videoroom->room_id_str, videoroom->rec_dir);
 			videoroom->record = TRUE;
 		}
 		if(lock_record) {
@@ -6262,19 +6262,20 @@ static void *janus_videoroom_handler(void *data) {
 				gboolean user_id_allocated = FALSE;
 				// BB
 				json_t *id = json_object_get(root, "id");
-				user_id_str = janus_validate_json_str_obj(id);
-				if(!user_id_str) {
-					JANUS_LOG(LOG_ERR, "Missing or invalid stream id\n");
-					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-					goto error;
-				}
 				if(id) {
 					if(!string_ids) {
 						user_id = json_integer_value(id);
 						g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, user_id);
 						user_id_str = user_id_num;
-					} else {
-						user_id_str = (char *)json_string_value(id);
+					}
+					else {
+						// BB
+						user_id_str = janus_validate_json_str_obj(id);
+						if(!user_id_str) {
+							JANUS_LOG(LOG_ERR, "Missing or invalid stream id\n");
+							error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+							goto error;
+						}
 					}
 					if(g_hash_table_lookup(videoroom->participants,
 							string_ids ? (gpointer)user_id_str : (gpointer)&user_id) != NULL) {
@@ -6302,18 +6303,27 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					JANUS_LOG(LOG_VERB, "  -- Participant ID: %"SCNu64"\n", user_id);
 				} else {
+					if(!user_id_str) {
+						JANUS_LOG(LOG_ERR, "Missing or invalid stream id\n");
+						error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+						goto error;
+					}
+
+					/* BB - Removed the possibility to generate the id locally (the id parameter is not optional anymore)
 					if(user_id_str == NULL) {
-						/* Generate a random ID */
+
+						// Generate a random ID
 						while(user_id_str == NULL) {
 							user_id_str = janus_random_uuid();
 							if(g_hash_table_lookup(videoroom->participants, user_id_str) != NULL) {
-								/* User ID already taken, try another one */
+								// User ID already taken, try another one
 								g_clear_pointer(&user_id_str, g_free);
 							}
 						}
 						user_id_allocated = TRUE;
 					}
 					JANUS_LOG(LOG_VERB, "  -- Participant ID: %s\n", user_id_str);
+					*/
 				}
 				/* Process the request */
 				json_t *audio = NULL, *video = NULL, *data = NULL,
