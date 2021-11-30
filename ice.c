@@ -387,6 +387,7 @@ static janus_ice_queued_packet
 	janus_ice_start_gathering,
 	janus_ice_add_candidates,
 	janus_ice_dtls_handshake,
+	janus_ice_media_stopped,
 	janus_ice_hangup_peerconnection,
 	janus_ice_detach_handle,
 	janus_ice_data_ready;
@@ -548,6 +549,7 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 	if(pkt == NULL || pkt == &janus_ice_start_gathering ||
 			pkt == &janus_ice_add_candidates ||
 			pkt == &janus_ice_dtls_handshake ||
+			pkt == &janus_ice_media_stopped ||
 			pkt == &janus_ice_hangup_peerconnection ||
 			pkt == &janus_ice_detach_handle ||
 			pkt == &janus_ice_data_ready) {
@@ -4343,6 +4345,22 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		guint id = g_source_attach(component->dtlsrt_source, handle->mainctx);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating retransmission timer with ID %u\n", handle->handle_id, id);
 		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_media_stopped) {
+		/* Either audio or video has been disabled on the way in, so use the callback to notify the peer */
+		if(!component->in_stats.audio.notified_lastsec && component->in_stats.audio.bytes && !stream->audio_send) {
+			/* Audio won't be received for a while, notify */
+			component->in_stats.audio.notified_lastsec = TRUE;
+			janus_ice_notify_media(handle, FALSE, 0, FALSE);
+		}
+		int vindex=0;
+		for(vindex=0; vindex<3; vindex++) {
+			if(!component->in_stats.video[vindex].notified_lastsec && component->in_stats.video[vindex].bytes && !stream->video_recv) {
+				/* Video won't be received for a while, notify */
+				component->in_stats.video[vindex].notified_lastsec = TRUE;
+				janus_ice_notify_media(handle, TRUE, vindex, FALSE);
+			}
+		}
+		return G_SOURCE_CONTINUE;
 	} else if(pkt == &janus_ice_hangup_peerconnection) {
 		/* The media session is over, send an alert on all streams and components */
 		if(handle->stream && handle->stream->component && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
@@ -5100,6 +5118,18 @@ void janus_ice_notify_data_ready(janus_ice_handle *handle) {
 #endif
 	g_main_context_wakeup(handle->mainctx);
 #endif
+}
+
+void janus_ice_notify_media_stopped(janus_ice_handle *handle) {
+	if(!handle || handle->queued_packets == NULL)
+		return;
+	/* Queue this event */
+#if GLIB_CHECK_VERSION(2, 46, 0)
+	g_async_queue_push_front(handle->queued_packets, &janus_ice_media_stopped);
+#else
+	g_async_queue_push(handle->queued_packets, &janus_ice_media_stopped);
+#endif
+	g_main_context_wakeup(handle->mainctx);
 }
 
 void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component *component) {
