@@ -180,6 +180,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 						stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
 					}
 				}
+				gboolean receiving = (stream->audio_recv == TRUE);
 				switch(m->direction) {
 					case JANUS_SDP_INACTIVE:
 					case JANUS_SDP_INVALID:
@@ -203,6 +204,8 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 						stream->audio_recv = TRUE;
 						break;
 				}
+				if(receiving != stream->audio_recv)
+					janus_ice_notify_media_stopped(handle);
 				if(m->ptypes != NULL) {
 					g_list_free(stream->audio_payload_types);
 					stream->audio_payload_types = g_list_copy(m->ptypes);
@@ -230,6 +233,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 						stream->video_rtcp_ctx[0]->tb = 90000;	/* May change later */
 					}
 				}
+				gboolean receiving = (stream->video_recv == TRUE);
 				switch(m->direction) {
 					case JANUS_SDP_INACTIVE:
 					case JANUS_SDP_INVALID:
@@ -253,6 +257,8 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 						stream->video_recv = TRUE;
 						break;
 				}
+				if(receiving != stream->video_recv)
+					janus_ice_notify_media_stopped(handle);
 				if(m->ptypes != NULL) {
 					g_list_free(stream->video_payload_types);
 					stream->video_payload_types = g_list_copy(m->ptypes);
@@ -1328,6 +1334,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				stream->audio_ssrc = 0;
 			}
 			if(audio == 1) {
+				gboolean receiving = (stream->audio_recv == TRUE);
 				switch(m->direction) {
 					case JANUS_SDP_INACTIVE:
 						stream->audio_send = FALSE;
@@ -1348,6 +1355,8 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 						stream->audio_recv = TRUE;
 						break;
 				}
+				if(receiving != stream->audio_recv)
+					janus_ice_notify_media_stopped(handle);
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			video++;
@@ -1361,6 +1370,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				stream->video_ssrc = 0;
 			}
 			if(video == 1) {
+				gboolean receiving = (stream->video_recv == TRUE);
 				switch(m->direction) {
 					case JANUS_SDP_INACTIVE:
 						stream->video_send = FALSE;
@@ -1381,6 +1391,8 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 						stream->video_recv = TRUE;
 						break;
 				}
+				if(receiving != stream->video_recv)
+					janus_ice_notify_media_stopped(handle);
 				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
 					/* Add RFC4588 stuff */
 					if(stream->rtx_payload_types && g_hash_table_size(stream->rtx_payload_types) > 0) {
