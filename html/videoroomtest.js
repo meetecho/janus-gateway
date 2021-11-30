@@ -68,6 +68,7 @@ var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringV
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
+var doDtx = (getQueryStringValue("dtx") === "yes" || getQueryStringValue("dtx") === "true");
 var subscriber_mode = (getQueryStringValue("subscriber-mode") === "yes" || getQueryStringValue("subscriber-mode") === "true");
 
 $(document).ready(function() {
@@ -399,7 +400,7 @@ function registerUsername() {
 			ptype: "publisher",
 			display: username
 		};
-		myusername = username;
+		myusername = escapeXmlTags(username);
 		sfutest.send({ message: register });
 	}
 }
@@ -416,6 +417,13 @@ function publishOwnFeed(useAudio) {
 			// the following 'simulcast' property to pass to janus.js to true
 			simulcast: doSimulcast,
 			simulcast2: doSimulcast2,
+			customizeSdp: function(jsep) {
+				// If DTX is enabled, munge the SDP
+				if(doDtx) {
+					jsep.sdp = jsep.sdp
+						.replace("useinbandfec=1", "useinbandfec=1;usedtx=1")
+				}
+			},
 			success: function(jsep) {
 				Janus.debug("Got publisher SDP!", jsep);
 				var publish = { request: "configure", audio: useAudio, video: true };
@@ -522,7 +530,7 @@ function newRemoteFeed(id, display, audio, video) {
 							}
 						}
 						remoteFeed.rfid = msg["id"];
-						remoteFeed.rfdisplay = msg["display"];
+						remoteFeed.rfdisplay = escapeXmlTags(msg["display"]);
 						if(!remoteFeed.spinner) {
 							var target = document.getElementById('videoremote'+remoteFeed.rfindex);
 							remoteFeed.spinner = new Spinner({top:100}).spin(target);
@@ -550,6 +558,7 @@ function newRemoteFeed(id, display, audio, video) {
 				}
 				if(jsep) {
 					Janus.debug("Handling SDP as well...", jsep);
+					var stereo = (jsep.sdp.indexOf("stereo=1") !== -1);
 					// Answer and attach
 					remoteFeed.createAnswer(
 						{
@@ -557,6 +566,12 @@ function newRemoteFeed(id, display, audio, video) {
 							// Add data:true here if you want to subscribe to datachannels as well
 							// (obviously only works if the publisher offered them in the first place)
 							media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
+							customizeSdp: function(jsep) {
+								if(stereo && jsep.sdp.indexOf("stereo=1") == -1) {
+									// Make sure that our offer contains stereo too
+									jsep.sdp = jsep.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1");
+								}
+							},
 							success: function(jsep) {
 								Janus.debug("Got SDP!", jsep);
 								var body = { request: "start", room: myroom };
@@ -668,6 +683,15 @@ function getQueryStringValue(name) {
 	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+}
+
+// Helper to escape XML tags
+function escapeXmlTags(value) {
+	if(value) {
+		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
+		return escapedValue;
+	}
 }
 
 // Helpers to create Simulcast-related UI, if enabled

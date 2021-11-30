@@ -37,8 +37,6 @@
 #include "plugins/plugin.h"
 
 
-#define JANUS_BUFSIZE	8192
-
 /*! \brief Helper to address requests and their sources (e.g., a specific HTTP connection, websocket, RabbitMQ or others) */
 typedef struct janus_request janus_request;
 

@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.11.5] - 2021-10-18
+
+- Add API to optionally force Janus to use TURN [[PR-2774](https://github.com/meetecho/janus-gateway/pull/2774)]
+- Fixed slow path on SDP parsing [[PR-2776](https://github.com/meetecho/janus-gateway/pull/2776)]
+- Added event handlers option to send stats for a PeerConnection in a single event, rather than per-media (thanks @JanFellner!) [[PR-2785](https://github.com/meetecho/janus-gateway/pull/2785)]
+- Fixed occasional deadlocks on malformed requests in VideoRoom [[Issue-2780](https://github.com/meetecho/janus-gateway/issues/2780)]
+- Fixed AudioBridge plain RTP thread sometimes exiting prematurely
+- Fixed broken upsampling when using G.711 in AudioBridge
+- Add pause/resume recording functionality to Record&Play and SIP plugins (thanks @isnumanagic!) [[PR-2724](https://github.com/meetecho/janus-gateway/pull/2724)]
+- Fixed broken support for Unix Sockets in WebSockets Admin API (thanks @thatsmydoing!) [[PR-2787](https://github.com/meetecho/janus-gateway/pull/2787)]
+- Added timing info for video rotation when post-processing recordings
+- Added linter checks to janus.js (thanks @davel!) [[PR-2272](https://github.com/meetecho/janus-gateway/pull/2272)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.11.4] - 2021-09-06
 
 - Fixed ICE restart issues with recent versions of libnice [[PR-2729](https://github.com/meetecho/janus-gateway/pull/2729)]

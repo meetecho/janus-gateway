@@ -119,7 +119,7 @@
 	"user_agent" : "<user agent to use when sending SIP REGISTER; optional>",
 	"proxy" : "<server to register at; optional, as won't be needed in case the REGISTER is not goint to be sent (e.g., guests)>",
 	"outbound_proxy" : "<outbound proxy to use, if any; optional>",
-	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
+	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP REGISTER; optional>",
 	"contact_params" : "<array of key/value objects, to specify custom Contact URI params to add to the SIP REGISTER; optional>",
 	"incoming_header_prefixes" : "<array of strings, to specify custom (non-standard) headers to read on incoming SIP events; optional>",
 	"refresh" : "<true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
@@ -185,7 +185,7 @@
 	"call_id" : "<user-defined value of Call-ID SIP header used in all SIP requests throughout the call; optional>",
 	"uri" : "<SIP URI to call; mandatory>",
 	"refer_id" : <in case this is the result of a REFER, the unique identifier that addresses it; optional>,
-	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP INVITE; optional>",
+	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP INVITE; optional>",
 	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
 	"srtp_profile" : "<SRTP profile to negotiate, in case SRTP is offered; optional>",
 	"secret" : "<password to use to call, only needed in case authentication is needed and no REGISTER was sent; optional>",
@@ -304,7 +304,7 @@
 {
 	"request" : "accept",
 	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
-	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP OK; optional>"
+	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP OK; optional>"
 	"autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
 }
 \endverbatim
@@ -356,14 +356,14 @@
 {
 	"request" : "decline",
 	"code" : <SIP code to be sent, if not set, 486 is used; optional>",
- 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP request; optional>"
+ 	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP request; optional>"
 }
 \endverbatim
  *
 \verbatim
 {
 	"request" : "hangup",
-	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP BYE; optional>"
+	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP BYE; optional>"
 }
 \endverbatim
  *
@@ -413,10 +413,11 @@
 \verbatim
 {
 	"request" : "message",
+	"call_id" : "<user-defined value of Call-ID SIP header used to send the message; optional>",
 	"content_type" : "<content type; optional>"
 	"content" : "<text to send>",
  	"uri" : "<SIP URI of the peer; optional; if set, the message will be sent out of dialog>",
- 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP MESSAGE; optional>"
+ 	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP MESSAGE; optional>"
 }
 \endverbatim
  *
@@ -437,6 +438,21 @@
 }
 \endverbatim
  *
+ * After delivery a \c messagedelivery event will be sent back with the SIP server response.
+ * Used to track the delivery status of the message.
+ *
+\verbatim
+{
+	"sip" : "event",
+	"call_id" : "<value of SIP Call-ID header for related message>",
+	"result" : {
+		"event" : "messagedelivery",
+		"code" : "<SIP error code>",
+		"reason" : "<SIP error reason>",
+	}
+}
+\endverbatim
+ *
  * SIP INFO works pretty much the same way, except that you use an \c info
  * request to one to the peer:
  *
@@ -445,7 +461,7 @@
 	"request" : "info",
 	"type" : "<content type>"
 	"content" : "<message to send>",
-  	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP INFO; optional>"
+  	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP INFO; optional>"
 }
 \endverbatim
  *
@@ -1049,6 +1065,7 @@ typedef struct janus_sip_session {
 static GHashTable *sessions;
 static GHashTable *identities;
 static GHashTable *callids;
+static GHashTable *messageids;
 static GHashTable *masters;
 static GHashTable *transfers;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
@@ -1074,6 +1091,11 @@ static void janus_sip_media_reset(janus_sip_session *session);
 static void janus_sip_session_destroy(janus_sip_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
 		janus_refcount_decrease(&session->ref);
+}
+
+static void janus_sip_session_dereference(janus_sip_session *session) {
+	/* This is used to decrease the reference when removing to the messageids hashtable. janus_refcount_increase(&session->ref) must be called before inserting into messageids hashtable  */
+	janus_refcount_decrease(&session->ref);
 }
 
 static void janus_sip_session_free(const janus_refcount *session_ref) {
@@ -1568,7 +1590,7 @@ static void janus_sip_parse_custom_headers(json_t *root, char *custom_headers, s
 				char h[255];
 				g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
 				JANUS_LOG(LOG_VERB, "Adding custom header, %s\n", h);
-				g_strlcat(custom_headers, h, size);
+				janus_strlcat(custom_headers, h, size);
 				iter = json_object_iter_next(headers, iter);
 			}
 		}
@@ -1601,7 +1623,7 @@ static void janus_sip_parse_custom_contact_params(json_t *root, char *custom_par
 					g_snprintf(h, 255, ";%s=%s", key, json_string_value(value));
 				}
 				JANUS_LOG(LOG_VERB, "Adding custom param, %s\n", h);
-				g_strlcat(custom_params, h, size);
+				janus_strlcat(custom_params, h, size);
 				iter = json_object_iter_next(params, iter);
 			}
 		}
@@ -1691,7 +1713,7 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 		}
 		if(strlen(line) == 1) {
 			/* Append a carriage and return */
-			g_strlcat(sofia_log, "\r\n", sizeof(sofia_log));
+			janus_strlcat(sofia_log, "\r\n", sizeof(sofia_log));
 		} else {
 			/* If this is an OPTIONS, we don't care: drop it */
 			char *header = &line[3];
@@ -1704,7 +1726,7 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 				g_snprintf(call_id, sizeof(call_id), "%s", header+9);
 			}
 			/* Append the line to our buffer, skipping the indent */
-			g_strlcat(sofia_log, &line[3], sizeof(sofia_log));
+			janus_strlcat(sofia_log, &line[3], sizeof(sofia_log));
 		}
 		return;
 	}
@@ -1936,6 +1958,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sip_session_destroy);
 	identities = g_hash_table_new(g_str_hash, g_str_equal);
 	callids = g_hash_table_new(g_str_hash, g_str_equal);
+	messageids = g_hash_table_new_full(NULL, NULL, (GDestroyNotify)g_free, (GDestroyNotify)janus_sip_session_dereference);
 	masters = g_hash_table_new(NULL, NULL);
 	transfers = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sip_transfer_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_sip_message_free);
@@ -1972,11 +1995,13 @@ void janus_sip_destroy(void) {
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
 	g_hash_table_destroy(callids);
+	g_hash_table_destroy(messageids);
 	g_hash_table_destroy(identities);
 	g_hash_table_destroy(masters);
 	g_hash_table_destroy(transfers);
 	sessions = NULL;
 	callids = NULL;
+	messageids = NULL;
 	identities = NULL;
 	masters = NULL;
 	transfers = NULL;
@@ -3584,7 +3609,7 @@ static void *janus_sip_handler(void *data) {
 					session->refer_id = refer_id;
 					referred_by = transfer->referred_by ? g_strdup(transfer->referred_by) : NULL;
 					/* Any custom headers we should include? (e.g., Replaces) */
-					g_strlcat(custom_headers, transfer->custom_headers, sizeof(custom_headers));
+					janus_strlcat(custom_headers, transfer->custom_headers, sizeof(custom_headers));
 				}
 			}
 			/* If the user negotiated simulcasting, just stick with the base substream */
@@ -4637,37 +4662,76 @@ static void *janus_sip_handler(void *data) {
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 
+			char *message_callid = NULL;
 			if(in_dialog_message) {
+				/* Take Call-ID, later used to report delivery status */
+				message_callid = g_strdup(session->callid) ;
 				nua_message(session->stack->s_nh_i,
 					SIPTAG_CONTENT_TYPE_STR(content_type),
 					SIPTAG_PAYLOAD_STR(msg_content),
 					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 					TAG_END());
 			} else {
-				janus_mutex_lock(&session->stack->smutex);
-				if(session->stack->s_nh_m == NULL) {
-					if (session->stack->s_nua == NULL) {
+				/* Get appropriate handle */
+				nua_handle_t *nh = NULL;
+				if(!session->helper) {
+					janus_mutex_lock(&session->stack->smutex);
+					if(session->stack->s_nua == NULL) {
 						janus_mutex_unlock(&session->stack->smutex);
 						JANUS_LOG(LOG_ERR, "NUA destroyed while sending message?\n");
 						error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
 						g_snprintf(error_cause, 512, "Invalid NUA");
 						goto error;
 					}
-					session->stack->s_nh_m = nua_handle(session->stack->s_nua, session, TAG_END());
+					nh = nua_handle(session->stack->s_nua, session, TAG_END());
+					janus_mutex_unlock(&session->stack->smutex);
+				} else {
+					/* This is a helper, we need to use the master's SIP stack */
+					if(session->master == NULL || session->master->stack == NULL) {
+						error_code = JANUS_SIP_ERROR_HELPER_ERROR;
+						g_snprintf(error_cause, 512, "Invalid master SIP stack");
+						goto error;
+					}
+					janus_mutex_lock(&session->master->stack->smutex);
+					if(session->master->stack->s_nua == NULL) {
+						janus_mutex_unlock(&session->master->stack->smutex);
+						JANUS_LOG(LOG_ERR, "NUA destroyed while sending message?\n");
+						error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
+						g_snprintf(error_cause, 512, "Invalid NUA");
+						goto error;
+					}
+					nh = nua_handle(session->master->stack->s_nua, session, TAG_END());
+					janus_mutex_unlock(&session->master->stack->smutex);
 				}
-				janus_mutex_unlock(&session->stack->smutex);
-				nua_message(session->stack->s_nh_m,
+				json_t *request_callid = json_object_get(root, "call_id");
+				/* Use call-id from the request, if it exists */
+				if(request_callid) {
+					message_callid = g_strdup(json_string_value(request_callid));
+				} else {
+					/* If call-id does not exist in request, create a random one */
+					message_callid = g_malloc0(24);
+					janus_sip_random_string(24, message_callid);
+				}
+				nua_message(nh,
 					SIPTAG_TO_STR(uri_text),
 					SIPTAG_CONTENT_TYPE_STR(content_type),
 					SIPTAG_PAYLOAD_STR(msg_content),
 					NUTAG_PROXY(session->helper && session->master ?
 						session->master->account.outbound_proxy : session->account.outbound_proxy),
 					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
+					SIPTAG_CALL_ID_STR(message_callid),
 					TAG_END());
 			}
-			/* Notify the operation */
+			/* Notify the application */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("messagesent"));
+			json_object_set_new(result, "call_id", json_string(message_callid));
+			/* Store message id and session */
+			janus_mutex_lock(&sessions_mutex);
+			janus_refcount_increase(&session->ref);
+			g_hash_table_insert(messageids, g_strdup(message_callid), session);
+			janus_mutex_unlock(&sessions_mutex);
+			g_free(message_callid);
 		} else if(!strcasecmp(request_text, "dtmf_info")) {
 			/* Send DMTF tones using SIP INFO
 			 * (https://tools.ietf.org/html/draft-kaplan-dispatch-info-dtmf-package-00)
@@ -5419,7 +5483,88 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_r_message:
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we notify the user, in case the SIP MESSAGE returned an error? */
+			/* Handle authetntication for SIP MESSAGE - eg. SippySoft Softswitch requires 401 authentication even if SIP user is registerered */
+			if(status == 401 || status == 407) {
+				const char *scheme = NULL;
+				const char *realm = NULL;
+				if(status == 401) {
+					/* Get scheme/realm from 401 error */
+					sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
+					scheme = www_auth->au_scheme;
+					realm = msg_params_find(www_auth->au_params, "realm=");
+				} else {
+					/* Get scheme/realm from 407 error, proxy-auth */
+					sip_proxy_authenticate_t const* proxy_auth = sip->sip_proxy_authenticate;
+					scheme = proxy_auth->au_scheme;
+					realm = msg_params_find(proxy_auth->au_params, "realm=");
+				}
+				char authuser[100], secret[100];
+				memset(authuser, 0, sizeof(authuser));
+				memset(secret, 0, sizeof(secret));
+				if(session->helper) {
+					/* This is an helper session, we'll need the credentials from the master */
+					if(session->master == NULL) {
+						JANUS_LOG(LOG_WARN, "No master session for this helper, authentication will fail...\n");
+					} else {
+						session = session->master;
+					}
+				}
+				if(session->account.authuser && strchr(session->account.authuser, ':')) {
+					/* The authuser contains a colon: wrap it in quotes */
+					g_snprintf(authuser, sizeof(authuser), "\"%s\"", session->account.authuser);
+				} else {
+					g_snprintf(authuser, sizeof(authuser), "%s", session->account.authuser);
+				}
+				if(session->account.secret && strchr(session->account.secret, ':')) {
+					/* The secret contains a colon: wrap it in quotes */
+					g_snprintf(secret, sizeof(secret), "\"%s\"", session->account.secret);
+				} else {
+					g_snprintf(secret, sizeof(secret), "%s", session->account.secret);
+				}
+				char auth[256];
+				memset(auth, 0, sizeof(auth));
+				g_snprintf(auth, sizeof(auth), "%s%s:%s:%s:%s%s",
+					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
+					scheme,
+					realm,
+					authuser,
+					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
+					secret);
+				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
+				/* Authenticate */
+				nua_authenticate(nh,
+					NUTAG_AUTH(auth),
+					TAG_END());
+			}  else {
+				char *messageid = g_strdup(sip->sip_call_id->i_id);
+				/* Find session associated with the message */
+				janus_mutex_lock(&sessions_mutex);
+				janus_sip_session *message_session = g_hash_table_lookup(messageids, messageid);
+				if (!message_session) {
+					message_session = session;
+					JANUS_LOG(LOG_VERB, "Message (%s) not associated with any session, event will be reported to master\n", messageid);
+				}
+				janus_mutex_unlock(&sessions_mutex);
+				/* MESSAGE response, notify the application */
+				json_t *result = json_object();
+				/* SIP code and reason */
+				json_object_set_new(result, "event", json_string("messagedelivery"));
+				json_object_set_new(result, "code", json_integer(status));
+				json_object_set_new(result, "reason", json_string(phrase));
+				/* Build the delivery receipt */
+				json_t *dr = json_object();
+				json_object_set_new(dr, "sip", json_string("event"));
+				json_object_set_new(dr, "result", result);
+				json_object_set_new(dr, "call_id", json_string(messageid));
+				/* Report delivery */
+				int ret = gateway->push_event(message_session->handle, &janus_sip_plugin, message_session->transaction, dr, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				json_decref(dr);
+				janus_mutex_lock(&sessions_mutex);
+				g_hash_table_remove(messageids, messageid);
+				janus_mutex_unlock(&sessions_mutex);
+				g_free(messageid);
+			}
 			break;
 		case nua_r_refer: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
@@ -6894,9 +7039,9 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	g_snprintf(sips_url, sizeof(sips_url), "sips:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
 	char outbound_options[256] = "use-rport no-validate";
 	if(keepalive_interval > 0)
-		g_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
+		janus_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
 	if(!behind_nat)
-		g_strlcat(outbound_options, " no-natify", sizeof(outbound_options));
+		janus_strlcat(outbound_options, " no-natify", sizeof(outbound_options));
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
