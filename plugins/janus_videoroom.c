@@ -3011,7 +3011,7 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 		}
 		else {
 			if(janus_strcmp_const_time((*videoroom)->room_pin, pin_str)) {
-				JANUS_LOG(LOG_ERR, "Pin mismatch\n");
+				JANUS_LOG(LOG_ERR, "Pin mismatch room pin: '%s', request value '%s'\n", (*videoroom)->room_pin, pin_str);
 				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 			}
 		}
@@ -3449,16 +3449,16 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 
 		if(!videoroom->rec_dir) {
-			JANUS_LOG(LOG_ERR, "Room %s, recording information is missing", videoroom->room_id_str);
+			JANUS_LOG(LOG_ERR, "Room %s, recording information is missing\n", videoroom->room_id_str);
 			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 			goto prepare_response;
 		}
 		if(!strlen(videoroom->rec_dir)) {
-			JANUS_LOG(LOG_INFO, "Room %s, setting recording to FALSE", videoroom->room_id_str);
+			JANUS_LOG(LOG_INFO, "Room %s, setting recording to FALSE\n", videoroom->room_id_str);
 			videoroom->record = FALSE;
 		}
 		else {
-			JANUS_LOG(LOG_INFO, "Room %s, setting recording to TRUE, folder: %s", videoroom->room_id_str, videoroom->rec_dir);
+			JANUS_LOG(LOG_INFO, "Room %s, setting recording to TRUE, folder: %s\n", videoroom->room_id_str, videoroom->rec_dir);
 			videoroom->record = TRUE;
 		}
 		if(lock_record) {
