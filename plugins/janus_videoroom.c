@@ -3010,9 +3010,12 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 		}
 		else {
-			if(janus_strcmp_const_time((*videoroom)->room_pin, pin_str)) {
+			if(strcmp((*videoroom)->room_pin, pin_str)) {
 				JANUS_LOG(LOG_ERR, "Pin mismatch room pin: '%s', request value '%s'\n", (*videoroom)->room_pin, pin_str);
 				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			}
+			else {
+				JANUS_LOG(LOG_INFO, "Pin ok: '%s'\n", pin_str);
 			}
 		}
 		if(error_code != 0) {
@@ -3234,7 +3237,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			goto prepare_response;
 		}
 		else {
-			JANUS_LOG(LOG_INFO, "Room name set to %s", room_id_str);
+			JANUS_LOG(LOG_INFO, "Room name set to %s\n", room_id_str);
 		}
 		janus_mutex_lock(&rooms_mutex);
 		if(room_id > 0 || room_id_str != NULL) {
@@ -3300,12 +3303,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			videoroom->room_pin = NULL;
 		}
 		if(!videoroom->room_pin) {
-			JANUS_LOG(LOG_ERR, "Room %s is missing pin", videoroom->room_name);
+			JANUS_LOG(LOG_ERR, "Room %s is missing pin\n", videoroom->room_name);
 			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 			goto prepare_response;
 		}
 		else {
-			JANUS_LOG(LOG_INFO, "Room %s pin set to %s", videoroom->room_name, videoroom->room_pin);
+			JANUS_LOG(LOG_INFO, "Room %s pin set to %s\n", videoroom->room_name, videoroom->room_pin);
 		}
 
 		videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
