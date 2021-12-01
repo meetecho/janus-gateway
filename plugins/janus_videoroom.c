@@ -2982,7 +2982,7 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 		}
 	}
 	if(check_join) {
-		char error_cause2[100];
+		//BB - unecessary, see BB below char error_cause2[100];
 		/* signed tokens bypass pin validation */
 		/* BB - Commented out buggy token validation
 		 * Token is always null as the janus.c (core) provides only the "message" portion of the request that
@@ -2999,10 +2999,23 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 				return 0;
 		}
 		*/
+		/* BB - This check must be done using the new janus_validate_json_str_obj function
 		JANUS_CHECK_SECRET((*videoroom)->room_pin, root, "pin", error_code, error_cause2,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		*/
+
+		const char* pin_str = janus_validate_json_str_obj(json_object_get(root, "pin"));
+		if(!pin_str) {
+			JANUS_LOG(LOG_ERR, "Missing or wrong pin in request\n");
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+		}
+		else {
+			if(janus_strcmp_const_time((*videoroom)->room_pin, pin_str)) {
+				JANUS_LOG(LOG_ERR, "Pin mismatch\n");
+				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			}
+		}
 		if(error_code != 0) {
-			g_strlcpy(error_cause, error_cause2, error_cause_size);
 			return error_code;
 		}
 	}

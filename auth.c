@@ -138,19 +138,19 @@ gchar* janus_validate_json_str_obj(json_t *obj) {
 	gchar* result = NULL;
 
 	if(!obj) {
-		JANUS_LOG(LOG_INFO, "Null parameter, skipping");
+		JANUS_LOG(LOG_INFO, "Null parameter, skipping\n");
 		goto fail;
 	}
 
 	str_obj = json_string_value(obj);
 
 	if(!str_obj) {
-		JANUS_LOG(LOG_INFO, "Null json string, skipping");
+		JANUS_LOG(LOG_INFO, "Null json string, skipping\n");
 		goto fail;
 	}
 
 	if(!auth_field_validation_enabled) {
-		JANUS_LOG(LOG_INFO, "Skipping validation of field '%s'", str_obj);
+		JANUS_LOG(LOG_INFO, "Validation disabled, skipping field '%s'\n", str_obj);
 		result = str_obj;
 		goto fail;
 	}
@@ -187,7 +187,7 @@ gchar* janus_validate_json_str_obj(json_t *obj) {
 	result = (janus_strcmp_const_time(parts[2], base64) ? NULL: str_obj);
 	g_free(base64);
 
-	JANUS_LOG(LOG_INFO, "Validation of field '%s' is %s", str_obj, result == NULL ? "UNSUCESSFUL" : "SUCESSFUL" );
+	JANUS_LOG(LOG_INFO, "Validation of field '%s' is %s\n", str_obj, result == NULL ? "UNSUCESSFUL" : "SUCESSFUL" );
 
 	// Stop the string at the first occurance of ':'
 	if(result) {
