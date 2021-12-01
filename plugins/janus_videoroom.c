@@ -9068,7 +9068,7 @@ static void *janus_videoroom_handler(void *data) {
 						if(sc_substream && substream_target >= 0 && substream_target <= 2) {
 							stream->sim_context.substream_target = substream_target;
 							JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
-								ps->vssrc[stream->sim_context.substream],
+								ps->vssrc[stream->sim_context.substream_target],
 								stream->sim_context.substream_target,
 								stream->sim_context.substream);
 							if(stream->sim_context.substream_target == stream->sim_context.substream) {
