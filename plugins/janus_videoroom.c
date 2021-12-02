@@ -6225,6 +6225,8 @@ static void *janus_videoroom_handler(void *data) {
 				// Verify the checksum only on a publisher join
 				if(!janus_check_param_checksum(root, "join")) {
 					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+					janus_mutex_unlock(&videoroom->mutex);
+					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
 			}
@@ -6271,6 +6273,8 @@ static void *janus_videoroom_handler(void *data) {
 				if(!display_text) {
 					JANUS_LOG(LOG_ERR, "Missing or invalid participant name (display parameter)\n");
 					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+					janus_mutex_unlock(&videoroom->mutex);
+					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
 				guint64 user_id = 0;
@@ -6290,6 +6294,8 @@ static void *janus_videoroom_handler(void *data) {
 						if(!user_id_str) {
 							JANUS_LOG(LOG_ERR, "Missing or invalid stream id\n");
 							error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+							janus_mutex_unlock(&videoroom->mutex);
+							janus_refcount_decrease(&videoroom->ref);
 							goto error;
 						}
 					}
@@ -6320,6 +6326,8 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_VERB, "  -- Participant ID: %"SCNu64"\n", user_id);
 				} else {
 					if(!user_id_str) {
+						janus_mutex_unlock(&videoroom->mutex);
+						janus_refcount_decrease(&videoroom->ref);
 						JANUS_LOG(LOG_ERR, "Missing or invalid stream id\n");
 						error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 						goto error;

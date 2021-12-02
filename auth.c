@@ -61,7 +61,7 @@ void janus_auth_init(gboolean enabled, const char *secret, gboolean checksum_ena
 		auth_checksum_enabled = checksum_enabled;
 		auth_field_validation_enabled = field_validation_enabled;
 		JANUS_LOG(LOG_INFO, "Message checksum validation %s\n", auth_checksum_enabled ? "ENABLED" : "DISABLED");
-		JANUS_LOG(LOG_INFO, "Field validation %s\n", field_validation_enabled ? "ENABLED" : "DISABLED");
+		JANUS_LOG(LOG_INFO, "Field validation %s\n", auth_field_validation_enabled ? "ENABLED" : "DISABLED");
 
 	} else {
 		JANUS_LOG(LOG_INFO, "Token based authentication disabled\n");
@@ -174,7 +174,6 @@ gchar* janus_validate_json_str_obj(json_t *obj) {
 	if( (strlen(parts[0]) + strlen(parts[1])) > MAX_FIELD_SIZE) {
 		JANUS_LOG(LOG_WARN, "Field too long in '%s'\n", str_obj);
 		goto fail;
-
 	}
 
 	gchar* workfield[MAX_FIELD_SIZE];
