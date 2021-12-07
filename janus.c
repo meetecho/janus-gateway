@@ -305,6 +305,9 @@ static uint candidates_timeout = DEFAULT_CANDIDATES_TIMEOUT;
 /* By default we list dependencies details, but some may prefer not to */
 static gboolean hide_dependencies = FALSE;
 
+/* By default we do not exit if a shared library cannot be loaded or is missing an expected symbol */
+static gboolean exit_on_dl_error = FALSE;
+
 /* WebRTC encryption is obviously enabled by default. In the rare cases
  * you want to disable it for debugging purposes, though, you can do
  * that either via command line (-w) or in the main configuration file */
@@ -4298,6 +4301,11 @@ gint main(int argc, char *argv[])
 		server_name = g_strdup(item->value);
 	}
 
+	/* Check if we should exit immediately on dlopen or dlsym errors */
+	item = janus_config_get(config, config_general, janus_config_type_item, "exit_on_dl_error");
+	if(item && item->value && janus_is_true(item->value))
+		exit_on_dl_error = TRUE;
+
 	/* Initialize logger */
 	if(janus_log_init(daemonize, use_stdout, logfile) < 0)
 		exit(1);
@@ -4357,12 +4365,16 @@ gint main(int argc, char *argv[])
 			g_snprintf(eventpath, 1024, "%s/%s", path, eventent->d_name);
 			void *event = dlopen(eventpath, RTLD_NOW | RTLD_GLOBAL);
 			if (!event) {
-				JANUS_LOG(LOG_ERR, "\tCouldn't load logger plugin '%s': %s\n", eventent->d_name, dlerror());
+				JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load logger plugin '%s': %s\n", eventent->d_name, dlerror());
+				if (exit_on_dl_error)
+					exit(1);
 			} else {
 				create_l *create = (create_l*) dlsym(event, "create");
 				const char *dlsym_error = dlerror();
 				if (dlsym_error) {
-					JANUS_LOG(LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
+					JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
+					if (exit_on_dl_error)
+						exit(1);
 					continue;
 				}
 				janus_logger *janus_logger = create();
@@ -5245,12 +5257,16 @@ gint main(int argc, char *argv[])
 				g_snprintf(eventpath, 1024, "%s/%s", path, eventent->d_name);
 				void *event = dlopen(eventpath, RTLD_NOW | RTLD_GLOBAL);
 				if (!event) {
-					JANUS_LOG(LOG_ERR, "\tCouldn't load event handler plugin '%s': %s\n", eventent->d_name, dlerror());
+					JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load event handler plugin '%s': %s\n", eventent->d_name, dlerror());
+					if (exit_on_dl_error)
+						exit(1);
 				} else {
 					create_e *create = (create_e*) dlsym(event, "create");
 					const char *dlsym_error = dlerror();
 					if (dlsym_error) {
-						JANUS_LOG(LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
+						JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
+						if (exit_on_dl_error)
+							exit(1);
 						continue;
 					}
 					janus_eventhandler *janus_eventhandler = create();
@@ -5373,12 +5389,16 @@ gint main(int argc, char *argv[])
 		g_snprintf(pluginpath, 1024, "%s/%s", path, pluginent->d_name);
 		void *plugin = dlopen(pluginpath, RTLD_NOW | RTLD_GLOBAL);
 		if (!plugin) {
-			JANUS_LOG(LOG_ERR, "\tCouldn't load plugin '%s': %s\n", pluginent->d_name, dlerror());
+			JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load plugin '%s': %s\n", pluginent->d_name, dlerror());
+			if (exit_on_dl_error)
+				exit(1);
 		} else {
 			create_p *create = (create_p*) dlsym(plugin, "create");
 			const char *dlsym_error = dlerror();
 			if (dlsym_error) {
-				JANUS_LOG(LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
+				JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
+				if (exit_on_dl_error)
+					exit(1);
 				continue;
 			}
 			janus_plugin *janus_plugin = create();
@@ -5492,12 +5512,16 @@ gint main(int argc, char *argv[])
 		g_snprintf(transportpath, 1024, "%s/%s", path, transportent->d_name);
 		void *transport = dlopen(transportpath, RTLD_NOW | RTLD_GLOBAL);
 		if (!transport) {
-			JANUS_LOG(LOG_ERR, "\tCouldn't load transport plugin '%s': %s\n", transportent->d_name, dlerror());
+			JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load transport plugin '%s': %s\n", transportent->d_name, dlerror());
+			if (exit_on_dl_error)
+				exit(1);
 		} else {
 			create_t *create = (create_t*) dlsym(transport, "create");
 			const char *dlsym_error = dlerror();
 			if (dlsym_error) {
-				JANUS_LOG(LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
+				JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
+				if (exit_on_dl_error)
+					exit(1);
 				continue;
 			}
 			janus_transport *janus_transport = create();

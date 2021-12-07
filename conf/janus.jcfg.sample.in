@@ -129,6 +129,8 @@ general: {
 									# libnice, libsrtp, which crypto library is in
 									# use and so on). Should you want that info not
 									# to be disclose, set 'hide_dependencies' to true.
+	#exit_on_dl_error = false		# If a Janus shared libary cannot be loaded or an expected
+									# symbol is not found, exit immediately.
 
 		# The following is ONLY useful when debugging RTP/RTCP packets,
 		# e.g., to look at unencrypted live traffic with a browser. By
