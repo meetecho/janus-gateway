@@ -324,6 +324,67 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 	g_list_free(list);
 }
 
+/* Helper to handle an incoming ccfb feedback: triggered by a call to janus_rtcp_fix_ssrc */
+static void janus_rtcp_incoming_ccfb(janus_rtcp_context *ctx, janus_rtcp_fb *ccfb, int total) {
+	if(ctx == NULL || ccfb == NULL || total < 20)
+		return;
+	if(!janus_rtcp_check_fci((janus_rtcp_header *)ccfb, total, 4))
+		return;
+	uint8_t *data = (uint8_t *)ccfb;
+	/* Pre-read the Report timestamp in the last 4 bytes: if this turns
+	 * out to be an invalid message, we'll simply discard it anyway */
+	uint32_t report_ts = 0;
+	memcpy(&report_ts, data+total-sizeof(uint32_t), sizeof(uint32_t));
+	report_ts = ntohl(report_ts);
+	JANUS_LOG(LOG_HUGE, "Report timestamp: %"SCNu32"\n", report_ts);
+	/* Get the first report block, skipping the header */
+	data += 8;
+	total -= 8;
+	janus_rtcp_ccfb_report_block *block = NULL;
+	janus_rtcp_ccfb_metric_block *mblock = NULL;
+	uint32_t ssrc = 0;
+	uint16_t begin_seq = 0, num_reports = 0, mod_num_reports = 0;
+	int i=0, j=0;
+	while(total >= 12) {
+		i++;
+		block = (janus_rtcp_ccfb_report_block *)data;
+		ssrc = ntohl(block->ssrc);
+		begin_seq = ntohs(block->begin_seq);
+		num_reports = ntohs(block->num_reports);
+		JANUS_LOG(LOG_HUGE, "Parsing block #%d: SSRC %"SCNu32"\n", i, ssrc);
+		JANUS_LOG(LOG_HUGE, "  -- begin_seq=%"SCNu16", num_reports=%"SCNu16"\n", begin_seq, num_reports);
+		/* Make sure there's room for the metrics */
+		data += 8;
+		total -= 8;
+		mod_num_reports = num_reports;
+		if(mod_num_reports % 2)
+			mod_num_reports++;
+		if((mod_num_reports*2) > total) {
+			JANUS_LOG(LOG_WARN, "No room for Metric blocks, invalid feedback\n");
+			return;
+		}
+		/* Iterate on metrics */
+		for(j=0; j<num_reports; j++) {
+			mblock = (janus_rtcp_ccfb_metric_block *)data;
+			JANUS_LOG(LOG_HUGE, "  -- -- Parsing metric #%d: R=%"SCNu16", ECN=%"SCNu16", ATO=%"SCNu16" (%"SCNu32")\n",
+				j+1, mblock->received, mblock->ecn, mblock->at_offset, report_ts + mblock->at_offset);
+			data += 2;
+			total -= 2;
+		}
+		/* Done */
+		if(mod_num_reports > num_reports) {
+			data += 2;
+			total -= 2;
+		}
+	}
+	/* Now we should only have a single word left */
+	if(total < 4) {
+		JANUS_LOG(LOG_WARN, "No room for Report timestamp, invalid feedback\n");
+		return;
+	}
+	/* TODO Actually do something with data (e.g., store it somewhere) */
+}
+
 /* Link quality estimate filter coefficient */
 #define LINK_QUALITY_FILTER_K 3.0
 
@@ -622,6 +683,12 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 						uint32_t *ssrc = (uint32_t *)rtcpfb->fci;
 						*ssrc = htonl(newssrcr);
 					}
+				} else if(fmt == 11) {	/* ccfb */
+					/* RTCP Congestion Control Feedback Report */
+					/* Note: this is a placeholder, since the existing context will
+					 * not be enough to save the result: we'll need an additional
+					 * object to refer to in order to save the information here */
+					janus_rtcp_incoming_ccfb(ctx, rtcpfb, total);
 				} else if(fmt == 15) {	/* transport-cc */
 					/* If an RTCP context was provided, parse this transport-cc feedback */
 					janus_rtcp_incoming_transport_cc(ctx, rtcpfb, total);

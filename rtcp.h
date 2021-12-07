@@ -294,6 +294,37 @@ typedef struct rtcp_transport_wide_cc_stats
 } rtcp_transport_wide_cc_stats;
 typedef rtcp_transport_wide_cc_stats janus_rtcp_transport_wide_cc_stats;
 
+/*! \brief RTCP-CCFB metric block (https://www.rfc-editor.org/rfc/rfc8888.html#section-3.1) */
+typedef struct janus_rtcp_ccfb_metric_block {
+#if __BYTE_ORDER == __BIG_ENDIAN
+	/*! \brief Received bit */
+	uint16_t received:1;
+	/*! \brief ECN mark */
+	uint16_t ecn:2;
+	/*! \brief Arrival time offset */
+	uint16_t at_offset:13;
+#elif __BYTE_ORDER == __LITTLE_ENDIAN
+	/*! \brief Arrival time offset */
+	uint16_t at_offset:13;
+	/*! \brief ECN mark */
+	uint16_t ecn:2;
+	/*! \brief Received bit */
+	uint16_t received:1;
+#endif
+} janus_rtcp_ccfb_metric_block;
+
+/*! \brief RTCP-CCFB report block (https://www.rfc-editor.org/rfc/rfc8888.html#section-3.1) */
+typedef struct janus_rtcp_ccfb_report_block {
+	/*! \brief Sender SSRC */
+	uint32_t ssrc;
+	/*! \brief begin_seq */
+	uint16_t begin_seq;
+	/*! \brief num_reports */
+	uint16_t num_reports;
+	/*! \brief Sequence of metric blocks, if any */
+	janus_rtcp_ccfb_metric_block mblocks[0];
+} janus_rtcp_ccfb_report_block;
+
 /*! \brief Method to retrieve the estimated round-trip time from an existing RTCP context
  * @param[in] ctx The RTCP context to query
  * @returns The estimated round-trip time */
