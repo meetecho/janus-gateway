@@ -1208,6 +1208,7 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
 void janus_videoroom_data_ready(janus_plugin_session *handle);
 void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int video);
+void janus_videoroom_congestion_update(janus_plugin_session *handle, gboolean congested);
 void janus_videoroom_hangup_media(janus_plugin_session *handle);
 void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_videoroom_query_session(janus_plugin_session *handle);
@@ -1235,6 +1236,7 @@ static janus_plugin janus_videoroom_plugin =
 		.incoming_data = janus_videoroom_incoming_data,
 		.data_ready = janus_videoroom_data_ready,
 		.slow_link = janus_videoroom_slow_link,
+		.congestion_update = janus_videoroom_congestion_update,
 		.hangup_media = janus_videoroom_hangup_media,
 		.destroy_session = janus_videoroom_destroy_session,
 		.query_session = janus_videoroom_query_session,
@@ -5717,6 +5719,24 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 			JANUS_LOG(LOG_WARN, "Got a slow downlink on a VideoRoom viewer? Weird, because it doesn't send media...\n");
 		}
 	}
+	janus_refcount_decrease(&session->ref);
+}
+
+void janus_videoroom_congestion_update(janus_plugin_session *handle, gboolean congested) {
+	/* The core is informing us that our peer got too many NACKs, are we pushing media too hard? */
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return;
+	janus_mutex_lock(&sessions_mutex);
+	janus_videoroom_session *session = janus_videoroom_lookup_session(handle);
+	if(!session || g_atomic_int_get(&session->destroyed) || !session->participant) {
+		janus_mutex_unlock(&sessions_mutex);
+		return;
+	}
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
+
+	/* TODO This is where we'll handle congestion updates from the core */
+
 	janus_refcount_decrease(&session->ref);
 }
 

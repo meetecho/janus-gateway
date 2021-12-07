@@ -171,7 +171,7 @@ janus_plugin *create(void) {
  * Janus instance or it will crash.
  *
  */
-#define JANUS_PLUGIN_API_VERSION	15
+#define JANUS_PLUGIN_API_VERSION	16
 
 /*! \brief Initialization of all plugin properties to NULL
  *
@@ -334,6 +334,17 @@ struct janus_plugin {
 	 * or downlink (peer to Janus)
 	 * @param[in] video Whether this is related to an audio or a video stream */
 	void (* const slow_link)(janus_plugin_session *handle, gboolean uplink, gboolean video);
+	/*! \brief Method to be notified by the core when there's updates on
+	 * the congestion state of the link: in particular, the callback is
+	 * invoked whenever the Janus core thinks congestion is starting or
+	 * stopping, and so will provide a true/false update. Notice that
+	 * this relies on experimental ECN/ccfb support, and unlike slow_link
+	 * doesn't say tell if it's related to audio or video, or if it's a
+	 * problem on uplink or downlink: in fact, in this context a congestion
+	 * event will be assumed to apply in both directions and all media.
+	 * @param[in] handle The plugin/gateway session used for this peer
+	 * @param[in] congested Whether the link is currently congested (or going to be) or not */
+	void (* const congestion_update)(janus_plugin_session *handle, gboolean congested);
 	/*! \brief Callback to be notified about DTLS alerts from a peer (i.e., the PeerConnection is not valid any more)
 	 * @param[in] handle The plugin/gateway session used for this peer */
 	void (* const hangup_media)(janus_plugin_session *handle);
