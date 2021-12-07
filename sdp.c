@@ -550,6 +550,9 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 							/* Enable NACKs for video */
 							stream->component->do_video_nacks = TRUE;
 						}
+					} else if(a->value && strstr(a->value, "ccfb")) {
+						/* Enable ccfb for congestion feedback */
+						stream->do_ccfb = TRUE;
 					}
 				} else if(!strcasecmp(a->name, "fmtp")) {
 					if(a->value && strstr(a->value, "apt=")) {

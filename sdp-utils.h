@@ -277,6 +277,10 @@ JANUS_SDP_OA_AUDIO_FMTP,
 JANUS_SDP_OA_VIDEO_FMTP,
 /*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb) */
 JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS,
+/*! \brief When generating an offer or answer automatically, do or do not add the 'ccfb' rtcpfb to negotiate congestion control feedback
+ * @note This is currently experimental, and will only work for processing incoming feedback; also notice
+ * that this cannot be enabled at the same time as TWCC: if both are set, ccfb will 'win' */
+JANUS_SDP_OA_CCFB,
 /*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (default=TRUE for now, depends on what follows) */
 JANUS_SDP_OA_DATA_LEGACY,
 /*! \brief When generating an offer (this is ignored for answers), negotiate this audio extension: needs two arguments, extmap value and extension ID; can be used multiple times) */

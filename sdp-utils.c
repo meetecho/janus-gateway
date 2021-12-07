@@ -1158,7 +1158,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	va_start(args, address);
 	/* Let's see what we should do with the media */
 	gboolean do_audio = TRUE, do_video = TRUE, do_data = TRUE,
-		audio_dtmf = FALSE, video_rtcpfb = TRUE, data_legacy = TRUE;
+		audio_dtmf = FALSE, video_rtcpfb = TRUE, ccfb = FALSE, data_legacy = TRUE;
 	const char *audio_codec = NULL, *video_codec = NULL,
 		*vp9_profile = NULL, *h264_profile = NULL,
 		*audio_fmtp = NULL, *video_fmtp = NULL;
@@ -1198,6 +1198,8 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			video_fmtp = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
 			video_rtcpfb = va_arg(args, gboolean);
+		} else if(property == JANUS_SDP_OA_CCFB) {
+			ccfb = va_arg(args, gboolean);
 		} else if(property == JANUS_SDP_OA_DATA_LEGACY) {
 			data_legacy = va_arg(args, gboolean);
 		} else if(property == JANUS_SDP_OA_AUDIO_EXTENSION || property == JANUS_SDP_OA_VIDEO_EXTENSION) {
@@ -1296,12 +1298,21 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			/* We do */
 			int dtmf_pt = 126;
 			m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(dtmf_pt));
-			janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
+			a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
 			m->attributes = g_list_append(m->attributes, a);
 		}
 		/* Check if there's a custom fmtp line to add for audio */
 		if(audio_fmtp) {
-			janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", audio_pt, audio_fmtp);
+			a = janus_sdp_attribute_create("fmtp", "%d %s", audio_pt, audio_fmtp);
+			m->attributes = g_list_append(m->attributes, a);
+		}
+		if(ccfb) {
+			/* Add rtcp-fb ccfb attribute */
+			a = janus_sdp_attribute_create("rtcp-fb", "* ack ccfb");
+			m->attributes = g_list_append(m->attributes, a);
+		} else {
+			/* It is safe to add transport-wide rtcp feedback message here, won't be used unless the header extension is negotiated */
+			a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", audio_pt);
 			m->attributes = g_list_append(m->attributes, a);
 		}
 		/* Check if we need to add audio extensions to the SDP */
@@ -1310,17 +1321,19 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			while(iter) {
 				char *extmap = g_hash_table_lookup(audio_extids, iter->data);
 				if(extmap != NULL) {
-					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-						"%d %s\r\n", GPOINTER_TO_INT(iter->data), extmap);
+					if(ccfb && !strcasecmp(extmap, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC)) {
+						/* We're using ccfb for feedback, drop TWCC */
+						iter = iter->next;
+						continue;
+					}
+					a = janus_sdp_attribute_create("extmap",
+						"%d %s", GPOINTER_TO_INT(iter->data), extmap);
 					janus_sdp_attribute_add_to_mline(m, a);
 				}
 				iter = iter->next;
 			}
 			g_list_free(ids);
 		}
-		/* It is safe to add transport-wide rtcp feedback message here, won't be used unless the header extension is negotiated */
-		a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", audio_pt);
-		m->attributes = g_list_append(m->attributes, a);
 		offer->m_lines = g_list_append(offer->m_lines, m);
 	}
 	if(do_video) {
@@ -1342,14 +1355,28 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", video_pt);
 			m->attributes = g_list_append(m->attributes, a);
 		}
+		if(ccfb) {
+			/* Add rtcp-fb ccfb attribute */
+			a = janus_sdp_attribute_create("rtcp-fb", "* ack ccfb");
+			m->attributes = g_list_append(m->attributes, a);
+		} else {
+			/* It is safe to add transport-wide rtcp feedback message here, won't be used unless the header extension is negotiated */
+			a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", video_pt);
+			m->attributes = g_list_append(m->attributes, a);
+		}
 		/* Check if we need to add audio extensions to the SDP */
 		if(video_extids != NULL) {
 			GList *ids = g_list_sort(g_hash_table_get_keys(video_extids), janus_sdp_id_compare), *iter = ids;
 			while(iter) {
 				char *extmap = g_hash_table_lookup(video_extids, iter->data);
 				if(extmap != NULL) {
-					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-						"%d %s\r\n", GPOINTER_TO_INT(iter->data), extmap);
+					if(ccfb && !strcasecmp(extmap, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC)) {
+						/* We're using ccfb for feedback, drop TWCC */
+						iter = iter->next;
+						continue;
+					}
+					a = janus_sdp_attribute_create("extmap",
+						"%d %s", GPOINTER_TO_INT(iter->data), extmap);
 					janus_sdp_attribute_add_to_mline(m, a);
 				}
 				iter = iter->next;
@@ -1412,7 +1439,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	va_start(args, offer);
 	/* Let's see what we should do with the media */
 	gboolean do_audio = TRUE, do_video = TRUE, do_data = TRUE,
-		audio_dtmf = FALSE, video_rtcpfb = TRUE;
+		audio_dtmf = FALSE, video_rtcpfb = TRUE, ccfb = FALSE;
 	const char *audio_codec = NULL, *video_codec = NULL,
 		*vp9_profile = NULL, *h264_profile = NULL,
 		*audio_fmtp = NULL, *video_fmtp = NULL;
@@ -1447,6 +1474,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 			video_fmtp = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
 			video_rtcpfb = va_arg(args, gboolean);
+		} else if(property == JANUS_SDP_OA_CCFB) {
+			ccfb = va_arg(args, gboolean);
 		} else if(property == JANUS_SDP_OA_ACCEPT_EXTMAP) {
 			const char *extension = va_arg(args, char *);
 			if(extension != NULL)
@@ -1680,6 +1709,15 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 							am->attributes = g_list_append(am->attributes, a);
 						}
 					}
+					if(ccfb) {
+						/* Add rtcp-fb ccfb attribute */
+						a = janus_sdp_attribute_create("rtcp-fb", "* ack ccfb");
+						am->attributes = g_list_append(am->attributes, a);
+					} else {
+						/* It is safe to add transport-wide rtcp feedback message here, won't be used unless the header extension is negotiated */
+						a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
+						am->attributes = g_list_append(am->attributes, a);
+					}
 					/* Check if there's a custom fmtp line to add for audio
 					 * FIXME We should actually check if it matches the offer */
 					if(audio_fmtp || custom_audio_fmtp) {
@@ -1706,9 +1744,15 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 						a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", pt);
 						am->attributes = g_list_append(am->attributes, a);
 					}
-					/* It is safe to add transport-wide rtcp feedback mesage here, won't be used unless the header extension is negotiated*/
-					a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
-					am->attributes = g_list_append(am->attributes, a);
+					if(ccfb) {
+						/* Add rtcp-fb ccfb attribute */
+						a = janus_sdp_attribute_create("rtcp-fb", "* ack ccfb");
+						am->attributes = g_list_append(am->attributes, a);
+					} else {
+						/* It is safe to add transport-wide rtcp feedback message here, won't be used unless the header extension is negotiated */
+						a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
+						am->attributes = g_list_append(am->attributes, a);
+					}
 				}
 				if(!strcasecmp(codec, "vp9") && vp9_profile) {
 					/* Add a profile-id fmtp attribute */
@@ -1737,6 +1781,11 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 							char *extension = (char *)temp->data;
 							if(strstr(a->value, extension)) {
 								/* Accept the extension */
+								if(ccfb && !strcasecmp(extension, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC)) {
+									/* We're using ccfb for feedback, drop TWCC */
+									temp = temp->next;
+									continue;
+								}
 								int id = atoi(a->value);
 								if(id < 0) {
 									JANUS_LOG(LOG_ERR, "Invalid extension ID (%d)\n", id);

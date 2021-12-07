@@ -1515,7 +1515,7 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 					janus_request_ice_handle_answer(handle, audio, video, data, jsep_sdp);
 					/* Check if the answer does contain the mid/abs-send-time/twcc extmaps */
-					gboolean do_mid = FALSE, do_twcc = FALSE, do_abs_send_time = FALSE;
+					gboolean do_mid = FALSE, do_twcc = FALSE, do_ccfb = FALSE, do_abs_send_time = FALSE;
 					GList *temp = parsed_sdp->m_lines;
 					while(temp) {
 						janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -1529,11 +1529,17 @@ int janus_process_incoming_request(janus_request *request) {
 									do_twcc = TRUE;
 								else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
 									do_abs_send_time = TRUE;
+							} else if(a->name && a->value && !strcasecmp(a->name, "rtcp-fb") && strstr(a->value, "ccfb")) {
+								do_ccfb = TRUE;
 							}
 							tempA = tempA->next;
 						}
 						temp = temp->next;
 					}
+					if(do_ccfb)
+						do_twcc = FALSE;
+					if(!do_ccfb && handle->stream)
+						handle->stream->do_ccfb = FALSE;
 					if(!do_mid && handle->stream)
 						handle->stream->mid_ext_id = 0;
 					if(!do_twcc && handle->stream) {
@@ -1555,9 +1561,11 @@ int janus_process_incoming_request(janus_request *request) {
 					/* Check if the abs-send-time ID extension is being negotiated */
 					handle->stream->abs_send_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
 					/* Check if transport wide CC is supported */
-					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
-					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
-					handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
+					if(!handle->stream->do_ccfb) {
+						int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
+						handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
+						handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
+					}
 				}
 			} else {
 				/* FIXME This is a renegotiation: we can currently only handle simple changes in media
@@ -1618,9 +1626,11 @@ int janus_process_incoming_request(janus_request *request) {
 					/* Check if the abs-send-time ID extension is being negotiated */
 					handle->stream->abs_send_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
 					/* Check if transport wide CC is supported */
-					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
-					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
-					handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
+					if(!handle->stream->do_ccfb) {
+						int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
+						handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
+						handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
+					}
 				}
 			}
 			char *tmp = handle->remote_sdp;
@@ -3118,6 +3128,7 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 	json_object_set_new(bwe, "twcc", stream->do_transport_wide_cc ? json_true() : json_false());
 	if(stream->transport_wide_cc_ext_id > 0)
 		json_object_set_new(bwe, "twcc-ext-id", json_integer(stream->transport_wide_cc_ext_id));
+	json_object_set_new(bwe, "ccfb", stream->do_ccfb ? json_true() : json_false());
 	json_object_set_new(s, "bwe", bwe);
 	json_object_set_new(s, "nack-queue-ms", json_integer(stream->nack_queue_ms));
 	json_t *components = json_array();
@@ -3746,6 +3757,10 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		if(ice_handle->stream && ice_handle->stream->transport_wide_cc_ext_id != transport_wide_cc_ext_id) {
 			ice_handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
 			ice_handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
+			if(ice_handle->stream->do_ccfb) {
+				ice_handle->stream->do_transport_wide_cc = FALSE;
+				ice_handle->stream->transport_wide_cc_ext_id = -1;
+			}
 		}
 		if(ice_handle->stream && ice_handle->stream->abs_send_time_ext_id != abs_send_time_ext_id)
 			ice_handle->stream->abs_send_time_ext_id = abs_send_time_ext_id;
@@ -3756,7 +3771,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	} else {
 		/* Check if the answer does contain the mid/rid/repaired-rid/abs-send-time/twcc extmaps */
 		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE,
-			do_twcc = FALSE, do_abs_send_time = FALSE;
+			do_twcc = FALSE, do_ccfb = FALSE, do_abs_send_time = FALSE;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -3774,11 +3789,15 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						do_twcc = TRUE;
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
 						do_abs_send_time = TRUE;
+				} else if(a->name && a->value && !strcasecmp(a->name, "rtcp-fb") && strstr(a->value, "ccfb")) {
+					do_ccfb = TRUE;
 				}
 				tempA = tempA->next;
 			}
 			temp = temp->next;
 		}
+		if(do_ccfb)
+			do_twcc = FALSE;
 		if(!do_mid && ice_handle->stream)
 			ice_handle->stream->mid_ext_id = 0;
 		if(!do_rid && ice_handle->stream) {
