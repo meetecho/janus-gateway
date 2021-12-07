@@ -151,6 +151,7 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 			}
 			if(m->port > 0) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing m-line #%d...\n", handle->handle_id, m->index);
+				gboolean receiving = (medium->recv == TRUE);
 				switch(m->direction) {
 					case JANUS_SDP_INACTIVE:
 					case JANUS_SDP_INVALID:
@@ -174,6 +175,8 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 						medium->recv = TRUE;
 						break;
 				}
+				if(receiving != medium->recv)
+					janus_ice_notify_media_stopped(handle);
 				if(m->ptypes != NULL) {
 					g_list_free(medium->payload_types);
 					medium->payload_types = g_list_copy(m->ptypes);
@@ -1301,6 +1304,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 #ifdef HAVE_SCTP
 	data = 0;
 #endif
+	gboolean media_stopped = FALSE;
 	temp = anon->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -1329,6 +1333,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				m->direction = JANUS_SDP_INACTIVE;
 				medium->ssrc = 0;
 			}
+			gboolean receiving = (medium->recv == TRUE);
 			switch(m->direction) {
 				case JANUS_SDP_INACTIVE:
 					medium->send = FALSE;
@@ -1349,6 +1354,8 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 					medium->recv = TRUE;
 					break;
 			}
+			if(receiving != medium->recv)
+				media_stopped = TRUE;
 			if(medium->do_nacks && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
 				/* Add RFC4588 stuff */
 				if(medium->rtx_payload_types && g_hash_table_size(medium->rtx_payload_types) > 0) {
@@ -1495,6 +1502,8 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		/* Next */
 		temp = temp->next;
 	}
+	if(media_stopped)
+		janus_ice_notify_media_stopped(handle);
 
 	char *sdp = janus_sdp_write(anon);
 

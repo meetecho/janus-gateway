@@ -74,6 +74,8 @@ room-<unique room ID>: {
 	pin = <optional password needed for joining the room>
 	require_pvtid = true|false (whether subscriptions are required to provide a valid private_id
 				 to associate with a publisher, default=false)
+	signed_tokens = true|false (whether access to the room requires signed tokens; default=false,
+				 only works if signed tokens are used in the core as well)
 	publishers = <max number of concurrent senders> (e.g., 6 for a video
 				 conference or 1 for a webinar, default=3)
 	bitrate = <max video bitrate for senders> (e.g., 128000)
@@ -1510,6 +1512,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"secret", JSON_STRING, 0},
 	{"pin", JSON_STRING, 0},
 	{"require_pvtid", JANUS_JSON_BOOL, 0},
+	{"signed_tokens", JANUS_JSON_BOOL, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"bitrate_cap", JANUS_JSON_BOOL, 0},
 	{"fir_freq", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1830,6 +1833,7 @@ typedef struct janus_videoroom {
 	gchar *room_pin;			/* Password needed to join this room, if any */
 	gboolean is_private;		/* Whether this room is 'private' (as in hidden) or not */
 	gboolean require_pvtid;		/* Whether subscriptions in this room require a private_id */
+	gboolean signed_tokens;		/* Whether signed tokens are required (assuming they're enabled in the core)  */
 	gboolean require_e2ee;		/* Whether end-to-end encrypted publishers are required */
 	int max_publishers;			/* Maximum number of concurrent publishers */
 	uint32_t bitrate;			/* Global bitrate limit */
@@ -3091,6 +3095,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
 			janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
 			janus_config_item *req_pvtid = janus_config_get(config, cat, janus_config_type_item, "require_pvtid");
+			janus_config_item *signed_tokens = janus_config_get(config, cat, janus_config_type_item, "signed_tokens");
 			janus_config_item *bitrate = janus_config_get(config, cat, janus_config_type_item, "bitrate");
 			janus_config_item *bitrate_cap = janus_config_get(config, cat, janus_config_type_item, "bitrate_cap");
 			janus_config_item *maxp = janus_config_get(config, cat, janus_config_type_item, "publishers");
@@ -3163,6 +3168,13 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			}
 			videoroom->is_private = priv && priv->value && janus_is_true(priv->value);
 			videoroom->require_pvtid = req_pvtid && req_pvtid->value && janus_is_true(req_pvtid->value);
+			if(signed_tokens && signed_tokens->value && janus_is_true(signed_tokens->value)) {
+				if(!gateway->auth_is_signed()) {
+					JANUS_LOG(LOG_WARN, "Can't enforce signed tokens for this room, signed-mode not in use in the core\n");
+				} else {
+					videoroom->signed_tokens = TRUE;
+				}
+			}
 			videoroom->require_e2ee = req_e2ee && req_e2ee->value && janus_is_true(req_e2ee->value);
 			videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
 			if(maxp != NULL && maxp->value != NULL)
@@ -3923,9 +3935,9 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 	}
 	if(check_join) {
 		char error_cause2[100];
-		/* signed tokens bypass pin validation */
-		json_t *token = json_object_get(root, "token");
-		if(token) {
+		/* Signed tokens are enforced, so they precede any pin validation */
+		if(gateway->auth_is_signed() && (*videoroom)->signed_tokens) {
+			json_t *token = json_object_get(root, "token");
 			char room_descriptor[100];
 			g_snprintf(room_descriptor, sizeof(room_descriptor), "room=%s", room_id_str);
 			if(!gateway->auth_signature_contains(&janus_videoroom_plugin, json_string_value(token), room_descriptor)) {
@@ -3990,6 +4002,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *desc = json_object_get(root, "description");
 		json_t *is_private = json_object_get(root, "is_private");
 		json_t *req_pvtid = json_object_get(root, "require_pvtid");
+		json_t *signed_tokens = json_object_get(root, "signed_tokens");
 		json_t *req_e2ee = json_object_get(root, "require_e2ee");
 		json_t *secret = json_object_get(root, "secret");
 		json_t *pin = json_object_get(root, "pin");
@@ -4152,6 +4165,13 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		videoroom->room_name = description;
 		videoroom->is_private = is_private ? json_is_true(is_private) : FALSE;
 		videoroom->require_pvtid = req_pvtid ? json_is_true(req_pvtid) : FALSE;
+		if(signed_tokens && json_is_true(signed_tokens)) {
+			if(!gateway->auth_is_signed()) {
+				JANUS_LOG(LOG_WARN, "Can't enforce signed tokens for this room, signed-mode not in use in the core\n");
+			} else {
+				videoroom->signed_tokens = TRUE;
+			}
+		}
 		videoroom->require_e2ee = req_e2ee ? json_is_true(req_e2ee) : FALSE;
 		if(secret)
 			videoroom->room_secret = g_strdup(json_string_value(secret));

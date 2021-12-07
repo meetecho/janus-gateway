@@ -70,6 +70,10 @@ gboolean janus_auth_is_stored_mode(void) {
 	return auth_enabled && tokens != NULL;
 }
 
+gboolean janus_auth_is_signed_mode(void) {
+	return auth_enabled && auth_secret != NULL;
+}
+
 void janus_auth_deinit(void) {
 	janus_mutex_lock(&mutex);
 	if(tokens != NULL)
@@ -124,6 +128,8 @@ gboolean janus_auth_check_signature_contains(const char *token, const char *real
 	if (!auth_enabled || auth_secret == NULL) {
 		return TRUE;
 	}
+	if(token == NULL)
+		return FALSE;
 	gchar **parts = g_strsplit(token, ":", 2);
 	gchar **data = NULL;
 	/* Token should have exactly one data and one hash part */

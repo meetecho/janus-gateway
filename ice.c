@@ -392,6 +392,7 @@ static janus_ice_queued_packet
 	janus_ice_start_gathering,
 	janus_ice_add_candidates,
 	janus_ice_dtls_handshake,
+	janus_ice_media_stopped,
 	janus_ice_hangup_peerconnection,
 	janus_ice_detach_handle,
 	janus_ice_data_ready;
@@ -553,6 +554,7 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 	if(pkt == NULL || pkt == &janus_ice_start_gathering ||
 			pkt == &janus_ice_add_candidates ||
 			pkt == &janus_ice_dtls_handshake ||
+			pkt == &janus_ice_media_stopped ||
 			pkt == &janus_ice_hangup_peerconnection ||
 			pkt == &janus_ice_detach_handle ||
 			pkt == &janus_ice_data_ready) {
@@ -3875,10 +3877,12 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 	uint mi=0;
 	for(mi=0; mi<g_hash_table_size(pc->media); mi++) {
 		medium = g_hash_table_lookup(pc->media, GUINT_TO_POINTER(mi));
-		if(!medium)
-			continue;
+		if(!medium || (medium->type != JANUS_MEDIA_AUDIO && medium->type != JANUS_MEDIA_VIDEO))
+			continue;	/* We don't process data channels here */
 		int vindex = 0;
 		for(vindex=0; vindex < 3; vindex++) {
+			if(vindex > 0 && (medium->type != JANUS_MEDIA_VIDEO || medium->rtcp_ctx[1] == NULL))
+				continue;	/* We won't need simulcast checks */
 			gint64 last = medium->in_stats.info[vindex].updated;
 			if(last && now > last && now-last >= 2*G_USEC_PER_SEC && medium->in_stats.info[vindex].bytes_lastsec_temp > 0) {
 				medium->in_stats.info[vindex].bytes_lastsec = 0;
@@ -3889,17 +3893,17 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 				medium->out_stats.info[vindex].bytes_lastsec = 0;
 				medium->out_stats.info[vindex].bytes_lastsec_temp = 0;
 			}
-		}
-		/* Now let's see if we need to notify the user about no incoming audio or video */
-		if(no_media_timer > 0 && pc->dtls && pc->dtls->dtls_connected > 0 && (now - pc->dtls->dtls_connected >= G_USEC_PER_SEC)) {
-			gint64 last = medium->in_stats.info[0].updated;
-			if(!medium->in_stats.info[0].notified_lastsec && last &&
-					!medium->in_stats.info[0].bytes_lastsec && !medium->in_stats.info[0].bytes_lastsec_temp &&
-						now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
-				/* We missed more than no_second_timer seconds of video! */
-				medium->in_stats.info[0].notified_lastsec = TRUE;
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than a second...\n", handle->handle_id);
-				janus_ice_notify_media(handle, medium->mid, medium->type == JANUS_MEDIA_VIDEO, medium->rtcp_ctx[1] != NULL, vindex, FALSE);
+			/* Now let's see if we need to notify the user about no incoming audio or video */
+			if(no_media_timer > 0 && pc->dtls && pc->dtls->dtls_connected > 0 && (now - pc->dtls->dtls_connected >= G_USEC_PER_SEC)) {
+				gint64 last = medium->in_stats.info[vindex].updated;
+				if(!medium->in_stats.info[vindex].notified_lastsec && last &&
+						!medium->in_stats.info[vindex].bytes_lastsec && !medium->in_stats.info[0].bytes_lastsec_temp &&
+							now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+					/* We missed more than no_second_timer seconds of video! */
+					medium->in_stats.info[vindex].notified_lastsec = TRUE;
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio or video for more than a second...\n", handle->handle_id);
+					janus_ice_notify_media(handle, medium->mid, medium->type == JANUS_MEDIA_VIDEO, medium->rtcp_ctx[1] != NULL, vindex, FALSE);
+				}
 			}
 		}
 		/* We also send live stats to event handlers every tot-seconds (configurable) */
@@ -4026,6 +4030,25 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		g_source_set_callback(pc->dtlsrt_source, janus_dtls_retry, pc->dtls, NULL);
 		guint id = g_source_attach(pc->dtlsrt_source, handle->mainctx);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating retransmission timer with ID %u\n", handle->handle_id, id);
+		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_media_stopped) {
+		/* Some media has been disabled on the way in, so use the callback to notify the peer */
+		uint mi=0;
+		for(mi=0; mi<g_hash_table_size(pc->media); mi++) {
+			medium = g_hash_table_lookup(pc->media, GUINT_TO_POINTER(mi));
+			if(!medium || (medium->type != JANUS_MEDIA_AUDIO && medium->type != JANUS_MEDIA_VIDEO))
+				continue;	/* We don't process data channels here */
+			int vindex = 0;
+			for(vindex=0; vindex < 3; vindex++) {
+				if(vindex > 0 && (medium->type != JANUS_MEDIA_VIDEO || medium->rtcp_ctx[1] == NULL))
+					continue;	/* We won't need simulcast checks */
+				if(!medium->in_stats.info[vindex].notified_lastsec && medium->in_stats.info[vindex].bytes && !medium->recv) {
+					/* This medium won't be received for a while, notify */
+					medium->in_stats.info[vindex].notified_lastsec = TRUE;
+					janus_ice_notify_media(handle, medium->mid, medium->type == JANUS_MEDIA_VIDEO, medium->rtcp_ctx[1] != NULL, vindex, FALSE);
+				}
+			}
+		}
 		return G_SOURCE_CONTINUE;
 	} else if(pkt == &janus_ice_hangup_peerconnection) {
 		/* The media session is over, send an alert on all streams and components */
@@ -4789,6 +4812,18 @@ void janus_ice_notify_data_ready(janus_ice_handle *handle) {
 #endif
 	g_main_context_wakeup(handle->mainctx);
 #endif
+}
+
+void janus_ice_notify_media_stopped(janus_ice_handle *handle) {
+	if(!handle || handle->queued_packets == NULL)
+		return;
+	/* Queue this event */
+#if GLIB_CHECK_VERSION(2, 46, 0)
+	g_async_queue_push_front(handle->queued_packets, &janus_ice_media_stopped);
+#else
+	g_async_queue_push(handle->queued_packets, &janus_ice_media_stopped);
+#endif
+	g_main_context_wakeup(handle->mainctx);
 }
 
 void janus_ice_dtls_handshake_done(janus_ice_handle *handle) {
