@@ -1311,7 +1311,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 				char *extmap = g_hash_table_lookup(audio_extids, iter->data);
 				if(extmap != NULL) {
 					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-						"%d %s\r\n", GPOINTER_TO_INT(iter->data), extmap);
+						"%d %s", GPOINTER_TO_INT(iter->data), extmap);
 					janus_sdp_attribute_add_to_mline(m, a);
 				}
 				iter = iter->next;
@@ -1342,6 +1342,9 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", video_pt);
 			m->attributes = g_list_append(m->attributes, a);
 		}
+		/* It is safe to add transport-wide rtcp feedback message here, won't be used unless the header extension is negotiated */
+		a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", video_pt);
+		m->attributes = g_list_append(m->attributes, a);
 		/* Check if we need to add audio extensions to the SDP */
 		if(video_extids != NULL) {
 			GList *ids = g_list_sort(g_hash_table_get_keys(video_extids), janus_sdp_id_compare), *iter = ids;
@@ -1349,7 +1352,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 				char *extmap = g_hash_table_lookup(video_extids, iter->data);
 				if(extmap != NULL) {
 					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-						"%d %s\r\n", GPOINTER_TO_INT(iter->data), extmap);
+						"%d %s", GPOINTER_TO_INT(iter->data), extmap);
 					janus_sdp_attribute_add_to_mline(m, a);
 				}
 				iter = iter->next;

@@ -30,6 +30,8 @@ void janus_auth_init(gboolean enabled, const char *secret);
 gboolean janus_auth_is_enabled(void);
 /*! \brief Method to check whether the mechanism is in stored-token mode or not */
 gboolean janus_auth_is_stored_mode(void);
+/*! \brief Method to check whether the mechanism is in signed-token mode or not */
+gboolean janus_auth_is_signed_mode(void);
 /*! \brief Method to de-initialize the mechanism */
 void janus_auth_deinit(void);
 
