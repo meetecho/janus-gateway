@@ -426,6 +426,13 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							break;
 						}
 						m->type = janus_sdp_parse_mtype(type);
+						if(m->type == JANUS_SDP_OTHER) {
+							janus_sdp_mline_destroy(m);
+							if(error)
+								g_snprintf(error, errlen, "Invalid m= line: %s", line);
+							success = FALSE;
+							break;
+						}
 						m->type_str = g_strdup(type);
 						m->proto = g_strdup(proto);
 						m->direction = JANUS_SDP_SENDRECV;
@@ -1020,7 +1027,10 @@ char *janus_sdp_write(janus_sdp *imported) {
 		size_t mlinelen = strlen(mline);
 		if(cur_sdplen + mlinelen + 1 > sdplen) {
 			/* Increase the SDP buffer first */
-			sdplen = cur_sdplen + mlinelen + 1;
+			if(sdplen < (mlinelen+1))
+				sdplen = cur_sdplen + mlinelen + 1;
+			else
+				sdplen = sdplen*2;
 			sdp = g_realloc(sdp, sdplen);
 		}
 		janus_strlcat(sdp, mline, sdplen);
