@@ -4104,7 +4104,7 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 	}
 }
 
-gboolean janus_plugin_auth_is_signed() {
+gboolean janus_plugin_auth_is_signed(void) {
 	return janus_auth_is_signed_mode();
 }
 
