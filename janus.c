@@ -195,6 +195,9 @@ static struct janus_json_parameter teststun_parameters[] = {
 	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"localport", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter ecn_parameters[] = {
+	{"ecn", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
 
 /* Admin/Monitor helpers */
 json_t *janus_admin_stream_summary(janus_ice_stream *stream);
@@ -2865,6 +2868,38 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_ecn")) {
+			/* Force a specific ECN mark to be sent in outgoing packets, e.g., to simulate congestion */
+			JANUS_VALIDATE_JSON_OBJECT(root, ecn_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			if(handle->agent == NULL) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN,
+					"PeerConnection not active");
+				goto jsondone;
+			}
+			/* Read the ECN mark and pass it to the agent */
+			json_t *ecn = json_object_get(root, "ecn");
+			int mark = json_integer_value(ecn);
+			if(mark < -1) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (ecn should be between 0 and 3)");
+				goto jsondone;
+			}
+			janus_ice_set_ecn_mark(handle, mark);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "session_id", json_integer(session_id));
+			json_object_set_new(reply, "handle_id", json_integer(handle_id));
+			json_object_set_new(reply, "ecn", json_integer(mark));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;

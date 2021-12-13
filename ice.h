@@ -743,6 +743,11 @@ void janus_ice_restart(janus_ice_handle *handle);
 /*! \brief Method to resend all the existing candidates via trickle (e.g., after an ICE restart)
  * @param[in] handle The Janus ICE handle this method refers to */
 void janus_ice_resend_trickles(janus_ice_handle *handle);
+/*! \brief Helper method to override the ECN mark to set in outgoing packets
+ * @param[in] handle The Janus ICE handle this method refers to
+ * @param[in] ecn The CE mark to set in the TOS
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_ice_set_ecn_mark(janus_ice_handle *handle, int ecn);
 ///@}
 
 

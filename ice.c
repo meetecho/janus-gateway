@@ -3896,6 +3896,14 @@ void janus_ice_resend_trickles(janus_ice_handle *handle) {
 	janus_ice_notify_trickle(handle, NULL);
 }
 
+int janus_ice_set_ecn_mark(janus_ice_handle *handle, int ecn) {
+	if(handle == NULL || handle->agent == NULL || ecn < 0 || ecn > 3)
+		return -1;
+	/* A DSCP value may be configured too: shift it, add the ECN and pass it to libnice as a TOS */
+	nice_agent_set_stream_tos(handle->agent, handle->stream_id, (dscp_ef << 2) + ecn);
+	return 0;
+}
+
 static gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstpointer item2) {
 	return ((rtcp_transport_wide_cc_stats*)item1)->transport_seq_num - ((rtcp_transport_wide_cc_stats*)item2)->transport_seq_num;
 }
