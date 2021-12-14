@@ -275,22 +275,22 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 size_t janus_strlcat(char *dest, const char *src, size_t dest_size) {
 	size_t ret = g_strlcat(dest, src, dest_size);
 	if(ret >= dest_size)
-		JANUS_LOG(LOG_ERR, "janus_strlcat: truncation occurred, %lu >= %lu\n", ret, dest_size);
+		JANUS_LOG(LOG_ERR, "Truncation occurred, %lu >= %lu\n", ret, dest_size);
 	return ret;
 }
 
 int janus_strlcat_fast(char *dest, const char *src, size_t dest_size, size_t *offset) {
 	if(dest == NULL || src == NULL || offset == NULL) {
-		JANUS_LOG(LOG_ERR, "janus_strlcat_fast: invalid arguments\n");
+		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
 		return -1;
 	}
 	if(*offset >= dest_size) {
-		JANUS_LOG(LOG_ERR, "janus_strlcat_fast: overflow\n");
+		JANUS_LOG(LOG_ERR, "Offset is beyond the buffer size\n");
 		return -2;
 	}
 	char *p = memccpy(dest + *offset, src, 0, dest_size - *offset);
 	if(p == NULL) {
-		JANUS_LOG(LOG_ERR, "janus_strlcat: truncation occurred, %lu >= %lu\n",
+		JANUS_LOG(LOG_ERR, "Truncation occurred, %lu >= %lu\n",
 			*offset + strlen(src), dest_size);
 		*offset = dest_size;
 		*(dest + dest_size -1) = '\0';
