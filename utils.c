@@ -279,6 +279,27 @@ size_t janus_strlcat(char *dest, const char *src, size_t dest_size) {
 	return ret;
 }
 
+int janus_strlcat_fast(char *dest, const char *src, size_t dest_size, size_t *offset) {
+	if(dest == NULL || src == NULL || offset == NULL) {
+		JANUS_LOG(LOG_ERR, "janus_strlcat_fast: invalid arguments\n");
+		return -1;
+	}
+	if(*offset >= dest_size) {
+		JANUS_LOG(LOG_ERR, "janus_strlcat_fast: overflow\n");
+		return -2;
+	}
+	char *p = memccpy(dest + *offset, src, 0, dest_size - *offset);
+	if(p == NULL) {
+		JANUS_LOG(LOG_ERR, "janus_strlcat: truncation occurred, %lu >= %lu\n",
+			*offset + strlen(src), dest_size);
+		*offset = dest_size;
+		*(dest + dest_size -1) = '\0';
+		return -3;
+	}
+	*offset = (p - dest - 1);
+	return 0;
+}
+
 int janus_mkdir(const char *dir, mode_t mode) {
 	char tmp[256];
 	char *p = NULL;
