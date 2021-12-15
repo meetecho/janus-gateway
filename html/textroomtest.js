@@ -351,7 +351,7 @@ function sendPrivateMsg(username) {
 				text: JSON.stringify(message),
 				error: function(reason) { bootbox.alert(reason); },
 				success: function() {
-					$('#chatroom').append('<p style="color: purple;">[' + getDateString() + '] <b>[whisper to ' + display + ']</b> ' + result);
+					$('#chatroom').append('<p style="color: purple;">[' + getDateString() + '] <b>[whisper to ' + display + ']</b> ' + escapeXmlTags(result));
 					$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 				}
 			});
