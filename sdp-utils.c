@@ -919,26 +919,26 @@ char *janus_sdp_write(janus_sdp *imported) {
 	janus_refcount_increase(&imported->ref);
 	char *sdp = g_malloc(1024), mline[JANUS_BUFSIZE], buffer[512];
 	*sdp = '\0';
-	size_t sdplen = 1024, mlen = sizeof(mline);
+	size_t sdplen = 1024, mlen = sizeof(mline), offset = 0, moffset = 0;
 	/* v= */
 	g_snprintf(buffer, sizeof(buffer), "v=%d\r\n", imported->version);
-	janus_strlcat(sdp, buffer, sdplen);
+	janus_strlcat_fast(sdp, buffer, sdplen, &offset);
 	/* o= */
 	g_snprintf(buffer, sizeof(buffer), "o=%s %"SCNu64" %"SCNu64" IN %s %s\r\n",
 		imported->o_name, imported->o_sessid, imported->o_version,
 		imported->o_ipv4 ? "IP4" : "IP6", imported->o_addr);
-	janus_strlcat(sdp, buffer, sdplen);
+	janus_strlcat_fast(sdp, buffer, sdplen, &offset);
 	/* s= */
 	g_snprintf(buffer, sizeof(buffer), "s=%s\r\n", imported->s_name);
-	janus_strlcat(sdp, buffer, sdplen);
+	janus_strlcat_fast(sdp, buffer, sdplen, &offset);
 	/* t= */
 	g_snprintf(buffer, sizeof(buffer), "t=%"SCNu64" %"SCNu64"\r\n", imported->t_start, imported->t_stop);
-	janus_strlcat(sdp, buffer, sdplen);
+	janus_strlcat_fast(sdp, buffer, sdplen, &offset);
 	/* c= */
 	if(imported->c_addr != NULL) {
 		g_snprintf(buffer, sizeof(buffer), "c=IN %s %s\r\n",
 			imported->c_ipv4 ? "IP4" : "IP6", imported->c_addr);
-		janus_strlcat(sdp, buffer, sdplen);
+		janus_strlcat_fast(sdp, buffer, sdplen, &offset);
 	}
 	/* a= */
 	GList *temp = imported->attributes;
@@ -949,16 +949,17 @@ char *janus_sdp_write(janus_sdp *imported) {
 		} else {
 			g_snprintf(buffer, sizeof(buffer), "a=%s\r\n", a->name);
 		}
-		janus_strlcat(sdp, buffer, sdplen);
+		janus_strlcat_fast(sdp, buffer, sdplen, &offset);
 		temp = temp->next;
 	}
 	/* m= */
 	temp = imported->m_lines;
 	while(temp) {
 		mline[0] = '\0';
+		moffset = 0;
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		g_snprintf(buffer, sizeof(buffer), "m=%s %d %s", m->type_str, m->port, m->proto);
-		janus_strlcat(mline, buffer, mlen);
+		janus_strlcat_fast(mline, buffer, mlen, &moffset);
 		if(m->port == 0 && m->type != JANUS_SDP_APPLICATION) {
 			/* Remove all payload types/formats if we're rejecting the media */
 			g_list_free_full(m->fmts, (GDestroyNotify)g_free);
@@ -966,14 +967,14 @@ char *janus_sdp_write(janus_sdp *imported) {
 			g_list_free(m->ptypes);
 			m->ptypes = NULL;
 			m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(0));
-			janus_strlcat(mline, " 0", mlen);
+			janus_strlcat_fast(mline, " 0", mlen, &moffset);
 		} else {
 			if(m->proto != NULL && strstr(m->proto, "RTP") != NULL) {
 				/* RTP profile, use payload types */
 				GList *ptypes = m->ptypes;
 				while(ptypes) {
 					g_snprintf(buffer, sizeof(buffer), " %d", GPOINTER_TO_INT(ptypes->data));
-					janus_strlcat(mline, buffer, mlen);
+					janus_strlcat_fast(mline, buffer, mlen, &moffset);
 					ptypes = ptypes->next;
 				}
 			} else {
@@ -981,30 +982,30 @@ char *janus_sdp_write(janus_sdp *imported) {
 				GList *fmts = m->fmts;
 				while(fmts) {
 					g_snprintf(buffer, sizeof(buffer), " %s", (char *)(fmts->data));
-					janus_strlcat(mline, buffer, mlen);
+					janus_strlcat_fast(mline, buffer, mlen, &moffset);
 					fmts = fmts->next;
 				}
 			}
 		}
-		janus_strlcat(mline, "\r\n", mlen);
+		janus_strlcat_fast(mline, "\r\n", mlen, &moffset);
 		/* c= */
 		if(m->c_addr != NULL) {
 			g_snprintf(buffer, sizeof(buffer), "c=IN %s %s\r\n",
 				m->c_ipv4 ? "IP4" : "IP6", m->c_addr);
-			janus_strlcat(mline, buffer, mlen);
+			janus_strlcat_fast(mline, buffer, mlen, &moffset);
 		}
 		if(m->port > 0) {
 			/* b= */
 			if(m->b_name != NULL) {
 				g_snprintf(buffer, sizeof(buffer), "b=%s:%"SCNu32"\r\n", m->b_name, m->b_value);
-				janus_strlcat(mline, buffer, mlen);
+				janus_strlcat_fast(mline, buffer, mlen, &moffset);
 			}
 		}
 		/* a= (note that we don't format the direction if it's JANUS_SDP_DEFAULT) */
 		const char *direction = m->direction != JANUS_SDP_DEFAULT ? janus_sdp_mdirection_str(m->direction) : NULL;
 		if(direction != NULL) {
 			g_snprintf(buffer, sizeof(buffer), "a=%s\r\n", direction);
-			janus_strlcat(mline, buffer, mlen);
+			janus_strlcat_fast(mline, buffer, mlen, &moffset);
 		}
 		GList *temp2 = m->attributes;
 		while(temp2) {
@@ -1019,7 +1020,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 			} else {
 				g_snprintf(buffer, sizeof(buffer), "a=%s\r\n", a->name);
 			}
-			janus_strlcat(mline, buffer, mlen);
+			janus_strlcat_fast(mline, buffer, mlen, &moffset);
 			temp2 = temp2->next;
 		}
 		/* Append the generated m-line to the SDP */
@@ -1033,7 +1034,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 				sdplen = sdplen*2;
 			sdp = g_realloc(sdp, sdplen);
 		}
-		janus_strlcat(sdp, mline, sdplen);
+		janus_strlcat_fast(sdp, mline, sdplen, &offset);
 		/* Move on */
 		temp = temp->next;
 	}
