@@ -4524,6 +4524,11 @@ static void *janus_sip_handler(void *data) {
 						}
 					}
 					if(record_video) {
+						/* If the video-orientation extension has been negotiated, mark it in the recording */
+						if (session->media.video_orientation_extension_id > 0) {
+							janus_recorder_add_extmap(session->vrc, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+						}
+
 						memset(filename, 0, 255);
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
