@@ -4006,6 +4006,64 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 		/* Free mem */
 		g_queue_free(packets);
 	}
+
+	/* FIXME We're highjacking this callback to process ccfb feedback as
+	 * well, if that's the one one that has been negotiated instead */
+	if(stream && (stream->audio_send || stream->video_send) && stream->do_ccfb && stream->ccfb_feedback) {
+		uint16_t packets = 0, congested = 0;
+		float congestion = 0.0f, max_congestion = 0.0f;
+		GSList *temp = NULL;
+		janus_rtcp_ccfb_stats *stats = NULL;
+		janus_rtcp_ccfb_metric_block *block = NULL;
+		/* Iterate on all SSRCs */
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, stream->ccfb_feedback);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			stats = (janus_rtcp_ccfb_stats *)value;
+			packets = 0;
+			congested = 0;
+			congestion = 0;
+			temp = stats->feedback;
+			while(temp) {
+				block = (janus_rtcp_ccfb_metric_block *)temp->data;
+				if(block) {
+					packets++;
+					if(block->ecn == 3 || !block->received) {
+						/* FIXME We're treating a non-received packet as a congestion feedback */
+						congested++;
+					}
+				}
+				temp = temp->next;
+			}
+			/* FIXME Estimate what the percentage of congested packet was */
+			if(packets > 0 && congested > 0) {
+				congestion = (congested * 1.0)/packets;
+				if(congestion > max_congestion)
+					max_congestion = congestion;
+			}
+		}
+		/* FIXME If the maximun congestion value we detected is higher
+		 * than a specific treshold, then consider the link congested */
+		janus_plugin *plugin = (janus_plugin *)handle->app;
+		if(max_congestion >= 0.20 && !stream->notified_congestion) {
+			/* It looks like the link is congested, tell the plugin */
+			stream->notified_congestion = TRUE;
+			if(plugin && plugin->congestion_update &&
+					janus_plugin_session_is_alive(handle->app_handle) &&
+					!g_atomic_int_get(&handle->destroyed))
+				plugin->congestion_update(handle->app_handle, TRUE);
+		} else if(max_congestion < 0.20 && stream->notified_congestion) {
+			/* Last time we notified the plugin about ongoing congestion,
+			 * so let's notify it seems to be gone now */
+			stream->notified_congestion = FALSE;
+			if(plugin && plugin->congestion_update &&
+					janus_plugin_session_is_alive(handle->app_handle) &&
+					!g_atomic_int_get(&handle->destroyed))
+				plugin->congestion_update(handle->app_handle, FALSE);
+		}
+	}
+
 	return G_SOURCE_CONTINUE;
 }
 

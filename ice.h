@@ -504,6 +504,8 @@ struct janus_ice_stream {
 	gboolean do_ccfb;
 	/*! \brief Received ccfb feedback, indexed by SSRC */
 	GHashTable *ccfb_feedback;
+	/*! \brief Whether we recently notified plugins about congestion */
+	gboolean notified_congestion;
 	/*! \brief DTLS role of the server for this stream */
 	janus_dtls_role dtls_role;
 	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
