@@ -281,6 +281,12 @@ typedef struct rtcp_context
 
 	/* TODO Incoming transport-wide CC feedback*/
 
+	/* Pointer to the stored ccfb feedback: this isn't owned by this
+	 * structure, but is actually a pointer to the actual hashtable
+	 * stored in the handle itself. The keys to the hashtable are
+	 * the known outgoing SSRCs, and the values are lists/queues
+	 * or recently received feedback on the related SSRC */
+	GHashTable *ccfb_feedback;
 } rtcp_context;
 typedef rtcp_context janus_rtcp_context;
 
@@ -324,6 +330,19 @@ typedef struct janus_rtcp_ccfb_report_block {
 	/*! \brief Sequence of metric blocks, if any */
 	janus_rtcp_ccfb_metric_block mblocks[0];
 } janus_rtcp_ccfb_report_block;
+
+/*! \brief Helper struct to keep track of incoming ccfb feedback per SSRC */
+typedef struct janus_rtcp_ccfb_stats {
+	/*! \brief Sender SSRC */
+	uint32_t ssrc;
+	/*! \brief Last sequence number we got feedback for */
+	uint16_t last_seq;
+	/*! \brief List of feedback received/stored so far */
+	GSList *feedback;
+} janus_rtcp_ccfb_stats;
+/*! \brief Helper method to free a janus_rtcp_ccfb_stats instance
+ * @param[in] feedback The janus_rtcp_ccfb_stats instance to free */
+void janus_rtcp_ccfb_stats_free(janus_rtcp_ccfb_stats *stats);
 
 /*! \brief Method to retrieve the estimated round-trip time from an existing RTCP context
  * @param[in] ctx The RTCP context to query

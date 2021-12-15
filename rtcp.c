@@ -326,7 +326,7 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 
 /* Helper to handle an incoming ccfb feedback: triggered by a call to janus_rtcp_fix_ssrc */
 static void janus_rtcp_incoming_ccfb(janus_rtcp_context *ctx, janus_rtcp_fb *ccfb, int total) {
-	if(ctx == NULL || ccfb == NULL || total < 20)
+	if(ctx == NULL || ctx->ccfb_feedback == NULL || ccfb == NULL || total < 20)
 		return;
 	if(!janus_rtcp_check_fci((janus_rtcp_header *)ccfb, total, 4))
 		return;
@@ -341,15 +341,20 @@ static void janus_rtcp_incoming_ccfb(janus_rtcp_context *ctx, janus_rtcp_fb *ccf
 	data += 8;
 	total -= 8;
 	janus_rtcp_ccfb_report_block *block = NULL;
-	janus_rtcp_ccfb_metric_block *mblock = NULL;
+	janus_rtcp_ccfb_metric_block *mblock = NULL, *fb = NULL;
+	janus_rtcp_ccfb_stats *stats = NULL;
+	GSList *feedback = NULL;
 	uint32_t ssrc = 0;
-	uint16_t begin_seq = 0, num_reports = 0, mod_num_reports = 0;
+	uint16_t begin_seq = 0, cur_seq = 0, num_reports = 0, mod_num_reports = 0;
 	int i=0, j=0;
 	while(total >= 12) {
 		i++;
 		block = (janus_rtcp_ccfb_report_block *)data;
 		ssrc = ntohl(block->ssrc);
-		begin_seq = ntohs(block->begin_seq);
+		/* Check if we have a struct to store feedback for this SSRC */
+		stats = (janus_rtcp_ccfb_stats *)g_hash_table_lookup(ctx->ccfb_feedback, GUINT_TO_POINTER(ssrc));
+		feedback = NULL;
+		begin_seq = cur_seq = ntohs(block->begin_seq);
 		num_reports = ntohs(block->num_reports);
 		JANUS_LOG(LOG_HUGE, "Parsing block #%d: SSRC %"SCNu32"\n", i, ssrc);
 		JANUS_LOG(LOG_HUGE, "  -- begin_seq=%"SCNu16", num_reports=%"SCNu16"\n", begin_seq, num_reports);
@@ -368,8 +373,23 @@ static void janus_rtcp_incoming_ccfb(janus_rtcp_context *ctx, janus_rtcp_fb *ccf
 			mblock = (janus_rtcp_ccfb_metric_block *)data;
 			JANUS_LOG(LOG_HUGE, "  -- -- Parsing metric #%d: R=%"SCNu16", ECN=%"SCNu16", ATO=%"SCNu16" (%"SCNu32")\n",
 				j+1, mblock->received, mblock->ecn, mblock->at_offset, report_ts + mblock->at_offset);
+			/* If we have a stats storage for this SSRC, save this report */
+			if(stats != NULL) {
+				/* TODO We should check if this is a duplicate of feedback we
+				 * already received, which we can do looking at the seq number */
+				fb = g_malloc(sizeof(janus_rtcp_ccfb_metric_block));
+				memcpy(fb, mblock, sizeof(janus_rtcp_ccfb_metric_block));
+				feedback = g_slist_prepend(feedback, fb);
+				cur_seq++;
+			}
 			data += 2;
 			total -= 2;
+		}
+		/* Keep track of the stats and the last seq number we received feedback for */
+		if(stats != NULL) {
+			feedback = g_slist_reverse(feedback);
+			stats->feedback = g_slist_concat(stats->feedback, feedback);
+			stats->last_seq = cur_seq - 1;
 		}
 		/* Done */
 		if(mod_num_reports > num_reports) {
@@ -382,7 +402,13 @@ static void janus_rtcp_incoming_ccfb(janus_rtcp_context *ctx, janus_rtcp_fb *ccf
 		JANUS_LOG(LOG_WARN, "No room for Report timestamp, invalid feedback\n");
 		return;
 	}
-	/* TODO Actually do something with data (e.g., store it somewhere) */
+}
+
+void janus_rtcp_ccfb_stats_free(janus_rtcp_ccfb_stats *stats) {
+	if(stats == NULL)
+		return;
+	g_slist_free_full(stats->feedback, (GDestroyNotify)g_free);
+	g_free(stats);
 }
 
 /* Link quality estimate filter coefficient */

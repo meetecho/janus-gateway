@@ -1684,6 +1684,8 @@ static void janus_ice_stream_free(const janus_refcount *stream_ref) {
 	stream->rtx_nacked[2] = NULL;
 	g_slist_free_full(stream->transport_wide_received_seq_nums, (GDestroyNotify)g_free);
 	stream->transport_wide_received_seq_nums = NULL;
+	g_hash_table_destroy(stream->ccfb_feedback);
+	stream->ccfb_feedback = NULL;
 	stream->audio_first_ntp_ts = 0;
 	stream->audio_first_rtp_ts = 0;
 	stream->video_first_ntp_ts[0] = 0;
@@ -3740,12 +3742,19 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	stream->video_payload_type = -1;
 	stream->video_rtx_payload_type = -1;
 	stream->nack_queue_ms = min_nack_queue;
+	/* FIXME We should only create the ccfb container if ccfb is negotiated */
+	stream->ccfb_feedback = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_rtcp_ccfb_stats_free);
 	/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 	stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
 	if(audio) {
 		stream->audio_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 		stream->audio_rtcp_ctx = g_malloc0(sizeof(janus_rtcp_context));
 		stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
+		/* FIXME We should only create the ccfb container if ccfb is negotiated */
+		stream->audio_rtcp_ctx->ccfb_feedback = stream->ccfb_feedback;
+		janus_rtcp_ccfb_stats *stats = g_malloc0(sizeof(janus_rtcp_ccfb_stats));
+		stats->ssrc = stream->audio_ssrc;
+		g_hash_table_insert(stream->ccfb_feedback, GUINT_TO_POINTER(stream->audio_ssrc), stats);
 	}
 	if(video) {
 		stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
@@ -3755,6 +3764,11 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		}
 		stream->video_rtcp_ctx[0] = g_malloc0(sizeof(janus_rtcp_context));
 		stream->video_rtcp_ctx[0]->tb = 90000;
+		/* FIXME We should only create the ccfb container if ccfb is negotiated */
+		stream->video_rtcp_ctx[0]->ccfb_feedback = stream->ccfb_feedback;
+		janus_rtcp_ccfb_stats *stats = g_malloc0(sizeof(janus_rtcp_ccfb_stats));
+		stats->ssrc = stream->video_ssrc;
+		g_hash_table_insert(stream->ccfb_feedback, GUINT_TO_POINTER(stream->video_ssrc), stats);
 	}
 	janus_mutex_init(&stream->mutex);
 	if(!have_turnrest_credentials) {

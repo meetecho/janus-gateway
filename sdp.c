@@ -179,6 +179,11 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 						stream->audio_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
 						stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
 					}
+					/* FIXME We should only create the ccfb container if ccfb is negotiated */
+					stream->audio_rtcp_ctx->ccfb_feedback = stream->ccfb_feedback;
+					janus_rtcp_ccfb_stats *stats = g_malloc0(sizeof(janus_rtcp_ccfb_stats));
+					stats->ssrc = stream->audio_ssrc;
+					g_hash_table_insert(stream->ccfb_feedback, GUINT_TO_POINTER(stream->audio_ssrc), stats);
 				}
 				gboolean receiving = (stream->audio_recv == TRUE);
 				switch(m->direction) {
@@ -232,6 +237,11 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 						stream->video_rtcp_ctx[0] = g_malloc0(sizeof(rtcp_context));
 						stream->video_rtcp_ctx[0]->tb = 90000;	/* May change later */
 					}
+					/* FIXME We should only create the ccfb container if ccfb is negotiated */
+					stream->video_rtcp_ctx[0]->ccfb_feedback = stream->ccfb_feedback;
+					janus_rtcp_ccfb_stats *stats = g_malloc0(sizeof(janus_rtcp_ccfb_stats));
+					stats->ssrc = stream->video_ssrc;
+					g_hash_table_insert(stream->ccfb_feedback, GUINT_TO_POINTER(stream->video_ssrc), stats);
 				}
 				gboolean receiving = (stream->video_recv == TRUE);
 				switch(m->direction) {
@@ -652,10 +662,12 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 			if((stream->video_ssrc_peer[1] || stream->rid[1] != NULL) && stream->video_rtcp_ctx[1] == NULL) {
 				stream->video_rtcp_ctx[1] = g_malloc0(sizeof(rtcp_context));
 				stream->video_rtcp_ctx[1]->tb = 90000;
+				stream->video_rtcp_ctx[1]->ccfb_feedback = stream->ccfb_feedback;
 			}
 			if((stream->video_ssrc_peer[2] || stream->rid[rids_hml ? 2 : 0] != NULL) && stream->video_rtcp_ctx[2] == NULL) {
 				stream->video_rtcp_ctx[2] = g_malloc0(sizeof(rtcp_context));
 				stream->video_rtcp_ctx[2]->tb = 90000;
+				stream->video_rtcp_ctx[2]->ccfb_feedback = stream->ccfb_feedback;
 			}
 		}
 		temp = temp->next;
