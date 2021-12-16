@@ -4493,9 +4493,7 @@ static void *janus_sip_handler(void *data) {
 
                         /* If the video-orientation extension has been negotiated, mark it in the recording */
                         if (session->media.video_orientation_extension_id > 0) {
-                            if (!janus_recorder_add_extmap(session->vrc_peer, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {
-                                JANUS_LOG(LOG_WARN, "Failed to add video orientation extension id to peer extmap!\n");
-                            }
+                            janus_recorder_add_extmap(session->vrc_peer, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
                         }
 						/* TODO We should send a FIR/PLI to this peer... */
 					}
@@ -4557,9 +4555,7 @@ static void *janus_sip_handler(void *data) {
 
                         /* If the video-orientation extension has been negotiated, mark it in the recording */
                         if (session->media.video_orientation_extension_id > 0) {
-                            if (!janus_recorder_add_extmap(session->vrc, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {
-                                JANUS_LOG(LOG_WARN, "Failed to add video orientation extension id to user extmap!\n");
-                            }
+                            janus_recorder_add_extmap(session->vrc, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
                         }
 
 						/* Send a PLI */
