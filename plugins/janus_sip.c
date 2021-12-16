@@ -4490,6 +4490,13 @@ static void *janus_sip_handler(void *data) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this peer!\n");
 							}
 						}
+
+                        /* If the video-orientation extension has been negotiated, mark it in the recording */
+                        if (session->media.video_orientation_extension_id > 0) {
+                            if (!janus_recorder_add_extmap(session->vrc_peer, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {
+                                JANUS_LOG(LOG_WARN, "Failed to add video orientation extension id to peer extmap!\n");
+                            }
+                        }
 						/* TODO We should send a FIR/PLI to this peer... */
 					}
 				}
@@ -4524,13 +4531,6 @@ static void *janus_sip_handler(void *data) {
 						}
 					}
 					if(record_video) {
-						/* If the video-orientation extension has been negotiated, mark it in the recording */
-                        JANUS_LOG(LOG_INFO, "Checking video orientation extension id! %d\n", session->media.video_orientation_extension_id);
-                        if (session->media.video_orientation_extension_id > 0) {
-							janus_recorder_add_extmap(session->vrc, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
-							janus_recorder_add_extmap(session->vrc_peer, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
-						}
-
 						memset(filename, 0, 255);
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
@@ -4554,6 +4554,14 @@ static void *janus_sip_handler(void *data) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this user!\n");
 							}
 						}
+
+                        /* If the video-orientation extension has been negotiated, mark it in the recording */
+                        if (session->media.video_orientation_extension_id > 0) {
+                            if (!janus_recorder_add_extmap(session->vrc, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {
+                                JANUS_LOG(LOG_WARN, "Failed to add video orientation extension id to user extmap!\n");
+                            }
+                        }
+
 						/* Send a PLI */
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 						gateway->send_pli(session->handle);
