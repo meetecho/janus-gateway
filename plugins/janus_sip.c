@@ -4141,8 +4141,8 @@ static void *janus_sip_handler(void *data) {
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 			nua_respond(session->stack->s_nh_i, response_code, sip_status_phrase(response_code),
-					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
-					TAG_END());
+				    TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
+				    TAG_END());
 			janus_mutex_lock(&session->mutex);
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
