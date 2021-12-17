@@ -2,6 +2,7 @@
 usage "janus-pp-rec [OPTIONS] source.mjr [destination.[opus|ogg|mka|wav|webm|mkv|h264|srt]]"
 option "file-extensions" F "Only print the supported target file extensions per codec" flag off
 option "json" j "Only print JSON header" flag off
+option "ext" e "Only print extensions" flag off
 option "header" H "Only parse .mjr header" flag off
 option "parse" p "Only parse and re-order packets" flag off
 option "metadata" m "Save this metadata string in the target file" string typestr="metadata" optional

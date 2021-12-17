@@ -54,6 +54,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr
   -F, --file-extensions         Only print the supported target file extensions
                                   per codec  (default=off)
   -j, --json                    Only print JSON header  (default=off)
+  -e, --ext                     Only print extensions (default=off)
   -H, --header                  Only parse .mjr header  (default=off)
   -p, --parse                   Only parse and re-order packets  (default=off)
   -m, --metadata=metadata       Save this metadata string in the target file
@@ -255,12 +256,14 @@ int main(int argc, char *argv[])
 	}
 
 	/* If we're asked to print the JSON header as it is, we must not print anything else */
-	gboolean jsonheader_only = FALSE, header_only = FALSE, parse_only = FALSE;
+	gboolean jsonheader_only = FALSE, header_only = FALSE, ext_only = FALSE, parse_only = FALSE;
 	if(args_info.json_given)
 		jsonheader_only = TRUE;
 	if(args_info.header_given && !jsonheader_only)
 		header_only = TRUE;
-	if(args_info.parse_given && !jsonheader_only && !header_only)
+	if(args_info.ext_given)
+		ext_only = TRUE;
+	if(args_info.parse_given && !jsonheader_only && !header_only && !ext_only)
 		parse_only = TRUE;
 
 	/* We support both command line arguments and, for backwards compatibility, env variables in some cases */
@@ -371,7 +374,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if(!jsonheader_only) {
+	if(!jsonheader_only && !ext_only) {
 		JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
 		JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
 		JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
@@ -427,7 +430,7 @@ int main(int argc, char *argv[])
 	fseek(file, 0L, SEEK_END);
 	long fsize = ftell(file);
 	fseek(file, 0L, SEEK_SET);
-	if(!jsonheader_only)
+	if(!jsonheader_only && !ext_only)
 		JANUS_LOG(LOG_INFO, "File is %zu bytes\n", fsize);
 
 	/* Handle SIGINT */
@@ -435,7 +438,7 @@ int main(int argc, char *argv[])
 	signal(SIGINT, janus_pp_handle_signal);
 
 	/* Pre-parse */
-	if(!jsonheader_only)
+	if(!jsonheader_only && !ext_only)
 		JANUS_LOG(LOG_INFO, "Pre-parsing file to generate ordered index...\n");
 	gboolean has_timestamps = FALSE;
 	gboolean parsed_header = FALSE;
@@ -479,7 +482,7 @@ int main(int argc, char *argv[])
 				/* This is the main header */
 				parsed_header = TRUE;
 				JANUS_LOG(LOG_WARN, "Old .mjr header format\n");
-				if(jsonheader_only) {	/* No JSON header to print */
+				if(jsonheader_only || ext_only) {	/* No JSON header to print */
 					cmdline_parser_free(&args_info);
 					exit(1);
 				}
@@ -522,7 +525,7 @@ int main(int argc, char *argv[])
 				continue;
 			} else if(!data && len < 12) {
 				/* Not RTP, skip */
-				if(!jsonheader_only)
+				if(!jsonheader_only && !ext_only)
 					JANUS_LOG(LOG_VERB, "Skipping packet (not RTP?)\n");
 				offset += len;
 				continue;
@@ -544,7 +547,7 @@ int main(int argc, char *argv[])
 				bytes = fread(prebuffer, sizeof(char), len, file);
 				parsed_header = TRUE;
 				prebuffer[len] = '\0';
-				if(jsonheader_only) {
+				if(jsonheader_only || ext_only) {
 					/* Print the header as it is and exit */
 					JANUS_PRINT("%s\n", prebuffer);
 					cmdline_parser_free(&args_info);
@@ -779,7 +782,7 @@ int main(int argc, char *argv[])
 		/* Skip data for now */
 		offset += len;
 	}
-	if(!working || jsonheader_only) {
+	if(!working || jsonheader_only || ext_only) {
 		cmdline_parser_free(&args_info);
 		exit(0);
 	}
