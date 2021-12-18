@@ -257,12 +257,16 @@ int main(int argc, char *argv[])
 
 	/* If we're asked to print the JSON header as it is, we must not print anything else */
 	gboolean jsonheader_only = FALSE, header_only = FALSE, ext_only = FALSE, parse_only = FALSE;
+	janus_pp_extension_report *report = NULL;
+
 	if(args_info.json_given)
 		jsonheader_only = TRUE;
 	if(args_info.header_given && !jsonheader_only)
 		header_only = TRUE;
-	if(args_info.ext_given)
+	if(args_info.ext_given) {
 		ext_only = TRUE;
+		report = create_ext_report();
+	}
 	if(args_info.parse_given && !jsonheader_only && !header_only && !ext_only)
 		parse_only = TRUE;
 
@@ -368,7 +372,7 @@ int main(int argc, char *argv[])
 		}
 		setting = NULL;
 	}
-	if(source == NULL || (destination == NULL && !jsonheader_only && !header_only && !parse_only)) {
+	if(source == NULL || (destination == NULL && !jsonheader_only && !header_only && !ext_only && !parse_only)) {
 		cmdline_parser_print_help();
 		cmdline_parser_free(&args_info);
 		exit(1);
@@ -547,7 +551,7 @@ int main(int argc, char *argv[])
 				bytes = fread(prebuffer, sizeof(char), len, file);
 				parsed_header = TRUE;
 				prebuffer[len] = '\0';
-				if(jsonheader_only || ext_only) {
+				if(jsonheader_only) {
 					/* Print the header as it is and exit */
 					JANUS_PRINT("%s\n", prebuffer);
 					cmdline_parser_free(&args_info);
@@ -737,7 +741,8 @@ int main(int argc, char *argv[])
 								}
 							} else {
 								video_orient_extmap_id = extid;
-								JANUS_LOG(LOG_INFO, "Video orientation extension ID: %d\n", video_orient_extmap_id);
+								if(!ext_only)
+									JANUS_LOG(LOG_INFO, "Video orientation extension ID: %d\n", video_orient_extmap_id);
 							}
 						}
 					}
@@ -760,15 +765,18 @@ int main(int argc, char *argv[])
 					exit(1);
 				}
 				w_time = json_integer_value(written);
-				/* Summary */
-				JANUS_LOG(LOG_INFO, "This is %s recording:\n", video ? "a video" : (data ? "a text data" : "an audio"));
-				JANUS_LOG(LOG_INFO, "  -- Codec:   %s\n", c);
-				if(f != NULL)
-					JANUS_LOG(LOG_INFO, "  -- -- fmtp: %s\n", f);
-				JANUS_LOG(LOG_INFO, "  -- Created: %"SCNi64"\n", c_time);
-				JANUS_LOG(LOG_INFO, "  -- Written: %"SCNi64"\n", w_time);
-				if(e2ee)
-					JANUS_LOG(LOG_INFO, "  -- Recording is end-to-end encrypted\n");
+				if (!ext_only) {
+					/* Summary */
+					JANUS_LOG(LOG_INFO, "This is %s recording:\n",
+							  video ? "a video" : (data ? "a text data" : "an audio"));
+					JANUS_LOG(LOG_INFO, "  -- Codec:   %s\n", c);
+					if (f != NULL)
+						JANUS_LOG(LOG_INFO, "  -- -- fmtp: %s\n", f);
+					JANUS_LOG(LOG_INFO, "  -- Created: %"SCNi64"\n", c_time);
+					JANUS_LOG(LOG_INFO, "  -- Written: %"SCNi64"\n", w_time);
+					if (e2ee)
+						JANUS_LOG(LOG_INFO, "  -- Recording is end-to-end encrypted\n");
+				}
 				/* Save the original string as a metadata to save in the media container, if possible */
 				if(metadata == NULL)
 					metadata = g_strdup(prebuffer);
@@ -782,7 +790,7 @@ int main(int argc, char *argv[])
 		/* Skip data for now */
 		offset += len;
 	}
-	if(!working || jsonheader_only || ext_only) {
+	if(!working || jsonheader_only) {
 		cmdline_parser_free(&args_info);
 		exit(0);
 	}
@@ -814,6 +822,7 @@ int main(int argc, char *argv[])
 	int audiolevel = 0, rotation = 0, last_rotation = -1, rotated = -1;
 	uint16_t rtp_header_len, rtp_read_n;
 	/* Start loop */
+
 	while(working && offset < fsize) {
 		/* Read frame header */
 		skip = 0;
@@ -964,7 +973,7 @@ int main(int argc, char *argv[])
 		}
 		if(ssrc == 0) {
 			ssrc = ntohl(rtp->ssrc);
-			if(ssrc > 0)
+			if(ssrc > 0 && !ext_only)
 				JANUS_LOG(LOG_INFO, "SSRC detected: %"SCNu32"\n", ssrc);
 		}
 		if(ssrc != ntohl(rtp->ssrc)) {
@@ -1155,12 +1164,14 @@ int main(int argc, char *argv[])
 		offset += len;
 		count++;
 	}
+
 	if(!working) {
 		cmdline_parser_free(&args_info);
 		exit(0);
 	}
 
-	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" RTP packets\n", count);
+	if(!ext_only)
+		JANUS_LOG(LOG_INFO, "Counted %"SCNu32" RTP packets\n", count);
 	janus_pp_frame_packet *tmp = list;
 	count = 0;
 	int rate = video ? 90000 : 48000;
@@ -1174,44 +1185,51 @@ int main(int argc, char *argv[])
 			JANUS_LOG(LOG_VERB, "[%10lu][%4d] time=%"SCNu64"s\n", tmp->offset, tmp->len, tmp->ts);
 		tmp = tmp->next;
 	}
-	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" frame packets\n", count);
-	if(rotated != -1) {
-		if(rotated == 0 && last_rotation != 0) {
-			JANUS_LOG(LOG_INFO, "The video is rotated\n");
-		} else if(rotated > 0) {
-			JANUS_LOG(LOG_INFO, "The video changed orientation %d times\n", rotated);
+	if(!ext_only) {
+		JANUS_LOG(LOG_INFO, "Counted %"SCNu32" frame packets\n", count);
+		if (rotated != -1) {
+			if (rotated == 0 && last_rotation != 0) {
+				JANUS_LOG(LOG_INFO, "The video is rotated\n");
+			} else if (rotated > 0) {
+				JANUS_LOG(LOG_INFO, "The video changed orientation %d times\n", rotated);
+			}
 		}
 	}
 
 	if(video) {
 		/* Look for maximum width and height, if possible, and for the average framerate */
 		if(vp8 || vp9) {
-			if(janus_pp_webm_preprocess(file, list, vp8) < 0) {
+			if(janus_pp_webm_preprocess(file, list, vp8, report) < 0) {
 				JANUS_LOG(LOG_ERR, "Error pre-processing %s RTP frames...\n", vp8 ? "VP8" : "VP9");
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
 		} else if(h264) {
-			if(janus_pp_h264_preprocess(file, list) < 0) {
+			if(janus_pp_h264_preprocess(file, list, report) < 0) {
 				JANUS_LOG(LOG_ERR, "Error pre-processing H.264 RTP frames...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
 		} else if(av1) {
-			if(janus_pp_av1_preprocess(file, list) < 0) {
+			if(janus_pp_av1_preprocess(file, list, report) < 0) {
 				JANUS_LOG(LOG_ERR, "Error pre-processing AV1 RTP frames...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
 		} else if(h265) {
-			if(janus_pp_h265_preprocess(file, list) < 0) {
+			if(janus_pp_h265_preprocess(file, list, report) < 0) {
 				JANUS_LOG(LOG_ERR, "Error pre-processing H.265 RTP frames...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
 		}
 	}
-
+	if (ext_only) {
+		print_ext_report(report);
+		free_ext_report(report);
+		cmdline_parser_free(&args_info);
+		exit(0);
+	}
 	if(parse_only) {
 		/* We only needed to parse and re-order the packets, we're done here */
 		JANUS_LOG(LOG_INFO, "Parsing and reordering completed, bye!\n");

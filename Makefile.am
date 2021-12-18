@@ -599,6 +599,8 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-binary.h \
 	postprocessing/pp-webm.c \
 	postprocessing/pp-webm.h \
+	postprocessing/pp-ext-report.h \
+	postprocessing/pp-ext-report.c \
 	postprocessing/janus-pp-rec.c \
 	log.c \
 	utils.c \

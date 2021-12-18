@@ -14,12 +14,13 @@
 
 #include <stdio.h>
 
+#include "pp-ext-report.h"
 #include "pp-rtp.h"
 
 /* H.264 stuff */
 const char **janus_pp_h264_get_extensions(void);
 int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart, const char *extension);
-int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list);
+int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list, janus_pp_extension_report *report);
 int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working);
 void janus_pp_h264_close(void);
 
