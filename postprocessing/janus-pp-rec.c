@@ -770,11 +770,11 @@ int main(int argc, char *argv[])
 					JANUS_LOG(LOG_INFO, "This is %s recording:\n",
 							  video ? "a video" : (data ? "a text data" : "an audio"));
 					JANUS_LOG(LOG_INFO, "  -- Codec:   %s\n", c);
-					if (f != NULL)
+					if(f != NULL)
 						JANUS_LOG(LOG_INFO, "  -- -- fmtp: %s\n", f);
 					JANUS_LOG(LOG_INFO, "  -- Created: %"SCNi64"\n", c_time);
 					JANUS_LOG(LOG_INFO, "  -- Written: %"SCNi64"\n", w_time);
-					if (e2ee)
+					if(e2ee)
 						JANUS_LOG(LOG_INFO, "  -- Recording is end-to-end encrypted\n");
 				}
 				/* Save the original string as a metadata to save in the media container, if possible */

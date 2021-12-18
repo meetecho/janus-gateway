@@ -16,7 +16,7 @@ void print_ext_report(janus_pp_extension_report* report) {
 
 	json_t *rotations = json_array();
 
-	while (rot) {
+	while(rot) {
 		json_t *elem = json_object();
 
 		json_object_set(elem, "ts", json_real(rot->timestamp));
@@ -40,7 +40,7 @@ void free_ext_report(janus_pp_extension_report* report) {
 	}
 
 	janus_pp_extension_report_rotation *current = report->rotations;
-	while (current) {
+	while(current) {
 		janus_pp_extension_report_rotation* next = current->next;
 		g_free(current);
 		current = next;
