@@ -310,7 +310,7 @@ int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list, janus_pp_ex
 	}
 	int mean_ts = min_ts_diff;	/* FIXME: was an actual mean, (max_ts_diff+min_ts_diff)/2; */
 	fps = (90000/(mean_ts > 0 ? mean_ts : 30));
-	if (!report)
+	if(!report)
 		JANUS_LOG(LOG_INFO, "  -- %"SCNu16"x%"SCNu16" (fps [%d,%d] ~ %d)\n", max_width, max_height, min_ts_diff, max_ts_diff, fps);
 
 	if(max_width == 0 && max_height == 0) {

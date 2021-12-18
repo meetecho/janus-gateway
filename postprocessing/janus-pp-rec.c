@@ -765,7 +765,7 @@ int main(int argc, char *argv[])
 					exit(1);
 				}
 				w_time = json_integer_value(written);
-				if (!ext_only) {
+				if(!ext_only) {
 					/* Summary */
 					JANUS_LOG(LOG_INFO, "This is %s recording:\n",
 							  video ? "a video" : (data ? "a text data" : "an audio"));
@@ -1224,7 +1224,7 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	if (ext_only) {
+	if(ext_only) {
 		print_ext_report(report);
 		free_ext_report(report);
 		cmdline_parser_free(&args_info);
