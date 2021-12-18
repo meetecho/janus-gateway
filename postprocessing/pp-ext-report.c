@@ -19,13 +19,13 @@ void print_ext_report(janus_pp_extension_report* report) {
 	while(rot) {
 		json_t *elem = json_object();
 
-		json_object_set(elem, "ts", json_real(rot->timestamp));
-		json_object_set(elem, "rotation", json_integer(rot->rotation));
+		json_object_set_new(elem, "ts", json_real(rot->timestamp));
+		json_object_set_new(elem, "rotation", json_integer(rot->rotation));
 
-		json_array_append(rotations, elem);
+		json_array_append_new(rotations, elem);
 		rot = rot->next;
 	}
-	json_object_set(obj, "rotations", rotations);
+	json_object_set_new(obj, "rotations", rotations);
 
 	char *str = json_dumps(obj, JSON_INDENT(0) | JSON_PRESERVE_ORDER);
 	JANUS_PRINT("%s\n", str);
