@@ -964,7 +964,7 @@ int main(int argc, char *argv[])
 			if(audio_level_extmap_id > 0) {
 				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, len, audio_level_extmap_id, &audiolevel);
 				if(report) {
-					report->audio_level = audiolevel;
+					report->audioLevel = audiolevel;
 				}
 			}
 			if(video_orient_extmap_id > 0) {
