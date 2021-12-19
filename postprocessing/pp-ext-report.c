@@ -28,7 +28,7 @@ void print_ext_report(janus_pp_extension_report* report) {
 	json_object_set_new(obj, "rotations", rotations);
 
 	/* add audio level to json */
-	json_object_set_new(elem, "audio_level", json_integer(report->audioLevel));
+	json_object_set_new(obj, "audio_level", json_integer(report->audioLevel));
 
 	char *str = json_dumps(obj, JSON_INDENT(0) | JSON_PRESERVE_ORDER);
 	JANUS_PRINT("%s\n", str);
