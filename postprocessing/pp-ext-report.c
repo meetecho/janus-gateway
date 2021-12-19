@@ -14,8 +14,8 @@ void print_ext_report(janus_pp_extension_report* report) {
 
 	janus_pp_extension_report_rotation *rot = report->rotations;
 
+	/* add rotations to json */
 	json_t *rotations = json_array();
-
 	while(rot) {
 		json_t *elem = json_object();
 
@@ -26,6 +26,9 @@ void print_ext_report(janus_pp_extension_report* report) {
 		rot = rot->next;
 	}
 	json_object_set_new(obj, "rotations", rotations);
+
+	/* add audio level to json */
+	json_object_set_new(elem, "audio_level", json_integer(report->audioLevel));
 
 	char *str = json_dumps(obj, JSON_INDENT(0) | JSON_PRESERVE_ORDER);
 	JANUS_PRINT("%s\n", str);
@@ -52,6 +55,7 @@ void free_ext_report(janus_pp_extension_report* report) {
 janus_pp_extension_report* create_ext_report(void) {
 	janus_pp_extension_report* report = g_malloc(sizeof(janus_pp_extension_report));
 	report->rotations = NULL;
+	report->audioLevel = -1;
 	return report;
 }
 

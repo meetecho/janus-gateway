@@ -9,6 +9,7 @@ typedef struct janus_pp_extension_report_rotation {
 
 typedef struct janus_pp_extension_report {
 	struct janus_pp_extension_report_rotation* rotations;
+	int audioLevel;
 } janus_pp_extension_report;
 
 void print_ext_report(janus_pp_extension_report* report);

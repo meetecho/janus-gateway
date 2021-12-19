@@ -961,8 +961,12 @@ int main(int argc, char *argv[])
 			} else {
 				rtp_header_len += rtp_read_n;
 			}
-			if(audio_level_extmap_id > 0)
+			if(audio_level_extmap_id > 0) {
 				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, len, audio_level_extmap_id, &audiolevel);
+				if(report) {
+					report->audio_level = audiolevel;
+				}
+			}
 			if(video_orient_extmap_id > 0) {
 				janus_pp_rtp_header_extension_parse_video_orientation(prebuffer, len, video_orient_extmap_id, &rotation);
 				if(rotation != -1 && rotation != last_rotation) {
