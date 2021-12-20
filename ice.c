@@ -4036,6 +4036,8 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 				}
 				temp = temp->next;
 			}
+			g_slist_free_full(stats->feedback, (GDestroyNotify)g_free);
+			stats->feedback = NULL;
 			/* FIXME Estimate what the percentage of congested packet was */
 			if(packets > 0 && congested > 0) {
 				congestion = (congested * 1.0)/packets;
