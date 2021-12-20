@@ -91,7 +91,7 @@ int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8, const 
 	return 0;
 }
 
-int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean vp8, janus_pp_extension_report *report) {
+int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean vp8) {
 	if(!file || !list)
 		return -1;
 	janus_pp_frame_packet *tmp = list;
@@ -122,11 +122,7 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 		if(tmp->rotation != -1 && tmp->rotation != rotation) {
 			rotation = tmp->rotation;
 			double ts = (double)(tmp->ts-list->ts)/(double)90000;
-			if(report) {
-				add_ext_rotation(report, ts, rotation);
-			} else {
-				JANUS_LOG(LOG_INFO, "[%8.3fs] Video rotation: %d degrees\n", ts, rotation);
-			}
+			JANUS_LOG(LOG_INFO, "[%8.3fs] Video rotation: %d degrees\n", ts, rotation);
 		}
 		if(vp8) {
 			/* https://tools.ietf.org/html/draft-ietf-payload-vp8 */
@@ -278,8 +274,7 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 	}
 	int mean_ts = min_ts_diff;	/* FIXME: was an actual mean, (max_ts_diff+min_ts_diff)/2; */
 	fps = (90000/(mean_ts > 0 ? mean_ts : 30));
-	if(!report)
-		JANUS_LOG(LOG_INFO, "  -- %dx%d (fps [%d,%d] ~ %d)\n", max_width, max_height, min_ts_diff, max_ts_diff, fps);
+	JANUS_LOG(LOG_INFO, "  -- %dx%d (fps [%d,%d] ~ %d)\n", max_width, max_height, min_ts_diff, max_ts_diff, fps);
 	if(max_width == 0 && max_height == 0) {
 		JANUS_LOG(LOG_WARN, "No key frame?? assuming 640x480...\n");
 		max_width = 640;

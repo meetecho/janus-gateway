@@ -226,7 +226,7 @@ static void janus_pp_h264_parse_sps(char *buffer, int *width, int *height) {
 }
 
 
-int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list, janus_pp_extension_report *report) {
+int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 	if(!file || !list)
 		return -1;
 	janus_pp_frame_packet *tmp = list;
@@ -306,18 +306,13 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list, janus_pp_e
 		if(tmp->rotation != -1 && tmp->rotation != rotation) {
 			rotation = tmp->rotation;
 			double ts = (double)(tmp->ts-list->ts)/(double)90000;
-			if(report) {
-				add_ext_rotation(report, ts, rotation);
-			} else {
-				JANUS_LOG(LOG_INFO, "[%8.3fs] Video rotation: %d degrees\n", ts, rotation);
-			}
+			JANUS_LOG(LOG_INFO, "[%8.3fs] Video rotation: %d degrees\n", ts, rotation);
 		}
 		tmp = tmp->next;
 	}
 	int mean_ts = min_ts_diff;	/* FIXME: was an actual mean, (max_ts_diff+min_ts_diff)/2; */
 	fps = (90000/(mean_ts > 0 ? mean_ts : 30));
-	if(!report)
-		JANUS_LOG(LOG_INFO, "  -- %dx%d (fps [%d,%d] ~ %d)\n", max_width, max_height, min_ts_diff, max_ts_diff, fps);
+	JANUS_LOG(LOG_INFO, "  -- %dx%d (fps [%d,%d] ~ %d)\n", max_width, max_height, min_ts_diff, max_ts_diff, fps);
 	if(max_width == 0 && max_height == 0) {
 		JANUS_LOG(LOG_WARN, "No resolution info?? assuming 640x480...\n");
 		max_width = 640;

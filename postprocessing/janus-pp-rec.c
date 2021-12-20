@@ -963,9 +963,6 @@ int main(int argc, char *argv[])
 			}
 			if(audio_level_extmap_id > 0) {
 				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, len, audio_level_extmap_id, &audiolevel);
-				if(report) {
-					report->audioLevel = audiolevel;
-				}
 			}
 			if(video_orient_extmap_id > 0) {
 				janus_pp_rtp_header_extension_parse_video_orientation(prebuffer, len, video_orient_extmap_id, &rotation);
@@ -1200,39 +1197,44 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	if (ext_only) {
+		/* Look for rotations changes */
+		janus_pp_detect_rotation_changes(report, list);
+
+
+		janus_pp_print_ext_report(report);
+		janus_pp_free_ext_report(report);
+		cmdline_parser_free(&args_info);
+		exit(0);
+	}
+
 	if(video) {
 		/* Look for maximum width and height, if possible, and for the average framerate */
 		if(vp8 || vp9) {
-			if(janus_pp_webm_preprocess(file, list, vp8, report) < 0) {
+			if(janus_pp_webm_preprocess(file, list, vp8) < 0) {
 				JANUS_LOG(LOG_ERR, "Error pre-processing %s RTP frames...\n", vp8 ? "VP8" : "VP9");
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
 		} else if(h264) {
-			if(janus_pp_h264_preprocess(file, list, report) < 0) {
+			if(janus_pp_h264_preprocess(file, list) < 0) {
 				JANUS_LOG(LOG_ERR, "Error pre-processing H.264 RTP frames...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
 		} else if(av1) {
-			if(janus_pp_av1_preprocess(file, list, report) < 0) {
+			if(janus_pp_av1_preprocess(file, list) < 0) {
 				JANUS_LOG(LOG_ERR, "Error pre-processing AV1 RTP frames...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
 		} else if(h265) {
-			if(janus_pp_h265_preprocess(file, list, report) < 0) {
+			if(janus_pp_h265_preprocess(file, list) < 0) {
 				JANUS_LOG(LOG_ERR, "Error pre-processing H.265 RTP frames...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
 		}
-	}
-	if(ext_only) {
-		print_ext_report(report);
-		free_ext_report(report);
-		cmdline_parser_free(&args_info);
-		exit(0);
 	}
 	if(parse_only) {
 		/* We only needed to parse and re-order the packets, we're done here */

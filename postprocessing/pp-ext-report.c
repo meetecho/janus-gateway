@@ -3,12 +3,11 @@
 #include <jansson.h>
 
 #include "stdlib.h"
-#include "stdio.h"
 #include "glib.h"
 
 #include "../debug.h"
 
-void print_ext_report(janus_pp_extension_report* report) {
+void janus_pp_print_ext_report(janus_pp_extension_report* report) {
 	json_t *obj = json_object();
 
 
@@ -27,9 +26,6 @@ void print_ext_report(janus_pp_extension_report* report) {
 	}
 	json_object_set_new(obj, "rotations", rotations);
 
-	/* add audio level to json */
-	json_object_set_new(obj, "audio_level", json_integer(report->audioLevel));
-
 	char *str = json_dumps(obj, JSON_INDENT(0) | JSON_PRESERVE_ORDER);
 	JANUS_PRINT("%s\n", str);
 	free(str);
@@ -37,7 +33,7 @@ void print_ext_report(janus_pp_extension_report* report) {
 	json_decref(obj);
 }
 
-void free_ext_report(janus_pp_extension_report* report) {
+void janus_pp_free_ext_report(janus_pp_extension_report* report) {
 	if(!report) {
 		return;
 	}
@@ -52,14 +48,13 @@ void free_ext_report(janus_pp_extension_report* report) {
 	g_free(report);
 }
 
-janus_pp_extension_report* create_ext_report(void) {
+janus_pp_extension_report* janus_pp_create_ext_report(void) {
 	janus_pp_extension_report* report = g_malloc(sizeof(janus_pp_extension_report));
 	report->rotations = NULL;
-	report->audioLevel = -1;
 	return report;
 }
 
-void add_ext_rotation(janus_pp_extension_report* report, double timestamp, int rotation) {
+void janus_pp_add_ext_rotation(janus_pp_extension_report* report, double timestamp, int rotation) {
 	janus_pp_extension_report_rotation* entry = g_malloc(sizeof(janus_pp_extension_report_rotation));
 	entry->rotation = rotation;
 	entry->timestamp = timestamp;
@@ -75,4 +70,17 @@ void add_ext_rotation(janus_pp_extension_report* report, double timestamp, int r
 		prev = prev->next;
 	}
 	prev->next = entry;
+}
+
+void janus_pp_detect_rotation_changes(janus_pp_extension_report *report, janus_pp_frame_packet *list) {
+	janus_pp_frame_packet *tmp = list;
+	while (tmp) {
+		if(tmp->rotation != -1 && tmp->rotation != rotation) {
+			int rotation = tmp->rotation;
+			double ts = (double)(tmp->ts-list->ts)/(double)90000;
+			janus_pp_add_ext_rotation(report, ts, rotation);
+		}
+
+		tmp = tmp->next;
+	}
 }
