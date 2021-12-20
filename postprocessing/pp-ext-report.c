@@ -74,9 +74,10 @@ void janus_pp_add_ext_rotation(janus_pp_extension_report* report, double timesta
 
 void janus_pp_detect_rotation_changes(janus_pp_extension_report *report, janus_pp_frame_packet *list) {
 	janus_pp_frame_packet *tmp = list;
+	int rotation = -1;
 	while (tmp) {
 		if(tmp->rotation != -1 && tmp->rotation != rotation) {
-			int rotation = tmp->rotation;
+			rotation = tmp->rotation;
 			double ts = (double)(tmp->ts-list->ts)/(double)90000;
 			janus_pp_add_ext_rotation(report, ts, rotation);
 		}
