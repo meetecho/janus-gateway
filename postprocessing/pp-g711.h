@@ -13,7 +13,6 @@
 #define JANUS_PP_G711
 
 #include <stdio.h>
-
 #include "pp-rtp.h"
 
 /* G.711 stuff */

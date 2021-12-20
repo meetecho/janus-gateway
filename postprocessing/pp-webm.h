@@ -14,7 +14,6 @@
 
 #include <stdio.h>
 
-#include "pp-ext-report.h"
 #include "pp-rtp.h"
 
 /* WebM stuff */

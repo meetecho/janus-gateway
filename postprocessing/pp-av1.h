@@ -15,7 +15,6 @@
 #include <stdio.h>
 
 #include "pp-rtp.h"
-#include "pp-ext-report.h"
 
 /* AV1 stuff */
 const char **janus_pp_av1_get_extensions(void);

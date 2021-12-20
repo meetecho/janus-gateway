@@ -1,6 +1,8 @@
 #ifndef JANUS_GATEWAY_PP_EXT_REPORT_H
 #define JANUS_GATEWAY_PP_EXT_REPORT_H
 
+#include <inttypes.h>
+
 #include "pp-rtp.h"
 
 typedef struct janus_pp_extension_report_rotation {
