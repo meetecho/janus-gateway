@@ -266,7 +266,7 @@ int main(int argc, char *argv[])
 		header_only = TRUE;
 	if(args_info.ext_given) {
 		ext_only = TRUE;
-		report = create_ext_report();
+		report = janus_pp_create_ext_report();
 	}
 	if(args_info.parse_given && !jsonheader_only && !header_only && !ext_only)
 		parse_only = TRUE;
