@@ -10,20 +10,20 @@
 void janus_pp_print_ext_report(janus_pp_extension_report* report) {
 	json_t *obj = json_object();
 
-
 	janus_pp_extension_report_rotation *rot = report->rotations;
 
 	/* add rotations to json */
 	json_t *rotations = json_array();
-	while(rot) {
+	GSList* iterator = report->rotations;
+	for (iterator = report->rotations; iterator; iterator = iterator‑>next) {
 		json_t *elem = json_object();
 
-		json_object_set_new(elem, "ts", json_real(rot->timestamp));
-		json_object_set_new(elem, "rotation", json_integer(rot->rotation));
+		json_object_set_new(elem, "ts", json_real(iterator->data->timestamp));
+		json_object_set_new(elem, "rotation", json_integer(iterator->data->rotation));
 
 		json_array_append_new(rotations, elem);
-		rot = rot->next;
 	}
+
 	json_object_set_new(obj, "rotations", rotations);
 
 	char *str = json_dumps(obj, JSON_INDENT(0) | JSON_PRESERVE_ORDER);
@@ -34,17 +34,10 @@ void janus_pp_print_ext_report(janus_pp_extension_report* report) {
 }
 
 void janus_pp_free_ext_report(janus_pp_extension_report* report) {
-	if(!report) {
+	if(!report)
 		return;
-	}
 
-	janus_pp_extension_report_rotation *current = report->rotations;
-	while(current) {
-		janus_pp_extension_report_rotation* next = current->next;
-		g_free(current);
-		current = next;
-	}
-
+	g_slist_free(report->rotations);
 	g_free(report);
 }
 
@@ -58,18 +51,8 @@ void janus_pp_add_ext_rotation(janus_pp_extension_report* report, double timesta
 	janus_pp_extension_report_rotation* entry = g_malloc(sizeof(janus_pp_extension_report_rotation));
 	entry->rotation = rotation;
 	entry->timestamp = timestamp;
-	entry->next = NULL;
 
-	if(!report->rotations) {
-		report->rotations = entry;
-		return;
-	}
-
-	janus_pp_extension_report_rotation* prev = report->rotations;
-	while(prev->next) {
-		prev = prev->next;
-	}
-	prev->next = entry;
+	report->rotations = g_slist_append(report->rotations, entry);
 }
 
 void janus_pp_detect_rotation_changes(janus_pp_extension_report *report, janus_pp_frame_packet *list) {

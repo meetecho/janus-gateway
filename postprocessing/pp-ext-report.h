@@ -5,14 +5,15 @@
 
 #include "pp-rtp.h"
 
+#include <glib.h>
+
 typedef struct janus_pp_extension_report_rotation {
 	int rotation;
 	double timestamp;
-	struct janus_pp_extension_report_rotation* next;
 } janus_pp_extension_report_rotation;
 
 typedef struct janus_pp_extension_report {
-	struct janus_pp_extension_report_rotation* rotations;
+	GSList* rotations;
 } janus_pp_extension_report;
 
 void janus_pp_print_ext_report(janus_pp_extension_report* report);
