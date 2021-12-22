@@ -10,7 +10,6 @@
 void janus_pp_print_ext_report(janus_pp_extension_report* report) {
 	json_t *obj = json_object();
 
-	janus_pp_extension_report_rotation *rot = report->rotations;
 
 	/* add rotations to json */
 	json_t *rotations = json_array();
@@ -18,8 +17,10 @@ void janus_pp_print_ext_report(janus_pp_extension_report* report) {
 	for (iterator = report->rotations; iterator; iterator = iterator‑>next) {
 		json_t *elem = json_object();
 
-		json_object_set_new(elem, "ts", json_real(iterator->data->timestamp));
-		json_object_set_new(elem, "rotation", json_integer(iterator->data->rotation));
+		janus_pp_extension_report_rotation *rot = (janus_pp_extension_report_rotation *)iterator->data;
+
+		json_object_set_new(elem, "ts", json_real(rot->timestamp));
+		json_object_set_new(elem, "rotation", json_integer(rot->rotation));
 
 		json_array_append_new(rotations, elem);
 	}
