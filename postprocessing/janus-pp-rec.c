@@ -258,7 +258,6 @@ int main(int argc, char *argv[])
 
 	/* If we're asked to print the JSON header as it is, we must not print anything else */
 	gboolean jsonheader_only = FALSE, header_only = FALSE, ext_only = FALSE, parse_only = FALSE;
-
 	if(args_info.json_given)
 		jsonheader_only = TRUE;
 	if(args_info.header_given && !jsonheader_only)
