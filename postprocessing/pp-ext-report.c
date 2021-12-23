@@ -10,7 +10,6 @@
 void janus_pp_print_ext_report(GSList *rotations) {
 	json_t *obj = json_object();
 
-
 	/* add rotations to json */
 	json_t *json_rotations = json_array();
 	GSList* iterator = rotations;
