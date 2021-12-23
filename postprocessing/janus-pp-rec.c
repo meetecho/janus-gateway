@@ -1183,10 +1183,10 @@ int main(int argc, char *argv[])
 	}
 	if(!ext_only) {
 		JANUS_LOG(LOG_INFO, "Counted %"SCNu32" frame packets\n", count);
-		if (rotated != -1) {
-			if (rotated == 0 && last_rotation != 0) {
+		if(rotated != -1) {
+			if(rotated == 0 && last_rotation != 0) {
 				JANUS_LOG(LOG_INFO, "The video is rotated\n");
-			} else if (rotated > 0) {
+			} else if(rotated > 0) {
 				JANUS_LOG(LOG_INFO, "The video changed orientation %d times\n", rotated);
 			}
 		}
