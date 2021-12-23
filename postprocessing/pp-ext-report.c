@@ -14,7 +14,7 @@ void janus_pp_print_ext_report(janus_pp_extension_report* report) {
 	/* add rotations to json */
 	json_t *rotations = json_array();
 	GSList* iterator = report->rotations;
-	for (iterator = report->rotations; iterator; iterator = iterator‑>next) {
+	for (iterator = report->rotations; iterator; iterator = iterator->next) {
 		json_t *elem = json_object();
 
 		janus_pp_extension_report_rotation *rot = (janus_pp_extension_report_rotation *)iterator->data;
