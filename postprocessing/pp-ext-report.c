@@ -25,7 +25,7 @@ void janus_pp_print_ext_report(GSList *rotations) {
 		json_array_append_new(json_rotations, elem);
 	}
 
-	json_object_set_new(obj, "rotations", json_arr);
+	json_object_set_new(obj, "rotations", json_rotations);
 
 	char *str = json_dumps(obj, JSON_INDENT(0) | JSON_PRESERVE_ORDER);
 	JANUS_PRINT("%s\n", str);
