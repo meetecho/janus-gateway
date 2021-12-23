@@ -7,7 +7,7 @@
 
 #include "../debug.h"
 
-void janus_pp_print_ext_report(janus_pp_extension_report* report) {
+void janus_pp_print_ext_report(GList *rotations) {
 	json_t *obj = json_object();
 
 
@@ -34,38 +34,25 @@ void janus_pp_print_ext_report(janus_pp_extension_report* report) {
 	json_decref(obj);
 }
 
-void janus_pp_free_ext_report(janus_pp_extension_report* report) {
-	if(!report)
-		return;
-
-	g_slist_free(report->rotations);
-	g_free(report);
-}
-
-janus_pp_extension_report* janus_pp_create_ext_report(void) {
-	janus_pp_extension_report* report = g_malloc(sizeof(janus_pp_extension_report));
-	report->rotations = NULL;
-	return report;
-}
-
-void janus_pp_add_ext_rotation(janus_pp_extension_report* report, double timestamp, int rotation) {
-	janus_pp_extension_report_rotation* entry = g_malloc(sizeof(janus_pp_extension_report_rotation));
+GList* janus_pp_add_ext_rotation(GList *rotations, double timestamp, int rotation) {
+	janus_pp_extension_report_rotation *entry = g_malloc(sizeof(janus_pp_extension_report_rotation));
 	entry->rotation = rotation;
 	entry->timestamp = timestamp;
 
-	report->rotations = g_slist_append(report->rotations, entry);
+	return g_slist_append(report->rotations, entry);
 }
 
-void janus_pp_detect_rotation_changes(janus_pp_extension_report *report, janus_pp_frame_packet *list) {
+GList* janus_pp_detect_rotation_changes(GList *rotations, janus_pp_frame_packet *list) {
 	janus_pp_frame_packet *tmp = list;
 	int rotation = -1;
 	while (tmp) {
 		if(tmp->rotation != -1 && tmp->rotation != rotation) {
 			rotation = tmp->rotation;
 			double ts = (double)(tmp->ts-list->ts)/(double)90000;
-			janus_pp_add_ext_rotation(report, ts, rotation);
+			rotations = janus_pp_add_ext_rotation(rotations, ts, rotation);
 		}
 
 		tmp = tmp->next;
 	}
+	return rotations;
 }

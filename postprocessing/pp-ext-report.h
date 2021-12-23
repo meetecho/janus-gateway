@@ -12,16 +12,11 @@ typedef struct janus_pp_extension_report_rotation {
 	double timestamp;
 } janus_pp_extension_report_rotation;
 
-typedef struct janus_pp_extension_report {
-	GSList* rotations;
-} janus_pp_extension_report;
+void janus_pp_print_ext_report(GList *rotations);
 
-void janus_pp_print_ext_report(janus_pp_extension_report* report);
+void janus_pp_free_ext_report(GList *rotations);
 
-void janus_pp_free_ext_report(janus_pp_extension_report* report);
-janus_pp_extension_report* janus_pp_create_ext_report(void);
-
-void janus_pp_add_ext_rotation(janus_pp_extension_report* report, double timestamp, int rotation);
-void janus_pp_detect_rotation_changes(janus_pp_extension_report *report, janus_pp_frame_packet *list);
+GList* janus_pp_add_ext_rotation(GList *rotations, double timestamp, int rotation);
+GList* janus_pp_detect_rotation_changes(GList *rotations, janus_pp_frame_packet *list);
 
 #endif //JANUS_GATEWAY_PP_EXT_REPORT_H
