@@ -2,8 +2,8 @@
 
 #include <jansson.h>
 
-#include "stdlib.h"
-#include "glib.h"
+#include <stdlib.h>
+#include <glib.h>
 
 #include "../debug.h"
 
