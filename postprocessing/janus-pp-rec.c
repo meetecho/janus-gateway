@@ -959,9 +959,8 @@ int main(int argc, char *argv[])
 			} else {
 				rtp_header_len += rtp_read_n;
 			}
-			if(audio_level_extmap_id > 0) {
+			if(audio_level_extmap_id > 0)
 				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, len, audio_level_extmap_id, &audiolevel);
-			}
 			if(video_orient_extmap_id > 0) {
 				janus_pp_rtp_header_extension_parse_video_orientation(prebuffer, len, video_orient_extmap_id, &rotation);
 				if(rotation != -1 && rotation != last_rotation) {
@@ -1163,7 +1162,6 @@ int main(int argc, char *argv[])
 		offset += len;
 		count++;
 	}
-
 	if(!working) {
 		cmdline_parser_free(&args_info);
 		exit(0);
@@ -1237,6 +1235,7 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+
 	if(parse_only) {
 		/* We only needed to parse and re-order the packets, we're done here */
 		JANUS_LOG(LOG_INFO, "Parsing and reordering completed, bye!\n");
