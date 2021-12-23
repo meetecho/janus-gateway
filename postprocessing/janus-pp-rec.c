@@ -1196,14 +1196,15 @@ int main(int argc, char *argv[])
 	}
 
 	if (ext_only) {
-		janus_pp_extension_report *report = janus_pp_create_ext_report();
+		GList *rotations = NULL;
 
 		/* Look for rotations changes */
-		janus_pp_detect_rotation_changes(report, list);
+		rotations = janus_pp_detect_rotation_changes(list);
 
 
-		janus_pp_print_ext_report(report);
-		janus_pp_free_ext_report(report);
+		janus_pp_print_ext_report(rotations);
+		g_slist_free(rotations);
+
 		cmdline_parser_free(&args_info);
 		exit(0);
 	}

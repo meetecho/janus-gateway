@@ -34,7 +34,7 @@ void janus_pp_print_ext_report(GSList *rotations) {
 	json_decref(obj);
 }
 
-GSList* janus_pp_add_ext_rotation(GSList *rotations, double timestamp, int rotation) {
+GSList *janus_pp_add_ext_rotation(GSList *rotations, double timestamp, int rotation) {
 	janus_pp_extension_report_rotation *entry = g_malloc(sizeof(janus_pp_extension_report_rotation));
 	entry->rotation = rotation;
 	entry->timestamp = timestamp;
@@ -42,7 +42,8 @@ GSList* janus_pp_add_ext_rotation(GSList *rotations, double timestamp, int rotat
 	return g_slist_append(rotations, entry);
 }
 
-GSList* janus_pp_detect_rotation_changes(GSList *rotations, janus_pp_frame_packet *list) {
+GSList *janus_pp_detect_rotation_changes(janus_pp_frame_packet *list) {
+	GSList *rotations = NULL;
 	janus_pp_frame_packet *tmp = list;
 	int rotation = -1;
 	while (tmp) {
