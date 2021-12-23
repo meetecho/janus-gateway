@@ -258,7 +258,6 @@ int main(int argc, char *argv[])
 
 	/* If we're asked to print the JSON header as it is, we must not print anything else */
 	gboolean jsonheader_only = FALSE, header_only = FALSE, ext_only = FALSE, parse_only = FALSE;
-	janus_pp_extension_report *report = NULL;
 
 	if(args_info.json_given)
 		jsonheader_only = TRUE;
@@ -266,7 +265,6 @@ int main(int argc, char *argv[])
 		header_only = TRUE;
 	if(args_info.ext_given) {
 		ext_only = TRUE;
-		report = janus_pp_create_ext_report();
 	}
 	if(args_info.parse_given && !jsonheader_only && !header_only && !ext_only)
 		parse_only = TRUE;
@@ -1199,6 +1197,8 @@ int main(int argc, char *argv[])
 	}
 
 	if (ext_only) {
+		janus_pp_extension_report *report = janus_pp_create_ext_report();
+
 		/* Look for rotations changes */
 		janus_pp_detect_rotation_changes(report, list);
 
