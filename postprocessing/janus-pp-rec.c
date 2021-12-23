@@ -1194,14 +1194,10 @@ int main(int argc, char *argv[])
 
 	if (ext_only) {
 		GSList *rotations = NULL;
-
 		/* Look for rotations changes */
 		rotations = janus_pp_detect_rotation_changes(list);
-
-
 		janus_pp_print_ext_report(rotations);
 		g_slist_free(rotations);
-
 		cmdline_parser_free(&args_info);
 		exit(0);
 	}
