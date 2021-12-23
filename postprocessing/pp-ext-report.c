@@ -12,9 +12,9 @@ void janus_pp_print_ext_report(GList *rotations) {
 
 
 	/* add rotations to json */
-	json_t *rotations = json_array();
-	GSList* iterator = report->rotations;
-	for (iterator = report->rotations; iterator; iterator = iterator->next) {
+	json_t *json_rotations = json_array();
+	GSList* iterator = rotations;
+	for (iterator = rotations; iterator; iterator = iterator->next) {
 		json_t *elem = json_object();
 
 		janus_pp_extension_report_rotation *rot = (janus_pp_extension_report_rotation *)iterator->data;
@@ -22,10 +22,10 @@ void janus_pp_print_ext_report(GList *rotations) {
 		json_object_set_new(elem, "ts", json_real(rot->timestamp));
 		json_object_set_new(elem, "rotation", json_integer(rot->rotation));
 
-		json_array_append_new(rotations, elem);
+		json_array_append_new(json_rotations, elem);
 	}
 
-	json_object_set_new(obj, "rotations", rotations);
+	json_object_set_new(obj, "rotations", json_arr);
 
 	char *str = json_dumps(obj, JSON_INDENT(0) | JSON_PRESERVE_ORDER);
 	JANUS_PRINT("%s\n", str);
