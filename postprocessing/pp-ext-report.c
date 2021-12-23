@@ -39,7 +39,7 @@ GList* janus_pp_add_ext_rotation(GList *rotations, double timestamp, int rotatio
 	entry->rotation = rotation;
 	entry->timestamp = timestamp;
 
-	return g_slist_append(report->rotations, entry);
+	return g_slist_append(rotations, entry);
 }
 
 GList* janus_pp_detect_rotation_changes(GList *rotations, janus_pp_frame_packet *list) {
