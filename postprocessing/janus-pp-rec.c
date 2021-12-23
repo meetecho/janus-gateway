@@ -821,7 +821,6 @@ int main(int argc, char *argv[])
 	int audiolevel = 0, rotation = 0, last_rotation = -1, rotated = -1;
 	uint16_t rtp_header_len, rtp_read_n;
 	/* Start loop */
-
 	while(working && offset < fsize) {
 		/* Read frame header */
 		skip = 0;
