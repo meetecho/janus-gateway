@@ -1196,7 +1196,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (ext_only) {
-		GList *rotations = NULL;
+		GSList *rotations = NULL;
 
 		/* Look for rotations changes */
 		rotations = janus_pp_detect_rotation_changes(list);
