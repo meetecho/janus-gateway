@@ -54,7 +54,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr
   -F, --file-extensions         Only print the supported target file extensions
                                   per codec  (default=off)
   -j, --json                    Only print JSON header  (default=off)
-  -e, --ext                     Only print extensions (default=off)
+  -e, --ext                     Only print the extended report (default=off)
   -H, --header                  Only parse .mjr header  (default=off)
   -p, --parse                   Only parse and re-order packets  (default=off)
   -m, --metadata=metadata       Save this metadata string in the target file
