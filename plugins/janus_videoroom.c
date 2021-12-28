@@ -3445,6 +3445,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
 			if(videoroom->require_pvtid)
 				janus_config_add(config, c, janus_config_item_create("require_pvtid", "yes"));
+			if(videoroom->signed_tokens)
+				janus_config_add(config, c, janus_config_item_create("signed_tokens", "yes"));
 			if(videoroom->require_e2ee)
 				janus_config_add(config, c, janus_config_item_create("require_e2ee", "yes"));
 			g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->bitrate);
@@ -3629,6 +3631,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
 			if(videoroom->require_pvtid)
 				janus_config_add(config, c, janus_config_item_create("require_pvtid", "yes"));
+			if(videoroom->signed_tokens)
+				janus_config_add(config, c, janus_config_item_create("signed_tokens", "yes"));
 			if(videoroom->require_e2ee)
 				janus_config_add(config, c, janus_config_item_create("require_e2ee", "yes"));
 			g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->bitrate);
