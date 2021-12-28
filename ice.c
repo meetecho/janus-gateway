@@ -4347,14 +4347,14 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		return G_SOURCE_CONTINUE;
 	} else if(pkt == &janus_ice_media_stopped) {
 		/* Either audio or video has been disabled on the way in, so use the callback to notify the peer */
-		if(!component->in_stats.audio.notified_lastsec && component->in_stats.audio.bytes && !stream->audio_send) {
+		if(component && stream && !component->in_stats.audio.notified_lastsec && component->in_stats.audio.bytes && !stream->audio_send) {
 			/* Audio won't be received for a while, notify */
 			component->in_stats.audio.notified_lastsec = TRUE;
 			janus_ice_notify_media(handle, FALSE, 0, FALSE);
 		}
 		int vindex=0;
 		for(vindex=0; vindex<3; vindex++) {
-			if(!component->in_stats.video[vindex].notified_lastsec && component->in_stats.video[vindex].bytes && !stream->video_recv) {
+			if(component && stream && !component->in_stats.video[vindex].notified_lastsec && component->in_stats.video[vindex].bytes && !stream->video_recv) {
 				/* Video won't be received for a while, notify */
 				component->in_stats.video[vindex].notified_lastsec = TRUE;
 				janus_ice_notify_media(handle, TRUE, vindex, FALSE);
