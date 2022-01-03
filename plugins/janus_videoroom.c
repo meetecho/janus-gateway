@@ -6151,10 +6151,10 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					json_array_append_new(flist, fl);
 				}
 				janus_mutex_unlock(&ps->rtp_forwarders_mutex);
-				json_object_set_new(pl, "forwarders", flist);
 				temp = temp->next;
 			}
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
+			json_object_set_new(pl, "forwarders", flist);
 			json_array_append_new(list, pl);
 		}
 		janus_mutex_unlock(&videoroom->mutex);
