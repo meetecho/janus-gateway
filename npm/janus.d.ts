@@ -87,7 +87,7 @@ declare namespace JanusJS {
 		webrtcState?: (isConnected: boolean) => void;
 		iceState?: (state: 'connected' | 'failed' | 'disconnected' | 'closed') => void;
 		mediaState?: (medium: 'audio' | 'video', receiving: boolean, mid?: number) => void;
-		slowLink?: (state: { uplink: boolean }) => void;
+		slowLink?: (uplink: boolean, lost: number) => void;
 		onmessage?: (message: Message, jsep?: JSEP) => void;
 		onlocalstream?: (stream: MediaStream) => void;
 		onremotestream?: (stream: MediaStream) => void;
