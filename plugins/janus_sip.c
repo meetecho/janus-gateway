@@ -5604,8 +5604,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 
 			gboolean in_progress = FALSE;
 			if(status < 200) {
-				/* Not ready yet, either notify the user (e.g., "ringing") or handle early media (if it's a 183) */
-				if(status == 180) {
+				/* Not ready yet, either notify the user (e.g., "ringing") or handle early media */
+				if(status == 180 || status == 183) {
                     /* If's a Session Progress: check if there's an SDP, and if so, treat it like a 200 */
                     if(sip->sip_payload && sip->sip_payload->pl_data) {
                         in_progress = TRUE;
@@ -5626,11 +5626,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
                         json_decref(ringing);
                         break;
                     }
-				} else if(status == 183) {
-					/* If's a Session Progress: check if there's an SDP, and if so, treat it like a 200 */
-					if(!sip->sip_payload || !sip->sip_payload->pl_data)
-						break;
-					in_progress = TRUE;
 				} else {
 					/* Nothing to do, let's wait for a 200 OK */
 					break;
