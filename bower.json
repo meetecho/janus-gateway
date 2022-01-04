@@ -33,6 +33,6 @@
     "tests"
   ],
   "dependencies": {
-    "webrtc-adapter": "8.1.0"
+    "webrtc-adapter": "8.1.1"
   }
 }
