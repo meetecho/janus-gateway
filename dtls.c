@@ -325,7 +325,7 @@ static int janus_dtls_load_keys(const char *server_pem, const char *server_key, 
 
 	f = fopen(server_pem, "r");
 	if(!f) {
-		JANUS_LOG(LOG_FATAL, "Error opening certificate file\n");
+		JANUS_LOG(LOG_FATAL, "Error opening certificate file (%s)\n", g_strerror(errno));
 		goto error;
 	}
 	*certificate = PEM_read_X509(f, NULL, NULL, NULL);
@@ -337,7 +337,7 @@ static int janus_dtls_load_keys(const char *server_pem, const char *server_key, 
 
 	f = fopen(server_key, "r");
 	if(!f) {
-		JANUS_LOG(LOG_FATAL, "Error opening key file\n");
+		JANUS_LOG(LOG_FATAL, "Error opening key file (%s)\n", g_strerror(errno));
 		goto error;
 	}
 	*private_key = PEM_read_PrivateKey(f, NULL, NULL, (void *)password);

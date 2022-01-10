@@ -4499,6 +4499,9 @@ static void *janus_sip_handler(void *data) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this peer!\n");
 							}
 						}
+						/* If the video-orientation extension has been negotiated, mark it in the recording */
+						if(session->media.video_orientation_extension_id > 0)
+							janus_recorder_add_extmap(session->vrc_peer, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
 						/* TODO We should send a FIR/PLI to this peer... */
 					}
 				}
@@ -4556,6 +4559,9 @@ static void *janus_sip_handler(void *data) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this user!\n");
 							}
 						}
+						/* If the video-orientation extension has been negotiated, mark it in the recording */
+						if(session->media.video_orientation_extension_id > 0)
+							janus_recorder_add_extmap(session->vrc, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
 						/* Send a PLI */
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 						gateway->send_pli(session->handle);
@@ -5607,28 +5613,28 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 
 			gboolean in_progress = FALSE;
 			if(status < 200) {
-				/* Not ready yet, either notify the user (e.g., "ringing") or handle early media (if it's a 183) */
-				if(status == 180) {
-					/* Ringing, notify the application */
-					json_t *ringing = json_object();
-					json_object_set_new(ringing, "sip", json_string("event"));
-					json_t *result = json_object();
-					json_object_set_new(result, "event", json_string("ringing"));
-					if(session->incoming_header_prefixes) {
-						json_t *headers = janus_sip_get_incoming_headers(sip, session);
-						json_object_set_new(result, "headers", headers);
-					}
-					json_object_set_new(ringing, "result", result);
-					json_object_set_new(ringing, "call_id", json_string(session->callid));
-					int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, ringing, NULL);
-					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
-					json_decref(ringing);
-					break;
-				} else if(status == 183) {
+				/* Not ready yet, either notify the user (e.g., "ringing") or handle early media */
+				if(status == 180 || status == 183) {
 					/* If's a Session Progress: check if there's an SDP, and if so, treat it like a 200 */
-					if(!sip->sip_payload || !sip->sip_payload->pl_data)
+					if(sip->sip_payload && sip->sip_payload->pl_data) {
+						in_progress = TRUE;
+					} else {
+						/* Ringing, notify the application */
+						json_t *ringing = json_object();
+						json_object_set_new(ringing, "sip", json_string("event"));
+						json_t *result = json_object();
+						json_object_set_new(result, "event", json_string("ringing"));
+						if(session->incoming_header_prefixes) {
+							json_t *headers = janus_sip_get_incoming_headers(sip, session);
+							json_object_set_new(result, "headers", headers);
+						}
+						json_object_set_new(ringing, "result", result);
+						json_object_set_new(ringing, "call_id", json_string(session->callid));
+						int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, ringing, NULL);
+						JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+						json_decref(ringing);
 						break;
-					in_progress = TRUE;
+					}
 				} else {
 					/* Nothing to do, let's wait for a 200 OK */
 					break;

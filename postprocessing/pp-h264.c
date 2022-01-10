@@ -74,7 +74,6 @@ int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart, 
 		return -1;
 	}
 	fctx->video_codec = codec;
-	fctx->oformat->video_codec = codec->id;
 	vStream = avformat_new_stream(fctx, codec);
 	vStream->id = fctx->nb_streams-1;
 	vEncoder = avcodec_alloc_context3(codec);
