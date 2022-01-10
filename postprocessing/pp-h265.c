@@ -74,7 +74,6 @@ int janus_pp_h265_create(char *destination, char *metadata, gboolean faststart, 
 		return -1;
 	}
 	fctx->video_codec = codec;
-	fctx->oformat->video_codec = codec->id;
 	vStream = avformat_new_stream(fctx, codec);
 	vStream->id = fctx->nb_streams-1;
 	vEncoder = avcodec_alloc_context3(codec);
@@ -319,9 +318,9 @@ int janus_pp_h265_preprocess(FILE *file, janus_pp_frame_packet *list) {
 		} else if(type == 48) {
 			/* AP */
 			JANUS_LOG(LOG_HUGE, "[AP] %u/%u/%u/%u\n", fbit, type, lid, tid);
-			uint8_t *end = (uint8_t*)prebuffer + len;
+			uint8_t *end = (uint8_t*)prebuffer + len, *p = NULL;
 			uint16_t payload_len;
-			for (uint8_t *p = (uint8_t*)prebuffer + 2; p < end - 2; p += payload_len) {
+			for(p = (uint8_t*)prebuffer + 2; p < end - 2; p += payload_len) {
 				payload_len = (p[0] << 8 | p[1]);
 				p += 2;
 
@@ -490,9 +489,9 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				frameLen += 3;
 			} else if(type == 48) {
 				/* AP */
-				uint8_t *end = buffer + len;
+				uint8_t *end = buffer + len, *p = NULL;
 				uint16_t payload_len;
-				for (uint8_t *p = buffer + 2; p < end - 2; p += payload_len) {
+				for(p = buffer + 2; p < end - 2; p += payload_len) {
 					payload_len = (p[0] << 8 | p[1]);
 					p += 2;
 					uint8_t *temp = received_frame + frameLen;

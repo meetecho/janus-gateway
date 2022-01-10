@@ -1089,8 +1089,13 @@ static gboolean janus_sip_call_is_established(janus_sip_session *session) {
 static void janus_sip_media_reset(janus_sip_session *session);
 
 static void janus_sip_session_destroy(janus_sip_session *session) {
-	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
+	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1)) {
+		if(session->master == NULL && session->account.identity)
+			g_hash_table_remove(identities, session->account.identity);
+		if(session->callid)
+			g_hash_table_remove(callids, session->callid);
 		janus_refcount_decrease(&session->ref);
+	}
 }
 
 static void janus_sip_session_dereference(janus_sip_session *session) {
@@ -1104,7 +1109,6 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	if(session->master == NULL && session->account.identity) {
-		g_hash_table_remove(identities, session->account.identity);
 		g_free(session->account.identity);
 		session->account.identity = NULL;
 	}
@@ -1153,7 +1157,6 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 		session->callee = NULL;
 	}
 	if(session->callid) {
-		g_hash_table_remove(callids, session->callid);
 		g_free(session->callid);
 		session->callid = NULL;
 	}
@@ -3890,6 +3893,7 @@ static void *janus_sip_handler(void *data) {
 			/* Update an existing call */
 			if(!(session->status == janus_sip_call_status_incall_reinvited || session->status == janus_sip_call_status_incall)) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				goto error;
 			}
@@ -4482,6 +4486,9 @@ static void *janus_sip_handler(void *data) {
 							/* FIXME This only works if offer/answer happened */
 							rc = janus_recorder_create(NULL, session->media.video_pt_name, filename);
 						}
+						/* If the video-orientation extension has been negotiated, mark it in the recording */
+						if(session->media.video_orientation_extension_id > 0)
+							janus_recorder_add_extmap(session->vrc_peer, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
 						/* TODO We should send a FIR/PLI to this peer... */
 						if(rc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
@@ -4544,6 +4551,9 @@ static void *janus_sip_handler(void *data) {
 						} else {
 							session->vrc = rc;
 						}
+						/* If the video-orientation extension has been negotiated, mark it in the recording */
+						if(session->media.video_orientation_extension_id > 0)
+							janus_recorder_add_extmap(session->vrc, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
 						/* Send a PLI */
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 						gateway->send_pli(session->handle);
@@ -5595,28 +5605,28 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 
 			gboolean in_progress = FALSE;
 			if(status < 200) {
-				/* Not ready yet, either notify the user (e.g., "ringing") or handle early media (if it's a 183) */
-				if(status == 180) {
-					/* Ringing, notify the application */
-					json_t *ringing = json_object();
-					json_object_set_new(ringing, "sip", json_string("event"));
-					json_t *result = json_object();
-					json_object_set_new(result, "event", json_string("ringing"));
-					if(session->incoming_header_prefixes) {
-						json_t *headers = janus_sip_get_incoming_headers(sip, session);
-						json_object_set_new(result, "headers", headers);
-					}
-					json_object_set_new(ringing, "result", result);
-					json_object_set_new(ringing, "call_id", json_string(session->callid));
-					int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, ringing, NULL);
-					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
-					json_decref(ringing);
-					break;
-				} else if(status == 183) {
+				/* Not ready yet, either notify the user (e.g., "ringing") or handle early media */
+				if(status == 180 || status == 183) {
 					/* If's a Session Progress: check if there's an SDP, and if so, treat it like a 200 */
-					if(!sip->sip_payload || !sip->sip_payload->pl_data)
+					if(sip->sip_payload && sip->sip_payload->pl_data) {
+						in_progress = TRUE;
+					} else {
+						/* Ringing, notify the application */
+						json_t *ringing = json_object();
+						json_object_set_new(ringing, "sip", json_string("event"));
+						json_t *result = json_object();
+						json_object_set_new(result, "event", json_string("ringing"));
+						if(session->incoming_header_prefixes) {
+							json_t *headers = janus_sip_get_incoming_headers(sip, session);
+							json_object_set_new(result, "headers", headers);
+						}
+						json_object_set_new(ringing, "result", result);
+						json_object_set_new(ringing, "call_id", json_string(session->callid));
+						int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, ringing, NULL);
+						JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+						json_decref(ringing);
 						break;
-					in_progress = TRUE;
+					}
 				} else {
 					/* Nothing to do, let's wait for a 200 OK */
 					break;

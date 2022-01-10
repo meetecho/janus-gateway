@@ -323,7 +323,7 @@ function updateStreamsList() {
 			Janus.debug(list);
 			for(var mp in list) {
 				Janus.debug("  >> [" + list[mp]["id"] + "] " + list[mp]["description"] + " (" + list[mp]["type"] + ")");
-				$('#streamslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + list[mp]["description"] + " (" + list[mp]["type"] + ")" + "</a></li>");
+				$('#streamslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + escapeXmlTags(list[mp]["description"]) + " (" + list[mp]["type"] + ")" + "</a></li>");
 			}
 			$('#streamslist a').unbind('click').click(function() {
 				selectedStream = $(this).attr("id");
@@ -345,7 +345,7 @@ function getStreamInfo() {
 	var body = { request: "info", id: parseInt(selectedStream) || selectedStream };
 	streaming.send({ message: body, success: function(result) {
 		if(result && result.info && result.info.metadata) {
-			$('#metadata').html(result.info.metadata);
+			$('#metadata').html(escapeXmlTags(result.info.metadata));
 			$('#info').removeClass('hide').show();
 		}
 	}});
@@ -392,6 +392,15 @@ function stopStream() {
 	$('#curres').empty().hide();
 	$('#simulcast').remove();
 	simulcastStarted = false;
+}
+
+// Helper to escape XML tags
+function escapeXmlTags(value) {
+	if(value) {
+		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
+		return escapedValue;
+	}
 }
 
 // Helpers to create Simulcast-related UI, if enabled
