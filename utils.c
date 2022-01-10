@@ -383,8 +383,8 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 		format2 = "H264/90000";
 	} else if(!strcasecmp(codec, "av1")) {
 		video = 1;
-		format = "av1x/90000";
-		format2 = "AV1X/90000";
+		format = "av1/90000";
+		format2 = "AV1/90000";
 	} else if(!strcasecmp(codec, "h265")) {
 		video = 1;
 		format = "h265/90000";

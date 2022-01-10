@@ -702,8 +702,8 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 		format2 = "H264/90000";
 	} else if(!strcasecmp(codec, "av1")) {
 		video = TRUE;
-		format = "av1x/90000";
-		format2 = "AV1X/90000";
+		format = "av1/90000";
+		format2 = "AV1/90000";
 	} else if(!strcasecmp(codec, "h265")) {
 		video = TRUE;
 		format = "h265/90000";
@@ -879,7 +879,7 @@ const char *janus_sdp_get_codec_rtpmap(const char *codec) {
 	if(!strcasecmp(codec, "h264"))
 		return "H264/90000";
 	if(!strcasecmp(codec, "av1"))
-		return "AV1X/90000";
+		return "AV1/90000";
 	if(!strcasecmp(codec, "h265"))
 		return "H265/90000";
 	JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
