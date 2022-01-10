@@ -6999,6 +6999,9 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher_stream *ps
 					janus_videoroom_media_str(ps->type));
 			}
 		}
+		/* If the video-orientation extension has been negotiated, mark it in the recording */
+		if(ps->video_orient_extmap_id > 0)
+			janus_recorder_add_extmap(rc, ps->video_orient_extmap_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
 		/* If media is encrypted, mark it in the recording */
 		if(ps->type != JANUS_VIDEOROOM_MEDIA_DATA && participant->e2ee)
 			janus_recorder_encrypted(rc);
