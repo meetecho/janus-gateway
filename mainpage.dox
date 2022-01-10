@@ -1,5 +1,12 @@
 /*!
- * \mainpage Janus - General purpose WebRTC server
+ * \mainpage Janus (0.x) - General purpose WebRTC server
+ *
+ * <div class="alert alert-warning">
+ *		<b>Note Well:</b> these are the demos and documentation for the <code>0.x</code> version
+ *		of Janus, which is considered legacy. If you want to check a more recent version of
+ *		Janus instead (e.g., <code>1.x</code>, a.k.a. "multistream") click
+ *		<a href="https://janus.conf.meetecho.com">here</a> instead.
+ * </div>
  *
  * \par Developer Documentation for the Janus WebRTC server
  * This is the main developer documentation for the Janus WebRTC
