@@ -403,7 +403,7 @@ function registerUsername() {
 			ptype: "publisher",
 			display: username
 		};
-		myusername = username;
+		myusername = escapeXmlTags(username);
 		sfutest.send({ message: register });
 	}
 }
@@ -534,7 +534,7 @@ function newRemoteFeed(id, display, audio, video) {
 							}
 						}
 						remoteFeed.rfid = msg["id"];
-						remoteFeed.rfdisplay = msg["display"];
+						remoteFeed.rfdisplay = escapeXmlTags(msg["display"]);
 						if(!remoteFeed.spinner) {
 							var target = document.getElementById('videoremote'+remoteFeed.rfindex);
 							remoteFeed.spinner = new Spinner({top:100}).spin(target);
@@ -687,6 +687,15 @@ function getQueryStringValue(name) {
 	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+}
+
+// Helper to escape XML tags
+function escapeXmlTags(value) {
+	if(value) {
+		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
+		return escapedValue;
+	}
 }
 
 // Helpers to create Simulcast-related UI, if enabled

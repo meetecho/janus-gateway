@@ -68,7 +68,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Server © 2014-2021 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2022 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -3824,7 +3824,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Server © 2014-2021 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2022 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -4016,7 +4016,7 @@ ldd janus | grep asan
  *    - Presentation on Janus at <a href="https://www.youtube.com/watch?v=2LHto3iufzU">ClueCon 2019</a>;
  *    - Presentation on Simulcast and SVC at <a href="https://www.youtube.com/watch?v=6COV44AORlo">IIT RTC 2019</a>;
  *    - Presentation on RTP forwarders at <a href="https://fosdem.org/2020/schedule/event/janus/">FOSDEM 2020</a>;
- *    - Presentation on using Janus for Virtual Events at <a href="https://www.youtube.com/watch?v=oSZw90guaUw">CommCon 2020</a>;
+ *    - Presentation on using Janus for Virtual Events at <a href="https://2020.commcon.xyz/session/turning-live-events-to-virtual-with-janus/">CommCon 2020</a>;
  *    - Workshop on Janus (lesson/tutorial) at <a href="https://www.youtube.com/watch?v=Ga_7lukslxw">ClueCon 2020</a>;
  *    - Presentation on E2EE (end-to-end encryption) and Insertable Streams at <a href="https://youtu.be/SmN8-6ZFuOo?t=2004">ClueCon 2020</a>;
  *    - Workshop on Janus and SIP (lesson/tutorial) at <a href="https://youtu.be/fv9KwrguR-4?t=3544">OpenSIPS 2020</a>;
@@ -4026,7 +4026,10 @@ ldd janus | grep asan
  *    - Workshop on Janus RTP forwarders (lesson/tutorial) at <a href="https://www.youtube.com/watch?v=uW8ztFCkxVk">ClueCon TGI2021</a>;
  *    - Presentation on Janus and NDI at <a href="https://youtu.be/RZ58vapWfUw?t=1755">ClueCon TGI2021</a>;
  *    - Presentation on Janus and multicast at the <a href="https://youtu.be/cT_74CRBsQs?t=5910">MBONED WG session (IETF 110)</a>;
- *    - Presentation on how to use WHIP and Janus for broadcasting at <a href="https://www.youtube.com/watch?v=b_QBd3WnGgY">IIT RTC 2021</a>. \n\n
+ *    - Presentation on how to use WHIP and Janus for broadcasting at <a href="https://www.youtube.com/watch?v=b_QBd3WnGgY">IIT RTC 2021</a>;
+ *    - Presentation on the efforts to integrate audio redundancy via RED in Janus at <a href="https://www.youtube.com/watch?v=NWEYv6OILZI">ClueCon 2021</a>;
+ *    - Presentation on how to use WHIP, NDI and Janus together at <a href="https://2021.commcon.xyz/talks/whip-ndi-and-janus-genesis-of-a-broadcasting-demo">CommCon 2021</a>;
+ *    - Presentation on Janode, the official Janus nodejs SDK, at <a href="https://2021.commcon.xyz/talks/janode-the-janus-node-js-sdk">CommCon 2021</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
  *    and presentations from <a href="https://januscon.it/2019">JanusCon</a>,
  *    the Janus conference we hosted here in Napoli.

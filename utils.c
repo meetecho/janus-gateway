@@ -275,8 +275,29 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 size_t janus_strlcat(char *dest, const char *src, size_t dest_size) {
 	size_t ret = g_strlcat(dest, src, dest_size);
 	if(ret >= dest_size)
-		JANUS_LOG(LOG_ERR, "janus_strlcat: truncation occurred, %lu >= %lu\n", ret, dest_size);
+		JANUS_LOG(LOG_ERR, "Truncation occurred, %lu >= %lu\n", ret, dest_size);
 	return ret;
+}
+
+int janus_strlcat_fast(char *dest, const char *src, size_t dest_size, size_t *offset) {
+	if(dest == NULL || src == NULL || offset == NULL) {
+		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
+		return -1;
+	}
+	if(*offset >= dest_size) {
+		JANUS_LOG(LOG_ERR, "Offset is beyond the buffer size\n");
+		return -2;
+	}
+	char *p = memccpy(dest + *offset, src, 0, dest_size - *offset);
+	if(p == NULL) {
+		JANUS_LOG(LOG_ERR, "Truncation occurred, %lu >= %lu\n",
+			*offset + strlen(src), dest_size);
+		*offset = dest_size;
+		*(dest + dest_size -1) = '\0';
+		return -3;
+	}
+	*offset = (p - dest - 1);
+	return 0;
 }
 
 int janus_mkdir(const char *dir, mode_t mode) {
@@ -362,8 +383,8 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 		format2 = "H264/90000";
 	} else if(!strcasecmp(codec, "av1")) {
 		video = 1;
-		format = "av1x/90000";
-		format2 = "AV1X/90000";
+		format = "av1/90000";
+		format2 = "AV1/90000";
 	} else if(!strcasecmp(codec, "h265")) {
 		video = 1;
 		format = "h265/90000";

@@ -186,7 +186,7 @@ int main(int argc, char *argv[])
     const u_char *buffer = NULL, *temp = NULL;
 	uint32_t count = 0, written = 0, pssrc = 0;
     int ret = 0;
-    size_t min_size = sizeof(pcap2mjr_ethernet_header) + sizeof(struct iphdr) +
+    size_t min_size = sizeof(pcap2mjr_ethernet_header) + sizeof(struct ip) +
 		sizeof(struct udphdr) + 12, pkt_size = 0;
 	gboolean header_written = FALSE;
 	gint64 start_ts = 0, pkt_ts = 0;
@@ -227,10 +227,10 @@ int main(int argc, char *argv[])
 		}
 		if(protocol == 0x0800) {
 			/* IPv4 */
-			struct iphdr *v4 = (struct iphdr *)temp;
-			protocol = v4->protocol;
-			temp += sizeof(struct iphdr);
-			pkt_size -= sizeof(struct iphdr);
+			struct ip *v4 = (struct ip *)temp;
+			protocol = v4->ip_p;
+			temp += sizeof(struct ip);
+			pkt_size -= sizeof(struct ip);
 		} else if(protocol == 0x86DD) {
 			/* IPv6 */
 			struct ip6_hdr *v6 = (struct ip6_hdr *)temp;
