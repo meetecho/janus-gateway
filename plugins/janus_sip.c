@@ -2071,7 +2071,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.identity = NULL;
 	session->account.force_udp = FALSE;
 	session->account.force_tcp = FALSE;
-	session->account.sips = TRUE;
+	session->account.sips = FALSE;
 	session->account.rfc2543_cancel = FALSE;
 	session->account.username = NULL;
 	session->account.display_name = NULL;
@@ -2839,7 +2839,7 @@ static void *janus_sip_handler(void *data) {
 				send_register = json_is_true(do_register);
 			}
 
-			gboolean sips = TRUE;
+			gboolean sips = FALSE;
 			json_t *do_sips = json_object_get(root, "sips");
 			if(do_sips != NULL) {
 				sips = json_is_true(do_sips);
@@ -3020,7 +3020,7 @@ static void *janus_sip_handler(void *data) {
 				session->account.identity = NULL;
 				session->account.force_udp = FALSE;
 				session->account.force_tcp = FALSE;
-				session->account.sips = TRUE;
+				session->account.sips = FALSE;
 				session->account.rfc2543_cancel = FALSE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
@@ -5977,7 +5977,7 @@ auth_failed:
 				session->account.identity = NULL;
 				session->account.force_udp = FALSE;
 				session->account.force_tcp = FALSE;
-				session->account.sips = TRUE;
+				session->account.sips = FALSE;
 				session->account.rfc2543_cancel = FALSE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
