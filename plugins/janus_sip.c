@@ -853,6 +853,7 @@ static uint16_t rtp_range_min = 10000;
 static uint16_t rtp_range_max = 60000;
 static int dscp_audio_rtp = 0;
 static int dscp_video_rtp = 0;
+static char *sips_certs_dir = NULL;
 
 static gboolean query_contact_header = FALSE;
 
@@ -1936,6 +1937,13 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
+		/* Check if Sofia should find certificates in a custom folder  */
+		item = janus_config_get(config, config_general, janus_config_type_item, "sips_certs_dir");
+		if(item && item->value) {
+			sips_certs_dir = g_strdup(item->value);
+			JANUS_LOG(LOG_VERB, "Sofia SIP certificates folder: %s\n", sips_certs_dir);
+		}
+
 		janus_config_destroy(config);
 	}
 	config = NULL;
@@ -2860,6 +2868,8 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Conflicting elements: force_udp and force_tcp cannot both be true");
 				goto error;
 			}
+			if(!force_udp && !force_tcp)
+				force_udp = TRUE;
 			gboolean rfc2543_cancel = FALSE;
 			json_t *do_rfc2543_cancel = json_object_get(root, "rfc2543_cancel");
 			if(do_rfc2543_cancel != NULL) {
@@ -7040,13 +7050,11 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	char sips_url[128];
 	char *ipv6;
 	ipv6 = strstr(local_ip, ":");
-	if(session->account.force_udp)
-		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;transport=udp", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
-	else if(session->account.force_tcp)
+	if(session->account.force_tcp)
 		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;transport=tcp", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
 	else
-		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
-	g_snprintf(sips_url, sizeof(sips_url), "sips:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
+		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;transport=udp", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
+	g_snprintf(sips_url, sizeof(sips_url), "sips:%s%s%s:*;transport=tls", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
 	char outbound_options[256] = "use-rport no-validate";
 	if(keepalive_interval > 0)
 		janus_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
@@ -7059,6 +7067,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_M_USERNAME(session->account.username),
 				NUTAG_URL(sip_url),
 				TAG_IF(session->account.sips, NUTAG_SIPS_URL(sips_url)),
+				TAG_IF(session->account.sips && sips_certs_dir, NUTAG_CERTIFICATE_DIR(sips_certs_dir)),
 				SIPTAG_USER_AGENT_STR(session->account.user_agent ? session->account.user_agent : user_agent),
 				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),
