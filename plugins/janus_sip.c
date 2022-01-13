@@ -3672,9 +3672,9 @@ static void *janus_sip_handler(void *data) {
 			g_free(session->callee);
 			session->callee = g_strdup(uri_text);
 			janus_mutex_unlock(&session->mutex);
+			janus_mutex_lock(&sessions_mutex);
 			g_free(session->callid);
 			session->callid = callid;
-			janus_mutex_lock(&sessions_mutex);
 			g_hash_table_insert(callids, session->callid, session);
 			janus_mutex_unlock(&sessions_mutex);
 			g_atomic_int_set(&session->establishing, 1);
@@ -4946,13 +4946,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 				/* Get rid of any PeerConnection that may have been set up */
+				janus_mutex_lock(&sessions_mutex);
 				if(session->callid) {
-					janus_mutex_lock(&sessions_mutex);
 					g_hash_table_remove(callids, session->callid);
-					janus_mutex_unlock(&sessions_mutex);
+					g_free(session->callid);
+					session->callid = NULL;
 				}
-				g_free(session->callid);
-				session->callid = NULL;
+				janus_mutex_unlock(&sessions_mutex);
 				g_free(session->transaction);
 				session->transaction = NULL;
 				g_free(session->hangup_reason_header);
@@ -5121,13 +5121,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->callee = g_strdup(caller_text);
 				janus_mutex_unlock(&session->mutex);
 				su_free(session->stack->s_home, caller_text);
+				janus_mutex_lock(&sessions_mutex);
 				g_free(session->callid);
 				session->callid = sip && sip->sip_call_id ? g_strdup(sip->sip_call_id->i_id) : NULL;
-				if(session->callid) {
-					janus_mutex_lock(&sessions_mutex);
+				if(session->callid)
 					g_hash_table_insert(callids, session->callid, session);
-					janus_mutex_unlock(&sessions_mutex);
-				}
+				janus_mutex_unlock(&sessions_mutex);
 				janus_sip_call_update_status(session, janus_sip_call_status_invited);
 				/* Clean up SRTP stuff from before first, in case it's still needed */
 				janus_sip_srtp_cleanup(session);
