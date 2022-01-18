@@ -784,6 +784,7 @@ static struct janus_json_parameter proxy_parameters[] = {
 static struct janus_json_parameter call_parameters[] = {
 	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"headers", JSON_OBJECT, 0},
+	{"call_id", JANUS_JSON_STRING, 0},
 	{"srtp", JSON_STRING, 0},
 	{"srtp_profile", JSON_STRING, 0},
 	{"autoaccept_reinvites", JANUS_JSON_BOOL, 0},
@@ -833,7 +834,8 @@ static struct janus_json_parameter sipmessage_parameters[] = {
 	{"content_type", JSON_STRING, 0},
 	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"uri", JSON_STRING, 0},
-	{"headers", JSON_OBJECT, 0}
+	{"headers", JSON_OBJECT, 0},
+	{"call_id", JANUS_JSON_STRING, 0}
 };
 
 /* Useful stuff */
@@ -3586,12 +3588,16 @@ static void *janus_sip_handler(void *data) {
 			}
 			g_atomic_int_set(&session->hangingup, 0);
 			janus_sip_call_update_status(session, janus_sip_call_status_inviting);
-			char *callid;
+			char *callid = NULL;
 			json_t *request_callid = json_object_get(root, "call_id");
 			/* Take call-id from request, if it exists */
 			if(request_callid) {
 				callid = g_strdup(json_string_value(request_callid));
-			} else {
+				if(callid == NULL) {
+					JANUS_LOG(LOG_WARN, "Invalid call_id provided, generating a random one\n");
+				}
+			}
+			if(callid == NULL) {
 				/* If call-id does not exist in request, create a random one */
 				callid = g_malloc0(24);
 				janus_sip_random_string(24, callid);
@@ -4727,7 +4733,11 @@ static void *janus_sip_handler(void *data) {
 				/* Use call-id from the request, if it exists */
 				if(request_callid) {
 					message_callid = g_strdup(json_string_value(request_callid));
-				} else {
+					if(message_callid == NULL) {
+						JANUS_LOG(LOG_WARN, "Invalid call_id provided, generating a random one\n");
+					}
+				}
+				if(message_callid == NULL) {
 					/* If call-id does not exist in request, create a random one */
 					message_callid = g_malloc0(24);
 					janus_sip_random_string(24, message_callid);
