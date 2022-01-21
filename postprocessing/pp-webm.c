@@ -91,9 +91,11 @@ int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8, const 
 	return 0;
 }
 
-int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean vp8) {
+int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean vp8, json_t *info) {
 	if(!file || !list)
 		return -1;
+	json_t *resolutions = NULL;
+	int last_width = -1, last_height = -1;
 	janus_pp_frame_packet *tmp = list;
 	int bytes = 0, min_ts_diff = 0, max_ts_diff = 0;
 	int rotation = -1;
@@ -192,6 +194,20 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 							max_width = vp8w;
 							max_height = vp8h;
 						}
+						if(info && (last_width != vp8w || last_height != vp8h)) {
+							last_width = vp8w;
+							last_height = vp8h;
+							if(resolutions == NULL) {
+								resolutions = json_array();
+								json_object_set_new(info, "resolution", resolutions);
+							}
+							json_t *resolution = json_object();
+							double ts = (double)(tmp->ts-list->ts)/(double)90000;
+							json_object_set_new(resolution, "ts", json_real(ts));
+							json_object_set_new(resolution, "width", json_integer(vp8w));
+							json_object_set_new(resolution, "height", json_integer(vp8h));
+							json_array_append_new(resolutions, resolution);
+						}
 					}
 				}
 			}
@@ -265,6 +281,20 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 						if(width*height > max_width*max_height) {
 							max_width = width;
 							max_height = height;
+						}
+						if(info && (last_width != width || last_height != height)) {
+							last_width = width;
+							last_height = height;
+									if(resolutions == NULL) {
+								resolutions = json_array();
+								json_object_set_new(info, "resolution", resolutions);
+							}
+							json_t *resolution = json_object();
+							double ts = (double)(tmp->ts-list->ts)/(double)90000;
+							json_object_set_new(resolution, "ts", json_real(ts));
+							json_object_set_new(resolution, "width", json_integer(width));
+							json_object_set_new(resolution, "height", json_integer(height));
+							json_array_append_new(resolutions, resolution);
 						}
 					}
 				}
