@@ -1212,7 +1212,8 @@ int main(int argc, char *argv[])
 			JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%.2fs pts=%.2fs\n",
 				tmp->offset, tmp->len, tmp->seq, tmp->ts, ts, pts);
 		} else {
-			JANUS_LOG(LOG_VERB, "[%10lu][%4d] time=%"SCNu64"s\n", tmp->offset, tmp->len, tmp->ts);
+			ts = (double)tmp->ts/G_USEC_PER_SEC;
+			JANUS_LOG(LOG_VERB, "[%10lu][%4d] time=%.2fs\n", tmp->offset, tmp->len, ts);
 		}
 		tmp = tmp->next;
 	}
