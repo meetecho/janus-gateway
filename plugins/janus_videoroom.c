@@ -433,7 +433,8 @@ room-<unique room ID>: {
 			"id" : <unique numeric ID of the participant>,
 			"display" : "<display name of the participant, if any; optional>",
 			"publisher" : "<true|false, whether user is an active publisher in the room>",
-			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>
+			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>,
+			"subscribers" : <number of subscribers for this participant, if any>
 		},
 		// Other participants
 	]
@@ -4851,6 +4852,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(p->sdp && g_atomic_int_get(&p->session->started)) {
 				if(p->audio_level_extmap_id > 0)
 					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
+				janus_mutex_lock_nodebug(&p->subscribers_mutex);
+				json_object_set_new(pl, "subscribers", json_integer(g_slist_length(p->subscribers)));
+				janus_mutex_unlock_nodebug(&p->subscribers_mutex);
 			}
 			json_array_append_new(list, pl);
 		}
