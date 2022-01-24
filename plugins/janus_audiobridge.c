@@ -280,7 +280,7 @@ room-<unique room ID>: {
 	"room" : <unique numeric ID of the room>,
 	"secret" : "<room secret; mandatory if configured>"
 	"mjrs" : <true|false, whether all participants in the room should be individually recorded to mjr files or not>,
-	"record_dir" : "<path where all MJR files should be saved to (optional)>"
+	"mjrs_dir" : "<path where all MJR files should be saved to (optional)>"
 }
 \endverbatim
  *
