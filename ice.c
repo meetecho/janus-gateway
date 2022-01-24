@@ -360,8 +360,8 @@ gboolean janus_ice_event_get_combine_media_stats(void) {
 }
 
 /* RTP/RTCP port range */
-uint16_t rtp_range_min = 0;
-uint16_t rtp_range_max = 0;
+static uint16_t rtp_range_min = 0;
+static uint16_t rtp_range_max = 0;
 
 
 #define JANUS_ICE_PACKET_AUDIO	0
