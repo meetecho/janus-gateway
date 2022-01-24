@@ -247,7 +247,8 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	usrsctp_sysctl_set_sctp_ecn_enable(0);
 	if((sock = usrsctp_socket(AF_CONN, SOCK_STREAM, IPPROTO_SCTP, janus_sctp_incoming_data, NULL, 0,
 			GUINT_TO_POINTER(sctp->map_id))) == NULL) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating usrsctp socket... (%d)\n", sctp->handle_id, errno);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating usrsctp socket... (%d, %s)\n",
+			sctp->handle_id, errno, g_strerror(errno));
 		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
@@ -257,7 +258,8 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	/* Make the socket non-blocking. Connect, close, shutdown etc will not block
 	 * the thread waiting for the socket operation to complete. */
 	if (usrsctp_set_non_blocking(sock, 1) < 0) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting socket to non-blocking... (%d)\n", sctp->handle_id, errno);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting socket to non-blocking... (%d, %s)\n",
+			sctp->handle_id, errno, g_strerror(errno));
 		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
@@ -266,7 +268,8 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	linger_opt.l_onoff = 1;
 	linger_opt.l_linger = 0;
 	if(usrsctp_setsockopt(sock, SOL_SOCKET, SO_LINGER, &linger_opt, sizeof(linger_opt))) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SO_LINGER (%d)\n", sctp->handle_id, errno);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SO_LINGER (%d, %s)\n",
+			sctp->handle_id, errno, g_strerror(errno));
 		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
@@ -275,14 +278,16 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	av.assoc_id = SCTP_ALL_ASSOC;
 	av.assoc_value = SCTP_ENABLE_RESET_STREAM_REQ | SCTP_ENABLE_CHANGE_ASSOC_REQ;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_ENABLE_STREAM_RESET, &av, sizeof(struct sctp_assoc_value)) < 0) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_ENABLE_STREAM_RESET (%d)\n", sctp->handle_id, errno);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_ENABLE_STREAM_RESET (%d, %s)\n",
+			sctp->handle_id, errno, g_strerror(errno));
 		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
 	/* Disable Nagle */
 	uint32_t nodelay = 1;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_NODELAY, &nodelay, sizeof(nodelay))) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_NODELAY (%d)\n", sctp->handle_id, errno);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_NODELAY (%d, %s)\n",
+			sctp->handle_id, errno, g_strerror(errno));
 		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
@@ -294,7 +299,8 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	for(i = 0; i < sizeof(event_types)/sizeof(uint16_t); i++) {
 		event.se_type = event_types[i];
 		if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_EVENT, &event, sizeof(event)) < 0) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_EVENT (%d)\n", sctp->handle_id, errno);
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_EVENT (%d, %s)\n",
+				sctp->handle_id, errno, g_strerror(errno));
 			janus_sctp_association_destroy(sctp);
 			return NULL;
 		}
@@ -305,7 +311,8 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	initmsg.sinit_num_ostreams = NUMBER_OF_STREAMS;
 	initmsg.sinit_max_instreams = NUMBER_OF_STREAMS;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_INITMSG, &initmsg, sizeof(struct sctp_initmsg)) < 0) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_INITMSG (%d)\n", sctp->handle_id, errno);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_INITMSG (%d, %s)\n",
+			sctp->handle_id, errno, g_strerror(errno));
 		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
@@ -315,7 +322,8 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	sconn.sconn_port = htons(sctp->local_port);
 	sconn.sconn_addr = GUINT_TO_POINTER(sctp->map_id);
 	if(usrsctp_bind(sock, (struct sockaddr *)&sconn, sizeof(struct sockaddr_conn)) < 0) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error binding client on port %"SCNu16" (%d)\n", sctp->handle_id, sctp->local_port, errno);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error binding client on port %"SCNu16" (%d, %s)\n",
+			sctp->handle_id, sctp->local_port, errno, g_strerror(errno));
 		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
@@ -338,7 +346,8 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 #endif
 	int res = usrsctp_connect(sock, (struct sockaddr *)&rconn, sizeof(struct sockaddr_conn));
 	if(res < 0 && errno != EINPROGRESS) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error connecting to SCTP server at port %"SCNu16" (%d)\n", sctp->handle_id, sctp->remote_port, errno);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error connecting to SCTP server at port %"SCNu16" (%d, %s)\n",
+			sctp->handle_id, sctp->remote_port, errno, g_strerror(errno));
 		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
@@ -624,7 +633,7 @@ int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, c
 			NULL, 0,
 			&sndinfo, (socklen_t)sizeof(struct sctp_sndinfo),
 			SCTP_SENDV_SNDINFO, 0) < 0) {
-		JANUS_LOG(LOG_ERR, "usrsctp_sendv error (%d)\n", errno);
+		JANUS_LOG(LOG_ERR, "usrsctp_sendv error (%d, %s)\n", errno, g_strerror(errno));
 		g_free(req);
 		req = NULL;
 		return 0;
@@ -654,7 +663,7 @@ int janus_sctp_send_open_response_message(struct socket *sock, uint16_t stream) 
 			NULL, 0,
 			&sndinfo, (socklen_t)sizeof(struct sctp_sndinfo),
 			SCTP_SENDV_SNDINFO, 0) < 0) {
-		JANUS_LOG(LOG_ERR, "usrsctp_sendv error (%d)\n", errno);
+		JANUS_LOG(LOG_ERR, "usrsctp_sendv error (%d, %s)\n", errno, g_strerror(errno));
 		return 0;
 	} else {
 		return 1;
@@ -677,7 +686,7 @@ int janus_sctp_send_open_ack_message(struct socket *sock, uint16_t stream) {
 			NULL, 0,
 			&sndinfo, (socklen_t)sizeof(struct sctp_sndinfo),
 			SCTP_SENDV_SNDINFO, 0) < 0) {
-		JANUS_LOG(LOG_ERR, "usrsctp_sendv error (%d)\n", errno);
+		JANUS_LOG(LOG_ERR, "usrsctp_sendv error (%d, %s)\n", errno, g_strerror(errno));
 		return 0;
 	} else {
 		return 1;
@@ -815,7 +824,8 @@ int janus_sctp_send_text_or_binary(janus_sctp_association *sctp, uint16_t id, gb
 			/* Couldn't send the message right away, add to the queue and retry later */
 			return -2;
 		}
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] sctp_sendv error (%d)\n", sctp->handle_id, res);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] sctp_sendv error (%d, %s)\n",
+			sctp->handle_id, res, g_strerror(res));
 		return -1;
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Message sent on channel %"SCNu16"\n", sctp->handle_id, id);
@@ -850,7 +860,8 @@ void janus_sctp_send_outgoing_stream_reset(janus_sctp_association *sctp) {
 		srs->srs_stream_list[i] = sctp->stream_buffer[i];
 	}
 	if(usrsctp_setsockopt(sctp->sock, IPPROTO_SCTP, SCTP_RESET_STREAMS, srs, (socklen_t)len) < 0) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_RESET_STREAMS (%d)\n", sctp->handle_id, errno);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_RESET_STREAMS (%d, %s)\n",
+			sctp->handle_id, errno, g_strerror(errno));
 	} else {
 		for(i = 0; i < sctp->stream_buffer_counter; i++) {
 			srs->srs_stream_list[i] = 0;

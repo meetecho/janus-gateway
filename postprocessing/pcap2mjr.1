@@ -9,7 +9,7 @@ pcap2mjr \- Helper tool to convert a pcap dump to a Janus recording.
 .B pcap2mjr
 is a simple utility that allows you take .pcap network captures, extract a specific RTP session via its SSRC, and convert it to an .mjr Janus recording instead. Its main purpose is helping convert .pcap captures to media files, or make it easier to replay them via Janus.
 .TP
-The tool requires a path to the .pcap file to read, and a path to the target .pcap file; besides, it needs info on the codec and the SSRC to filter. Notice that if the tool can't detect any RTP packet with that SSRC, it will result in an error.
+The tool requires a path to the .pcap file to read, and a path to the target .pcap file; besides, it needs info on the codec and the SSRC to filter. Notice that if the tool can't detect any RTP packet with that SSRC, it will result in an error: if you want the tool to autodetect an RTP stream, pass 0.
 .SH OPTIONS
 .TP
 .BR \-h ", " \-\-help
@@ -22,7 +22,7 @@ Print version and exit
 Codec the recording will contain (e.g., opus, vp8, etc.)
 .TP
 .BR \-s ", " \-\-ssrc=\fISSRC (numeric)\fR
-SSRC of the packets in the pcap file to save
+SSRC of the packets in the pcap file to save (pass 0 to autodetected)
 .TP
 .BR \-w ", " \-\-warnings
 Show warnings for skipped packets (e.g., not RTP or wrong SSRC)

@@ -1,9 +1,10 @@
-#Janus-pp-rec 0.11.7 gengetopt file
+#Janus-pp-rec 0.11.8 gengetopt file
 usage "janus-pp-rec [OPTIONS] source.mjr [destination.[opus|ogg|mka|wav|webm|mkv|h264|srt]]"
 option "file-extensions" F "Only print the supported target file extensions per codec" flag off
 option "json" j "Only print JSON header" flag off
 option "header" H "Only parse .mjr header" flag off
 option "parse" p "Only parse and re-order packets" flag off
+option "extended-json" e "Only print extended JSON report (automatically enables --json)" flag off
 option "metadata" m "Save this metadata string in the target file" string typestr="metadata" optional
 option "ignore-first" i "Number of first packets to ignore when processing, e.g., in case they're cause of issues (default=0)" int typestr="count" optional
 option "payload-type" P "Ignore all RTP packets that don't match the specified payload type (default=none)" int typestr="pt" optional

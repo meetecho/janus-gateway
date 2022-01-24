@@ -360,8 +360,8 @@ gboolean janus_ice_event_get_combine_media_stats(void) {
 }
 
 /* RTP/RTCP port range */
-uint16_t rtp_range_min = 0;
-uint16_t rtp_range_max = 0;
+static uint16_t rtp_range_min = 0;
+static uint16_t rtp_range_max = 0;
 
 
 #define JANUS_ICE_PACKET_AUDIO	0
@@ -1418,7 +1418,10 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		janus_refcount_decrease(&handle->ref);
 		return 0;
 	}
-	JANUS_LOG(LOG_INFO, "Detaching handle from %s; %p %p %p %p\n", plugin_t->get_name(), handle, handle->app_handle, handle->app_handle->gateway_handle, handle->app_handle->plugin_handle);
+	JANUS_LOG(LOG_INFO, "Detaching handle from %s; %p %p %p %p\n", plugin_t->get_name(),
+		handle, handle ? handle->app_handle : NULL,
+		(handle && handle->app_handle) ? handle->app_handle->gateway_handle : NULL,
+		(handle && handle->app_handle) ? handle->app_handle->plugin_handle : NULL);
 	/* Actually detach handle... */
 	if(g_atomic_int_compare_and_exchange(&handle->app_handle->stopped, 0, 1)) {
 		/* Notify the plugin that the session's over (the plugin will

@@ -40,4 +40,12 @@ general: {
 	#dscp_audio_rtp = 46
 	#dscp_video_rtp = 26
 
+	# In case you want to use SIPS for some sessions, Sofia may need to
+	# have access to a certificate to use: this is especially true for
+	# Sofia >= 1.13, which will fail to create the agent if no certificate
+	# is available. By default, Sofia looks for 'agent.pem' and 'cafile.pem'
+	# in the '$HOME/.sip/auth' folder, but you can specify a different
+	# one by uncommenting and setting the property below.
+	#sips_certs_dir = "/etc/sip/certs"
+
 }
