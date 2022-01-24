@@ -177,7 +177,12 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		JANUS_LOG(LOG_VERB, "Writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
 			bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/8000);
 		/* Decode and save to wav */
+#ifdef FF_API_INIT_PACKET
 		AVPacket *avpacket = av_packet_alloc();
+#else
+		AVPacket avpkt = { 0 }, *avpacket = &avpkt;
+		av_init_packet(avpacket);
+#endif
 		avpacket->data = (uint8_t *)buffer;
 		avpacket->size = bytes;
 		int err = 0;
@@ -217,7 +222,9 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 #else
 		avcodec_free_frame(&frame);
 #endif
+#ifdef FF_API_INIT_PACKET
 		av_packet_free(&avpacket);
+#endif
 		tmp = tmp->next;
 	}
 	g_free(buffer);

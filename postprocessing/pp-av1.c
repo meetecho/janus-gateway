@@ -25,7 +25,9 @@
 
 /* MP4 output */
 static AVFormatContext *fctx;
+#if LIBAVCODEC_VER_AT_LEAST(57, 25)
 static AVStream *vStream;
+#endif
 static uint16_t max_width = 0, max_height = 0;
 static int fps = 0;
 
@@ -203,9 +205,11 @@ static void janus_pp_av1_parse_sh(char *buffer, uint16_t *width, uint16_t *heigh
 	*height = janus_pp_av1_getbits(base, fhbm1+1, &offset)+1;
 }
 
-int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list) {
+int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list, json_t *info) {
 	if(!file || !list)
 		return -1;
+	json_t *resolutions = NULL;
+	int last_width = -1, last_height = -1;
 	janus_pp_frame_packet *tmp = list;
 	int bytes = 0, min_ts_diff = 0, max_ts_diff = 0;
 	int rotation = -1;
@@ -287,6 +291,20 @@ int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list) {
 					max_height = height;
 				}
 				JANUS_LOG(LOG_INFO, "  -- Detected new resolution: %"SCNu16"x%"SCNu16" (seq=%"SCNu16")\n", width, height, tmp->seq);
+				if(info && (last_width != width || last_height != height)) {
+					last_width = width;
+					last_height = height;
+					if(resolutions == NULL) {
+						resolutions = json_array();
+						json_object_set_new(info, "resolution", resolutions);
+					}
+					json_t *resolution = json_object();
+					double ts = (double)(tmp->ts-list->ts)/(double)90000;
+					json_object_set_new(resolution, "ts", json_real(ts));
+					json_object_set_new(resolution, "width", json_integer(width));
+					json_object_set_new(resolution, "height", json_integer(height));
+					json_array_append_new(resolutions, resolution);
+				}
 			}
 			payload += obusize;
 			len -= obusize;
@@ -338,7 +356,11 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 	int len = 0, frameLen = 0, total = 0, dataLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
+#ifdef FF_API_INIT_PACKET
 	AVPacket *packet = av_packet_alloc();
+#else
+	AVPacket pkt = { 0 }, *packet = &pkt;
+#endif
 	AVRational timebase = {1, 90000};
 
 	while(*working && tmp != NULL) {
@@ -460,7 +482,11 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 			total += frameLen;
 			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Saving frame: %d (tot=%d)\n", tmp->ts, frameLen, total);
 
+#ifdef FF_API_INIT_PACKET
 			av_packet_unref(packet);
+#else
+			av_init_packet(packet);
+#endif
 			packet->stream_index = 0;
 			packet->data = received_frame;
 			packet->size = frameLen;
@@ -480,7 +506,9 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 		}
 		tmp = tmp->next;
 	}
+#ifdef FF_API_INIT_PACKET
 	av_packet_free(&packet);
+#endif
 	g_free(received_frame);
 	g_free(obu_data);
 	g_free(start);

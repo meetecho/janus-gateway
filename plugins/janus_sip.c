@@ -784,6 +784,7 @@ static struct janus_json_parameter proxy_parameters[] = {
 static struct janus_json_parameter call_parameters[] = {
 	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"headers", JSON_OBJECT, 0},
+	{"call_id", JANUS_JSON_STRING, 0},
 	{"srtp", JSON_STRING, 0},
 	{"srtp_profile", JSON_STRING, 0},
 	{"autoaccept_reinvites", JANUS_JSON_BOOL, 0},
@@ -833,7 +834,8 @@ static struct janus_json_parameter sipmessage_parameters[] = {
 	{"content_type", JSON_STRING, 0},
 	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"uri", JSON_STRING, 0},
-	{"headers", JSON_OBJECT, 0}
+	{"headers", JSON_OBJECT, 0},
+	{"call_id", JANUS_JSON_STRING, 0}
 };
 
 /* Useful stuff */
@@ -853,6 +855,7 @@ static uint16_t rtp_range_min = 10000;
 static uint16_t rtp_range_max = 60000;
 static int dscp_audio_rtp = 0;
 static int dscp_video_rtp = 0;
+static char *sips_certs_dir = NULL;
 
 static gboolean query_contact_header = FALSE;
 
@@ -1937,6 +1940,13 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
+		/* Check if Sofia should find certificates in a custom folder  */
+		item = janus_config_get(config, config_general, janus_config_type_item, "sips_certs_dir");
+		if(item && item->value) {
+			sips_certs_dir = g_strdup(item->value);
+			JANUS_LOG(LOG_VERB, "Sofia SIP certificates folder: %s\n", sips_certs_dir);
+		}
+
 		janus_config_destroy(config);
 	}
 	config = NULL;
@@ -2072,7 +2082,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.identity = NULL;
 	session->account.force_udp = FALSE;
 	session->account.force_tcp = FALSE;
-	session->account.sips = TRUE;
+	session->account.sips = FALSE;
 	session->account.rfc2543_cancel = FALSE;
 	session->account.username = NULL;
 	session->account.display_name = NULL;
@@ -2841,7 +2851,7 @@ static void *janus_sip_handler(void *data) {
 				send_register = json_is_true(do_register);
 			}
 
-			gboolean sips = TRUE;
+			gboolean sips = FALSE;
 			json_t *do_sips = json_object_get(root, "sips");
 			if(do_sips != NULL) {
 				sips = json_is_true(do_sips);
@@ -2862,6 +2872,8 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Conflicting elements: force_udp and force_tcp cannot both be true");
 				goto error;
 			}
+			if(!force_udp && !force_tcp)
+				force_udp = TRUE;
 			gboolean rfc2543_cancel = FALSE;
 			json_t *do_rfc2543_cancel = json_object_get(root, "rfc2543_cancel");
 			if(do_rfc2543_cancel != NULL) {
@@ -3022,7 +3034,7 @@ static void *janus_sip_handler(void *data) {
 				session->account.identity = NULL;
 				session->account.force_udp = FALSE;
 				session->account.force_tcp = FALSE;
-				session->account.sips = TRUE;
+				session->account.sips = FALSE;
 				session->account.rfc2543_cancel = FALSE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
@@ -3578,12 +3590,16 @@ static void *janus_sip_handler(void *data) {
 			}
 			g_atomic_int_set(&session->hangingup, 0);
 			janus_sip_call_update_status(session, janus_sip_call_status_inviting);
-			char *callid;
+			char *callid = NULL;
 			json_t *request_callid = json_object_get(root, "call_id");
 			/* Take call-id from request, if it exists */
 			if(request_callid) {
 				callid = g_strdup(json_string_value(request_callid));
-			} else {
+				if(callid == NULL) {
+					JANUS_LOG(LOG_WARN, "Invalid call_id provided, generating a random one\n");
+				}
+			}
+			if(callid == NULL) {
 				/* If call-id does not exist in request, create a random one */
 				callid = g_malloc0(24);
 				janus_sip_random_string(24, callid);
@@ -3671,9 +3687,9 @@ static void *janus_sip_handler(void *data) {
 			g_free(session->callee);
 			session->callee = g_strdup(uri_text);
 			janus_mutex_unlock(&session->mutex);
+			janus_mutex_lock(&sessions_mutex);
 			g_free(session->callid);
 			session->callid = callid;
-			janus_mutex_lock(&sessions_mutex);
 			g_hash_table_insert(callids, session->callid, session);
 			janus_mutex_unlock(&sessions_mutex);
 			g_atomic_int_set(&session->establishing, 1);
@@ -4726,7 +4742,11 @@ static void *janus_sip_handler(void *data) {
 				/* Use call-id from the request, if it exists */
 				if(request_callid) {
 					message_callid = g_strdup(json_string_value(request_callid));
-				} else {
+					if(message_callid == NULL) {
+						JANUS_LOG(LOG_WARN, "Invalid call_id provided, generating a random one\n");
+					}
+				}
+				if(message_callid == NULL) {
 					/* If call-id does not exist in request, create a random one */
 					message_callid = g_malloc0(24);
 					janus_sip_random_string(24, message_callid);
@@ -4945,13 +4965,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 				/* Get rid of any PeerConnection that may have been set up */
+				janus_mutex_lock(&sessions_mutex);
 				if(session->callid) {
-					janus_mutex_lock(&sessions_mutex);
 					g_hash_table_remove(callids, session->callid);
-					janus_mutex_unlock(&sessions_mutex);
+					g_free(session->callid);
+					session->callid = NULL;
 				}
-				g_free(session->callid);
-				session->callid = NULL;
+				janus_mutex_unlock(&sessions_mutex);
 				g_free(session->transaction);
 				session->transaction = NULL;
 				g_free(session->hangup_reason_header);
@@ -5120,13 +5140,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->callee = g_strdup(caller_text);
 				janus_mutex_unlock(&session->mutex);
 				su_free(session->stack->s_home, caller_text);
+				janus_mutex_lock(&sessions_mutex);
 				g_free(session->callid);
 				session->callid = sip && sip->sip_call_id ? g_strdup(sip->sip_call_id->i_id) : NULL;
-				if(session->callid) {
-					janus_mutex_lock(&sessions_mutex);
+				if(session->callid)
 					g_hash_table_insert(callids, session->callid, session);
-					janus_mutex_unlock(&sessions_mutex);
-				}
+				janus_mutex_unlock(&sessions_mutex);
 				janus_sip_call_update_status(session, janus_sip_call_status_invited);
 				/* Clean up SRTP stuff from before first, in case it's still needed */
 				janus_sip_srtp_cleanup(session);
@@ -5986,7 +6005,7 @@ auth_failed:
 				session->account.identity = NULL;
 				session->account.force_udp = FALSE;
 				session->account.force_tcp = FALSE;
-				session->account.sips = TRUE;
+				session->account.sips = FALSE;
 				session->account.rfc2543_cancel = FALSE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
@@ -7050,13 +7069,11 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	char sips_url[128];
 	char *ipv6;
 	ipv6 = strstr(local_ip, ":");
-	if(session->account.force_udp)
-		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;transport=udp", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
-	else if(session->account.force_tcp)
+	if(session->account.force_tcp)
 		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;transport=tcp", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
 	else
-		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
-	g_snprintf(sips_url, sizeof(sips_url), "sips:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
+		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;transport=udp", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
+	g_snprintf(sips_url, sizeof(sips_url), "sips:%s%s%s:*;transport=tls", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
 	char outbound_options[256] = "use-rport no-validate";
 	if(keepalive_interval > 0)
 		janus_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
@@ -7069,6 +7086,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_M_USERNAME(session->account.username),
 				NUTAG_URL(sip_url),
 				TAG_IF(session->account.sips, NUTAG_SIPS_URL(sips_url)),
+				TAG_IF(session->account.sips && sips_certs_dir, NUTAG_CERTIFICATE_DIR(sips_certs_dir)),
 				SIPTAG_USER_AGENT_STR(session->account.user_agent ? session->account.user_agent : user_agent),
 				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),

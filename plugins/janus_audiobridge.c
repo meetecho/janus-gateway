@@ -200,6 +200,7 @@ room-<unique room ID>: {
 	"new_secret" : "<new password required to edit/destroy the room, optional>",
 	"new_pin" : "<new password required to join the room, optional>",
 	"new_is_private" : <true|false, whether the room should appear in a list request>,
+	"new_record_dir" : "<new path where new recording files should be saved>",
 	"permanent" : <true|false, whether the room should be also removed from the config file, default=false>
 }
 \endverbatim
@@ -1125,6 +1126,7 @@ static struct janus_json_parameter edit_parameters[] = {
 	{"new_secret", JSON_STRING, 0},
 	{"new_pin", JSON_STRING, 0},
 	{"new_is_private", JANUS_JSON_BOOL, 0},
+	{"new_record_dir", JSON_STRING, 0},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter destroy_parameters[] = {
@@ -3346,6 +3348,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_t *secret = json_object_get(root, "new_secret");
 		json_t *pin = json_object_get(root, "new_pin");
 		json_t *is_private = json_object_get(root, "new_is_private");
+		json_t *recdir = json_object_get(root, "record_dir");
 		json_t *permanent = json_object_get(root, "permanent");
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
 		if(save && config == NULL) {
@@ -3402,6 +3405,12 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			char *new_pin = g_strdup(json_string_value(pin));
 			audiobridge->room_pin = new_pin;
 			g_free(old_pin);
+		}
+		if(recdir) {
+			char *old_record_dir = audiobridge->record_dir;
+			char *new_record_dir = g_strdup(json_string_value(recdir));
+			audiobridge->record_dir = new_record_dir;
+			g_free(old_record_dir);
 		}
 		if(save) {
 			/* This change is permanent: save to the configuration file too
