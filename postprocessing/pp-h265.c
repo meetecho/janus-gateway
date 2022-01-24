@@ -457,7 +457,11 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
+#ifdef FF_API_INIT_PACKET
 	AVPacket *packet = av_packet_alloc();
+#else
+	AVPacket pkt = { 0 }, *packet = &pkt;
+#endif
 	AVRational timebase = {1, 90000};
 
 	while(*working && tmp != NULL) {
@@ -587,7 +591,11 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			/* Save the frame */
 			memset(received_frame + frameLen, 0, FF_INPUT_BUFFER_PADDING_SIZE);
 
+#ifdef FF_API_INIT_PACKET
 			av_packet_unref(packet);
+#else
+			av_init_packet(packet);
+#endif
 			packet->stream_index = 0;
 			packet->data = received_frame;
 			packet->size = frameLen;
@@ -607,7 +615,9 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		}
 		tmp = tmp->next;
 	}
+#ifdef FF_API_INIT_PACKET
 	av_packet_free(&packet);
+#endif
 	g_free(received_frame);
 	g_free(start);
 	return 0;

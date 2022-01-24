@@ -25,7 +25,9 @@
 
 /* MP4 output */
 static AVFormatContext *fctx;
+#if LIBAVCODEC_VER_AT_LEAST(57, 25)
 static AVStream *vStream;
+#endif
 static uint16_t max_width = 0, max_height = 0;
 static int fps = 0;
 
@@ -354,7 +356,11 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 	int len = 0, frameLen = 0, total = 0, dataLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
+#ifdef FF_API_INIT_PACKET
 	AVPacket *packet = av_packet_alloc();
+#else
+	AVPacket pkt = { 0 }, *packet = &pkt;
+#endif
 	AVRational timebase = {1, 90000};
 
 	while(*working && tmp != NULL) {
@@ -476,7 +482,11 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 			total += frameLen;
 			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Saving frame: %d (tot=%d)\n", tmp->ts, frameLen, total);
 
+#ifdef FF_API_INIT_PACKET
 			av_packet_unref(packet);
+#else
+			av_init_packet(packet);
+#endif
 			packet->stream_index = 0;
 			packet->data = received_frame;
 			packet->size = frameLen;
@@ -496,7 +506,9 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 		}
 		tmp = tmp->next;
 	}
+#ifdef FF_API_INIT_PACKET
 	av_packet_free(&packet);
+#endif
 	g_free(received_frame);
 	g_free(obu_data);
 	g_free(start);
