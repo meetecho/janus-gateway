@@ -44,6 +44,8 @@ room-<unique room ID>: {
 	record = true|false (whether this room should be recorded, default=false)
 	record_file = /path/to/recording.wav (where to save the recording)
 	record_dir = /path/to/ (path to save the recording to, makes record_file a relative path if provided)
+	mjrs = true|false (whether all participants in the room should be individually recorded to mjr files, default=false)
+	mjrs_dir = "/path/to/" (path to save the mjr files to)
 	allow_rtp_participants = true|false (whether participants should be allowed to join
 		via plain RTP as well, rather than just WebRTC, default=false)
 	groups = optional, non-hierarchical, array of groups to tag participants, for external forwarding purposes only
@@ -145,6 +147,8 @@ room-<unique room ID>: {
 	"record" : <true|false, whether to record the room or not, default=false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
 	"record_dir" : "</path/to/, optional; makes record_file a relative path, if provided>",
+	"mjrs" : <true|false (whether all participants in the room should be individually recorded to mjr files, default=false)>,
+	"mjrs_dir" : "</path/to/, optional>",
 	"allow_rtp_participants" : <true|false, whether participants should be allowed to join via plain RTP as well, default=false>,
 	"groups" : [ non-hierarchical array of string group names to use to gat participants, for external forwarding purposes only, optional]
 }
@@ -258,6 +262,24 @@ room-<unique room ID>: {
 	"record" : <true|false, whether this room should be automatically recorded or not>,
 	"record_file" : "<file where audio recording should be saved (optional)>",
 	"record_dir" : "<path where audio recording file should be saved (optional)>"
+}
+\endverbatim
+ *
+ * A room can also be recorded by saving the individual contributions of
+ * participants to separate MJR files instead, in a format compatible with
+ * the \ref recordings. While a recording for each participant can be
+ * enabled or disabled separately, there also is a request to enable or
+ * disable them in bulk, thus implementing a feature similar to \c enable_recording
+ * but for MJR files, rather than for a \c .wav mix. This can be done using
+ * the \c enable_mjrs request, which has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "enable_mjrs",
+	"room" : <unique numeric ID of the room>,
+	"secret" : "<room secret; mandatory if configured>"
+	"mjrs" : <true|false, whether all participants in the room should be individually recorded to mjr files or not>,
+	"record_dir" : "<path where all MJR files should be saved to (optional)>"
 }
 \endverbatim
  *
@@ -703,7 +725,7 @@ room-<unique room ID>: {
 	"audio_level_average" : "<if provided, overrides the room audio_level_average for this user; optional>",
 	"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>",
 	"record": <true|false, whether to record this user's contribution to a .mjr file (mixer not involved),
-	"filename": "<basename of the file to record to, -audio.mjr will be added by the plugin>"
+	"filename": "<basename of the file to record to, -audio.mjr will be added by the plugin; will be relative to mjrs_dir, if configured in the room>"
 }
 \endverbatim
  *
@@ -788,7 +810,7 @@ room-<unique room ID>: {
 	"volume" : <new volume percent value (see "join" for more info)>,
 	"spatial_position" : <in case spatial audio is enabled for the room, new panning of this participant (0=left, 50=center, 100=right)>,
 	"record": <true|false, whether to record this user's contribution to a .mjr file (mixer not involved),
-	"filename": "<basename of the file to record to, -audio.mjr will be added by the plugin>",
+	"filename": "<basename of the file to record to, -audio.mjr will be added by the plugin; will be relative to mjrs_dir, if configured in the room>",
 	"group" : "<new group to assign to this participant, if enabled in the room (for forwarding purposes)>"
 }
 \endverbatim
@@ -1109,6 +1131,8 @@ static struct janus_json_parameter create_parameters[] = {
 	{"record", JANUS_JSON_BOOL, 0},
 	{"record_file", JSON_STRING, 0},
 	{"record_dir", JSON_STRING, 0},
+	{"mjrs", JANUS_JSON_BOOL, 0},
+	{"mjrs_dir", JSON_STRING, 0},
 	{"allow_rtp_participants", JANUS_JSON_BOOL, 0},
 	{"permanent", JANUS_JSON_BOOL, 0},
 	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
@@ -1164,6 +1188,10 @@ static struct janus_json_parameter record_parameters[] = {
 	{"record", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED},
 	{"record_file", JSON_STRING, 0},
 	{"record_dir", JSON_STRING, 0}
+};
+static struct janus_json_parameter mjrs_parameters[] = {
+	{"mjrs", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED},
+	{"mjrs_dir", JSON_STRING, 0}
 };
 static struct janus_json_parameter rtp_parameters[] = {
 	{"ip", JSON_STRING, 0},
@@ -1272,6 +1300,8 @@ typedef struct janus_audiobridge_room {
 	volatile gint record;		/* Whether this room has to be recorded or not */
 	gchar *record_file;			/* Path of the recording file (absolute or relative, depending on record_dir) */
 	gchar *record_dir;			/* Folder to save the recording file to */
+	gboolean mjrs;				/* Whether all participants in the room should be individually recorded to mjr files or not */
+	gchar *mjrs_dir;			/* Folder to save the mjrs file to */
 	FILE *recording;			/* File to record the room into */
 	gint64 record_lastupdate;	/* Time when we last updated the wav header */
 	volatile gint wav_header_added;	/* If wav header is added in recording file */
@@ -1532,6 +1562,8 @@ typedef struct janus_audiobridge_participant {
 	uint32_t last_timestamp;	/* Last in seq timestamp */
 	gboolean reset;				/* Whether or not the Opus context must be reset, without re-joining the room */
 	GThread *thread;			/* Encoding thread for this participant */
+	gboolean mjr_active;		/* Whether this participant has to be recorded to an mjr file or not */
+	gchar *mjr_base;			/* Base name for the mjr recording (e.g., /path/to/filename, will generate /path/to/filename-audio.mjr) */
 	janus_recorder *arc;		/* The Janus recorder instance for this user's audio, if enabled */
 #ifdef HAVE_LIBOGG
 	janus_audiobridge_file *annc;	/* In case this is a fake participant, a playable file */
@@ -1593,6 +1625,7 @@ static void janus_audiobridge_participant_free(const janus_refcount *participant
 		}
 		g_async_queue_unref(participant->outbuf);
 	}
+	g_free(participant->mjr_base);
 #ifdef HAVE_LIBOGG
 	janus_audiobridge_file_free(participant->annc);
 #endif
@@ -1672,6 +1705,10 @@ static void janus_audiobridge_message_free(janus_audiobridge_message *msg) {
 
 	g_free(msg);
 }
+
+/* Start / stop recording */
+static void janus_audiobridge_recorder_create(janus_audiobridge_participant *participant);
+static void janus_audiobridge_recorder_close(janus_audiobridge_participant *participant);
 
 /* RTP forwarder instance: address to send to, and current RTP header info */
 typedef struct janus_audiobridge_rtp_forwarder {
@@ -2398,6 +2435,8 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *record = janus_config_get(config, cat, janus_config_type_item, "record");
 			janus_config_item *recfile = janus_config_get(config, cat, janus_config_type_item, "record_file");
 			janus_config_item *recdir = janus_config_get(config, cat, janus_config_type_item, "record_dir");
+			janus_config_item *mjrs = janus_config_get(config, cat, janus_config_type_item, "mjrs");
+			janus_config_item *mjrsdir = janus_config_get(config, cat, janus_config_type_item, "mjrs_dir");
 			janus_config_item *allowrtp = janus_config_get(config, cat, janus_config_type_item, "allow_rtp_participants");
 			if(sampling == NULL || sampling->value == NULL) {
 				JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, missing mandatory information...\n");
@@ -2533,6 +2572,15 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				}
 			}
 			audiobridge->recording = NULL;
+			if(mjrs && mjrs->value && janus_is_true(mjrs->value))
+				audiobridge->mjrs = TRUE;
+			if(mjrsdir && mjrsdir->value) {
+				audiobridge->mjrs_dir = g_strdup(mjrsdir->value);
+				if(janus_mkdir(audiobridge->mjrs_dir, 0755) < 0) {
+					/* FIXME Should this be fatal, when creating a room? */
+					JANUS_LOG(LOG_WARN, "AudioBridge mkdir (%s) error: %d (%s)\n", audiobridge->mjrs_dir, errno, g_strerror(errno));
+				}
+			}
 			audiobridge->allow_plainrtp = FALSE;
 			if(allowrtp && allowrtp->value)
 				audiobridge->allow_plainrtp = janus_is_true(allowrtp->value);
@@ -2963,6 +3011,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_t *record = json_object_get(root, "record");
 		json_t *recfile = json_object_get(root, "record_file");
 		json_t *recdir = json_object_get(root, "record_dir");
+		json_t *mjrs = json_object_get(root, "mjrs");
+		json_t *mjrsdir = json_object_get(root, "mjrs_dir");
 		json_t *allowrtp = json_object_get(root, "allow_rtp_participants");
 		json_t *permanent = json_object_get(root, "permanent");
 		if(allowed) {
@@ -3164,6 +3214,15 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			}
 		}
 		audiobridge->recording = NULL;
+		if(mjrs && json_is_true(mjrs))
+			audiobridge->mjrs = TRUE;
+		if(mjrsdir) {
+			audiobridge->mjrs_dir = g_strdup(json_string_value(mjrsdir));
+			if(janus_mkdir(audiobridge->mjrs_dir, 0755) < 0) {
+				/* FIXME Should this be fatal, when creating a room? */
+				JANUS_LOG(LOG_WARN, "AudioBridge mkdir (%s) error: %d (%s)\n", audiobridge->mjrs_dir, errno, g_strerror(errno));
+			}
+		}
 		audiobridge->allow_plainrtp = FALSE;
 		if(allowrtp && json_is_true(allowrtp))
 			audiobridge->allow_plainrtp = TRUE;
@@ -3296,9 +3355,13 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			if(audiobridge->record_file) {
 				janus_config_add(config, c, janus_config_item_create("record", "yes"));
 				janus_config_add(config, c, janus_config_item_create("record_file", audiobridge->record_file));
-				if(audiobridge->record_dir)
-					janus_config_add(config, c, janus_config_item_create("record_dir", audiobridge->record_dir));
 			}
+			if(audiobridge->record_dir)
+				janus_config_add(config, c, janus_config_item_create("record_dir", audiobridge->record_dir));
+			if(audiobridge->mjrs)
+				janus_config_add(config, c, janus_config_item_create("mjrs", "yes"));
+			if(audiobridge->mjrs_dir)
+				janus_config_add(config, c, janus_config_item_create("mjrs_dir", audiobridge->mjrs_dir));
 			if(audiobridge->spatial_audio)
 				janus_config_add(config, c, janus_config_item_create("spatial_audio", "yes"));
 			/* Save modified configuration */
@@ -3466,9 +3529,13 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			if(audiobridge->record_file) {
 				janus_config_add(config, c, janus_config_item_create("record", "yes"));
 				janus_config_add(config, c, janus_config_item_create("record_file", audiobridge->record_file));
-				if(audiobridge->record_dir)
-					janus_config_add(config, c, janus_config_item_create("record_dir", audiobridge->record_dir));
 			}
+			if(audiobridge->record_dir)
+				janus_config_add(config, c, janus_config_item_create("record_dir", audiobridge->record_dir));
+			if(audiobridge->mjrs)
+				janus_config_add(config, c, janus_config_item_create("mjrs", "yes"));
+			if(audiobridge->mjrs_dir)
+				janus_config_add(config, c, janus_config_item_create("mjrs_dir", audiobridge->mjrs_dir));
 			if(audiobridge->spatial_audio)
 				janus_config_add(config, c, janus_config_item_create("spatial_audio", "yes"));
 			/* Save modified configuration */
@@ -3673,6 +3740,65 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_object_set_new(response, "audiobridge", json_string("success"));
 		json_object_set_new(response, "record", json_boolean(g_atomic_int_get(&audiobridge->record)));
 		janus_mutex_unlock(&rooms_mutex);
+		goto prepare_response;
+	} else if(!strcasecmp(request_text, "enable_mjrs")) {
+		JANUS_VALIDATE_JSON_OBJECT(root, mjrs_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		json_t *mjrs = json_object_get(root, "mjrs");
+		gboolean mjrs_active = json_is_true(mjrs);
+		JANUS_LOG(LOG_VERB, "Enable MJR recording: %d\n", (mjrs_active ? 1 : 0));
+		/* Lookup room */
+		janus_mutex_lock(&rooms_mutex);
+		janus_audiobridge_room *audiobridge = NULL;
+		error_code = janus_audiobridge_access_room(root, TRUE, &audiobridge, error_cause, sizeof(error_cause));
+		if(error_code != 0) {
+			JANUS_LOG(LOG_ERR, "Failed to access room\n");
+			janus_mutex_unlock(&rooms_mutex);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&audiobridge->ref);
+		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&audiobridge->mutex);
+		/* Set MJR recording status */
+		gboolean room_prev_mjrs_active = mjrs_active;
+		if(room_prev_mjrs_active != audiobridge->mjrs) {
+			/* Room recording state has changed */
+			audiobridge->mjrs = room_prev_mjrs_active;
+			/* Iterate over all participants */
+			gpointer value;
+			GHashTableIter iter;
+			g_hash_table_iter_init(&iter, audiobridge->participants);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_audiobridge_participant *participant = value;
+				if(participant && participant->session) {
+					janus_mutex_lock(&participant->rec_mutex);
+					gboolean prev_mjrs_active = participant->mjr_active;
+					participant->mjr_active = mjrs_active;
+					JANUS_LOG(LOG_VERB, "Setting MJR recording property: %s (room %s, user %s)\n",
+						participant->mjr_active ? "true" : "false", audiobridge->room_id_str, participant->user_id_str);
+					/* Do we need to do something with the recordings right now? */
+					if(participant->mjr_active != prev_mjrs_active) {
+						/* Something changed */
+						if(!participant->mjr_active) {
+							/* Not recording (anymore?) */
+							janus_audiobridge_recorder_close(participant);
+						} else {
+							/* We've started recording, send a PLI/FIR and go on */
+							janus_audiobridge_recorder_create(participant);
+						}
+					}
+					janus_mutex_unlock(&participant->rec_mutex);
+				}
+			}
+        }
+		janus_mutex_unlock(&audiobridge->mutex);
+		janus_refcount_decrease(&audiobridge->ref);
+		response = json_object();
+		json_object_set_new(response, "audiobridge", json_string("success"));
+		json_object_set_new(response, "mjrs", json_boolean(mjrs_active));
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "list")) {
 		/* List all rooms (but private ones) and their details (except for the secret, of course...) */
@@ -5636,6 +5762,39 @@ void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, janus_plugin_
 	/* FIXME Should we care? */
 }
 
+static void janus_audiobridge_recorder_create(janus_audiobridge_participant *participant) {
+	if(participant == NULL || participant->room == NULL)
+		return;
+	janus_audiobridge_room *audiobridge = participant->room;
+	char filename[255];
+	janus_recorder *rc = NULL;
+	gint64 now = janus_get_real_time();
+	if(participant->arc == NULL) {
+		memset(filename, 0, 255);
+		if(participant->mjr_base) {
+			/* Use the filename and path we have been provided */
+			g_snprintf(filename, 255, "%s-audio", participant->mjr_base);
+			rc = janus_recorder_create(audiobridge->mjrs_dir,
+				janus_audiocodec_name(participant->codec), filename);
+			if(rc == NULL) {
+				JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this participant!\n");
+			}
+		} else {
+			/* Build a filename */
+			g_snprintf(filename, 255, "audiobridge-%s-user-%s-%"SCNi64"-audio",
+				audiobridge->room_id_str, participant->user_id_str, now);
+			rc = janus_recorder_create(audiobridge->mjrs_dir,
+				janus_audiocodec_name(participant->codec), filename);
+			if(rc == NULL) {
+				JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this participant!\n");
+			}
+		}
+		if(participant->extmap_id > 0)
+			janus_recorder_add_extmap(rc, participant->extmap_id, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+		participant->arc = rc;
+	}
+}
+
 static void janus_audiobridge_recorder_close(janus_audiobridge_participant *participant) {
 	if(participant->arc) {
 		janus_recorder *rc = participant->arc;
@@ -5744,6 +5903,10 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 	participant->audio_active_packets = 0;
 	participant->audio_dBov_sum = 0;
 	participant->talking = FALSE;
+	janus_audiobridge_recorder_close(participant);
+	participant->mjr_active = FALSE;
+	g_free(participant->mjr_base);
+	participant->mjr_base = NULL;
 	/* Get rid of queued packets */
 	while(participant->inbuf) {
 		GList *first = g_list_first(participant->inbuf);
@@ -6217,28 +6380,12 @@ static void *janus_audiobridge_handler(void *data) {
 					} else {
 						JANUS_LOG(LOG_INFO, "Starting recording of participant's audio (room %s, user %s)\n",
 							participant->room->room_id_str, participant->user_id_str);
-						char filename[255];
-						gint64 now = janus_get_real_time();
-						memset(filename, 0, 255);
 						const char *recording_base = json_string_value(recfile);
 						if(recording_base) {
-							/* Use the filename and path we have been provided */
-							g_snprintf(filename, 255, "%s-audio", recording_base);
-							participant->arc = janus_recorder_create(NULL, "opus", filename);
-							if(participant->arc == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this participant!\n");
-							}
-						} else {
-							/* Build a filename */
-							g_snprintf(filename, 255, "audiobridge-%s-%s-%"SCNi64"-audio",
-								participant->room->room_id_str, participant->user_id_str, now);
-							participant->arc = janus_recorder_create(NULL, "opus", filename);
-							if(participant->arc == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this participant!\n");
-							}
+							g_free(participant->mjr_base);
+							participant->mjr_base = g_strdup(recording_base);
 						}
+						janus_audiobridge_recorder_create(participant);
 					}
 				} else {
 					/* Stop recording (ignore if not recording) */
@@ -6626,28 +6773,12 @@ static void *janus_audiobridge_handler(void *data) {
 					} else {
 						JANUS_LOG(LOG_INFO, "Starting recording of participant's audio (room %s, user %s)\n",
 							participant->room->room_id_str, participant->user_id_str);
-						char filename[255];
-						gint64 now = janus_get_real_time();
-						memset(filename, 0, 255);
 						const char *recording_base = json_string_value(recfile);
 						if(recording_base) {
-							/* Use the filename and path we have been provided */
-							g_snprintf(filename, 255, "%s-audio", recording_base);
-							participant->arc = janus_recorder_create(NULL, "opus", filename);
-							if(participant->arc == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this participant!\n");
-							}
-						} else {
-							/* Build a filename */
-							g_snprintf(filename, 255, "audiobridge-%s-%s-%"SCNi64"-audio",
-								participant->room->room_id_str, participant->user_id_str, now);
-							participant->arc = janus_recorder_create(NULL, "opus", filename);
-							if(participant->arc == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this participant!\n");
-							}
+							g_free(participant->mjr_base);
+							participant->mjr_base = g_strdup(recording_base);
 						}
+						janus_audiobridge_recorder_create(participant);
 					}
 				} else {
 					/* Stop recording (ignore if not recording) */
