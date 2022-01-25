@@ -478,6 +478,8 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 						return "isac16";
 					if(strstr(name, "isac/32") || strstr(name, "ISAC/32"))
 						return "isac32";
+					if(strstr(name, "red"))
+						return NULL;
 					JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", name);
 					return NULL;
 				}
@@ -1178,6 +1180,158 @@ int janus_vp9_parse_svc(char *buffer, int len, gboolean *found, janus_vp9_svc_in
 	return 0;
 }
 
+/* RED parsing and building utilities */
+GList *janus_red_parse_blocks(char *buffer, int len) {
+	if(buffer == NULL || len < 0)
+		return NULL;
+	/* TODO This whole method should be fuzzed */
+	char *payload = buffer;
+	int plen = len;
+	/* Find out how many generations are in the RED packet */
+	int gens = 0;
+	uint32_t red_block;
+	uint8_t follow = 0, block_pt = 0;
+	uint16_t ts_offset = 0, block_len = 0;
+	GList *blocks = NULL;
+	janus_red_block *rb = NULL;
+	/* Parse the header */
+	while(payload != NULL && plen > 0) {
+		/* Go through the header for the different generations */
+		gens++;
+		follow = ((*payload) & 0x80) >> 7;
+		block_pt = (*payload) & 0x7F;
+		if(follow && plen > 3) {
+			/* Read the rest of the header */
+			memcpy(&red_block, payload, sizeof(red_block));
+			red_block = ntohl(red_block);
+			ts_offset = (red_block & 0x00FFFC00) >> 10;
+			block_len = (red_block & 0x000003FF);
+			JANUS_LOG(LOG_HUGE, "  [%d] f=%u, pt=%u, tsoff=%"SCNu16", blen=%"SCNu16"\n",
+				gens, follow, block_pt, ts_offset, block_len);
+			rb = g_malloc0(sizeof(janus_red_block));
+			rb->pt = block_pt;
+			rb->ts_offset = ts_offset;
+			rb->length = block_len;
+			blocks = g_list_append(blocks, rb);
+			payload += 4;
+			plen -= 4;
+		} else {
+			/* Header parsed */
+			payload++;
+			plen--;
+			JANUS_LOG(LOG_HUGE, "  [%d] f=%u, pt=%u, tsoff=0, blen=TBD.\n",
+				gens, follow, block_pt);
+			break;
+		}
+	}
+	/* Go through the blocks, iterating on the lengths to get a pointer to the data */
+	if(blocks != NULL) {
+		int tot_gens = gens;
+		gens = 0;
+		uint16_t length = 0;
+		GList *temp = blocks;
+		while(temp != NULL) {
+			gens++;
+			tot_gens--;
+			rb = (janus_red_block *)temp->data;
+			length = rb->length;
+			if(length > plen) {
+				JANUS_LOG(LOG_WARN, "  >> [%d] Broken red payload:\n", gens);
+				g_list_free_full(blocks, (GDestroyNotify)g_free);
+				return NULL;
+			}
+			if(length > 0) {
+				/* Redundant data, take note of where the block is */
+				JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%"SCNu16"\n", gens, length);
+				rb->data = (uint8_t *)payload;
+				payload += length;
+				plen -= length;
+			}
+			temp = temp->next;
+		}
+		/* The last block is the primary data, add it to the list */
+		gens++;
+		JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%"SCNu16"\n", gens, plen);
+		rb = g_malloc0(sizeof(janus_red_block));
+		rb->pt = block_pt;
+		rb->length = plen;
+		rb->data = (uint8_t *)payload;
+		blocks = g_list_append(blocks, rb);
+	}
+
+	return blocks;
+}
+int janus_red_pack_blocks(char *buffer, int len, GList *blocks) {
+	if(buffer == NULL || len < 0)
+		return 1;
+	int required = 0, written = 0;
+	janus_red_block *rb = NULL;
+	/* Write all headers to the buffer */
+	uint32_t red_block = 0;
+	uint8_t *payload = (uint8_t *)buffer;
+	GList *temp = blocks;
+	while(temp != NULL) {
+		rb = (janus_red_block *)temp->data;
+		required += (temp->next ? 4 : 1);
+		required += rb->length;
+		if(len < required) {
+			JANUS_LOG(LOG_ERR, "RED buffer too small (%d bytes, at least %d needed)\n", len, required);
+			return -2;
+		}
+		if(temp->next != NULL) {
+			/* There's going to be a follow-up, write 4 bytes (F=1 and info) */
+			red_block =
+				0x80000000 +							/* F=1 */
+				(0x7F000000 & (rb->pt << 24)) + 		/* Payload type */
+				(0x00FFFC00 & (rb->ts_offset << 10)) + 	/* Timestamp offset */
+				(0x000003FF & rb->length);				/* Data length */
+			red_block = htonl(red_block);
+			memcpy(payload + written, &red_block, sizeof(red_block));
+			written += 4;
+		} else {
+			/* Primary data, 1 byte (F=0 and payload type) */
+			uint8_t pt = rb->pt;
+			*(payload + written) = pt;
+			written++;
+		}
+		temp = temp->next;
+	}
+	/* Now write all data to the buffer too */
+	temp = blocks;
+	while(temp != NULL) {
+		rb = (janus_red_block *)temp->data;
+		/* Write the data itself */
+		memcpy(payload + written, rb->data, rb->length);
+		written += rb->length;
+		temp = temp->next;
+	}
+	return written;
+}
+int janus_red_replace_block_pt(char *buffer, int len, int pt) {
+	if(buffer == NULL || len < 0 || pt < 0 || pt > 127)
+		return -1;
+	/* TODO This whole method should be fuzzed */
+	char *payload = buffer;
+	int plen = len;
+	uint8_t follow = 0;
+	/* Parse the header */
+	while(payload != NULL && plen > 0) {
+		/* Go through the block headers */
+		follow = ((*payload) & 0x80) >> 7;
+		*payload = (0x80 & (follow << 7)) + (0x7F & pt);
+		if(follow && plen > 3) {
+			/* Move to the next block header */
+			payload += 4;
+			plen -= 4;
+		} else {
+			/* We're done */
+			break;
+		}
+	}
+	return 0;
+}
+
+/* Bit manipulation (mostly for TWCC) */
 inline guint32 janus_push_bits(guint32 word, size_t num, guint32 val) {
 	if(num == 0)
 		return word;
@@ -1204,6 +1358,19 @@ inline void janus_set4(guint8 *data,size_t i,guint32 val) {
 	data[i+2] = (guint8)(val>>8);
 	data[i+1] = (guint8)(val>>16);
 	data[i]   = (guint8)(val>>24);
+}
+
+uint8_t janus_bitstream_getbit(uint8_t *base, uint32_t offset) {
+	return ((*(base + (offset >> 0x3))) >> (0x7 - (offset & 0x7))) & 0x1;
+}
+
+uint32_t janus_bitstream_getbits(uint8_t *base, uint8_t num, uint32_t *offset) {
+	uint32_t res = 0;
+	int32_t i = 0;
+	for(i=num-1; i>=0; i--) {
+		res |= janus_bitstream_getbit(base, (*offset)++) << i;
+	}
+	return res;
 }
 
 #ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION

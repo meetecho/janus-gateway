@@ -35,7 +35,7 @@ char *janus_rtp_payload(char *buf, int len, int *plen) {
 		hlen += rtp->csrccount*4;
 
 	if(rtp->extension) {
-		janus_rtp_header_extension *ext = (janus_rtp_header_extension*)(buf+hlen);
+		janus_rtp_header_extension *ext = (janus_rtp_header_extension *)(buf+hlen);
 		int extlen = ntohs(ext->length)*4;
 		hlen += 4;
 		if(len > (hlen + extlen))
@@ -111,6 +111,8 @@ const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id) {
 						return JANUS_RTP_EXTMAP_RID;
 					if(strstr(extension, JANUS_RTP_EXTMAP_REPAIRED_RID))
 						return JANUS_RTP_EXTMAP_REPAIRED_RID;
+					if(strstr(extension, JANUS_RTP_EXTMAP_DEPENDENCY_DESC))
+						return JANUS_RTP_EXTMAP_DEPENDENCY_DESC;
 					JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
 					return NULL;
 				}
@@ -124,12 +126,15 @@ const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id) {
 
 /* Static helper to quickly find the extension data */
 static int janus_rtp_header_extension_find(char *buf, int len, int id,
-		uint8_t *byte, uint32_t *word, char **ref) {
+		uint8_t *byte, uint32_t *word, char **ref, uint8_t *idlen) {
+	if(idlen == NULL)
+		return -1;
+	*idlen = 0;
 	if(!buf || len < 12)
-		return -1;
+		return -2;
 	janus_rtp_header *rtp = (janus_rtp_header *)buf;
-	if (rtp->version != 2) {
-		return -1;
+	if(rtp->version != 2) {
+		return -3;
 	}
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
@@ -139,10 +144,10 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 		int extlen = ntohs(ext->length)*4;
 		hlen += 4;
 		if(len > (hlen + extlen)) {
-			/* 1-Byte extension */
 			if(ntohs(ext->type) == 0xBEDE) {
+				/* 1-Byte extension */
 				const uint8_t padding = 0x00, reserved = 0xF;
-				uint8_t extid = 0, idlen;
+				uint8_t extid = 0;
 				int i = 0;
 				while(i < extlen) {
 					extid = (uint8_t)buf[hlen+i] >> 4;
@@ -152,12 +157,13 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 						i++;
 						continue;
 					}
-					idlen = ((uint8_t)buf[hlen+i] & 0xF)+1;
-					if(extid == id) {
+					*idlen = ((uint8_t)buf[hlen+i] & 0xF)+1;
+					i++;
+					if(extid == id && ((i+*idlen) <= extlen)) {
 						/* Found! */
 						if(byte)
-							*byte = (uint8_t)buf[hlen+i+1];
-						if(word && idlen >= 3 && (i+3) < extlen) {
+							*byte = (uint8_t)buf[hlen+i];
+						if(word && *idlen >= 4 && (i+4) < extlen) {
 							memcpy(word, buf+hlen+i, sizeof(uint32_t));
 							*word = ntohl(*word);
 						}
@@ -165,7 +171,37 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 							*ref = &buf[hlen+i];
 						return 0;
 					}
-					i += 1 + idlen;
+					i += *idlen;
+				}
+			} else if(ntohs(ext->type) == 0x1000) {
+				/* 2-Byte extension */
+				const uint8_t padding = 0x00;
+				uint8_t extid = 0;
+				int i = 0;
+				while(i < extlen) {
+					if((extlen-i) < 2)
+						break;
+					extid = buf[hlen+i];
+					if(extid == padding) {
+						i += 2;
+						continue;
+					}
+					i++;
+					*idlen = buf[hlen+i];
+					i++;
+					if(extid == id && ((i+*idlen) <= extlen)) {
+						/* Found! */
+						if(byte)
+							*byte = (uint8_t)buf[hlen+i];
+						if(word && *idlen >= 4 && (i+4) < extlen) {
+							memcpy(word, buf+hlen+i, sizeof(uint32_t));
+							*word = ntohl(*word);
+						}
+						if(ref)
+							*ref = &buf[hlen+i];
+						return 0;
+					}
+					i += *idlen;
 				}
 			}
 			hlen += extlen;
@@ -175,8 +211,8 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 }
 
 int janus_rtp_header_extension_parse_audio_level(char *buf, int len, int id, gboolean *vad, int *level) {
-	uint8_t byte = 0;
-	if(janus_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL) < 0)
+	uint8_t byte = 0, idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL, &idlen) < 0)
 		return -1;
 	/* a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
 	gboolean v = (byte & 0x80) >> 7;
@@ -191,8 +227,8 @@ int janus_rtp_header_extension_parse_audio_level(char *buf, int len, int id, gbo
 
 int janus_rtp_header_extension_parse_video_orientation(char *buf, int len, int id,
 		gboolean *c, gboolean *f, gboolean *r1, gboolean *r0) {
-	uint8_t byte = 0;
-	if(janus_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL) < 0)
+	uint8_t byte = 0, idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL, &idlen) < 0)
 		return -1;
 	/* a=extmap:4 urn:3gpp:video-orientation */
 	gboolean cbit = (byte & 0x08) >> 3;
@@ -214,8 +250,11 @@ int janus_rtp_header_extension_parse_video_orientation(char *buf, int len, int i
 int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 		uint16_t *min_delay, uint16_t *max_delay) {
 	uint32_t bytes = 0;
-	if(janus_rtp_header_extension_find(buf, len, id, NULL, &bytes, NULL) < 0)
+	uint8_t idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, &bytes, NULL, &idlen) < 0)
 		return -1;
+	if(idlen < 3)
+		return -2;
 	/* a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay */
 	uint16_t min = (bytes & 0x00FFF000) >> 12;
 	uint16_t max = bytes & 0x00000FFF;
@@ -230,58 +269,81 @@ int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
 		char *sdes_item, int sdes_len) {
 	char *ext = NULL;
-	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
+	uint8_t idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
 		return -1;
 	/* a=extmap:3 urn:ietf:params:rtp-hdrext:sdes:mid */
-	if(ext == NULL)
+	if(ext == NULL || idlen < 1)
 		return -2;
-	int val_len = (*ext & 0x0F) + 1;
-	if(val_len > (sdes_len-1)) {
-		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d < %d), MID will be cut\n", val_len, sdes_len);
-		val_len = sdes_len-1;
+	if(idlen > (sdes_len-1)) {
+		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d > %d), MID will be cut\n", idlen, sdes_len);
+		idlen = sdes_len-1;
 	}
-	if (val_len > len-(ext-buf)-1 ) {
+	if(idlen > len-(ext-buf)-1 ) {
 		return -3;
 	}
-	memcpy(sdes_item, ext+1, val_len);
-	*(sdes_item+val_len) = '\0';
+	memcpy(sdes_item, ext, idlen);
+	*(sdes_item+idlen) = '\0';
 	return 0;
 }
 
 int janus_rtp_header_extension_parse_rid(char *buf, int len, int id,
 		char *sdes_item, int sdes_len) {
 	char *ext = NULL;
-	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
+	uint8_t idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
 		return -1;
 	/* a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
 	/* a=extmap:5 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id */
-	if(ext == NULL)
+	if(ext == NULL || idlen < 1)
 		return -2;
-	int val_len = (*ext & 0x0F) + 1;
-	if(val_len > (sdes_len-1)) {
-		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d < %d), RTP stream ID will be cut\n", val_len, sdes_len);
-		val_len = sdes_len-1;
+	if(idlen > (sdes_len-1)) {
+		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d > %d), RTP stream ID will be cut\n", idlen, sdes_len);
+		idlen = sdes_len-1;
 	}
-	if (val_len > len-(ext-buf)-1 ) {
+	if(idlen > len-(ext-buf)-1 ) {
 		return -3;
 	}
-	memcpy(sdes_item, ext+1, val_len);
-	*(sdes_item+val_len) = '\0';
+	memcpy(sdes_item, ext, idlen);
+	*(sdes_item+idlen) = '\0';
+	return 0;
+}
+
+int janus_rtp_header_extension_parse_dependency_desc(char *buf, int len, int id,
+		uint8_t *dd_item, int *dd_len) {
+	char *ext = NULL;
+	uint8_t idlen = 0;
+	int buflen = *dd_len;
+	*dd_len = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
+		return -1;
+	/* a=extmap:10 https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension */
+	if(ext == NULL || idlen < 1)
+		return -2;
+	if(idlen > buflen) {
+		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d > %d), dependency descriptor will be cut\n", idlen, buflen);
+		idlen = buflen;
+	}
+	if(idlen > len-(ext-buf)-1 ) {
+		return -3;
+	}
+	memcpy(dd_item, ext, idlen);
+	*dd_len = idlen;
 	return 0;
 }
 
 int janus_rtp_header_extension_parse_abs_sent_time(char *buf, int len, int id, uint32_t *abs_ts) {
 	char *ext = NULL;
-	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
+	uint8_t idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
 		return -1;
 	/* a=extmap:4 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time */
 	if(ext == NULL)
 		return -2;
-	int val_len = (*ext & 0x0F) + 1;
-	if(val_len < 3 || val_len > len-(ext-buf)-1)
+	if(idlen < 3 || idlen > len-(ext-buf)-1)
 		return -3;
 	uint32_t abs24 = 0;
-	memcpy(&abs24, ext+1, 3);
+	memcpy(&abs24, ext, 3);
 	if(abs_ts)
 		*abs_ts = ntohl(abs24 << 8);
 	return 0;
@@ -289,21 +351,22 @@ int janus_rtp_header_extension_parse_abs_sent_time(char *buf, int len, int id, u
 
 int janus_rtp_header_extension_set_abs_send_time(char *buf, int len, int id, uint32_t abs_ts) {
 	char *ext = NULL;
-	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
+	uint8_t idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
 		return -1;
 	if(ext == NULL)
 		return -2;
-	int val_len = (*ext & 0x0F) + 1;
-	if(val_len < 3 || val_len > len-(ext-buf)-1)
+	if(idlen < 3 || idlen > len-(ext-buf)-1)
 		return -3;
 	uint32_t abs24 = htonl(abs_ts) >> 8;
-	memcpy(ext+1, &abs24, 3);
+	memcpy(ext, &abs24, 3);
 	return 0;
 }
 
 int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id, uint16_t *transSeqNum) {
 	char *ext = NULL;
-	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
+	uint8_t idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
 		return -1;
 	/*  0                   1                   2                   3
 	    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -313,25 +376,24 @@ int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int i
 	*/
 	if(ext == NULL)
 		return -2;
-	int val_len = (*ext & 0x0F) + 1;
-	if (val_len < 2 || val_len > len-(ext-buf)-1)
+	if(idlen < 2 || idlen > len-(ext-buf)-1)
 		return -3;
-	memcpy(transSeqNum, ext+1, sizeof(uint16_t));
+	memcpy(transSeqNum, ext, sizeof(uint16_t));
 	*transSeqNum = ntohs(*transSeqNum);
 	return 0;
 }
 
 int janus_rtp_header_extension_set_transport_wide_cc(char *buf, int len, int id, uint16_t transSeqNum) {
 	char *ext = NULL;
-	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
+	uint8_t idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
 		return -1;
 	if(ext == NULL)
 		return -2;
-	int val_len = (*ext & 0x0F) + 1;
-	if (val_len < 2 || val_len > len-(ext-buf)-1)
+	if(idlen < 2 || idlen > len-(ext-buf)-1)
 		return -3;
 	transSeqNum = htons(transSeqNum);
-	memcpy(ext+1, &transSeqNum, sizeof(uint16_t));
+	memcpy(ext, &transSeqNum, sizeof(uint16_t));
 	return 0;
 }
 
@@ -350,8 +412,8 @@ int janus_rtp_header_extension_replace_id(char *buf, int len, int id, int new_id
 		int extlen = ntohs(ext->length)*4;
 		hlen += 4;
 		if(len > (hlen + extlen)) {
-			/* 1-Byte extension */
 			if(ntohs(ext->type) == 0xBEDE) {
+				/* 1-Byte extension */
 				const uint8_t padding = 0x00, reserved = 0xF;
 				uint8_t extid = 0, idlen = 0;
 				int i = 0;
@@ -369,6 +431,28 @@ int janus_rtp_header_extension_replace_id(char *buf, int len, int id, int new_id
 						buf[hlen+i] = (new_id << 4) + (idlen - 1);
 						return 0;
 					}
+					i += 1 + idlen;
+				}
+			} if(ntohs(ext->type) == 0x1000) {
+				/* 2-Byte extension */
+				const uint8_t padding = 0x00;
+				uint8_t extid = 0, idlen = 0;
+				int i = 0;
+				while(i < extlen) {
+					if((extlen-i) < 2)
+						break;
+					extid = buf[hlen+i];
+					if(extid == padding) {
+						i += 2;
+						continue;
+					}
+					if(extid == id) {
+						/* Found! */
+						buf[hlen+i] = new_id;
+						return 0;
+					}
+					i++;
+					idlen = buf[hlen+i];
 					i += 1 + idlen;
 				}
 			}
@@ -805,6 +889,7 @@ const char *janus_srtp_error_str(int error) {
 /* Payload types we'll offer internally */
 #define OPUS_PT		111
 #define MULTIOPUS_PT	OPUS_PT
+#define OPUSRED_PT	120
 #define ISAC32_PT	104
 #define ISAC16_PT	103
 #define PCMU_PT		0
@@ -823,6 +908,8 @@ const char *janus_audiocodec_name(janus_audiocodec acodec) {
 			return "opus";
 		case JANUS_AUDIOCODEC_MULTIOPUS:
 			return "multiopus";
+		case JANUS_AUDIOCODEC_OPUSRED:
+			return "red";
 		case JANUS_AUDIOCODEC_PCMU:
 			return "pcmu";
 		case JANUS_AUDIOCODEC_PCMA:
@@ -845,6 +932,8 @@ janus_audiocodec janus_audiocodec_from_name(const char *name) {
 		return JANUS_AUDIOCODEC_OPUS;
 	else if(!strcasecmp(name, "multiopus"))
 		return JANUS_AUDIOCODEC_MULTIOPUS;
+	else if(!strcasecmp(name, "red"))
+		return JANUS_AUDIOCODEC_OPUSRED;
 	else if(!strcasecmp(name, "isac32"))
 		return JANUS_AUDIOCODEC_ISAC_32K;
 	else if(!strcasecmp(name, "isac16"))
@@ -866,6 +955,8 @@ int janus_audiocodec_pt(janus_audiocodec acodec) {
 			return OPUS_PT;
 		case JANUS_AUDIOCODEC_MULTIOPUS:
 			return MULTIOPUS_PT;
+		case JANUS_AUDIOCODEC_OPUSRED:
+			return OPUSRED_PT;
 		case JANUS_AUDIOCODEC_ISAC_32K:
 			return ISAC32_PT;
 		case JANUS_AUDIOCODEC_ISAC_16K:
@@ -1124,5 +1215,100 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		}
 	}
 	/* If we got here, the packet can be relayed */
+	return TRUE;
+}
+
+void janus_av1_svc_context_reset(janus_av1_svc_context *context) {
+	if(context == NULL)
+		return;
+	/* Reset the context values */
+	if(context->templates != NULL)
+		g_hash_table_destroy(context->templates);
+	memset(context, 0, sizeof(*context));
+}
+
+gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
+		uint8_t *dd, int dd_len, uint8_t *template_id) {
+	if(!context || !dd || dd_len < 3)
+		return FALSE;
+
+	/* First of all, let's parse the Dependency Descriptor */
+	size_t blen = dd_len*8;
+	uint32_t offset = 0;
+	/* mandatory_descriptor_fields() */
+	uint8_t start = janus_bitstream_getbit(dd, offset++);
+	uint8_t end = janus_bitstream_getbit(dd, offset++);
+	uint8_t template = janus_bitstream_getbits(dd, 6, &offset);
+	uint16_t frame = janus_bitstream_getbits(dd, 16, &offset);
+	JANUS_LOG(LOG_WARN, "  -- s=%u, e=%u, t=%u, f=%u\n",
+		start, end, template, frame);
+	if(blen > 24) {
+		/* extended_descriptor_fields() */
+		uint8_t tdeps = janus_bitstream_getbit(dd, offset++);
+		(void)janus_bitstream_getbit(dd, offset++);
+		(void)janus_bitstream_getbit(dd, offset++);
+		(void)janus_bitstream_getbit(dd, offset++);
+		(void)janus_bitstream_getbit(dd, offset++);
+		/* template_dependency_structure() */
+		if(tdeps) {
+			uint8_t tioff = janus_bitstream_getbits(dd, 6, &offset);
+			(void)janus_bitstream_getbits(dd, 5, &offset);
+			/* template_layers() */
+			uint32_t nlidc = 0;
+			uint8_t tcnt = 0;
+			int spatial_layers = 0;
+			int temporal_layers = 0;
+			do {
+				nlidc = janus_bitstream_getbits(dd, 2, &offset);
+				if(context->templates == NULL)
+					context->templates = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_free);
+				janus_av1_svc_template *t = g_hash_table_lookup(context->templates,
+					GUINT_TO_POINTER(tcnt));
+				if(t == NULL) {
+					t = g_malloc0(sizeof(janus_av1_svc_template));
+					t->id = tcnt;
+					g_hash_table_insert(context->templates, GUINT_TO_POINTER(t->id), t);
+					context->updated = TRUE;
+				}
+				t->spatial = spatial_layers;
+				t->temporal = temporal_layers;
+				JANUS_LOG(LOG_WARN, "  -- -- -- [%u] spatial=%u, temporal=%u\n",
+					tcnt, t->spatial, t->temporal);
+				if(nlidc == 1) {
+					temporal_layers++;
+				} else if(nlidc == 2) {
+					temporal_layers = 0;
+					spatial_layers++;
+				}
+				tcnt++;
+			} while(nlidc != 3);
+			/* Check if anything changed since the latest update */
+			if(context->tcnt != tcnt || context->tioff != tioff ||
+					context->spatial_layers != spatial_layers ||
+					context->temporal_layers != temporal_layers)
+				context->updated = TRUE;
+			context->tcnt = tcnt;
+			context->tioff = tioff;
+			context->spatial_layers = spatial_layers;
+			context->temporal_layers = temporal_layers;
+			/* FIXME We currently don't care about the other fields */
+		}
+	}
+	/* frame_dependency_definition() */
+	uint8_t tindex = (template + 64 - context->tioff) % 64;
+	janus_av1_svc_template *t = g_hash_table_lookup(context->templates,
+		GUINT_TO_POINTER(tindex));
+	if(t == NULL) {
+		JANUS_LOG(LOG_WARN, "Invalid template ID '%u' (count is %u), ignoring packet...\n",
+			tindex, context->tcnt);
+		return FALSE;
+	}
+	JANUS_LOG(LOG_WARN, "  -- spatial=%u, temporal=%u (tindex %u)\n",
+		t->spatial, t->temporal, t->id);
+	/* FIXME We currently don't care about the other fields */
+
+	/* If we got here, the packet is fine */
+	if(template_id != NULL)
+		*template_id = tindex;
 	return TRUE;
 }

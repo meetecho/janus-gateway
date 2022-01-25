@@ -436,6 +436,8 @@ struct janus_ice_stream {
 	GList *video_payload_types;
 	/*! \brief Mapping of rtx payload types to actual media-related packet types */
 	GHashTable *rtx_payload_types;
+	/*! \brief opus/red payload type, if enabled */
+	int opusred_pt;
 	/*! \brief Mapping of payload types to their clock rates, as advertised in the SDP */
 	GHashTable *clock_rates;
 	/*! \brief RTP payload types of this stream */
@@ -482,6 +484,8 @@ struct janus_ice_stream {
 	gint audiolevel_ext_id;
 	/*! \brief Video orientation extension ID */
 	gint videoorientation_ext_id;
+	/*! \brief Dependency descriptor extension ID */
+	gint dependencydesc_ext_id;
 	/*! \brief Absolute Send Time ext ID */
 	gint abs_send_time_ext_id;
 	/*! \brief Whether we do transport wide cc for video */
