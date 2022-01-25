@@ -2680,6 +2680,16 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						rtp.extensions.video_flipped = f;
 					}
 				}
+				if(pc->dependencydesc_ext_id != -1) {
+					uint8_t dd[256];
+					int len = sizeof(dd);
+					if(janus_rtp_header_extension_parse_dependency_desc(buf, buflen,
+							pc->dependencydesc_ext_id, dd, &len) == 0 && len > 0) {
+						/* We copy the DD bytes as they are: it's up to plugins to parse it, if needed */
+						rtp.extensions.dd_len = len;
+						memcpy(rtp.extensions.dd_content, dd, len);
+					}
+				}
 				/* Pass the packet to the plugin */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtp && handle->app_handle &&
@@ -4525,7 +4535,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 		totlen += plen;
 	/* We need to strip extensions, here, and add those that need to be there manually */
 	uint16_t extlen = 0;
-	char extensions[50];
+	char extensions[200];
 	janus_rtp_header *header = (janus_rtp_header *)packet->buffer;
 	int origext = header->extension;
 	header->extension = 0;
@@ -4533,52 +4543,88 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 	if(handle->pc->mid_ext_id > 0 || (packet->video && handle->pc->abs_send_time_ext_id > 0) ||
 			(packet->video && handle->pc->transport_wide_cc_ext_id > 0) ||
 			(!packet->video && packet->extensions.audio_level != -1 && handle->pc->audiolevel_ext_id > 0) ||
-			(packet->video && packet->extensions.video_rotation != -1 && handle->pc->videoorientation_ext_id > 0)) {
+			(packet->video && packet->extensions.video_rotation != -1 && handle->pc->videoorientation_ext_id > 0) ||
+			(packet->video && packet->extensions.dd_len > 0 && handle->pc->dependencydesc_ext_id > 0)) {
+		/* Do we need 2-byte extemsions, or are 1-byte extensions fine? */
+		gboolean use_2byte = (packet->video && packet->extensions.dd_len > 16 && handle->pc->dependencydesc_ext_id > 0);
+		/* Write the extension(s) */
 		header->extension = 1;
 		memset(extensions, 0, sizeof(extensions));
 		janus_rtp_header_extension *extheader = (janus_rtp_header_extension *)extensions;
-		extheader->type = htons(0xBEDE);
+		extheader->type = htons(use_2byte ? 0x1000 : 0xBEDE);
 		extheader->length = 0;
 		/* Iterate on all extensions we need */
 		char *index = extensions + 4;
 		/* Check if we need to add the abs-send-time extension */
 		if(packet->video && handle->pc->abs_send_time_ext_id > 0) {
-			*index = (handle->pc->abs_send_time_ext_id << 4) + 2;
 			/* We'll actually set the value later, when sending the packet */
-			memset(index+1, 0, 3);
-			index += 4;
-			extlen += 4;
+			if(!use_2byte) {
+				*index = (handle->pc->abs_send_time_ext_id << 4) + 2;
+				memset(index+1, 0, 3);
+				index += 4;
+				extlen += 4;
+			} else {
+				*index = handle->pc->abs_send_time_ext_id;
+				*(index+1) = 3;
+				memset(index+2, 0, 3);
+				index += 5;
+				extlen += 5;
+			}
 		}
 		/* Check if we need to add the transport-wide CC extension */
 		if(packet->video && handle->pc->transport_wide_cc_ext_id > 0) {
-			*index = (handle->pc->transport_wide_cc_ext_id << 4) + 1;
 			/* We'll actually set the sequence number later, when sending the packet */
-			memset(index+1, 0, 2);
-			index += 3;
-			extlen += 3;
+			if(!use_2byte) {
+				*index = (handle->pc->transport_wide_cc_ext_id << 4) + 1;
+				memset(index+1, 0, 2);
+				index += 3;
+				extlen += 3;
+			} else {
+				*index = handle->pc->transport_wide_cc_ext_id;
+				*(index+1) = 2;
+				memset(index+2, 0, 2);
+				index += 4;
+				extlen += 4;
+			}
 		}
 		/* Check if we need to add the mid extension */
 		if(handle->pc->mid_ext_id > 0) {
 			char *mid = medium->mid;
 			if(mid != NULL) {
-				size_t midlen = strlen(mid) & 0x0F;
-				*index = (handle->pc->mid_ext_id << 4) + (midlen ? midlen-1 : 0);
-				memcpy(index+1, mid, midlen);
-				index += (midlen + 1);
-				extlen += (midlen + 1);
+				if(!use_2byte) {
+					size_t midlen = strlen(mid) & 0x0F;
+					*index = (handle->pc->mid_ext_id << 4) + (midlen ? midlen-1 : 0);
+					memcpy(index+1, mid, midlen);
+					index += (midlen + 1);
+					extlen += (midlen + 1);
+				} else {
+					size_t midlen = strlen(mid);
+					*index = handle->pc->mid_ext_id;
+					*(index+1) = midlen;
+					memcpy(index+2, mid, midlen);
+					index += (midlen + 2);
+					extlen += (midlen + 2);
+				}
 			}
 		}
 		/* Check if the plugin (or source) included other extensions */
 		if(!packet->video && packet->extensions.audio_level != -1 && handle->pc->audiolevel_ext_id > 0) {
 			/* Add audio-level extension */
-			*index = (handle->pc->audiolevel_ext_id << 4);
-			*(index+1) = (packet->extensions.audio_level_vad << 7) + (packet->extensions.audio_level & 0x7F);
-			index += 2;
-			extlen += 2;
+			if(!use_2byte) {
+				*index = (handle->pc->audiolevel_ext_id << 4);
+				*(index+1) = (packet->extensions.audio_level_vad << 7) + (packet->extensions.audio_level & 0x7F);
+				index += 2;
+				extlen += 2;
+			} else {
+				*index = handle->pc->audiolevel_ext_id;
+				*(index+1) = 1;
+				*(index+2) = (packet->extensions.audio_level_vad << 7) + (packet->extensions.audio_level & 0x7F);
+				index += 3;
+				extlen += 3;
+			}
 		}
 		if(packet->video && packet->extensions.video_rotation != -1 && handle->pc->videoorientation_ext_id > 0) {
 			/* Add video-orientation extension */
-			*index = (handle->pc->videoorientation_ext_id << 4);
 			gboolean c = packet->extensions.video_back_camera,
 				f = packet->extensions.video_flipped, r1 = FALSE, r0 = FALSE;
 			switch(packet->extensions.video_rotation) {
@@ -4600,9 +4646,34 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 					r0 = FALSE;
 					break;
 			}
-			*(index+1) = (c<<3) + (f<<2) + (r1<<1) + r0;
-			index += 2;
-			extlen += 2;
+			if(!use_2byte) {
+				*index = (handle->pc->videoorientation_ext_id << 4);
+				*(index+1) = (c<<3) + (f<<2) + (r1<<1) + r0;
+				index += 2;
+				extlen += 2;
+			} else {
+				*index = handle->pc->videoorientation_ext_id;
+				*(index+1) = 1;
+				*(index+2) = (c<<3) + (f<<2) + (r1<<1) + r0;
+				index += 3;
+				extlen += 3;
+			}
+		}
+		if(packet->video && packet->extensions.dd_len > 0 && handle->pc->dependencydesc_ext_id > 0) {
+			/* Add dependency descriptor extension */
+			if(!use_2byte) {
+				*index = (handle->pc->dependencydesc_ext_id << 4) + (packet->extensions.dd_len-1);
+				index++;
+				memcpy(index, packet->extensions.dd_content, packet->extensions.dd_len);
+				index += packet->extensions.dd_len;
+				extlen += packet->extensions.dd_len + 1;
+			} else {
+				*index = handle->pc->dependencydesc_ext_id;
+				*(index+1) = packet->extensions.dd_len;
+				memcpy(index+2, packet->extensions.dd_content, packet->extensions.dd_len);
+				index += packet->extensions.dd_len + 2;
+				extlen += packet->extensions.dd_len + 2;
+			}
 		}
 		/* Calculate the whole length */
 		uint16_t words = extlen/4;

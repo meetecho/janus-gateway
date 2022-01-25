@@ -44,6 +44,8 @@ void janus_plugin_rtp_extensions_reset(janus_plugin_rtp_extensions *extensions) 
 		extensions->video_rotation = -1;
 		extensions->video_back_camera = FALSE;
 		extensions->video_flipped = FALSE;
+		extensions->dd_len = 0;
+		memset(extensions->dd_content, 0, sizeof(extensions->dd_content));
 	}
 }
 void janus_plugin_rtp_reset(janus_plugin_rtp *packet) {

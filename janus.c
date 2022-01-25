@@ -1505,11 +1505,11 @@ int janus_process_incoming_request(janus_request *request) {
 					janus_request_ice_handle_answer(handle, jsep_sdp);
 					/* Check if the answer does contain the mid/abs-send-time/twcc extmaps */
 					int mindex = 0;
-					gboolean do_mid = FALSE, do_twcc = FALSE, do_abs_send_time = FALSE;
+					gboolean do_mid = FALSE, do_twcc = FALSE, do_dd = FALSE, do_abs_send_time = FALSE;
 					GList *temp = parsed_sdp->m_lines;
 					while(temp) {
 						janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-						gboolean have_mid = FALSE, have_twcc = FALSE, have_abs_send_time = FALSE;
+						gboolean have_mid = FALSE, have_twcc = FALSE, have_dd = FALSE, have_abs_send_time = FALSE;
 						GList *tempA = m->attributes;
 						while(tempA) {
 							janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
@@ -1518,6 +1518,8 @@ int janus_process_incoming_request(janus_request *request) {
 									have_mid = TRUE;
 								else if(strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
 									have_twcc = TRUE;
+								else if(strstr(a->value, JANUS_RTP_EXTMAP_DEPENDENCY_DESC))
+									have_dd = TRUE;
 								else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
 									have_abs_send_time = TRUE;
 							}
@@ -1525,6 +1527,7 @@ int janus_process_incoming_request(janus_request *request) {
 						}
 						do_mid = do_mid || have_mid;
 						do_twcc = do_twcc || have_twcc;
+						do_dd = do_dd || have_dd;
 						do_abs_send_time = do_abs_send_time || have_abs_send_time;
 						mindex++;
 						temp = temp->next;
@@ -1535,6 +1538,8 @@ int janus_process_incoming_request(janus_request *request) {
 						handle->pc->do_transport_wide_cc = FALSE;
 						handle->pc->transport_wide_cc_ext_id = 0;
 					}
+					if(!do_dd && handle->pc)
+						handle->pc->dependencydesc_ext_id = 0;
 					if(!do_abs_send_time && handle->pc)
 						handle->pc->abs_send_time_ext_id = 0;
 				} else {
@@ -1553,6 +1558,8 @@ int janus_process_incoming_request(janus_request *request) {
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->pc->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
 					handle->pc->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
+					/* Check if the dependency descriptor ID extension is being negotiated */
+					handle->pc->dependencydesc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_DEPENDENCY_DESC);
 				}
 			} else {
 				/* FIXME This is a renegotiation: we can currently only handle simple changes in media
@@ -1615,6 +1622,8 @@ int janus_process_incoming_request(janus_request *request) {
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->pc->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
 					handle->pc->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
+					/* Check if the dependency descriptor ID extension is being negotiated */
+					handle->pc->dependencydesc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_DEPENDENCY_DESC);
 				}
 			}
 			char *tmp = handle->remote_sdp;
@@ -3142,6 +3151,8 @@ json_t *janus_admin_peerconnection_summary(janus_ice_peerconnection *pc) {
 		json_object_set_new(se, JANUS_RTP_EXTMAP_AUDIO_LEVEL, json_integer(pc->audiolevel_ext_id));
 	if(pc->videoorientation_ext_id > 0)
 		json_object_set_new(se, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION, json_integer(pc->videoorientation_ext_id));
+	if(pc->dependencydesc_ext_id > 0)
+		json_object_set_new(se, JANUS_RTP_EXTMAP_DEPENDENCY_DESC, json_integer(pc->dependencydesc_ext_id));
 	json_object_set_new(w, "extensions", se);
 	json_t *bwe = json_object();
 	json_object_set_new(bwe, "twcc", pc->do_transport_wide_cc ? json_true() : json_false());
@@ -3687,7 +3698,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		/* Make sure we don't send the rid/repaired-rid attributes when offering ourselves */
 		int mindex = 0;
 		int mid_ext_id = 0, transport_wide_cc_ext_id = 0, abs_send_time_ext_id = 0,
-			audiolevel_ext_id = 0, videoorientation_ext_id = 0;
+			audiolevel_ext_id = 0, videoorientation_ext_id = 0, dependencydesc_ext_id = 0;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -3708,6 +3719,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 							audiolevel_ext_id = atoi(a->value);
 						else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
 							videoorientation_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_DEPENDENCY_DESC))
+							dependencydesc_ext_id = atoi(a->value);
 						else if(strstr(a->value, JANUS_RTP_EXTMAP_RID) ||
 								strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID)) {
 							m->attributes = g_list_remove(m->attributes, a);
@@ -3740,18 +3753,20 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->pc->audiolevel_ext_id = audiolevel_ext_id;
 		if(ice_handle->pc && ice_handle->pc->videoorientation_ext_id != videoorientation_ext_id)
 			ice_handle->pc->videoorientation_ext_id = videoorientation_ext_id;
+		if(ice_handle->pc && ice_handle->pc->dependencydesc_ext_id != dependencydesc_ext_id)
+			ice_handle->pc->dependencydesc_ext_id = dependencydesc_ext_id;
 	} else {
 		/* Check if the answer does contain the mid/rid/repaired-rid/abs-send-time/twcc extmaps */
 		int mindex = 0;
 		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE,
-			do_twcc = FALSE, do_abs_send_time = FALSE;
+			do_dd = FALSE, do_twcc = FALSE, do_abs_send_time = FALSE;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 			janus_ice_peerconnection_medium *medium = ice_handle->pc ?
 				g_hash_table_lookup(ice_handle->pc->media, GUINT_TO_POINTER(mindex)) : NULL;
 			gboolean have_mid = FALSE, have_rid = FALSE, have_repaired_rid = FALSE,
-				have_twcc = FALSE, have_abs_send_time = FALSE;
+				have_twcc = FALSE, have_dd = FALSE, have_abs_send_time = FALSE;
 			int opusred_pt = -1;
 			GList *tempA = m->attributes;
 			while(tempA) {
@@ -3765,6 +3780,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						have_repaired_rid = TRUE;
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
 						have_twcc = TRUE;
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_DEPENDENCY_DESC))
+						do_dd = TRUE;
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
 						have_abs_send_time = TRUE;
 				} else if(m->type == JANUS_SDP_AUDIO && medium != NULL && medium->opusred_pt > 0 &&
@@ -3793,6 +3810,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			do_rid = do_rid || have_rid;
 			do_repaired_rid = do_repaired_rid || have_repaired_rid;
 			do_twcc = do_twcc || have_twcc;
+			do_dd = do_dd || have_dd;
 			do_abs_send_time = do_abs_send_time || have_abs_send_time;
 			mindex++;
 			temp = temp->next;
@@ -3809,6 +3827,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->pc->do_transport_wide_cc = FALSE;
 			ice_handle->pc->transport_wide_cc_ext_id = 0;
 		}
+		if(!do_dd && ice_handle->pc)
+			ice_handle->pc->dependencydesc_ext_id = 0;
 		if(!do_abs_send_time && ice_handle->pc)
 			ice_handle->pc->abs_send_time_ext_id = 0;
 	}
