@@ -242,7 +242,11 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 
 	/* Get to work */
 	tmp = list;
+#ifdef FF_API_INIT_PACKET
 	AVPacket *pkt = av_packet_alloc();
+#else
+	AVPacket apkt = { 0 }, *pkt = &apkt;
+#endif
 	AVRational timebase = {1, 48000};
 
 	while(*working && tmp != NULL) {
@@ -263,7 +267,9 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					JANUS_LOG(LOG_WARN, "[SKIP] pos: %06" SCNu64 ", skipping remaining silence\n", pos / 48 / 20 + 1);
 					break;
 				}
+#ifdef FF_API_INIT_PACKET
 				av_packet_unref(pkt);
+#endif
 				pkt->stream_index = 0;
 				pkt->data = opus_silence;
 				pkt->size = sizeof(opus_silence);
@@ -313,7 +319,11 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		}
 		JANUS_LOG(LOG_VERB, "pos: %06"SCNu64", writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
 			pos, bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/48000);
+#ifdef FF_API_INIT_PACKET
 		av_packet_unref(pkt);
+#else
+		av_init_packet(pkt);
+#endif
 		pkt->stream_index = 0;
 		pkt->data = buffer;
 		pkt->size = bytes;
@@ -327,7 +337,9 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		tmp = tmp->next;
 	}
 	g_free(buffer);
+#ifdef FF_API_INIT_PACKET
 	av_packet_free(&pkt);
+#endif
 	return 0;
 }
 

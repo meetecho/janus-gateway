@@ -1882,8 +1882,10 @@ void janus_nosip_sdp_process(janus_nosip_session *session, janus_sdp *sdp, gbool
 					} else {
 						session->media.audio_pt = pt;
 					}
+					session->media.audio_pt_name = janus_sdp_get_codec_name(sdp, session->media.audio_pt);
 				} else {
 					session->media.video_pt = pt;
+					session->media.video_pt_name = janus_sdp_get_codec_name(sdp, pt);
 				}
 			}
 		}
@@ -1957,8 +1959,10 @@ char *janus_nosip_sdp_manipulate(janus_nosip_session *session, janus_sdp *sdp, g
 					} else {
 						session->media.audio_pt = pt;
 					}
+					session->media.audio_pt_name = janus_sdp_get_codec_name(sdp, session->media.audio_pt);
 				} else {
 					session->media.video_pt = pt;
+					session->media.video_pt_name = janus_sdp_get_codec_name(sdp, pt);
 				}
 			}
 		}
