@@ -3737,24 +3737,29 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			while(tempA) {
 				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 				if(a->name && a->value) {
-					if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
-						mid_ext_id = atoi(a->value);
-					else if(strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
-						transport_wide_cc_ext_id = atoi(a->value);
-					else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
-						abs_send_time_ext_id = atoi(a->value);
-					else if(strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL))
-						audiolevel_ext_id = atoi(a->value);
-					else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
-						videoorientation_ext_id = atoi(a->value);
-					else if(strstr(a->value, JANUS_RTP_EXTMAP_DEPENDENCY_DESC))
-						dependencydesc_ext_id = atoi(a->value);
-					else if(strstr(a->value, JANUS_RTP_EXTMAP_RID) ||
-							strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID)) {
-						m->attributes = g_list_remove(m->attributes, a);
-						tempA = m->attributes;
-						janus_sdp_attribute_destroy(a);
-						continue;
+ 					if(!strcasecmp(a->name, "extmap")) {
+						if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
+							mid_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
+							transport_wide_cc_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
+							abs_send_time_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL))
+							audiolevel_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
+							videoorientation_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_DEPENDENCY_DESC))
+							dependencydesc_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_RID) ||
+								strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID)) {
+							m->attributes = g_list_remove(m->attributes, a);
+							tempA = m->attributes;
+							janus_sdp_attribute_destroy(a);
+							continue;
+						}
+					} else if(m->type == JANUS_SDP_AUDIO && !strcasecmp(a->name, "rtpmap") &&
+							strstr(a->value, "red/48000/2")) {
+						opusred_pt = atoi(a->value);
 					}
 				}
 				tempA = tempA->next;
