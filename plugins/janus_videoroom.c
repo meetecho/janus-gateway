@@ -215,6 +215,7 @@ room-<unique room ID>: {
 	"new_fir_freq" : <new period for regular PLI keyframe requests to publishers>,
 	"new_publishers" : <new cap on the number of concurrent active WebRTC publishers>,
 	"new_lock_record" : <true|false, whether recording state can only be changed when providing the room secret>,
+	"new_rec_dir" : "<the new path where the next .mjr files should being saved>",
 	"permanent" : <true|false, whether the room should be also removed from the config file, default=false>
 }
 \endverbatim
@@ -432,7 +433,8 @@ room-<unique room ID>: {
 			"id" : <unique numeric ID of the participant>,
 			"display" : "<display name of the participant, if any; optional>",
 			"publisher" : "<true|false, whether user is an active publisher in the room>",
-			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>
+			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>,
+			"subscribers" : <number of subscribers for this participant, if any>
 		},
 		// Other participants
 	]
@@ -1298,6 +1300,8 @@ static struct janus_json_parameter edit_parameters[] = {
 	{"new_bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"new_fir_freq", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"new_publishers", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"new_lock_record", JANUS_JSON_BOOL, 0},
+	{"new_rec_dir", JSON_STRING, 0},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter room_parameters[] = {
@@ -3565,6 +3569,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *fir_freq = json_object_get(root, "new_fir_freq");
 		json_t *publishers = json_object_get(root, "new_publishers");
 		json_t *lock_record = json_object_get(root, "new_lock_record");
+		json_t *rec_dir = json_object_get(root, "new_rec_dir");
 		json_t *permanent = json_object_get(root, "permanent");
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
 		if(save && config == NULL) {
@@ -3614,6 +3619,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		if(lock_record)
 			videoroom->lock_record = json_is_true(lock_record);
+		if(rec_dir) {
+			char *old_rec_dir = videoroom->rec_dir;
+			char *new_rec_dir = g_strdup(json_string_value(rec_dir));
+			videoroom->rec_dir = new_rec_dir;
+			g_free(old_rec_dir);
+		}
 		if(save) {
 			/* This room is permanent: save to the configuration file too
 			 * FIXME: We should check if anything fails... */
@@ -4841,6 +4852,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(p->sdp && g_atomic_int_get(&p->session->started)) {
 				if(p->audio_level_extmap_id > 0)
 					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
+				janus_mutex_lock_nodebug(&p->subscribers_mutex);
+				json_object_set_new(pl, "subscribers", json_integer(g_slist_length(p->subscribers)));
+				janus_mutex_unlock_nodebug(&p->subscribers_mutex);
 			}
 			json_array_append_new(list, pl);
 		}

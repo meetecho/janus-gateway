@@ -218,6 +218,7 @@ typedef struct janus_echotest_session {
 	janus_audiocodec acodec;/* Codec used for audio, if available */
 	janus_videocodec vcodec;/* Codec used for video, if available */
 	char *vfmtp;
+	int opusred_pt;
 	uint32_t bitrate, peer_bitrate;
 	janus_rtp_switching_context context;
 	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
@@ -468,8 +469,11 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 	json_t *info = json_object();
 	json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
 	json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
-	if(session->acodec != JANUS_AUDIOCODEC_NONE)
+	if(session->acodec != JANUS_AUDIOCODEC_NONE) {
 		json_object_set_new(info, "audio_codec", json_string(janus_audiocodec_name(session->acodec)));
+		if(session->opusred_pt)
+			json_object_set_new(info, "audio_red", json_true());
+	}
 	if(session->vcodec != JANUS_VIDEOCODEC_NONE)
 		json_object_set_new(info, "video_codec", json_string(janus_videocodec_name(session->vcodec)));
 	json_object_set_new(info, "bitrate", json_integer(session->bitrate));
@@ -885,6 +889,7 @@ static void janus_echotest_hangup_media_internal(janus_plugin_session *handle) {
 	session->vcodec = JANUS_VIDEOCODEC_NONE;
 	g_free(session->vfmtp);
 	session->vfmtp = NULL;
+	session->opusred_pt = -1;
 	session->e2ee = FALSE;
 	session->bitrate = 0;
 	session->peer_bitrate = 0;
@@ -1053,6 +1058,13 @@ static void *janus_echotest_handler(void *data) {
 			g_snprintf(error_cause, 512, "Invalid value (videoprofile should be a string)");
 			goto error;
 		}
+		json_t *opusred = json_object_get(root, "opusred");
+		if(opusred && !json_is_boolean(opusred)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (opusred should be a boolean)\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (opusred should be a boolean)");
+			goto error;
+		}
 		/* Enforce request */
 		if(audio) {
 			session->audio_active = json_is_true(audio);
@@ -1135,10 +1147,10 @@ static void *janus_echotest_handler(void *data) {
 			session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);
 		}
 
-		if(!audio && !video && !videocodec && !videoprofile && !bitrate && !substream && !temporal && !fallback && !svc_spatial && !svc_temporal && !record && !msg_sdp) {
+		if(!audio && !video && !videocodec && !videoprofile && !opusred && !bitrate && !substream && !temporal && !fallback && !svc_spatial && !svc_temporal && !record && !msg_sdp) {
 			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, videocodec, videoprofile, bitrate, substream, temporal, fallback, svc_spatial, svc_temporal, record, jsep) found\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, videocodec, videoprofile, bitrate, simulcast, temporal, fallback, svc_spatial, svc_temporal, record, jsep) found");
+			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, videocodec, videoprofile, opusred, bitrate, simulcast, temporal, fallback, svc_spatial, svc_temporal, record, jsep) found");
 			goto error;
 		}
 
@@ -1211,6 +1223,7 @@ static void *janus_echotest_handler(void *data) {
 			janus_sdp *answer = janus_sdp_generate_answer(offer,
 				JANUS_SDP_OA_AUDIO_CODEC, json_string_value(audiocodec),
 				JANUS_SDP_OA_AUDIO_FMTP, (opus_fec || opus_dtx ? custom_fmtp : NULL),
+				JANUS_SDP_OA_ACCEPT_OPUSRED, json_is_true(opusred),
 				JANUS_SDP_OA_VIDEO_CODEC, json_string_value(videocodec),
 				JANUS_SDP_OA_VP9_PROFILE, json_string_value(videoprofile),
 				JANUS_SDP_OA_H264_PROFILE, json_string_value(videoprofile),
@@ -1254,6 +1267,8 @@ static void *janus_echotest_handler(void *data) {
 				if(vfmtp != NULL)
 					session->vfmtp = g_strdup(vfmtp);
 			}
+			if(json_is_true(opusred))
+				session->opusred_pt = janus_sdp_get_opusred_pt(answer);
 			/* Done */
 			char *sdp = janus_sdp_write(answer);
 			janus_sdp_destroy(offer);
@@ -1304,6 +1319,9 @@ static void *janus_echotest_handler(void *data) {
 							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
 						}
 					}
+					/* If RED is in use, take note of it */
+					if(session->opusred_pt > 0)
+						janus_recorder_opusred(rc, session->opusred_pt);
 					/* If media is encrypted, mark it in the recording */
 					if(session->e2ee)
 						janus_recorder_encrypted(rc);

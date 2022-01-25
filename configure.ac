@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.11.7],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.11.8],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -75,9 +75,9 @@ cc*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=117
+JANUS_VERSION=118
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.11.7"
+JANUS_VERSION_STRING="0.11.8"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
