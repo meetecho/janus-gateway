@@ -1051,7 +1051,7 @@ static void *janus_echotest_handler(void *data) {
 		}
 
 		if(!audio && !video && !videocodec && !videoprofile && !opusred && !bitrate && !substream && !temporal && !fallback && !record && !msg_sdp) {
-			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, videocodec, videoprofile, bitrate, substream, temporal, fallback, record, jsep) found\n");
+			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, videocodec, videoprofile, opusred, bitrate, substream, temporal, fallback, record, jsep) found\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, videocodec, videoprofile, opusred, bitrate, simulcast, temporal, fallback, record, jsep) found");
 			goto error;
