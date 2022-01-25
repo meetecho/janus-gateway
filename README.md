@@ -1,5 +1,5 @@
-Janus WebRTC Server
-===================
+Janus WebRTC Server (0.x)
+=========================
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-brightgreen.svg)](COPYING)
 ![janus-ci](https://github.com/meetecho/janus-gateway/workflows/janus-ci/badge.svg)
 [![Coverity Scan Build Status](https://scan.coverity.com/projects/13265/badge.svg)](https://scan.coverity.com/projects/meetecho-janus-gateway)
