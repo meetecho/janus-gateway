@@ -30,7 +30,6 @@
 # audiortpmap = RTP map of the audio codec (e.g., opus/48000/2)
 # audioskew = true|false (whether the plugin should perform skew
 #		analisys and compensation on incoming audio RTP stream, EXPERIMENTAL)
-# audioredpt = <offer audio redundancy via RED with this payload type> (e.g., 96)
 # videoport = local port for receiving video frames
 # videortcpport = local port, if any, for receiving and sending video RTCP feedback
 # videomcast = multicast group port for receiving video frames, if any
