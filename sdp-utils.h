@@ -278,6 +278,10 @@ JANUS_SDP_OA_PT,
 JANUS_SDP_OA_FMTP,
 /*! \brief When generating an offer or answer automatically, do or do not negotiate telephone events (FIXME telephone-event/8000 only, true by default) */
 JANUS_SDP_OA_AUDIO_DTMF,
+/*! \brief When generating an offer (this is ignored for answers), use this payload type for RED/Opus (depends on value that follows) */
+JANUS_SDP_OA_OPUSRED_PT,
+/*! \brief When generating an answer (this is ignored for offers), accept opus/red if offered */
+JANUS_SDP_OA_ACCEPT_OPUSRED,
 /*! \brief When generating an offer or answer automatically, use this profile for VP9 (depends on value that follows) */
 JANUS_SDP_OA_VP9_PROFILE,
 /*! \brief When generating an offer or answer automatically, use this profile for H.264 (depends on value that follows) */
@@ -409,5 +413,11 @@ const char *janus_sdp_get_codec_rtpmap(const char *codec);
  * @param pt The payload type to find
  * @returns The fmtp content, if found, or NULL otherwise */
 const char *janus_sdp_get_fmtp(janus_sdp *sdp, int index, int pt);
+
+/*! \brief Helper to get the opus/red payload type from an SDP, if present
+ * @param sdp The Janus SDP instance to process
+ * @param index The m-line to refer to (use -1 for the first m-line that matches)
+ * @returns The payload type, if found, or -1 otherwise */
+int janus_sdp_get_opusred_pt(janus_sdp *sdp, int index);
 
 #endif

@@ -374,6 +374,7 @@ typedef struct janus_videocall_session {
 	gboolean video_active;
 	janus_audiocodec acodec;/* Codec used for audio, if available */
 	janus_videocodec vcodec;/* Codec used for video, if available */
+	int opusred_pt;
 	uint32_t bitrate, peer_bitrate;
 	guint16 slowlink_count;
 	struct janus_videocall_session *peer;
@@ -655,8 +656,11 @@ json_t *janus_videocall_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "peer", peer->username ? json_string(peer->username) : NULL);
 		json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
 		json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
-		if(session->acodec != JANUS_AUDIOCODEC_NONE)
+		if(session->acodec != JANUS_AUDIOCODEC_NONE) {
 			json_object_set_new(info, "audio_codec", json_string(janus_audiocodec_name(session->acodec)));
+			if(session->opusred_pt)
+				json_object_set_new(info, "audio_red", json_true());
+		}
 		if(session->vcodec != JANUS_VIDEOCODEC_NONE)
 			json_object_set_new(info, "video_codec", json_string(janus_videocodec_name(session->vcodec)));
 		json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
@@ -1030,6 +1034,7 @@ static void janus_videocall_hangup_media_internal(janus_plugin_session *handle) 
 	session->video_active = TRUE;
 	session->acodec = JANUS_AUDIOCODEC_NONE;
 	session->vcodec = JANUS_VIDEOCODEC_NONE;
+	session->opusred_pt = 0;
 	session->bitrate = 0;
 	session->peer_bitrate = 0;
 	session->e2ee = FALSE;
@@ -1381,6 +1386,9 @@ static void *janus_videocall_handler(void *data) {
 			session->acodec = janus_audiocodec_from_name(acodec);
 			janus_sdp_find_first_codec(answer, JANUS_SDP_VIDEO, -1, &vcodec);
 			session->vcodec = janus_videocodec_from_name(vcodec);
+			session->opusred_pt = janus_sdp_get_opusred_pt(answer, -1);
+			if(peer)
+				peer->opusred_pt = session->opusred_pt;
 			if(session->acodec == JANUS_AUDIOCODEC_NONE) {
 				session->has_audio = FALSE;
 				if(peer)
@@ -1577,6 +1585,9 @@ static void *janus_videocall_handler(void *data) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this VideoCall user!\n");
 							}
 						}
+						/* If RED is in use, take note of it */
+						if(session->opusred_pt > 0)
+							janus_recorder_opusred(rc, session->opusred_pt);
 						/* If media is encrypted, mark it in the recording */
 						if(session->e2ee)
 							janus_recorder_encrypted(rc);

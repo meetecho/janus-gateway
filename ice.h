@@ -524,6 +524,8 @@ struct janus_ice_peerconnection_medium {
 	janus_rtp_switching_context rtp_ctx[3];
 	/*! \brief List of payload types we can expect */
 	GList *payload_types;
+	/*! \brief opus/red payload type, if enabled */
+	int opusred_pt;
 	/*! \brief Mapping of rtx payload types to actual media-related packet types */
 	GHashTable *rtx_payload_types;
 	/*! \brief Mapping of payload types to their clock rates, as advertised in the SDP */

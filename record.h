@@ -55,6 +55,8 @@ typedef struct janus_recorder {
 	gint64 created, started;
 	/*! \brief Media this instance is recording */
 	janus_recorder_medium type;
+	/*! \brief In case RED is used for Opus, its payload types */
+	int opusred_pt;
 	/*! \brief Whether the recording contains end-to-end encrypted media or not */
 	gboolean encrypted;
 	/*! \brief Whether the info header for this recorder instance has already been written or not */
@@ -115,6 +117,13 @@ int janus_recorder_resume(janus_recorder *recorder);
  * @param[in] extmap Namespace of the RTP extension
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_recorder_add_extmap(janus_recorder *recorder, int id, const char *extmap);
+/*! \brief Mark this recording as using RED for audio
+ * \note This will only be possible BEFORE the first frame is written, as it needs to
+ * be reflected in the .mjr header: doing this after that will return an error.
+ * @param[in] recorder The janus_recorder instance to configure
+ * @param[in] red_pt Payload type of RED
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_recorder_opusred(janus_recorder *recorder, int red_pt);
 /*! \brief Mark this recorder as end-to-end encrypted (e.g., via Insertable Streams)
  * \note This will only be possible BEFORE the first frame is written, as it needs to
  * be reflected in the .mjr header: doing this after that will return an error. Also

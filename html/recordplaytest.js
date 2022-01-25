@@ -69,6 +69,7 @@ var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec
 var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
+var doOpusred = (getQueryStringValue("opusred") === "yes" || getQueryStringValue("opusred") === "true");
 var recordData = (getQueryStringValue("data") !== "" ? getQueryStringValue("data") : null);
 if(recordData !== "text" && recordData !== "binary")
 	recordData = null;
@@ -569,6 +570,9 @@ function startRecording() {
 					// profile as well (e.g., ?vprofile=2 for VP9, or ?vprofile=42e01f for H.264)
 					if(vprofile)
 						body["videoprofile"] = vprofile;
+					// You can use RED for Opus, if the browser supports it
+					if(doOpusred)
+						body["opusred"] = true;
 					// If we're going to send binary data, let's tell the plugin
 					if(recordData === "binary")
 						body["textdata"] = false;
