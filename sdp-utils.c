@@ -841,6 +841,9 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt) {
 						return "isac32";
 					if(strstr(a->value, "telephone-event/8000") || strstr(a->value, "telephone-event/8000"))
 						return "dtmf";
+					/* RED is not really a codec, but we need to detect it anyway */
+					if(strstr(a->value, "red") || strstr(a->value, "RED"))
+						return "red";
 					JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", a->value);
 					return NULL;
 				}
@@ -892,7 +895,7 @@ const char *janus_sdp_get_fmtp(janus_sdp *sdp, int pt) {
 	GList *ml = sdp->m_lines;
 	while(ml) {
 		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
-		/* Look in all rtpmap attributes */
+		/* Look in all fmtp attributes */
 		GList *ma = m->attributes;
 		while(ma) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
@@ -911,6 +914,33 @@ const char *janus_sdp_get_fmtp(janus_sdp *sdp, int pt) {
 		ml = ml->next;
 	}
 	return NULL;
+}
+
+int janus_sdp_get_opusred_pt(janus_sdp *sdp) {
+	if(sdp == NULL)
+		return -1;
+	/* Check all m->lines */
+	GList *ml = sdp->m_lines;
+	while(ml) {
+		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
+		if(m->type != JANUS_SDP_AUDIO) {
+			ml = ml->next;
+			continue;
+		}
+		/* Look in all rtpmap attributes */
+		GList *ma = m->attributes;
+		while(ma) {
+			janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
+			if(a->name != NULL && a->value != NULL && !strcasecmp(a->name, "rtpmap")) {
+				int pt = atoi(a->value);
+				if(strstr(a->value, "red/48000/2"))
+					return pt;
+			}
+			ma = ma->next;
+		}
+		ml = ml->next;
+	}
+	return -1;
 }
 
 char *janus_sdp_write(janus_sdp *imported) {
@@ -1096,6 +1126,11 @@ void janus_sdp_find_first_codecs(janus_sdp *sdp, const char **acodec, const char
 			if(audio == FALSE && m->ptypes) {
 				int pt = GPOINTER_TO_INT(m->ptypes->data);
 				const char *codec = janus_sdp_get_codec_name(sdp, pt);
+				if(codec && !strcasecmp(codec, "red")) {
+					/* We're using RED, so check the second payload type for the actual codec */
+					pt = m->ptypes->next ? GPOINTER_TO_INT(m->ptypes->next->data) : -1;
+					codec = janus_sdp_get_codec_name(sdp, pt);
+				}
 				codec = janus_sdp_match_preferred_codec(m->type, (char *)codec);
 				if(codec) {
 					audio = TRUE;
@@ -1173,7 +1208,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	const char *audio_codec = NULL, *video_codec = NULL,
 		*vp9_profile = NULL, *h264_profile = NULL,
 		*audio_fmtp = NULL, *video_fmtp = NULL;
-	int audio_pt = 111, video_pt = 96;
+	int audio_pt = 111, video_pt = 96, opusred_pt = 0;
 	janus_sdp_mdirection audio_dir = JANUS_SDP_SENDRECV, video_dir = JANUS_SDP_SENDRECV;
 	GHashTable *audio_extmaps = NULL, *audio_extids = NULL,
 		*video_extmaps = NULL, *video_extids = NULL;
@@ -1199,6 +1234,8 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			h264_profile = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_AUDIO_PT) {
 			audio_pt = va_arg(args, int);
+		} else if(property == JANUS_SDP_OA_OPUSRED_PT) {
+			opusred_pt = va_arg(args, int);
 		} else if(property == JANUS_SDP_OA_VIDEO_PT) {
 			video_pt = va_arg(args, int);
 		} else if(property == JANUS_SDP_OA_AUDIO_DTMF) {
@@ -1299,6 +1336,12 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 		m->c_ipv4 = TRUE;
 		m->c_addr = g_strdup(offer->c_addr);
 		/* Add the selected audio codec */
+		if(opusred_pt > 0) {
+			/* ... but add RED first */
+			m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(opusred_pt));
+			janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d red/48000/2", opusred_pt);
+			m->attributes = g_list_append(m->attributes, a);
+		}
 		m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(audio_pt));
 		janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", audio_pt, audio_rtpmap);
 		m->attributes = g_list_append(m->attributes, a);
@@ -1308,6 +1351,11 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			int dtmf_pt = 126;
 			m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(dtmf_pt));
 			janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
+			m->attributes = g_list_append(m->attributes, a);
+		}
+		/* If RED is being offered, add an fmtp line for that */
+		if(opusred_pt > 0) {
+			janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %d/%d", opusred_pt, audio_pt, audio_pt);
 			m->attributes = g_list_append(m->attributes, a);
 		}
 		/* Check if there's a custom fmtp line to add for audio */
@@ -1426,7 +1474,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	va_start(args, offer);
 	/* Let's see what we should do with the media */
 	gboolean do_audio = TRUE, do_video = TRUE, do_data = TRUE,
-		audio_dtmf = FALSE, video_rtcpfb = TRUE;
+		audio_dtmf = FALSE, audio_opusred = FALSE, video_rtcpfb = TRUE;
 	const char *audio_codec = NULL, *video_codec = NULL,
 		*vp9_profile = NULL, *h264_profile = NULL,
 		*audio_fmtp = NULL, *video_fmtp = NULL;
@@ -1465,6 +1513,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 			const char *extension = va_arg(args, char *);
 			if(extension != NULL)
 				extmaps = g_list_append(extmaps, (char *)extension);
+		} else if(property == JANUS_SDP_OA_ACCEPT_OPUSRED) {
+			audio_opusred = va_arg(args, gboolean);
 		} else {
 			JANUS_LOG(LOG_WARN, "Unknown property %d for preparing SDP answer, ignoring...\n", property);
 		}
@@ -1493,7 +1543,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	answer->m_lines = NULL;
 
 	/* Now iterate on all media, and let's see what we should do */
-	int audio = 0, video = 0, data = 0;
+	int audio = 0, video = 0, data = 0, red = 0;
 	GList *temp = offer->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -1681,8 +1731,19 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 			if(m->type == JANUS_SDP_AUDIO) {
 				/* Add rtpmap attribute */
 				const char *codec_rtpmap = janus_sdp_get_codec_rtpmap(codec);
+				janus_sdp_attribute *a = NULL;
 				if(codec_rtpmap) {
-					janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, codec_rtpmap);
+					/* If we're supposed to negotiate opus/red as well, check if it's there */
+					if(!strcasecmp(codec, "opus") && audio_opusred) {
+						red = janus_sdp_get_opusred_pt(offer);
+						if(red > 0) {
+							/* Add rtpmap attribute for opus/red too */
+							am->ptypes = g_list_prepend(am->ptypes, GINT_TO_POINTER(red));
+							a = janus_sdp_attribute_create("rtpmap", "%d red/48000/2", red);
+							am->attributes = g_list_append(am->attributes, a);
+						}
+					}
+					a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, codec_rtpmap);
 					am->attributes = g_list_append(am->attributes, a);
 					/* Check if we need to add a payload type for DTMF tones (telephone-event/8000) */
 					if(audio_dtmf) {
@@ -1693,6 +1754,11 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 							a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
 							am->attributes = g_list_append(am->attributes, a);
 						}
+					}
+					/* If we're negotiating opus/red, add an fmtp line for that */
+					if(audio_opusred && red > 0) {
+						a = janus_sdp_attribute_create("fmtp", "%d %d/%d", red, pt, pt);
+						am->attributes = g_list_append(am->attributes, a);
 					}
 					/* Check if there's a custom fmtp line to add for audio
 					 * FIXME We should actually check if it matches the offer */

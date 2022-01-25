@@ -805,6 +805,7 @@ const char *janus_srtp_error_str(int error) {
 /* Payload types we'll offer internally */
 #define OPUS_PT		111
 #define MULTIOPUS_PT	OPUS_PT
+#define OPUSRED_PT	120
 #define ISAC32_PT	104
 #define ISAC16_PT	103
 #define PCMU_PT		0
@@ -823,6 +824,8 @@ const char *janus_audiocodec_name(janus_audiocodec acodec) {
 			return "opus";
 		case JANUS_AUDIOCODEC_MULTIOPUS:
 			return "multiopus";
+		case JANUS_AUDIOCODEC_OPUSRED:
+			return "red";
 		case JANUS_AUDIOCODEC_PCMU:
 			return "pcmu";
 		case JANUS_AUDIOCODEC_PCMA:
@@ -845,6 +848,8 @@ janus_audiocodec janus_audiocodec_from_name(const char *name) {
 		return JANUS_AUDIOCODEC_OPUS;
 	else if(!strcasecmp(name, "multiopus"))
 		return JANUS_AUDIOCODEC_MULTIOPUS;
+	else if(!strcasecmp(name, "red"))
+		return JANUS_AUDIOCODEC_OPUSRED;
 	else if(!strcasecmp(name, "isac32"))
 		return JANUS_AUDIOCODEC_ISAC_32K;
 	else if(!strcasecmp(name, "isac16"))
@@ -866,6 +871,8 @@ int janus_audiocodec_pt(janus_audiocodec acodec) {
 			return OPUS_PT;
 		case JANUS_AUDIOCODEC_MULTIOPUS:
 			return MULTIOPUS_PT;
+		case JANUS_AUDIOCODEC_OPUSRED:
+			return OPUSRED_PT;
 		case JANUS_AUDIOCODEC_ISAC_32K:
 			return ISAC32_PT;
 		case JANUS_AUDIOCODEC_ISAC_16K:

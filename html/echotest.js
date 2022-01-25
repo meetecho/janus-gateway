@@ -64,6 +64,7 @@ var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
 var doDtx = (getQueryStringValue("dtx") === "yes" || getQueryStringValue("dtx") === "true");
+var doOpusred = (getQueryStringValue("opusred") === "yes" || getQueryStringValue("opusred") === "true");
 var simulcastStarted = false;
 
 $(document).ready(function() {
@@ -112,6 +113,9 @@ $(document).ready(function() {
 									// profile as well (e.g., ?vprofile=2 for VP9, or ?vprofile=42e01f for H.264)
 									if(vprofile)
 										body["videoprofile"] = vprofile;
+									// We can force RED for audio too, if supported by the browser
+									if(doOpusred)
+										body["opusred"] = true;
 									Janus.debug("Sending message:", body);
 									echotest.send({ message: body });
 									Janus.debug("Trying a createOffer too (audio/video sendrecv)");
