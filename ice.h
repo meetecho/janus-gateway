@@ -484,6 +484,8 @@ struct janus_ice_stream {
 	gint audiolevel_ext_id;
 	/*! \brief Video orientation extension ID */
 	gint videoorientation_ext_id;
+	/*! \brief Dependency descriptor extension ID */
+	gint dependencydesc_ext_id;
 	/*! \brief Absolute Send Time ext ID */
 	gint abs_send_time_ext_id;
 	/*! \brief Whether we do transport wide cc for video */

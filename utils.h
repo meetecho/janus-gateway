@@ -448,6 +448,18 @@ void janus_set3(guint8 *data, size_t i, guint32 val);
  */
 void janus_set4(guint8 *data, size_t i, guint32 val);
 
+/* \brief Helpers to read a bit from a bitstream
+ * @param[in] base Pointer to the start of the bitstream
+ * @param[in] offset Offset in bits from the start
+ * @returns The value of the bit */
+uint8_t janus_bitstream_getbit(uint8_t *base, uint32_t offset);
+/* \brief Helpers to read agroup of bits from a bitstream
+ * @param[in] base Pointer to the start of the bitstream
+ * @param[in] num The number of bits to read
+ * @param[in] offset Offset in bits from the start
+ * @returns The value of the bits */
+uint32_t janus_bitstream_getbits(uint8_t *base, uint8_t num, uint32_t *offset);
+
 /*! \brief Helper method to compress a string to gzip (using zlib)
  * \note It's up to you to provide a buffer large enough for the compressed
  * data: in case the buffer isn't large enough, the request will fail

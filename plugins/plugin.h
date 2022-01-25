@@ -561,6 +561,10 @@ struct janus_plugin_rtp_extensions {
 	/*! \brief Whether the video orientation extension says it's flipped horizontally
 	 * @note Will be ignored if no rotation value is set */
 	gboolean video_flipped;
+	/*! \brief Length of Dependency Descriptor data, if available */
+	uint8_t dd_len;
+	/*! \brief Dependency Descriptor content */
+	uint8_t dd_content[256];
 };
 /*! \brief Helper method to initialise/reset the RTP extensions field
  * @note This is important because each of the supported extensions may

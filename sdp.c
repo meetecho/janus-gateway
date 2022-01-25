@@ -1296,6 +1296,10 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 	GList *first = anon->attributes;
 	janus_sdp_attribute *a = janus_sdp_attribute_create("group", "%s", buffer);
 	anon->attributes = g_list_insert_before(anon->attributes, first, a);
+	/* Notify we support 1-byte and 2-byte extensions
+	 * FIXME We should actually negotiate this, in the future */
+	a = janus_sdp_attribute_create("extmap-allow-mixed", NULL);
+	anon->attributes = g_list_insert_before(anon->attributes, first, a);
 	/* msid-semantic: add new global attribute */
 	a = janus_sdp_attribute_create("msid-semantic", " WMS janus");
 	anon->attributes = g_list_insert_before(anon->attributes, first, a);
