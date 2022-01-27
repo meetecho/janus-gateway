@@ -6375,32 +6375,6 @@ static void *janus_audiobridge_handler(void *data) {
 				}
 			}
 			participant->reset = FALSE;
-			/* Check if we need to record this participant right away */
-			janus_mutex_lock(&participant->rec_mutex);
-			const char *recording_base = json_string_value(recfile);
-			if(recording_base) {
-				g_free(participant->mjr_base);
-				participant->mjr_base = g_strdup(recording_base);
-			}
-			if(audiobridge->mjrs || record) {
-				if(audiobridge->mjrs || json_is_true(record)) {
-					/* Start recording (ignore if recording already) */
-					if(participant->arc != NULL) {
-						JANUS_LOG(LOG_WARN, "Already recording participant's audio (room %s, user %s)\n",
-							participant->room->room_id_str, participant->user_id_str);
-					} else {
-						JANUS_LOG(LOG_INFO, "Starting recording of participant's audio (room %s, user %s)\n",
-							participant->room->room_id_str, participant->user_id_str);
-						janus_audiobridge_recorder_create(participant);
-						participant->mjr_active = TRUE;
-					}
-				} else {
-					/* Stop recording (ignore if not recording) */
-					janus_audiobridge_recorder_close(participant);
-					participant->mjr_active = FALSE;
-				}
-			}
-			janus_mutex_unlock(&participant->rec_mutex);
 			/* If this is a plain RTP participant, create the socket */
 			if(rtp != NULL) {
 				const char *ip = json_string_value(json_object_get(rtp, "ip"));
@@ -6457,6 +6431,32 @@ static void *janus_audiobridge_handler(void *data) {
 				}
 				janus_mutex_unlock(&participant->pmutex);
 			}
+			/* Check if we need to record this participant right away */
+			janus_mutex_lock(&participant->rec_mutex);
+			const char *recording_base = json_string_value(recfile);
+			if(recording_base) {
+				g_free(participant->mjr_base);
+				participant->mjr_base = g_strdup(recording_base);
+			}
+			if(audiobridge->mjrs || record) {
+				if(audiobridge->mjrs || json_is_true(record)) {
+					/* Start recording (ignore if recording already) */
+					if(participant->arc != NULL) {
+						JANUS_LOG(LOG_WARN, "Already recording participant's audio (room %s, user %s)\n",
+							participant->room->room_id_str, participant->user_id_str);
+					} else {
+						JANUS_LOG(LOG_INFO, "Starting recording of participant's audio (room %s, user %s)\n",
+							participant->room->room_id_str, participant->user_id_str);
+						janus_audiobridge_recorder_create(participant);
+						participant->mjr_active = TRUE;
+					}
+				} else {
+					/* Stop recording (ignore if not recording) */
+					janus_audiobridge_recorder_close(participant);
+					participant->mjr_active = FALSE;
+				}
+			}
+			janus_mutex_unlock(&participant->rec_mutex);
 			/* Finally, start the encoding thread if it hasn't already */
 			if(participant->thread == NULL) {
 				GError *error = NULL;
@@ -7552,6 +7552,11 @@ static void *janus_audiobridge_handler(void *data) {
 			if(extmap_id > -1 && participant->room && participant->room->audiolevel_ext) {
 				/* Add an extmap attribute too */
 				participant->extmap_id = extmap_id;
+				/* If there's a recording, add the extension there */
+				janus_mutex_lock(&participant->rec_mutex);
+				if(participant->arc != NULL)
+					janus_recorder_add_extmap(participant->arc, participant->extmap_id, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+				janus_mutex_unlock(&participant->rec_mutex);
 			}
 			/* Prepare the response */
 			char *new_sdp = janus_sdp_write(answer ? answer : offer);
