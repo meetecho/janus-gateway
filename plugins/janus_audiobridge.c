@@ -6376,8 +6376,13 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			participant->reset = FALSE;
 			/* Check if we need to record this participant right away */
+			janus_mutex_lock(&participant->rec_mutex);
+			const char *recording_base = json_string_value(recfile);
+			if(recording_base) {
+				g_free(participant->mjr_base);
+				participant->mjr_base = g_strdup(recording_base);
+			}
 			if(audiobridge->mjrs || record) {
-				janus_mutex_lock(&participant->rec_mutex);
 				if(audiobridge->mjrs || json_is_true(record)) {
 					/* Start recording (ignore if recording already) */
 					if(participant->arc != NULL) {
@@ -6386,11 +6391,6 @@ static void *janus_audiobridge_handler(void *data) {
 					} else {
 						JANUS_LOG(LOG_INFO, "Starting recording of participant's audio (room %s, user %s)\n",
 							participant->room->room_id_str, participant->user_id_str);
-						const char *recording_base = json_string_value(recfile);
-						if(recording_base) {
-							g_free(participant->mjr_base);
-							participant->mjr_base = g_strdup(recording_base);
-						}
 						janus_audiobridge_recorder_create(participant);
 						participant->mjr_active = TRUE;
 					}
@@ -6399,8 +6399,8 @@ static void *janus_audiobridge_handler(void *data) {
 					janus_audiobridge_recorder_close(participant);
 					participant->mjr_active = FALSE;
 				}
-				janus_mutex_unlock(&participant->rec_mutex);
 			}
+			janus_mutex_unlock(&participant->rec_mutex);
 			/* If this is a plain RTP participant, create the socket */
 			if(rtp != NULL) {
 				const char *ip = json_string_value(json_object_get(rtp, "ip"));
@@ -6771,8 +6771,13 @@ static void *janus_audiobridge_handler(void *data) {
 				}
 				janus_mutex_unlock(&rooms_mutex);
 			}
+			janus_mutex_lock(&participant->rec_mutex);
+			const char *recording_base = json_string_value(recfile);
+			if(recording_base) {
+				g_free(participant->mjr_base);
+				participant->mjr_base = g_strdup(recording_base);
+			}
 			if(record) {
-				janus_mutex_lock(&participant->rec_mutex);
 				if(json_is_true(record)) {
 					/* Start recording (ignore if recording already) */
 					if(participant->arc != NULL) {
@@ -6781,11 +6786,6 @@ static void *janus_audiobridge_handler(void *data) {
 					} else {
 						JANUS_LOG(LOG_INFO, "Starting recording of participant's audio (room %s, user %s)\n",
 							participant->room->room_id_str, participant->user_id_str);
-						const char *recording_base = json_string_value(recfile);
-						if(recording_base) {
-							g_free(participant->mjr_base);
-							participant->mjr_base = g_strdup(recording_base);
-						}
 						janus_audiobridge_recorder_create(participant);
 						participant->mjr_active = TRUE;
 					}
@@ -6794,8 +6794,8 @@ static void *janus_audiobridge_handler(void *data) {
 					janus_audiobridge_recorder_close(participant);
 					participant->mjr_active = FALSE;
 				}
-				janus_mutex_unlock(&participant->rec_mutex);
 			}
+			janus_mutex_unlock(&participant->rec_mutex);
 			gboolean do_update = update ? json_is_true(update) : FALSE;
 			if(do_update && (!sdp_update || !session->plugin_offer)) {
 				JANUS_LOG(LOG_WARN, "Got a 'update' request, but no SDP update? Ignoring...\n");
