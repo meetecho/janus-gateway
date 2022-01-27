@@ -2576,13 +2576,8 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			audiobridge->recording = NULL;
 			if(mjrs && mjrs->value && janus_is_true(mjrs->value))
 				audiobridge->mjrs = TRUE;
-			if(mjrsdir && mjrsdir->value) {
+			if(mjrsdir && mjrsdir->value)
 				audiobridge->mjrs_dir = g_strdup(mjrsdir->value);
-				if(janus_mkdir(audiobridge->mjrs_dir, 0755) < 0) {
-					/* FIXME Should this be fatal, when creating a room? */
-					JANUS_LOG(LOG_WARN, "AudioBridge mkdir (%s) error: %d (%s)\n", audiobridge->mjrs_dir, errno, g_strerror(errno));
-				}
-			}
 			audiobridge->allow_plainrtp = FALSE;
 			if(allowrtp && allowrtp->value)
 				audiobridge->allow_plainrtp = janus_is_true(allowrtp->value);
@@ -3218,13 +3213,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		audiobridge->recording = NULL;
 		if(mjrs && json_is_true(mjrs))
 			audiobridge->mjrs = TRUE;
-		if(mjrsdir) {
+		if(mjrsdir)
 			audiobridge->mjrs_dir = g_strdup(json_string_value(mjrsdir));
-			if(janus_mkdir(audiobridge->mjrs_dir, 0755) < 0) {
-				/* FIXME Should this be fatal, when creating a room? */
-				JANUS_LOG(LOG_WARN, "AudioBridge mkdir (%s) error: %d (%s)\n", audiobridge->mjrs_dir, errno, g_strerror(errno));
-			}
-		}
 		audiobridge->allow_plainrtp = FALSE;
 		if(allowrtp && json_is_true(allowrtp))
 			audiobridge->allow_plainrtp = TRUE;
