@@ -40,7 +40,7 @@ room-<unique room ID>: {
 	audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 	default_prebuffering = number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)
 	default_expectedloss = percent of packets we expect participants may miss, to help with FEC (default=0, max=20; automatically used for forwarders too)
-	default_bitrate = default bitrate in bps to use for the all participants (default=auto, libopus decides; automatically used for forwarders too)
+	default_bitrate = default bitrate in bps to use for the all participants (default=0, which means libopus decides; automatically used for forwarders too)
 	record = true|false (whether this room should be recorded, default=false)
 	record_file = /path/to/recording.wav (where to save the recording)
 	record_dir = /path/to/ (path to save the recording to, makes record_file a relative path if provided)
@@ -143,7 +143,7 @@ room-<unique room ID>: {
 	"audio_level_average" : <average value of audio level (127=muted, 0='too loud', default=25)>,
 	"default_prebuffering" : <number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)>,
 	"default_expectedloss" : <percent of packets we expect participants may miss, to help with FEC (default=0, max=20; automatically used for forwarders too)>,
-	"default_bitrate" : <bitrate in bps to use for the all participants (default=auto, libopus decides; automatically used for forwarders too)>,
+	"default_bitrate" : <bitrate in bps to use for the all participants (default=0, which means libopus decides; automatically used for forwarders too)>,
 	"record" : <true|false, whether to record the room or not, default=false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
 	"record_dir" : "</path/to/, optional; makes record_file a relative path, if provided>",
