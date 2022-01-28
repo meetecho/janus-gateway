@@ -108,6 +108,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	long int offset = 0;
 	int bytes = 0, len = 0, steps = 0, last_seq = 0;
 	uint64_t pos = 0, nextPos = 0;
+	double ts = 0.0;
 	uint8_t *buffer = g_malloc0(1500);
 
 	/* Before we start, check if we're dealing with RED: if so, we need to pre-traverse the
@@ -293,7 +294,8 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			continue;
 		}
 		if(tmp->audiolevel != -1) {
-			JANUS_LOG(LOG_VERB, "Audio level: %d dB\n", tmp->audiolevel);
+			ts = (double)(tmp->ts - list->ts)/(double)48000;
+			JANUS_LOG(LOG_VERB, "[audiolevel][%.2f] Audio level: %d dB\n", ts, tmp->audiolevel);
 		}
 		guint16 diff = tmp->prev == NULL ? 1 : (tmp->seq - tmp->prev->seq);
 		len = 0;

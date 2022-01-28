@@ -1997,7 +1997,7 @@ typedef struct janus_videoroom_publisher {
 	gint64 remb_startup;/* Incremental changes on REMB to reach the target at startup */
 	gint64 remb_latest;	/* Time of latest sent REMB (to avoid flooding) */
 	gboolean recording_active;	/* Whether this publisher has to be recorded or not */
-	gchar *recording_base;	/* Base name for the recording (e.g., /path/to/filename, will generate /path/to/filename-audio.mjr and/or /path/to/filename-video.mjr */
+	gchar *recording_base;	/* Base name for the recording (e.g., /path/to/filename, will generate /path/to/filename-audio.mjr and/or /path/to/filename-video.mjr) */
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	GSList *subscriptions;	/* Subscriptions this publisher has created (who this publisher is watching) */
 	janus_mutex subscribers_mutex;
@@ -6187,13 +6187,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			goto prepare_response;
 		json_t *record = json_object_get(root, "record");
 		gboolean recording_active = json_is_true(record);
-		JANUS_LOG(LOG_VERB, "Enable Recording : %d \n", (recording_active ? 1 : 0));
+		JANUS_LOG(LOG_VERB, "Enable Recording: %d\n", (recording_active ? 1 : 0));
 		/* Lookup room */
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = NULL;
 		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
 		if(error_code != 0) {
-			JANUS_LOG(LOG_ERR, "Failed to access videoroom\n");
 			janus_mutex_unlock(&rooms_mutex);
 			goto prepare_response;
 		}
@@ -6215,7 +6214,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					janus_mutex_lock(&participant->rec_mutex);
 					gboolean prev_recording_active = participant->recording_active;
 					participant->recording_active = recording_active;
-					JANUS_LOG(LOG_VERB, "Setting record property: %s (room %s, user %s)\n", participant->recording_active ? "true" : "false", participant->room_id_str, participant->user_id_str);
+					JANUS_LOG(LOG_VERB, "Setting record property: %s (room %s, user %s)\n",
+						participant->recording_active ? "true" : "false", participant->room_id_str, participant->user_id_str);
 					/* Do we need to do something with the recordings right now? */
 					if(participant->recording_active != prev_recording_active) {
 						/* Something changed */
