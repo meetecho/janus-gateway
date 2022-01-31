@@ -4046,6 +4046,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		return G_SOURCE_CONTINUE;
 	} else if(pkt == &janus_ice_media_stopped) {
 		/* Some media has been disabled on the way in, so use the callback to notify the peer */
+		if(pc == NULL)
+			return G_SOURCE_CONTINUE;
 		uint mi=0;
 		for(mi=0; mi<g_hash_table_size(pc->media); mi++) {
 			medium = g_hash_table_lookup(pc->media, GUINT_TO_POINTER(mi));
