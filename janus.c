@@ -3807,7 +3807,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 							do_dd = TRUE;
 						else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
 							do_abs_send_time = TRUE;
-					} else if(m->type == JANUS_SDP_AUDIO && ice_handle->stream->opusred_pt > 0 &&
+					} else if(m->type == JANUS_SDP_AUDIO && ice_handle->stream && ice_handle->stream->opusred_pt > 0 &&
 							!strcasecmp(a->name, "rtpmap") && strstr(a->value, "red/48000/2")) {
 						opusred_pt = atoi(a->value);
 					}
