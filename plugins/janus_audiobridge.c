@@ -7636,7 +7636,7 @@ static void janus_audiobridge_rec_add_wav_header(janus_audiobridge_room *audiobr
 			1,
 			audiobridge->spatial_audio ? 2 : 1,
 			audiobridge->sampling_rate,
-			audiobridge->sampling_rate * 2,
+			audiobridge->sampling_rate * 2 * (audiobridge->spatial_audio ? 2 : 1),
 			2,
 			16,
 			{'d', 'a', 't', 'a'},
