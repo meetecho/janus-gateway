@@ -3815,7 +3815,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				tempA = tempA->next;
 			}
 			/* If the user offered RED but the plugin rejected it, disable it */
-			if(ice_handle->stream->opusred_pt > 0 && opusred_pt < 0)
+			if(ice_handle->stream && ice_handle->stream->opusred_pt > 0 && opusred_pt < 0)
 				ice_handle->stream->opusred_pt = 0;
 			temp = temp->next;
 		}
