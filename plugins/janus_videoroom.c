@@ -5229,6 +5229,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			}
 		} else {
 			/* Old deprecated approach: return the legacy info as well */
+			JANUS_LOG(LOG_WARN, "Deprecated 'rtp_forward' API: please start looking into the new one for the future\n");
 			rtp_stream = json_object();
 			int video_port[3] = {-1, -1, -1}, video_rtcp_port = -1, video_pt[3] = {0, 0, 0};
 			uint32_t video_ssrc[3] = {0, 0, 0};
@@ -5471,6 +5472,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				json_object_set_new(rtp_stream, "data_stream_id", json_integer(data_handle));
 				json_object_set_new(rtp_stream, "data", json_integer(data_port));
 			}
+			json_object_set_new(rtp_stream, "warning", json_string("deprecated_api"));
 		}
 		janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
 		janus_mutex_unlock(&videoroom->mutex);
@@ -7784,6 +7786,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(root, "streams", m);
 					feeds = json_object_get(root, "streams");
 					legacy = TRUE;
+					JANUS_LOG(LOG_WARN, "Deprecated subscriber 'join' API: please start looking into the new one for the future\n");
 				}
 				json_t *cpc = json_object_get(root, "close_pc");
 				gboolean close_pc  = cpc ? json_is_true(cpc) : TRUE;
@@ -8116,8 +8119,10 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", string_ids ?
 					json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 				/* If this is a legacy subscription, put the feed ID too */
-				if(legacy)
+				if(legacy) {
 					json_object_set_new(event, "id", string_ids ? json_string(feed_id_str) : json_integer(feed_id));
+					json_object_set_new(event, "warning", json_string("deprecated_api"));
+				}
 				json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, legacy, event);
 				json_object_set_new(event, "streams", media);
 				session->participant_type = janus_videoroom_p_type_subscriber;
@@ -9327,7 +9332,7 @@ static void *janus_videoroom_handler(void *data) {
 					g_list_free(touched_already);
 					janus_refcount_decrease(&publisher->ref);
 					/* Take note of the fact this is a legacy request */
-					JANUS_LOG(LOG_WARN, "Legacy 'switch' request: please start using the streams array instead\n");
+					JANUS_LOG(LOG_WARN, "Deprecated VideoRoom 'switch' API: please start looking into the new one for the future\n");
 				}
 				/* If we got here, we have a feeds list: make sure we have everything we need */
 				if(json_array_size(feeds) == 0) {

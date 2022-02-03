@@ -3144,6 +3144,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			GUINT_TO_POINTER(TRUE));
 		janus_mutex_unlock(&mountpoints_mutex);
 		janus_streaming_mountpoint *mp = NULL;
+		gboolean legacy = FALSE;
 		if(!strcasecmp(type_text, "rtp")) {
 			/* RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 			JANUS_VALIDATE_JSON_OBJECT(root, rtp_parameters,
@@ -3308,6 +3309,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				}
 			} else {
 				/* If we got here, we create a mountpoint the "old" way */
+				legacy = TRUE;
+				JANUS_LOG(LOG_WARN, "Deprecated mountpoint 'create' API: please start looking into the new one for the future\n");
 				janus_network_address audio_iface, video_iface, data_iface;
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
@@ -4005,33 +4008,72 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		json_object_set_new(ml, "is_private", mp->is_private ? json_true() : json_false());
 		if(!strcasecmp(type_text, "rtp")) {
 			janus_streaming_rtp_source *source = mp->source;
-			json_t *media = json_array();
+			json_t *media = legacy ? NULL : json_array();
 			GList *temp = source->media;
 			while(temp) {
 				janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
 				json_t *info = json_object();
-				json_object_set_new(info, "type", json_string(janus_streaming_media_str(stream->type)));
-				json_object_set_new(info, "mid", json_string(stream->mid));
-				if(stream->fd[0] != -1) {
-					if(stream->host)
-						json_object_set_new(ml, "host", json_string(stream->host));
-					json_object_set_new(info, "port", json_integer(stream->port[0]));
+				if(!legacy) {
+					/* Return the new format */
+					json_object_set_new(info, "type", json_string(janus_streaming_media_str(stream->type)));
+					json_object_set_new(info, "mid", json_string(stream->mid));
+					if(stream->fd[0] != -1) {
+						if(stream->host)
+							json_object_set_new(ml, "host", json_string(stream->host));
+						json_object_set_new(info, "port", json_integer(stream->port[0]));
+					}
+					if(stream->rtcp_fd != -1) {
+						json_object_set_new(info, "rtcp_port", json_integer(stream->rtcp_port));
+					}
+					if(stream->fd[1] != -1) {
+						json_object_set_new(info, "port_2", json_integer(stream->port[1]));
+					}
+					if(stream->fd[2] != -1) {
+						json_object_set_new(info, "port_3", json_integer(stream->port[2]));
+					}
+					json_array_append_new(media, info);
+				} else {
+					/* Return the old format */
+					if(stream->type == JANUS_STREAMING_MEDIA_AUDIO) {
+						if(stream->fd[0] != -1) {
+							if(stream->host)
+								json_object_set_new(ml, "audio_host", json_string(stream->host));
+							json_object_set_new(ml, "audio_port", json_integer(stream->port[0]));
+						}
+						if(stream->rtcp_fd != -1) {
+							json_object_set_new(ml, "audio_rtcp_port", json_integer(stream->rtcp_port));
+						}
+					} else if(stream->type == JANUS_STREAMING_MEDIA_VIDEO) {
+						if(stream->fd[0] != -1) {
+							if(stream->host)
+								json_object_set_new(ml, "video_host", json_string(stream->host));
+							json_object_set_new(ml, "video_port", json_integer(stream->port[0]));
+						}
+						if(stream->rtcp_fd != -1) {
+							json_object_set_new(ml, "video_rtcp_port", json_integer(stream->rtcp_port));
+						}
+						if(stream->fd[1] != -1) {
+							json_object_set_new(ml, "video_port_2", json_integer(stream->port[1]));
+						}
+						if(stream->fd[2] != -1) {
+							json_object_set_new(ml, "video_port_3", json_integer(stream->port[2]));
+						}
+					} else if(stream->type == JANUS_STREAMING_MEDIA_VIDEO) {
+						if(stream->fd[0] != -1) {
+							if(stream->host)
+								json_object_set_new(ml, "data_host", json_string(stream->host));
+							json_object_set_new(ml, "data_port", json_integer(stream->port[0]));
+						}
+					}
 				}
-				if(stream->rtcp_fd != -1) {
-					json_object_set_new(info, "rtcp_port", json_integer(stream->rtcp_port));
-				}
-				if(stream->fd[1] != -1) {
-					json_object_set_new(info, "port_2", json_integer(stream->port[1]));
-				}
-				if(stream->fd[2] != -1) {
-					json_object_set_new(info, "port_3", json_integer(stream->port[2]));
-				}
-				json_array_append_new(media, info);
 				temp = temp->next;
 			}
-			json_object_set_new(ml, "ports", media);
+			if(!legacy)
+				json_object_set_new(ml, "ports", media);
 		}
 		json_object_set_new(response, "stream", ml);
+		if(legacy)
+			json_object_set_new(response, "warning", json_string("deprecated_api"));
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
