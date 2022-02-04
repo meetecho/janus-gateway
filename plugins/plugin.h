@@ -171,7 +171,7 @@ janus_plugin *create(void) {
  * Janus instance or it will crash.
  *
  */
-#define JANUS_PLUGIN_API_VERSION	15
+#define JANUS_PLUGIN_API_VERSION	16
 
 /*! \brief Initialization of all plugin properties to NULL
  *
@@ -412,6 +412,9 @@ struct janus_callbacks {
 	 * @param[in] event The event to notify as a Jansson json_t object */
 	void (* const notify_event)(janus_plugin *plugin, janus_plugin_session *handle, json_t *event);
 
+	/*! \brief Method to check whether the core is using signed tokens
+	 * @returns TRUE if signed tokens are in use, FALSE otherwise */
+	gboolean (* const auth_is_signed)(void);
 	/*! \brief Method to check whether a signed token is valid
 	 * \note accepts only tokens with the plugin identifier as realm
 	 * @param[in] token The token to validate
@@ -558,6 +561,10 @@ struct janus_plugin_rtp_extensions {
 	/*! \brief Whether the video orientation extension says it's flipped horizontally
 	 * @note Will be ignored if no rotation value is set */
 	gboolean video_flipped;
+	/*! \brief Length of Dependency Descriptor data, if available */
+	uint8_t dd_len;
+	/*! \brief Dependency Descriptor content */
+	uint8_t dd_content[256];
 };
 /*! \brief Helper method to initialise/reset the RTP extensions field
  * @note This is important because each of the supported extensions may

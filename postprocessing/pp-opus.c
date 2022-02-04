@@ -43,6 +43,9 @@ static const uint8_t multiopus_extradata[27] = {
 	4, 2, 0, 4, 1, 2, 3, 5
 };
 
+/* In case we need to decapsulate RED */
+static int red_pt = 0;
+
 /* Supported target formats */
 static const char *janus_pp_opus_formats[] = {
 	"opus", "ogg", "mka", NULL
@@ -52,7 +55,7 @@ const char **janus_pp_opus_get_extensions(void) {
 }
 
 /* Processing methods */
-int janus_pp_opus_create(char *destination, char *metadata, gboolean multiopus, const char *extension) {
+int janus_pp_opus_create(char *destination, char *metadata, gboolean multiopus, const char *extension, int opusred_pt) {
 	if(destination == NULL)
 		return -1;
 
@@ -87,6 +90,11 @@ int janus_pp_opus_create(char *destination, char *metadata, gboolean multiopus, 
 		JANUS_LOG(LOG_ERR, "Error writing header\n");
 		return -1;
 	}
+
+	if(opusred_pt > 0) {
+		red_pt = opusred_pt;
+		JANUS_LOG(LOG_INFO, "  -- Enabling RED decapsulation (pt=%d)\n", red_pt);
+	}
 	return 0;
 }
 
@@ -100,8 +108,146 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	long int offset = 0;
 	int bytes = 0, len = 0, steps = 0, last_seq = 0;
 	uint64_t pos = 0, nextPos = 0;
+	double ts = 0.0;
 	uint8_t *buffer = g_malloc0(1500);
+
+	/* Before we start, check if we're dealing with RED: if so, we need to pre-traverse the
+	 * list to decapsulate all RED packets to Opus packets, filling the blanks if needed */
+	if(red_pt > 0) {
+		while(*working && tmp != NULL) {
+			/* Check if we need to decapsulate RED */
+			if(tmp->pt == red_pt) {
+				/* RTP payload */
+				offset = tmp->offset+12+tmp->skip;
+				fseek(file, offset, SEEK_SET);
+				len = tmp->len-12-tmp->skip;
+				if(len < 1) {
+					tmp = tmp->next;
+					continue;
+				}
+				bytes = fread(buffer, sizeof(char), len, file);
+				if(bytes != len) {
+					JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+					tmp = tmp->next;
+					continue;
+				}
+				uint8_t *payload = buffer;
+				int plen = bytes;
+				/* Find out how many generations are in the RED packet */
+				int gens = 0;
+				uint32_t red_block;
+				uint8_t follow = 0, block_pt = 0;
+				uint16_t ts_offset = 0, block_len = 0;
+				GList *lengths = NULL;
+				/* Parse the header */
+				while(payload != NULL && plen > 0) {
+					/* Go through the header for the different generations */
+					gens++;
+					follow = ((*payload) & 0x80) >> 7;
+					block_pt = (*payload) & 0x7F;
+					if(follow && plen > 3) {
+						/* Read the rest of the header */
+						memcpy(&red_block, payload, sizeof(red_block));
+						red_block = ntohl(red_block);
+						ts_offset = (red_block & 0x00FFFC00) >> 10;
+						block_len = (red_block & 0x000003FF);
+						JANUS_LOG(LOG_HUGE, "  [%d] f=%u, pt=%u, tsoff=%"SCNu16", blen=%"SCNu16"\n",
+							gens, follow, block_pt, ts_offset, block_len);
+						lengths = g_list_append(lengths, GUINT_TO_POINTER(block_len));
+						payload += 4;
+						plen -= 4;
+					} else {
+						/* Header parsed */
+						payload++;
+						plen--;
+						JANUS_LOG(LOG_HUGE, "  [%d] f=%u, pt=%u, tsoff=0, blen=TBD.\n",
+							gens, follow, block_pt);
+						break;
+					}
+				}
+				/* Go through the blocks, iterating on the lengths */
+				if(lengths != NULL) {
+					int tot_gens = gens;
+					gens = 0;
+					uint16_t length = 0;
+					GList *temp = lengths;
+					while(temp != NULL) {
+						gens++;
+						tot_gens--;
+						length = GPOINTER_TO_UINT(temp->data);
+						if(length > plen) {
+							JANUS_LOG(LOG_WARN, "  >> [%d] Broken red payload:\n", gens);
+							payload = NULL;
+							break;
+						}
+						if(length > 0) {
+							/* Redundant data, check if we have this packet already */
+							JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%"SCNu16"\n", gens, length);
+							if(tmp->prev != NULL) {
+								/* Go back until we either find it, or find a hole where it's supposed to be */
+								janus_pp_frame_packet *prev = tmp->prev;
+								ts_offset = tot_gens*960;
+								while(prev) {
+									if(prev->ts < ts_offset) {
+										JANUS_LOG(LOG_WARN, "Redundant packet precedes start of recording, ignoring\n");
+										break;
+									} else if(prev->ts == (tmp->ts - ts_offset)) {
+										/* We have this packet already */
+										break;
+									} else if(prev->ts < (tmp->ts - ts_offset)) {
+										/* We're missing this packet, insert it here */
+										JANUS_LOG(LOG_WARN, "Missing packet (ts=%"SCNi64"), restoring using redundant information\n",
+											(tmp->ts - ts_offset));
+										/* TODO */
+										janus_pp_frame_packet *p = g_malloc0(sizeof(janus_pp_frame_packet));
+										p->header = tmp->header;
+										p->version = tmp->version;
+										p->ts = tmp->ts - ts_offset;
+										p->p_ts = tmp->p_ts - ts_offset;
+										p->seq = tmp->seq - tot_gens;
+										p->pt = block_pt;
+										p->drop = tmp->drop;
+										p->skip = tmp->skip;
+										p->offset = (payload-buffer);
+										p->len = (length + 12 + tmp->skip);
+										p->audiolevel = tmp->audiolevel;
+										p->next = prev->next;
+										p->next->prev = p;
+										p->prev = prev;
+										prev->next = p;
+										break;
+									}
+									prev = prev->prev;
+								}
+							}
+							payload += length;
+							plen -= length;
+						}
+						temp = temp->next;
+					}
+					/* The last block is the primary data, so just update the current
+					 * stored packet with the Opus payload type and the right offset/len */
+					gens++;
+					JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%"SCNu16"\n", gens, plen);
+					tmp->pt = block_pt;
+					tmp->offset += (payload-buffer);
+					tmp->len = (plen + 12 + tmp->skip);
+					g_list_free(lengths);
+				}
+				tmp = tmp->next;
+				continue;
+			}
+			tmp = tmp->next;
+		}
+	}
+
+	/* Get to work */
+	tmp = list;
+#ifdef FF_API_INIT_PACKET
 	AVPacket *pkt = av_packet_alloc();
+#else
+	AVPacket apkt = { 0 }, *pkt = &apkt;
+#endif
 	AVRational timebase = {1, 48000};
 
 	while(*working && tmp != NULL) {
@@ -122,7 +268,9 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					JANUS_LOG(LOG_WARN, "[SKIP] pos: %06" SCNu64 ", skipping remaining silence\n", pos / 48 / 20 + 1);
 					break;
 				}
+#ifdef FF_API_INIT_PACKET
 				av_packet_unref(pkt);
+#endif
 				pkt->stream_index = 0;
 				pkt->data = opus_silence;
 				pkt->size = sizeof(opus_silence);
@@ -140,8 +288,14 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			tmp = tmp->next;
 			continue;
 		}
+		if(red_pt > 0 && tmp->pt == red_pt) {
+			/* There's still a RED packet in the list? Shouldn't happen, drop it */
+			tmp = tmp->next;
+			continue;
+		}
 		if(tmp->audiolevel != -1) {
-			JANUS_LOG(LOG_VERB, "Audio level: %d dB\n", tmp->audiolevel);
+			ts = (double)(tmp->ts - list->ts)/(double)48000;
+			JANUS_LOG(LOG_VERB, "[audiolevel][%.2f] Audio level: %d dB\n", ts, tmp->audiolevel);
 		}
 		guint16 diff = tmp->prev == NULL ? 1 : (tmp->seq - tmp->prev->seq);
 		len = 0;
@@ -167,7 +321,11 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		}
 		JANUS_LOG(LOG_VERB, "pos: %06"SCNu64", writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
 			pos, bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/48000);
+#ifdef FF_API_INIT_PACKET
 		av_packet_unref(pkt);
+#else
+		av_init_packet(pkt);
+#endif
 		pkt->stream_index = 0;
 		pkt->data = buffer;
 		pkt->size = bytes;
@@ -181,7 +339,9 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		tmp = tmp->next;
 	}
 	g_free(buffer);
+#ifdef FF_API_INIT_PACKET
 	av_packet_free(&pkt);
+#endif
 	return 0;
 }
 

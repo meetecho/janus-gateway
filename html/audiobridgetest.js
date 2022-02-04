@@ -178,7 +178,7 @@ $(document).ready(function() {
 												Janus.debug("Got a list of participants:", list);
 												for(var f in list) {
 													var id = list[f]["id"];
-													var display = list[f]["display"];
+													var display = escapeXmlTags(list[f]["display"]);
 													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
 													var spatial = list[f]["spatial_position"];
@@ -222,7 +222,7 @@ $(document).ready(function() {
 												Janus.debug("Got a list of participants:", list);
 												for(var f in list) {
 													var id = list[f]["id"];
-													var display = list[f]["display"];
+													var display = escapeXmlTags(list[f]["display"]);
 													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
 													var spatial = list[f]["spatial_position"];
@@ -267,7 +267,7 @@ $(document).ready(function() {
 												Janus.debug("Got a list of participants:", list);
 												for(var f in list) {
 													var id = list[f]["id"];
-													var display = list[f]["display"];
+													var display = escapeXmlTags(list[f]["display"]);
 													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
 													var spatial = list[f]["spatial_position"];
@@ -429,7 +429,7 @@ function registerUsername() {
 			return;
 		}
 		var register = { request: "join", room: myroom, display: username };
-		myusername = username;
+		myusername = escapeXmlTags(username);
 		// Check if we need to join using G.711 instead of (default) Opus
 		if(acodec === 'opus' || acodec === 'pcmu' || acodec === 'pcma')
 			register.codec = acodec;
@@ -447,4 +447,13 @@ function getQueryStringValue(name) {
 	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+}
+
+// Helper to escape XML tags
+function escapeXmlTags(value) {
+	if(value) {
+		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
+		return escapedValue;
+	}
 }

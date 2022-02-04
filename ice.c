@@ -360,8 +360,8 @@ gboolean janus_ice_event_get_combine_media_stats(void) {
 }
 
 /* RTP/RTCP port range */
-uint16_t rtp_range_min = 0;
-uint16_t rtp_range_max = 0;
+static uint16_t rtp_range_min = 0;
+static uint16_t rtp_range_max = 0;
 
 
 #define JANUS_ICE_PACKET_AUDIO	0
@@ -387,6 +387,7 @@ static janus_ice_queued_packet
 	janus_ice_start_gathering,
 	janus_ice_add_candidates,
 	janus_ice_dtls_handshake,
+	janus_ice_media_stopped,
 	janus_ice_hangup_peerconnection,
 	janus_ice_detach_handle,
 	janus_ice_data_ready;
@@ -548,6 +549,7 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 	if(pkt == NULL || pkt == &janus_ice_start_gathering ||
 			pkt == &janus_ice_add_candidates ||
 			pkt == &janus_ice_dtls_handshake ||
+			pkt == &janus_ice_media_stopped ||
 			pkt == &janus_ice_hangup_peerconnection ||
 			pkt == &janus_ice_detach_handle ||
 			pkt == &janus_ice_data_ready) {
@@ -1416,7 +1418,10 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		janus_refcount_decrease(&handle->ref);
 		return 0;
 	}
-	JANUS_LOG(LOG_INFO, "Detaching handle from %s; %p %p %p %p\n", plugin_t->get_name(), handle, handle->app_handle, handle->app_handle->gateway_handle, handle->app_handle->plugin_handle);
+	JANUS_LOG(LOG_INFO, "Detaching handle from %s; %p %p %p %p\n", plugin_t->get_name(),
+		handle, handle ? handle->app_handle : NULL,
+		(handle && handle->app_handle) ? handle->app_handle->gateway_handle : NULL,
+		(handle && handle->app_handle) ? handle->app_handle->plugin_handle : NULL);
 	/* Actually detach handle... */
 	if(g_atomic_int_compare_and_exchange(&handle->app_handle->stopped, 0, 1)) {
 		/* Notify the plugin that the session's over (the plugin will
@@ -2720,6 +2725,16 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							rtp.extensions.video_rotation = 90;
 						rtp.extensions.video_back_camera = c;
 						rtp.extensions.video_flipped = f;
+					}
+				}
+				if(stream->dependencydesc_ext_id != -1) {
+					uint8_t dd[256];
+					int len = sizeof(dd);
+					if(janus_rtp_header_extension_parse_dependency_desc(buf, buflen,
+							stream->dependencydesc_ext_id, dd, &len) == 0 && len > 0) {
+						/* We copy the DD bytes as they are: it's up to plugins to parse it, if needed */
+						rtp.extensions.dd_len = len;
+						memcpy(rtp.extensions.dd_content, dd, len);
 					}
 				}
 				/* Pass the packet to the plugin */
@@ -4343,6 +4358,22 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		guint id = g_source_attach(component->dtlsrt_source, handle->mainctx);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating retransmission timer with ID %u\n", handle->handle_id, id);
 		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_media_stopped) {
+		/* Either audio or video has been disabled on the way in, so use the callback to notify the peer */
+		if(component && stream && !component->in_stats.audio.notified_lastsec && component->in_stats.audio.bytes && !stream->audio_send) {
+			/* Audio won't be received for a while, notify */
+			component->in_stats.audio.notified_lastsec = TRUE;
+			janus_ice_notify_media(handle, FALSE, 0, FALSE);
+		}
+		int vindex=0;
+		for(vindex=0; vindex<3; vindex++) {
+			if(component && stream && !component->in_stats.video[vindex].notified_lastsec && component->in_stats.video[vindex].bytes && !stream->video_recv) {
+				/* Video won't be received for a while, notify */
+				component->in_stats.video[vindex].notified_lastsec = TRUE;
+				janus_ice_notify_media(handle, TRUE, vindex, FALSE);
+			}
+		}
+		return G_SOURCE_CONTINUE;
 	} else if(pkt == &janus_ice_hangup_peerconnection) {
 		/* The media session is over, send an alert on all streams and components */
 		if(handle->stream && handle->stream->component && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
@@ -4845,7 +4876,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 		totlen += plen;
 	/* We need to strip extensions, here, and add those that need to be there manually */
 	uint16_t extlen = 0;
-	char extensions[50];
+	char extensions[200];
 	janus_rtp_header *header = (janus_rtp_header *)packet->buffer;
 	int origext = header->extension;
 	header->extension = 0;
@@ -4853,52 +4884,88 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 	if(handle->stream->mid_ext_id > 0 || (packet->video && handle->stream->abs_send_time_ext_id > 0) ||
 			(packet->video && handle->stream->transport_wide_cc_ext_id > 0) ||
 			(!packet->video && packet->extensions.audio_level != -1 && handle->stream->audiolevel_ext_id > 0) ||
-			(packet->video && packet->extensions.video_rotation != -1 && handle->stream->videoorientation_ext_id > 0)) {
+			(packet->video && packet->extensions.video_rotation != -1 && handle->stream->videoorientation_ext_id > 0) ||
+			(packet->video && packet->extensions.dd_len > 0 && handle->stream->dependencydesc_ext_id > 0)) {
+		/* Do we need 2-byte extemsions, or are 1-byte extensions fine? */
+		gboolean use_2byte = (packet->video && packet->extensions.dd_len > 16 && handle->stream->dependencydesc_ext_id > 0);
+		/* Write the extension(s) */
 		header->extension = 1;
 		memset(extensions, 0, sizeof(extensions));
 		janus_rtp_header_extension *extheader = (janus_rtp_header_extension *)extensions;
-		extheader->type = htons(0xBEDE);
+		extheader->type = htons(use_2byte ? 0x1000 : 0xBEDE);
 		extheader->length = 0;
 		/* Iterate on all extensions we need */
 		char *index = extensions + 4;
 		/* Check if we need to add the abs-send-time extension */
 		if(packet->video && handle->stream->abs_send_time_ext_id > 0) {
-			*index = (handle->stream->abs_send_time_ext_id << 4) + 2;
 			/* We'll actually set the value later, when sending the packet */
-			memset(index+1, 0, 3);
-			index += 4;
-			extlen += 4;
+			if(!use_2byte) {
+				*index = (handle->stream->abs_send_time_ext_id << 4) + 2;
+				memset(index+1, 0, 3);
+				index += 4;
+				extlen += 4;
+			} else {
+				*index = handle->stream->abs_send_time_ext_id;
+				*(index+1) = 3;
+				memset(index+2, 0, 3);
+				index += 5;
+				extlen += 5;
+			}
 		}
 		/* Check if we need to add the transport-wide CC extension */
 		if(packet->video && handle->stream->transport_wide_cc_ext_id > 0) {
-			*index = (handle->stream->transport_wide_cc_ext_id << 4) + 1;
 			/* We'll actually set the sequence number later, when sending the packet */
-			memset(index+1, 0, 2);
-			index += 3;
-			extlen += 3;
+			if(!use_2byte) {
+				*index = (handle->stream->transport_wide_cc_ext_id << 4) + 1;
+				memset(index+1, 0, 2);
+				index += 3;
+				extlen += 3;
+			} else {
+				*index = handle->stream->transport_wide_cc_ext_id;
+				*(index+1) = 2;
+				memset(index+2, 0, 2);
+				index += 4;
+				extlen += 4;
+			}
 		}
 		/* Check if we need to add the mid extension */
 		if(handle->stream->mid_ext_id > 0) {
 			char *mid = packet->video ? handle->video_mid : handle->audio_mid;
 			if(mid != NULL) {
-				size_t midlen = strlen(mid) & 0x0F;
-				*index = (handle->stream->mid_ext_id << 4) + (midlen ? midlen-1 : 0);
-				memcpy(index+1, mid, midlen);
-				index += (midlen + 1);
-				extlen += (midlen + 1);
+				if(!use_2byte) {
+					size_t midlen = strlen(mid) & 0x0F;
+					*index = (handle->stream->mid_ext_id << 4) + (midlen ? midlen-1 : 0);
+					memcpy(index+1, mid, midlen);
+					index += (midlen + 1);
+					extlen += (midlen + 1);
+				} else {
+					size_t midlen = strlen(mid);
+					*index = handle->stream->mid_ext_id;
+					*(index+1) = midlen;
+					memcpy(index+2, mid, midlen);
+					index += (midlen + 2);
+					extlen += (midlen + 2);
+				}
 			}
 		}
 		/* Check if the plugin (or source) included other extensions */
 		if(!packet->video && packet->extensions.audio_level != -1 && handle->stream->audiolevel_ext_id > 0) {
 			/* Add audio-level extension */
-			*index = (handle->stream->audiolevel_ext_id << 4);
-			*(index+1) = (packet->extensions.audio_level_vad << 7) + (packet->extensions.audio_level & 0x7F);
-			index += 2;
-			extlen += 2;
+			if(!use_2byte) {
+				*index = (handle->stream->audiolevel_ext_id << 4);
+				*(index+1) = (packet->extensions.audio_level_vad << 7) + (packet->extensions.audio_level & 0x7F);
+				index += 2;
+				extlen += 2;
+			} else {
+				*index = handle->stream->audiolevel_ext_id;
+				*(index+1) = 1;
+				*(index+2) = (packet->extensions.audio_level_vad << 7) + (packet->extensions.audio_level & 0x7F);
+				index += 3;
+				extlen += 3;
+			}
 		}
 		if(packet->video && packet->extensions.video_rotation != -1 && handle->stream->videoorientation_ext_id > 0) {
 			/* Add video-orientation extension */
-			*index = (handle->stream->videoorientation_ext_id << 4);
 			gboolean c = packet->extensions.video_back_camera,
 				f = packet->extensions.video_flipped, r1 = FALSE, r0 = FALSE;
 			switch(packet->extensions.video_rotation) {
@@ -4920,9 +4987,34 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 					r0 = FALSE;
 					break;
 			}
-			*(index+1) = (c<<3) + (f<<2) + (r1<<1) + r0;
-			index += 2;
-			extlen += 2;
+			if(!use_2byte) {
+				*index = (handle->stream->videoorientation_ext_id << 4);
+				*(index+1) = (c<<3) + (f<<2) + (r1<<1) + r0;
+				index += 2;
+				extlen += 2;
+			} else {
+				*index = handle->stream->videoorientation_ext_id;
+				*(index+1) = 1;
+				*(index+2) = (c<<3) + (f<<2) + (r1<<1) + r0;
+				index += 3;
+				extlen += 3;
+			}
+		}
+		if(packet->video && packet->extensions.dd_len > 0 && handle->stream->dependencydesc_ext_id > 0) {
+			/* Add dependency descriptor extension */
+			if(!use_2byte) {
+				*index = (handle->stream->dependencydesc_ext_id << 4) + (packet->extensions.dd_len-1);
+				index++;
+				memcpy(index, packet->extensions.dd_content, packet->extensions.dd_len);
+				index += packet->extensions.dd_len;
+				extlen += packet->extensions.dd_len + 1;
+			} else {
+				*index = handle->stream->dependencydesc_ext_id;
+				*(index+1) = packet->extensions.dd_len;
+				memcpy(index+2, packet->extensions.dd_content, packet->extensions.dd_len);
+				index += packet->extensions.dd_len + 2;
+				extlen += packet->extensions.dd_len + 2;
+			}
 		}
 		/* Calculate the whole length */
 		uint16_t words = extlen/4;
@@ -5100,6 +5192,18 @@ void janus_ice_notify_data_ready(janus_ice_handle *handle) {
 #endif
 	g_main_context_wakeup(handle->mainctx);
 #endif
+}
+
+void janus_ice_notify_media_stopped(janus_ice_handle *handle) {
+	if(!handle || handle->queued_packets == NULL)
+		return;
+	/* Queue this event */
+#if GLIB_CHECK_VERSION(2, 46, 0)
+	g_async_queue_push_front(handle->queued_packets, &janus_ice_media_stopped);
+#else
+	g_async_queue_push(handle->queued_packets, &janus_ice_media_stopped);
+#endif
+	g_main_context_wakeup(handle->mainctx);
 }
 
 void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component *component) {

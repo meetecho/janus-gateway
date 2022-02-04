@@ -74,7 +74,6 @@ int janus_pp_h265_create(char *destination, char *metadata, gboolean faststart, 
 		return -1;
 	}
 	fctx->video_codec = codec;
-	fctx->oformat->video_codec = codec->id;
 	vStream = avformat_new_stream(fctx, codec);
 	vStream->id = fctx->nb_streams-1;
 	vEncoder = avcodec_alloc_context3(codec);
@@ -227,9 +226,11 @@ static void janus_pp_h265_parse_sps(char *buffer, int *width, int *height) {
 	*height = janus_pp_h265_eg_decode(base, &offset);
 }
 
-int janus_pp_h265_preprocess(FILE *file, janus_pp_frame_packet *list) {
+int janus_pp_h265_preprocess(FILE *file, janus_pp_frame_packet *list, json_t *info) {
 	if(!file || !list)
 		return -1;
+	json_t *resolutions = NULL;
+	int last_width = -1, last_height = -1;
 	janus_pp_frame_packet *tmp = list;
 	int bytes = 0, min_ts_diff = 0, max_ts_diff = 0;
 	int rotation = -1;
@@ -313,15 +314,29 @@ int janus_pp_h265_preprocess(FILE *file, janus_pp_frame_packet *list) {
 				max_width = width;
 				max_height = height;
 			}
+			if(info && (last_width != width || last_height != height)) {
+				last_width = width;
+				last_height = height;
+				if(resolutions == NULL) {
+					resolutions = json_array();
+					json_object_set_new(info, "resolution", resolutions);
+				}
+				json_t *resolution = json_object();
+				double ts = (double)(tmp->ts-list->ts)/(double)90000;
+				json_object_set_new(resolution, "ts", json_real(ts));
+				json_object_set_new(resolution, "width", json_integer(width));
+				json_object_set_new(resolution, "height", json_integer(height));
+				json_array_append_new(resolutions, resolution);
+			}
 		} else if(type == 34) {
 			/* PPS */
 			JANUS_LOG(LOG_HUGE, "[PPS] %u/%u/%u/%u\n", fbit, type, lid, tid);
 		} else if(type == 48) {
 			/* AP */
 			JANUS_LOG(LOG_HUGE, "[AP] %u/%u/%u/%u\n", fbit, type, lid, tid);
-			uint8_t *end = (uint8_t*)prebuffer + len;
+			uint8_t *end = (uint8_t*)prebuffer + len, *p = NULL;
 			uint16_t payload_len;
-			for (uint8_t *p = (uint8_t*)prebuffer + 2; p < end - 2; p += payload_len) {
+			for(p = (uint8_t*)prebuffer + 2; p < end - 2; p += payload_len) {
 				payload_len = (p[0] << 8 | p[1]);
 				p += 2;
 
@@ -364,6 +379,20 @@ int janus_pp_h265_preprocess(FILE *file, janus_pp_frame_packet *list) {
 						if(width*height > max_width*max_height) {
 							max_width = width;
 							max_height = height;
+						}
+						if(info && (last_width != width || last_height != height)) {
+							last_width = width;
+							last_height = height;
+							if(resolutions == NULL) {
+								resolutions = json_array();
+								json_object_set_new(info, "resolution", resolutions);
+							}
+							json_t *resolution = json_object();
+							double ts = (double)(tmp->ts-list->ts)/(double)90000;
+							json_object_set_new(resolution, "ts", json_real(ts));
+							json_object_set_new(resolution, "width", json_integer(width));
+							json_object_set_new(resolution, "height", json_integer(height));
+							json_array_append_new(resolutions, resolution);
 						}
 						break;
 					case 34:
@@ -428,7 +457,11 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
+#ifdef FF_API_INIT_PACKET
 	AVPacket *packet = av_packet_alloc();
+#else
+	AVPacket pkt = { 0 }, *packet = &pkt;
+#endif
 	AVRational timebase = {1, 90000};
 
 	while(*working && tmp != NULL) {
@@ -490,9 +523,9 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				frameLen += 3;
 			} else if(type == 48) {
 				/* AP */
-				uint8_t *end = buffer + len;
+				uint8_t *end = buffer + len, *p = NULL;
 				uint16_t payload_len;
-				for (uint8_t *p = buffer + 2; p < end - 2; p += payload_len) {
+				for(p = buffer + 2; p < end - 2; p += payload_len) {
 					payload_len = (p[0] << 8 | p[1]);
 					p += 2;
 					uint8_t *temp = received_frame + frameLen;
@@ -558,7 +591,11 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			/* Save the frame */
 			memset(received_frame + frameLen, 0, FF_INPUT_BUFFER_PADDING_SIZE);
 
+#ifdef FF_API_INIT_PACKET
 			av_packet_unref(packet);
+#else
+			av_init_packet(packet);
+#endif
 			packet->stream_index = 0;
 			packet->data = received_frame;
 			packet->size = frameLen;
@@ -578,7 +615,9 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		}
 		tmp = tmp->next;
 	}
+#ifdef FF_API_INIT_PACKET
 	av_packet_free(&packet);
+#endif
 	g_free(received_frame);
 	g_free(start);
 	return 0;
