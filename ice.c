@@ -1510,8 +1510,6 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_NEGOTIATED);
-	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
-	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
 	/* User will be notified only after the actual hangup */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Hanging up PeerConnection because of a %s\n",
 		handle->handle_id, reason);
@@ -4285,10 +4283,10 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 					}
 				}
 			}
-			if(combined_event) {
-				janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
-					session->session_id, handle->handle_id, handle->opaque_id, combined_event);
-			}
+		}
+		if(combined_event) {
+			janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
+				session->session_id, handle->handle_id, handle->opaque_id, combined_event);
 		}
 	}
 	/* Should we clean up old NACK buffers for any of the streams? */
