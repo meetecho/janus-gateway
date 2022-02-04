@@ -79,15 +79,15 @@ janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *erro
 					}
 				}
 			}
-			/* If the m-line is disabled don't actually increase the count */
-			if(m->port == 0) {
-				if(m->type == JANUS_SDP_AUDIO) {
-					*audio = *audio - 1;
-				} else if(m->type == JANUS_SDP_VIDEO) {
-					*video = *video - 1;
-				}
-			}
 			tempA = tempA->next;
+		}
+		/* If the m-line is disabled don't actually increase the count */
+		if(m->port == 0) {
+			if(m->type == JANUS_SDP_AUDIO) {
+				*audio = *audio - 1;
+			} else if(m->type == JANUS_SDP_VIDEO) {
+				*video = *video - 1;
+			}
 		}
 		temp = temp->next;
 	}
