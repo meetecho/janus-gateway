@@ -3765,7 +3765,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				tempA = tempA->next;
 			}
 			/* If the plugin offered RED, take note of it */
-			ice_handle->stream->opusred_pt = opusred_pt;
+			if(ice_handle->stream)
+				ice_handle->stream->opusred_pt = opusred_pt;
 			temp = temp->next;
 		}
 		if(ice_handle->stream && ice_handle->stream->mid_ext_id != mid_ext_id)
