@@ -4204,11 +4204,9 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 	if(janus_ice_event_stats_period > 0 && handle->last_event_stats >= janus_ice_event_stats_period) {
 		handle->last_event_stats = 0;
 		json_t *combined_event = NULL;
-		/* Shall janus send dedicated events per media or one per peerConnection */
-		if(janus_events_is_enabled() && janus_ice_event_get_combine_media_stats())
-			combined_event = json_array();
-		/* Audio */
-		if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
+		gboolean combine = janus_ice_event_get_combine_media_stats();
+		if(janus_events_is_enabled()) {
+			/* Audio */
 			if(stream && stream->audio_rtcp_ctx) {
 				json_t *info = json_object();
 				json_object_set_new(info, "media", json_string("audio"));
@@ -4233,16 +4231,17 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 					json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.audio.nacks));
 					json_object_set_new(info, "retransmissions-received", json_integer(stream->audio_rtcp_ctx->retransmitted));
 				}
-				if(combined_event != NULL) {
+				/* Shall we send dedicated events per media or one per PeerConnection? */
+				if(combine) {
+					if(combined_event == NULL)
+						combined_event = json_array();
 					json_array_append_new(combined_event, info);
 				} else {
 					janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
 						session->session_id, handle->handle_id, handle->opaque_id, info);
 				}
 			}
-		}
-		/* Do the same for video */
-		if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+			/* Do the same for video */
 			int vindex=0;
 			for(vindex=0; vindex<3; vindex++) {
 				if(stream && stream->video_rtcp_ctx[vindex]) {
@@ -4277,7 +4276,10 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 						json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.video[vindex].nacks));
 						json_object_set_new(info, "retransmissions-received", json_integer(stream->video_rtcp_ctx[vindex]->retransmitted));
 					}
-					if(combined_event) {
+					/* Shall we send dedicated events per media or one per PeerConnection? */
+					if(combine) {
+						if(combined_event == NULL)
+							combined_event = json_array();
 						json_array_append_new(combined_event, info);
 					} else {
 						janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
