@@ -188,6 +188,23 @@ janus_plugin *create(void) {
 	return &janus_echotest_plugin;
 }
 
+/* Parameter validation */
+static struct janus_json_parameter request_parameters[] = {
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0},
+	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"record", JANUS_JSON_BOOL, 0},
+	{"filename", JSON_STRING, 0},
+	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"fallback", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"record", JANUS_JSON_BOOL, 0},
+	{"filename", JSON_STRING, 0},
+	{"audiocodec", JSON_STRING, 0},
+	{"videocodec", JSON_STRING, 0},
+	{"videoprofile", JSON_STRING, 0},
+	{"opusred", JANUS_JSON_BOOL, 0},
+};
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -880,6 +897,11 @@ static void *janus_echotest_handler(void *data) {
 			goto error;
 		}
 		/* Parse request */
+		JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
+			error_code, error_cause, TRUE,
+			0, JANUS_ECHOTEST_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
 		json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
@@ -895,89 +917,29 @@ static void *janus_echotest_handler(void *data) {
 		if(json_is_true(msg_e2ee))
 			session->e2ee = TRUE;
 		json_t *audio = json_object_get(root, "audio");
-		if(audio && !json_is_boolean(audio)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
-			goto error;
-		}
 		json_t *video = json_object_get(root, "video");
-		if(video && !json_is_boolean(video)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
-			goto error;
-		}
 		json_t *bitrate = json_object_get(root, "bitrate");
-		if(bitrate && (!json_is_integer(bitrate) || json_integer_value(bitrate) < 0)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be a positive integer)\n");
-			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (bitrate should be a positive integer)");
-			goto error;
-		}
 		json_t *substream = json_object_get(root, "substream");
-		if(substream && (!json_is_integer(substream) || json_integer_value(substream) < 0 || json_integer_value(substream) > 2)) {
+		if(substream && json_integer_value(substream) > 2) {
 			JANUS_LOG(LOG_ERR, "Invalid element (substream should be 0, 1 or 2)\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Invalid value (substream should be 0, 1 or 2)");
 			goto error;
 		}
 		json_t *temporal = json_object_get(root, "temporal");
-		if(temporal && (!json_is_integer(temporal) || json_integer_value(temporal) < 0 || json_integer_value(temporal) > 2)) {
+		if(temporal && json_integer_value(temporal) > 2) {
 			JANUS_LOG(LOG_ERR, "Invalid element (temporal should be 0, 1 or 2)\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Invalid value (temporal should be 0, 1 or 2)");
 			goto error;
 		}
 		json_t *fallback = json_object_get(root, "fallback");
-		if(fallback && (!json_is_integer(fallback) || json_integer_value(fallback) < 0)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (fallback should be a positive integer)\n");
-			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (fallback should be a positive integer)");
-			goto error;
-		}
 		json_t *record = json_object_get(root, "record");
-		if(record && !json_is_boolean(record)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (record should be a boolean)\n");
-			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (record should be a boolean)");
-			goto error;
-		}
 		json_t *recfile = json_object_get(root, "filename");
-		if(recfile && !json_is_string(recfile)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (filename should be a string)\n");
-			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (filename should be a string)");
-			goto error;
-		}
 		json_t *audiocodec = json_object_get(root, "audiocodec");
-		if(audiocodec && !json_is_string(audiocodec)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (audiocodec should be a string)\n");
-			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (audiocodec should be a string)");
-			goto error;
-		}
 		json_t *videocodec = json_object_get(root, "videocodec");
-		if(videocodec && !json_is_string(videocodec)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (videocodec should be a string)\n");
-			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (videocodec should be a string)");
-			goto error;
-		}
 		json_t *videoprofile = json_object_get(root, "videoprofile");
-		if(videoprofile && !json_is_string(videoprofile)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (videoprofile should be a string)\n");
-			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (videoprofile should be a string)");
-			goto error;
-		}
 		json_t *opusred = json_object_get(root, "opusred");
-		if(opusred && !json_is_boolean(opusred)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (opusred should be a boolean)\n");
-			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (opusred should be a boolean)");
-			goto error;
-		}
 		/* Enforce request */
 		if(audio) {
 			session->audio_active = json_is_true(audio);
@@ -1051,9 +1013,9 @@ static void *janus_echotest_handler(void *data) {
 		}
 
 		if(!audio && !video && !videocodec && !videoprofile && !opusred && !bitrate && !substream && !temporal && !fallback && !record && !msg_sdp) {
-			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, videocodec, videoprofile, opusred, bitrate, substream, temporal, fallback, record, jsep) found\n");
+			JANUS_LOG(LOG_ERR, "No supported attributes found\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, videocodec, videoprofile, opusred, bitrate, simulcast, temporal, fallback, record, jsep) found");
+			g_snprintf(error_cause, 512, "Message error: no supported attributes found");
 			goto error;
 		}
 
