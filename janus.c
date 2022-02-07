@@ -3765,7 +3765,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				tempA = tempA->next;
 			}
 			/* If the plugin offered RED, take note of it */
-			ice_handle->stream->opusred_pt = opusred_pt;
+			if(ice_handle->stream)
+				ice_handle->stream->opusred_pt = opusred_pt;
 			temp = temp->next;
 		}
 		if(ice_handle->stream && ice_handle->stream->mid_ext_id != mid_ext_id)
@@ -3807,7 +3808,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 							do_dd = TRUE;
 						else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
 							do_abs_send_time = TRUE;
-					} else if(m->type == JANUS_SDP_AUDIO && ice_handle->stream->opusred_pt > 0 &&
+					} else if(m->type == JANUS_SDP_AUDIO && ice_handle->stream && ice_handle->stream->opusred_pt > 0 &&
 							!strcasecmp(a->name, "rtpmap") && strstr(a->value, "red/48000/2")) {
 						opusred_pt = atoi(a->value);
 					}
@@ -3815,7 +3816,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				tempA = tempA->next;
 			}
 			/* If the user offered RED but the plugin rejected it, disable it */
-			if(ice_handle->stream->opusred_pt > 0 && opusred_pt < 0)
+			if(ice_handle->stream && ice_handle->stream->opusred_pt > 0 && opusred_pt < 0)
 				ice_handle->stream->opusred_pt = 0;
 			temp = temp->next;
 		}
