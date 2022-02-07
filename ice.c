@@ -3782,8 +3782,8 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 		}
 		if(video && packet->extensions.video_rotation != -1 && handle->pc->videoorientation_ext_id > 0) {
 			/* Add video-orientation extension */
-			gboolean c = packet->extensions.video_back_camera,
-				f = packet->extensions.video_flipped, r1 = FALSE, r0 = FALSE;
+			gboolean c = (packet->extensions.video_back_camera == TRUE),
+				f = (packet->extensions.video_flipped == TRUE), r1 = FALSE, r0 = FALSE;
 			switch(packet->extensions.video_rotation) {
 				case 270:
 					r1 = TRUE;
