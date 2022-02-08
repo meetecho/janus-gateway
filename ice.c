@@ -3141,6 +3141,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							memcpy(pkt->data, p->data, p->length);
 							pkt->length = p->length;
 							pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
+							memset(&pkt->extensions, 0, sizeof(pkt->extensions));
 							pkt->control = FALSE;
 							pkt->retransmission = TRUE;
 							pkt->label = NULL;
@@ -5086,6 +5087,7 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_plugin_rtcp *
 	memcpy(pkt->data, rtcp_buf, rtcp_len);
 	pkt->length = rtcp_len;
 	pkt->type = packet->video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
+	memset(&pkt->extensions, 0, sizeof(pkt->extensions));
 	pkt->control = TRUE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
@@ -5152,6 +5154,7 @@ void janus_ice_relay_data(janus_ice_handle *handle, janus_plugin_data *packet) {
 	memcpy(pkt->data, packet->buffer, packet->length);
 	pkt->length = packet->length;
 	pkt->type = packet->binary ? JANUS_ICE_PACKET_BINARY : JANUS_ICE_PACKET_TEXT;
+	memset(&pkt->extensions, 0, sizeof(pkt->extensions));
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
@@ -5172,6 +5175,7 @@ void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length) {
 	memcpy(pkt->data, buffer, length);
 	pkt->length = length;
 	pkt->type = JANUS_ICE_PACKET_SCTP;
+	memset(&pkt->extensions, 0, sizeof(pkt->extensions));
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
