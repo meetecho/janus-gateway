@@ -8305,7 +8305,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 							}
 						}
 						rtph = (janus_rtp_header *)(forwarder->codec == JANUS_AUDIOCODEC_PCMA ?
-							(rtpalaw + forwarder->group*G711_SAMPLES + 12) : (rtpulaw + forwarder->group*G711_SAMPLES + 12));
+							(rtpalaw + forwarder->group*G711_SAMPLES) : (rtpulaw + forwarder->group*G711_SAMPLES));
 						rtph->version = 2;
 						length = 160;
 					}
