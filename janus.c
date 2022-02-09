@@ -1671,6 +1671,7 @@ int janus_process_incoming_request(janus_request *request) {
 				g_free(jsep_type);
 				g_free(jsep_sdp_stripped);
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
+				janus_mutex_unlock(&handle->mutex);
 				goto jsondone;
 			}
 			json_t *simulcast = NULL;
