@@ -346,6 +346,8 @@ struct janus_ice_handle {
 	GMainContext *mainctx;
 	/*! \brief GLib loop for the handle and libnice */
 	GMainLoop *mainloop;
+	/*! \brief In case static event loops are used, opaque pointer to the loop */
+	void *static_event_loop;
 	/*! \brief GLib thread for the handle and libnice */
 	GThread *thread;
 	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats (and optionally TWCC) */
