@@ -231,6 +231,23 @@ void janus_ice_set_static_event_loops(int loops, gboolean allow_api) {
 		allow_loop_indication ? "will" : "will NOT");
 	return;
 }
+json_t *janus_ice_static_event_loops_info(void) {
+	json_t *list = json_array();
+	if(static_event_loops < 1)
+		return list;
+	janus_mutex_lock(&event_loops_mutex);
+	GSList *l = event_loops;
+	while(l) {
+		janus_ice_static_event_loop *loop = (janus_ice_static_event_loop *)l->data;
+		json_t *info = json_object();
+		json_object_set_new(info, "id", json_integer(loop->id));
+		json_object_set_new(info, "handles", json_integer(loop->handles));
+		json_array_append_new(list, info);
+		l = l->next;
+	}
+	janus_mutex_unlock(&event_loops_mutex);
+	return list;
+}
 void janus_ice_stop_static_event_loops(void) {
 	if(static_event_loops < 1)
 		return;
