@@ -82,7 +82,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr
                                   compensation, disabled if 0 (default=0)
   -C, --silence-distance=count  RTP packets distance used to detect RTP silence
                                   suppression, disabled if 0 (default=100)
-  -X, --dtx                     Enable DTX mode (disables code to handle
+  -X, --dtx                     Enable opus DTX detection (disables code to handle
                                   silence suppression)  (default=off)
   -r, --restamp=count           If the latency of a packet is bigger than the
                                   `moving_average_latency * (<restamp>/1000)`
@@ -158,6 +158,9 @@ static int audioskew_th = DEFAULT_AUDIO_SKEW_TH;
 
 #define DEFAULT_SILENCE_DISTANCE 100
 static int silence_distance = DEFAULT_SILENCE_DISTANCE;
+
+#define DEFAULT_DTX FALSE
+static gboolean opus_dtx_detection = DEFAULT_DTX;
 
 #define DEFAULT_RESTAMP_MULTIPLIER 0
 static int restamp_multiplier = DEFAULT_RESTAMP_MULTIPLIER;
@@ -326,8 +329,10 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			silence_distance = val;
 	}
-	if(args_info.dtx_given)
+	if(args_info.dtx_given) {
 		silence_distance = 0;
+		opus_dtx_detection = TRUE;
+	}
 	if(args_info.restamp_given || (g_getenv("JANUS_PPREC_RESTAMP") != NULL)) {
 		int val = args_info.restamp_given ? args_info.restamp_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP"));
 		if(val >= 0)
@@ -1049,6 +1054,23 @@ int main(int argc, char *argv[])
 							g_free(p);
 							continue;
 						}
+					}
+				}
+				if (opus && opus_dtx_detection) {
+					/* Check if we need to handle the opus DTX
+					* see https://datatracker.ietf.org/doc/html/rfc6716#section-2.1.9 */
+					int32_t seq_distance = abs((int16_t)(p->seq - highest_seq));
+					/* Consider 400 ms DTX audio packets */
+					int32_t inter_rtp_ts = 48 * 400;
+					int32_t expected_rtp_distance = inter_rtp_ts * seq_distance;
+					int32_t rtp_distance = abs((int32_t)(rtp_ts - highest_rtp_ts));
+					if(rtp_distance == expected_rtp_distance) {
+						JANUS_LOG(LOG_WARN, "Dropping audio opus DTX packet (seq=%"SCNu16", rtp_distance=%d)\n", p->seq, rtp_distance);
+						/* Skip data */
+						offset += len;
+						count++;
+						g_free(p);
+						continue;
 					}
 				}
 			}
