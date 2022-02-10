@@ -81,7 +81,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr
   -S, --audioskew=milliseconds  Time threshold to trigger an audio skew
                                   compensation, disabled if 0 (default=0)
   -C, --silence-distance=count  RTP packets distance used to detect RTP silence
-                                  suppression, disabled if 0 (default=100)
+                                  suppression, disabled if 0 (default=0)
   -r, --restamp=count           If the latency of a packet is bigger than the
                                   `moving_average_latency * (<restamp>/1000)`
                                   the timestamps will be corrected, disabled if
