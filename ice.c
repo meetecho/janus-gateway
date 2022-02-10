@@ -1372,7 +1372,12 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 			GSList *l = event_loops;
 			while(l) {
 				janus_ice_static_event_loop *el = (janus_ice_static_event_loop *)l->data;
-				if(handles == -1 || (loop == NULL && el->handles == 0) || el->handles < handles) {
+				if(el->handles == 0) {
+					/* Best option, stop here */
+					loop = el;
+					break;
+				}
+				if(handles == -1 || el->handles < handles) {
 					handles = el->handles;
 					loop = el;
 				}
