@@ -54,6 +54,8 @@ janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *erro
 		} else if(data && m->type == JANUS_SDP_APPLICATION && strstr(m->proto, "DTLS/SCTP")) {
 			*data = *data+1;
 		}
+		if(m->index == 0 && m->port == 0)
+			m->port = 9;
 		/* Preparse the mid as well, and check if bundle-only is used */
 		GList *tempA = m->attributes;
 		while(tempA) {
