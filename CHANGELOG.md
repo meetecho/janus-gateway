@@ -5,14 +5,14 @@ All notable changes to this project will be documented in this file.
 
 ## [v0.11.8] - 2022-02-11
 
-- Added initial (and limited) integration of RED audio [[PR-2685](#2685)]
-- Added support for Two-Byte header RTP extensions (RFC8285) and, partially, for the new Depencency Descriptor RTP extension (needed for AV1-SVC) [[PR-2741](#2741)]
-- Fixed rare race conditions between sending a packet and closing a connection [[PR-2869](#2869)]
-- Fix last stats before closing PeerConnection not being sent to handlers (thanks @zodiak83!) [[PR-2874](#2874)]
-- Changed automatic allocation on static loops from round robin to least used [[PR-2878](#2878)]
-- Added new API to bulk start/stop MJR-based recordings in AudioBridge [[PR-2862](#2862)]
+- Added initial (and limited) integration of RED audio [[PR-2685](https://github.com/meetecho/janus-gateway/pull/2685)]
+- Added support for Two-Byte header RTP extensions (RFC8285) and, partially, for the new Depencency Descriptor RTP extension (needed for AV1-SVC) [[PR-2741](https://github.com/meetecho/janus-gateway/pull/2741)]
+- Fixed rare race conditions between sending a packet and closing a connection [[PR-2869](https://github.com/meetecho/janus-gateway/pull/2869)]
+- Fix last stats before closing PeerConnection not being sent to handlers (thanks @zodiak83!) [[PR-2874](https://github.com/meetecho/janus-gateway/pull/2874)]
+- Changed automatic allocation on static loops from round robin to least used [[PR-2878](https://github.com/meetecho/janus-gateway/pull/2878)]
+- Added new API to bulk start/stop MJR-based recordings in AudioBridge [[PR-2862](https://github.com/meetecho/janus-gateway/pull/2862)]
 - Fixed broken duration in spatial AudioBridge recordings
-- Fixed broken G.711 RTP forwarding in AudioBridge (thanks @AlexYaremchuk!) [[PR-2875](#2875)]
+- Fixed broken G.711 RTP forwarding in AudioBridge (thanks @AlexYaremchuk!) [[PR-2875](https://github.com/meetecho/janus-gateway/pull/2875)]
 - Fixed broken recordings in NoSIP plugin
 - Fixed warnings when postprocessing Opus recordings with DTX packets
 - Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
