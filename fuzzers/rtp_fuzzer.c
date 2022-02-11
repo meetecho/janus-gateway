@@ -66,13 +66,17 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/* RTP extensions parsers */
 	char sdes_item[16];
 	guint16 transport_seq_num;
-	guint8 temporal_layer_id;
+	gboolean c, f, r1, r0;
+	uint8_t dd[256];
+	int sizedd = sizeof(dd);
 	janus_rtp_header_extension_parse_audio_level((char *)data, size, 1, NULL, NULL);
 	janus_rtp_header_extension_parse_playout_delay((char *)data, size, 1, NULL, NULL);
 	janus_rtp_header_extension_parse_rid((char *)data, size, 1, sdes_item, sizeof(sdes_item));
 	janus_rtp_header_extension_parse_mid((char *)data, size, 1, sdes_item, sizeof(sdes_item));
 	janus_rtp_header_extension_parse_transport_wide_cc((char *)data, size, 1, &transport_seq_num);
 	janus_rtp_header_extension_parse_abs_sent_time((char *)data, size, 1, NULL);
+	janus_rtp_header_extension_parse_video_orientation((char * )data, size, 1, &c, &f, &r1, &r0);
+	janus_rtp_header_extension_parse_dependency_desc((char *)data, size, 1, (uint8_t *)&dd, &sizedd);
 
 	/* Extract codec payload */
 	int plen = 0;
