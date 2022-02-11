@@ -228,7 +228,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					/* The last block is the primary data, so just update the current
 					 * stored packet with the Opus payload type and the right offset/len */
 					gens++;
-					JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%"SCNu16"\n", gens, plen);
+					JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%d\n", gens, plen);
 					tmp->pt = block_pt;
 					tmp->offset += (payload-buffer);
 					tmp->len = (plen + 12 + tmp->skip);

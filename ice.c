@@ -4636,7 +4636,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							medium->last_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
 							medium->last_rtp_ts = timestamp;
 						}
-						if(medium->first_ntp_ts == 0) {
+						if(medium->first_ntp_ts[0] == 0) {
 							medium->first_ntp_ts[0] = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
 							medium->first_rtp_ts[0] = timestamp;
 						}

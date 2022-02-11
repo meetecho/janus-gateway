@@ -1251,7 +1251,7 @@ GList *janus_red_parse_blocks(char *buffer, int len) {
 		}
 		/* The last block is the primary data, add it to the list */
 		gens++;
-		JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%"SCNu16"\n", gens, plen);
+		JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%d\n", gens, plen);
 		rb = g_malloc0(sizeof(janus_red_block));
 		rb->pt = block_pt;
 		rb->length = plen;
