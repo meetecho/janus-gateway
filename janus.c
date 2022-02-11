@@ -2676,6 +2676,16 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
+		} else if(!strcasecmp(message_text, "loops_info")) {
+			/* Query the Janus core to see how many handles each static loop is
+			 * handling: will return an empty list if static loops are disabled */
+			json_t *list = janus_ice_static_event_loops_info();
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", 0, transaction_text);
+			json_object_set_new(reply, "loops", list);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
 		} else {
 			/* No message we know of */
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);

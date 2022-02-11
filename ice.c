@@ -166,10 +166,22 @@ typedef struct janus_ice_static_event_loop {
 	GMainContext *mainctx;
 	GMainLoop *mainloop;
 	GThread *thread;
+	uint16_t handles;
+	volatile gint destroyed;
+	janus_refcount ref;
 } janus_ice_static_event_loop;
+static void janus_ice_static_event_loop_destroy(janus_ice_static_event_loop *loop) {
+	if(!g_atomic_int_compare_and_exchange(&loop->destroyed, 0, 1))
+		return;
+	janus_refcount_decrease(&loop->ref);
+}
+static void janus_ice_static_event_loop_free(const janus_refcount *loop_ref) {
+	janus_ice_static_event_loop *loop = janus_refcount_containerof(loop_ref, janus_ice_static_event_loop, ref);
+	g_free(loop);
+}
 static int static_event_loops = 0;
 static gboolean allow_loop_indication = FALSE;
-static GSList *event_loops = NULL, *current_loop = NULL;
+static GSList *event_loops = NULL;
 static janus_mutex event_loops_mutex = JANUS_MUTEX_INITIALIZER;
 static void *janus_ice_static_event_loop_thread(void *data) {
 	janus_ice_static_event_loop *loop = data;
@@ -177,6 +189,7 @@ static void *janus_ice_static_event_loop_thread(void *data) {
 	if(loop->mainloop == NULL) {
 		JANUS_LOG(LOG_ERR, "[loop#%d] Invalid loop...\n", loop->id);
 		g_thread_unref(g_thread_self());
+		janus_refcount_decrease(&loop->ref);
 		return NULL;
 	}
 	JANUS_LOG(LOG_DBG, "[loop#%d] Looping...\n", loop->id);
@@ -185,6 +198,7 @@ static void *janus_ice_static_event_loop_thread(void *data) {
 	g_main_loop_unref(loop->mainloop);
 	g_main_context_unref(loop->mainctx);
 	JANUS_LOG(LOG_VERB, "[loop#%d] Event loop thread ended!\n", loop->id);
+	janus_refcount_decrease(&loop->ref);
 	return NULL;
 }
 int janus_ice_get_static_event_loops(void) {
@@ -207,15 +221,18 @@ void janus_ice_set_static_event_loops(int loops, gboolean allow_api) {
 		loop->id = static_event_loops;
 		loop->mainctx = g_main_context_new();
 		loop->mainloop = g_main_loop_new(loop->mainctx, FALSE);
+		janus_refcount_init(&loop->ref, janus_ice_static_event_loop_free);
 		/* Now spawn a thread for this loop */
 		GError *error = NULL;
 		char tname[16];
 		g_snprintf(tname, sizeof(tname), "hloop %d", loop->id);
+		janus_refcount_increase(&loop->ref);
 		loop->thread = g_thread_try_new(tname, &janus_ice_static_event_loop_thread, loop, &error);
 		if(error != NULL) {
 			g_main_loop_unref(loop->mainloop);
 			g_main_context_unref(loop->mainctx);
-			g_free(loop);
+			janus_refcount_decrease(&loop->ref);
+			janus_ice_static_event_loop_destroy(loop);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch a new event loop thread...\n",
 				error->code, error->message ? error->message : "??");
 			g_error_free(error);
@@ -224,12 +241,28 @@ void janus_ice_set_static_event_loops(int loops, gboolean allow_api) {
 			static_event_loops++;
 		}
 	}
-	current_loop = event_loops;
 	JANUS_LOG(LOG_INFO, "Spawned %d static event loops (handles won't have a dedicated loop)\n", static_event_loops);
 	allow_loop_indication = allow_api;
 	JANUS_LOG(LOG_INFO, "  -- Janus API %s be able to drive the loop choice for new handles\n",
 		allow_loop_indication ? "will" : "will NOT");
 	return;
+}
+json_t *janus_ice_static_event_loops_info(void) {
+	json_t *list = json_array();
+	if(static_event_loops < 1)
+		return list;
+	janus_mutex_lock(&event_loops_mutex);
+	GSList *l = event_loops;
+	while(l) {
+		janus_ice_static_event_loop *loop = (janus_ice_static_event_loop *)l->data;
+		json_t *info = json_object();
+		json_object_set_new(info, "id", json_integer(loop->id));
+		json_object_set_new(info, "handles", json_integer(loop->handles));
+		json_array_append_new(list, info);
+		l = l->next;
+	}
+	janus_mutex_unlock(&event_loops_mutex);
+	return list;
 }
 void janus_ice_stop_static_event_loops(void) {
 	if(static_event_loops < 1)
@@ -244,7 +277,7 @@ void janus_ice_stop_static_event_loops(void) {
 		g_thread_join(loop->thread);
 		l = l->next;
 	}
-	g_slist_free_full(event_loops, (GDestroyNotify)g_free);
+	g_slist_free_full(event_loops, (GDestroyNotify)janus_ice_static_event_loop_destroy);
 	janus_mutex_unlock(&event_loops_mutex);
 }
 
@@ -1341,20 +1374,37 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 			if(loop == NULL) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Invalid loop index %d, picking event loop automatically\n", handle->handle_id, loop_index);
 			} else {
+				janus_refcount_increase(&loop->ref);
 				automatic_selection = FALSE;
 				handle->mainctx = loop->mainctx;
 				handle->mainloop = loop->mainloop;
+				loop->handles++;
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Manually added handle to loop #%d\n", handle->handle_id, loop->id);
 			}
 		}
 		if(automatic_selection) {
-			/* Pick an available loop automatically (round robin) */
-			janus_ice_static_event_loop *loop = (janus_ice_static_event_loop *)current_loop->data;
+			/* Pick an available loop automatically (least loaded) */
+			int handles = -1;
+			janus_ice_static_event_loop *loop = NULL;
+			GSList *l = event_loops;
+			while(l) {
+				janus_ice_static_event_loop *el = (janus_ice_static_event_loop *)l->data;
+				if(el->handles == 0) {
+					/* Best option, stop here */
+					loop = el;
+					break;
+				}
+				if(handles == -1 || el->handles < handles) {
+					handles = el->handles;
+					loop = el;
+				}
+				l = l->next;
+			}
+			janus_refcount_increase(&loop->ref);
+			loop->handles++;
 			handle->mainctx = loop->mainctx;
 			handle->mainloop = loop->mainloop;
-			current_loop = current_loop->next;
-			if(current_loop == NULL)
-				current_loop = event_loops;
+			handle->static_event_loop = loop;
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Automatically added handle to loop #%d\n", handle->handle_id, loop->id);
 		}
 		janus_mutex_unlock(&event_loops_mutex);
@@ -1406,6 +1456,14 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
 	}
 	janus_mutex_unlock(&plugin_sessions_mutex);
+	janus_mutex_lock(&event_loops_mutex);
+	if(handle->static_event_loop != NULL) {
+		janus_ice_static_event_loop *loop = (janus_ice_static_event_loop *)handle->static_event_loop;
+		loop->handles--;
+		janus_refcount_decrease(&loop->ref);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Manually removed handle from loop #%d\n", handle->handle_id, loop->id);
+	}
+	janus_mutex_unlock(&event_loops_mutex);
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
 	if(plugin_t == NULL) {
 		/* There was no plugin attached, probably something went wrong there */
