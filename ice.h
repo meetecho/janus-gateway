@@ -346,6 +346,8 @@ struct janus_ice_handle {
 	GMainContext *mainctx;
 	/*! \brief GLib loop for the handle and libnice */
 	GMainLoop *mainloop;
+	/*! \brief In case static event loops are used, opaque pointer to the loop */
+	void *static_event_loop;
 	/*! \brief GLib thread for the handle and libnice */
 	GThread *thread;
 	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats (and optionally TWCC) */
@@ -760,6 +762,10 @@ int janus_ice_get_static_event_loops(void);
 /*! \brief Method to check whether loop indication via API is allowed
  * @returns true if allowed, false otherwise */
 gboolean janus_ice_is_loop_indication_allowed(void);
+/*! \brief Helper method to return a summary of the static loops activity
+ * @note This is only used by the Admin API
+ * @returns a json_t array with the required info */
+json_t *janus_ice_static_event_loops_info(void);
 /*! \brief Method to stop all the static event loops, if enabled
  * @note This will wait for the related threads to exit, and so may delay the shutdown process */
 void janus_ice_stop_static_event_loops(void);

@@ -251,7 +251,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	AVRational timebase = {1, 48000};
 
 	while(*working && tmp != NULL) {
-		if(tmp->prev != NULL && ((tmp->ts - tmp->prev->ts)/48/20 > 1)) {
+		if(tmp->prev != NULL && ((tmp->ts - tmp->prev->ts)/48/20 > 1) && (tmp->seq != tmp->prev->seq+1)) {
 			JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
 				tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000);
 			/* use ts differ to insert silence packet */

@@ -81,9 +81,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr
   -S, --audioskew=milliseconds  Time threshold to trigger an audio skew
                                   compensation, disabled if 0 (default=0)
   -C, --silence-distance=count  RTP packets distance used to detect RTP silence
-                                  suppression, disabled if 0 (default=100)
-  -X, --dtx                     Enable DTX mode (disables code to handle
-                                  silence suppression)  (default=off)
+                                  suppression, disabled if 0 (default=0)
   -r, --restamp=count           If the latency of a packet is bigger than the
                                   `moving_average_latency * (<restamp>/1000)`
                                   the timestamps will be corrected, disabled if
@@ -156,7 +154,7 @@ static int ignore_first_packets = 0;
 #define DEFAULT_AUDIO_SKEW_TH 0
 static int audioskew_th = DEFAULT_AUDIO_SKEW_TH;
 
-#define DEFAULT_SILENCE_DISTANCE 100
+#define DEFAULT_SILENCE_DISTANCE 0
 static int silence_distance = DEFAULT_SILENCE_DISTANCE;
 
 #define DEFAULT_RESTAMP_MULTIPLIER 0
@@ -326,8 +324,6 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			silence_distance = val;
 	}
-	if(args_info.dtx_given)
-		silence_distance = 0;
 	if(args_info.restamp_given || (g_getenv("JANUS_PPREC_RESTAMP") != NULL)) {
 		int val = args_info.restamp_given ? args_info.restamp_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP"));
 		if(val >= 0)

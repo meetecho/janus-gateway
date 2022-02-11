@@ -2280,7 +2280,10 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']);
  * - \c ping: a simple ping/pong mechanism for the Admin API, that returns
  * a \c pong back that the client can use as a healthcheck or to measure
  * the protocol round-trip time; together with the \c info request introduced
- * above, it's the only one that doesn't require a secret.
+ * above, it's the only one that doesn't require a secret;
+ * - \c loops_info: returns a summary of how many handles each static
+ * event loop is currently responsible for, in case static event loops
+ * are in use (returns an empty array otherwise).
  *
  * \subsection adminreqc Configuration-related requests
  * - \c get_status: returns the current value for the settings that can be
