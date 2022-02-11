@@ -293,7 +293,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 void janus_videocall_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_videocall_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
 void janus_videocall_data_ready(janus_plugin_session *handle);
-void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int video);
+void janus_videocall_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
 void janus_videocall_hangup_media(janus_plugin_session *handle);
 void janus_videocall_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_videocall_query_session(janus_plugin_session *handle);
@@ -913,7 +913,7 @@ void janus_videocall_data_ready(janus_plugin_session *handle) {
 	}
 }
 
-void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int video) {
+void janus_videocall_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink) {
 	/* The core is informing us that our peer got or sent too many NACKs, are we pushing media too hard? */
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
@@ -1296,11 +1296,20 @@ static void *janus_videocall_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
 				/* Check if this user will simulcast */
 				json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
-				if(msg_simulcast) {
-					JANUS_LOG(LOG_VERB, "VideoCall caller (%s) is going to do simulcasting\n", session->username);
-					int rid_ext_id = -1;
-					janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, session->ssrc, session->rid);
-					session->sim_context.rid_ext_id = rid_ext_id;
+				if(msg_simulcast && json_array_size(msg_simulcast) > 0) {
+					size_t i = 0;
+					for(i=0; i<json_array_size(msg_simulcast); i++) {
+						json_t *s = json_array_get(msg_simulcast, i);
+						int mindex = json_integer_value(json_object_get(s, "mindex"));
+						JANUS_LOG(LOG_VERB, "VideoCall caller (%s) is going to do simulcasting (#%d)\n", session->username, mindex);
+						int rid_ext_id = -1;
+						janus_rtp_simulcasting_prepare(s, &rid_ext_id, session->ssrc, session->rid);
+						session->sim_context.rid_ext_id = rid_ext_id;
+						session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
+						session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
+						/* FIXME We're stopping at the first item, there may be more */
+						break;
+					}
 				}
 				/* Send SDP to our peer */
 				json_t *call = json_object();
@@ -1373,10 +1382,11 @@ static void *janus_videocall_handler(void *data) {
 			}
 			/* Check which codecs we ended up using */
 			const char *acodec = NULL, *vcodec = NULL;
-			janus_sdp_find_first_codecs(answer, &acodec, &vcodec);
+			janus_sdp_find_first_codec(answer, JANUS_SDP_AUDIO, -1, &acodec);
 			session->acodec = janus_audiocodec_from_name(acodec);
+			janus_sdp_find_first_codec(answer, JANUS_SDP_VIDEO, -1, &vcodec);
 			session->vcodec = janus_videocodec_from_name(vcodec);
-			session->opusred_pt = janus_sdp_get_opusred_pt(answer);
+			session->opusred_pt = janus_sdp_get_opusred_pt(answer, -1);
 			if(peer)
 				peer->opusred_pt = session->opusred_pt;
 			if(session->acodec == JANUS_AUDIOCODEC_NONE) {

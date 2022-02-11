@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Server (multistream): Device Selection Test</title>
+<title>Janus WebRTC Server (multistream): Video Room Demo (multistream)</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.1.1/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
@@ -13,12 +13,12 @@
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
-<script type="text/javascript" src="devicetest.js"></script>
+<script type="text/javascript" src="mvideoroomtest.js"></script>
 <script>
 	$(function() {
 		$(".navbar-static-top").load("navbar.html", function() {
 			$(".navbar-static-top li.dropdown").addClass("active");
-			$(".navbar-static-top a[href='devicetest.html']").parent().addClass("active");
+			$(".navbar-static-top a[href='mvideoroomtest.html']").parent().addClass("active");
 		});
 		$(".footer").load("footer.html");
 	});
@@ -39,7 +39,7 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Device Selection
+				<h1>Plugin Demo: Video Room (multistream)
 					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
@@ -47,51 +47,42 @@
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
-						<p>This is a variant of the Echo Test demo: everything is exactly
-						the same in term of available controls, features, and the like, with
-						the substantial difference that you can select which of the available
-						devices (microphones, webcams) you want to use for the media setup.</p>
-						<p>The demo will start by automatically selecting some default devices,
-						pretty much as the regular Echo Test demo already does. Once done,
-						you'll be able to individually change the capture audio and/or video
-						device: this will result in the Echo Test channel being reset and
-						recreated, in order to use the device(s) you selected instead. Just
-						as with the regular Echo Test demo, the <code>?simulcast=true</code>
-						query string will allow you to test simulcasting as well.</p>
-						<p>The demo exploits a functionality made available in the
-						<code>janus.js</code> library, meaning you should be able to
-						easily adapt all the other demos to follow the same approach as
-						well, and that you'll be able to do the same in your Janus-based
-						web application too.</p>
+						<p>This is a variant of the <a href="videoroomtest.html">original VideoRoom demo</a>,
+						but taking advantage of the recently added multistream support to use a
+						single PeerConnection to receive all the contributions, rather than
+						creating a different one for each subscription. Apart from this, the
+						same considerations apply.</p>
+						<p>To use the demo, just insert a username to join the default room that
+						is configured. This will add you to the list of participants, and allow
+						you to automatically send your audio/video frames and receive the other
+						participants' feeds. The other participants will appear in separate
+						panels, whose title will be the names they chose when registering at
+						the demo.</p>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>
 			</div>
-			<div class="container">
-				<div class="row hide" id="devices">
-					<form class="form-inline">
-						<div class="form-group" style="margin-right: 20px;">
-							<label for="audio-device">Audio device (input):</label>
-							<select id="audio-device" class="form-control"></select>
+			<div class="container hide" id="videojoin">
+				<div class="row">
+					<span class="label label-info" id="you"></span>
+					<div class="col-md-12" id="controls">
+						<div class="input-group margin-bottom-md hide" id="registernow">
+							<span class="input-group-addon">@</span>
+							<input autocomplete="off" class="form-control" autocomplete="off" type="text" placeholder="Choose a display name" id="username" onkeypress="return checkEnter(this, event);"></input>
+							<span class="input-group-btn">
+								<button class="btn btn-success" autocomplete="off" id="register">Join the room</button>
+							</span>
 						</div>
-						<div class="form-group" style="margin-right: 20px;">
-							<label for="video-device">Video device (input):</label>
-							<select id="video-device" class="form-control"></select>
-						</div>
-						<div class="form-group">
-							<div id="change-devices" class="form-control btn btn-primary">Change devices</div>
-						</div>
-					</form>
-					<hr>
+					</div>
 				</div>
- 				<div class="row hide" id="videos">
-					<div class="col-md-6">
+			</div>
+			<div class="container hide" id="videos">
+				<div class="row">
+					<div class="col-md-4">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Local Stream
+								<h3 class="panel-title">Local Video <span class="label label-primary hide" id="publisher"></span>
 									<div class="btn-group btn-group-xs pull-right hide">
-										<button class="btn btn-danger" autocomplete="off" id="toggleaudio">Disable audio</button>
-										<button class="btn btn-danger" autocomplete="off" id="togglevideo">Disable video</button>
 										<div class="btn-group btn-group-xs">
 											<button id="bitrateset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
 												Bandwidth<span class="caret"></span>
@@ -109,35 +100,49 @@
 									</div>
 								</h3>
 							</div>
-							<div class="panel-body" id="videoleft"></div>
-						</div>
-						<div class="input-group margin-bottom-sm">
-							<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
-							<input class="form-control" type="text" placeholder="Write a DataChannel message" autocomplete="off" id="datasend" onkeypress="return checkEnter(event);" disabled />
+							<div class="panel-body" id="videolocal"></div>
 						</div>
 					</div>
-					<div class="col-md-6">
+					<div class="col-md-4">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Remote Stream
-									<span class="label label-primary hide" id="curres"></span>
-									<span class="label label-info hide" id="curbitrate"></span>
-									<div class="btn-group btn-group-xs pull-right hide" id="output-devices">
-										<div class="btn-group btn-group-xs">
-											<button id="outputdeviceset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
-												Output device<span class="caret"></span>
-											</button>
-											<ul id="audiooutput" class="dropdown-menu" role="menu">
-											</ul>
-										</div>
-									</div>
-								</h3>
+								<h3 class="panel-title">Remote Video #1 <span class="label label-info hide" id="remote1"></span></h3>
 							</div>
-							<div class="panel-body" id="videoright"></div>
+							<div class="panel-body relative" id="videoremote1"></div>
 						</div>
-						<div class="input-group margin-bottom-sm">
-							<span class="input-group-addon"><i class="fa fa-cloud-download fa-fw"></i></span>
-							<input class="form-control" type="text" id="datarecv" disabled />
+					</div>
+					<div class="col-md-4">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">Remote Video #2 <span class="label label-info hide" id="remote2"></span></h3>
+							</div>
+							<div class="panel-body relative" id="videoremote2"></div>
+						</div>
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-4">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">Remote Video #3 <span class="label label-info hide" id="remote3"></span></h3>
+							</div>
+							<div class="panel-body relative" id="videoremote3"></div>
+						</div>
+					</div>
+					<div class="col-md-4">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">Remote Video #4 <span class="label label-info hide" id="remote4"></span></h3>
+							</div>
+							<div class="panel-body relative" id="videoremote4"></div>
+						</div>
+					</div>
+					<div class="col-md-4">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">Remote Video #5 <span class="label label-info hide" id="remote5"></span></h3>
+							</div>
+							<div class="panel-body relative" id="videoremote5"></div>
 						</div>
 					</div>
 				</div>

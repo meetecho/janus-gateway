@@ -269,14 +269,10 @@ int janus_recorder_resume(janus_recorder *recorder) {
 		return -1;
 	janus_mutex_lock_nodebug(&recorder->mutex);
 	if(g_atomic_int_compare_and_exchange(&recorder->paused, 1, 0)) {
-		if(recorder->type == JANUS_RECORDER_AUDIO) {
-			recorder->context.a_ts_reset = TRUE;
-			recorder->context.a_seq_reset = TRUE;
-			recorder->context.a_last_time = janus_get_monotonic_time();
-		} else if(recorder->type == JANUS_RECORDER_VIDEO) {
-			recorder->context.v_ts_reset = TRUE;
-			recorder->context.v_seq_reset = TRUE;
-			recorder->context.v_last_time = janus_get_monotonic_time();
+		if(recorder->type == JANUS_RECORDER_AUDIO || recorder->type == JANUS_RECORDER_VIDEO) {
+			recorder->context.ts_reset = TRUE;
+			recorder->context.seq_reset = TRUE;
+			recorder->context.last_time = janus_get_monotonic_time();
 		}
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return 0;

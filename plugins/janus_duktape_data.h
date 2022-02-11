@@ -58,6 +58,7 @@ typedef struct janus_duktape_session {
 	gboolean send_audio;				/* Whether outgoing audio can be sent or must be dropped */
 	gboolean send_video;				/* Whether outgoing video can be sent or must be dropped */
 	gboolean send_data;					/* Whether outgoing data can be sent or must be dropped */
+	janus_rtp_switching_context artpctx, vrtpctx;
 	janus_rtp_switching_context rtpctx;	/* RTP switching context */
 	janus_videocodec vcodec;			/* Video codec this session is using */
 	uint32_t ssrc[3];					/* Only needed in case VP8 (or H.264) simulcasting is involved */

@@ -52,6 +52,7 @@ var janus = null;
 var mixertest = null;
 var opaqueId = "audiobridgetest-"+Janus.randomString(12);
 
+var remoteStream = null;
 var spinner = null;
 
 var myroom = 1234;	// Demo room
@@ -132,8 +133,8 @@ $(document).ready(function() {
 								iceState: function(state) {
 									Janus.log("ICE state changed to " + state);
 								},
-								mediaState: function(medium, on) {
-									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								mediaState: function(medium, on, mid) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium + " (mid=" + mid + ")");
 								},
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
@@ -327,23 +328,40 @@ $(document).ready(function() {
 										mixertest.handleRemoteJsep({ jsep: jsep });
 									}
 								},
-								onlocalstream: function(stream) {
-									Janus.debug(" ::: Got a local stream :::", stream);
+								onlocaltrack: function(track, on) {
+									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
 									// We're not going to attach the local audio stream
 									$('#audiojoin').hide();
 									$('#room').removeClass('hide').show();
 									$('#participant').removeClass('hide').html(myusername).show();
 								},
-								onremotestream: function(stream) {
+								onremotetrack: function(track, mid, on) {
+									Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+									if(remoteStream || track.kind !== "audio")
+										return;
+									if(!on) {
+										// Track removed, get rid of the stream and the rendering
+										if(remoteStream) {
+											try {
+												var tracks = remoteStream.getTracks();
+												for(var i in tracks) {
+													var mst = tracks[i];
+													if(mst)
+														mst.stop();
+												}
+											} catch(e) {}
+										}
+										remoteStream = null;
+										$('#roomaudio').remove();
+										return;
+									}
+									remoteStream = new MediaStream();
+									remoteStream.addTrack(track.clone());
 									$('#room').removeClass('hide').show();
-									var addButtons = false;
 									if($('#roomaudio').length === 0) {
-										addButtons = true;
 										$('#mixedaudio').append('<audio class="rounded centered" id="roomaudio" width="100%" height="100%" autoplay/>');
 									}
-									Janus.attachMediaStream($('#roomaudio').get(0), stream);
-									if(!addButtons)
-										return;
+									Janus.attachMediaStream($('#roomaudio').get(0), remoteStream);
 									// Mute button
 									audioenabled = true;
 									$('#toggleaudio').click(
@@ -375,6 +393,7 @@ $(document).ready(function() {
 									$('#list').empty();
 									$('#mixedaudio').empty();
 									$('#room').hide();
+									remoteStream = null;
 								}
 							});
 					},

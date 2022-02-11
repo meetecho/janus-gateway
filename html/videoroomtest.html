@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Server: Video Room Demo</title>
+<title>Janus WebRTC Server (multistream): Video Room Demo</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.1.1/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
@@ -54,6 +54,12 @@
 						No mixing is involved: all media are just relayed in a publisher/subscriber
 						approach. This means that the plugin acts as a SFU (Selective Forwarding Unit)
 						rather than an MCU (Multipoint Control Unit).</p>
+						<div class="alert alert-info">Notice that this is the <b>original</b> VideoRoom
+						demo, and uses a different PeerConnections per each subscription: if
+						you want to test the new multistream support, instead, try the
+						<a href="mvideoroomtest.html">multistream VideoRoom demo</a>
+						instead. The two demos are interoperable, if you want to see how
+						different subscription mechanisms are used on the same sources.</div>
 						<p>If you're interested in testing how simulcasting can be used within
 						the context of a videoconferencing application, just pass the
 						<code>?simulcast=true</code> query string to the url of this page and
