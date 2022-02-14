@@ -850,6 +850,19 @@ PKG_CHECK_MODULES([LUA],
 AC_SUBST([LUA_CFLAGS])
 AC_SUBST([LUA_LIBS])
 
+PKG_CHECK_MODULES([DUKTAPE],
+                  [duktape],
+                  [
+                    AS_IF([test "x$enable_plugin_duktape" = "xmaybe"],
+                          [enable_plugin_duktape=yes])
+                  ],
+                  [
+                    AS_IF([test "x$enable_plugin_duktape" = "xyes"],
+                          [AC_MSG_ERROR([duktape not found. See README.md for installation instructions or use --disable-plugin-duktape])])
+                  ])
+AC_SUBST([DUKTAPE_CFLAGS])
+AC_SUBST([DUKTAPE_LIBS])
+
 AM_CONDITIONAL([ENABLE_PLUGIN_AUDIOBRIDGE], [test "x$enable_plugin_audiobridge" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_DUKTAPE], [test "x$enable_plugin_duktape" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_ECHOTEST], [test "x$enable_plugin_echotest" = "xyes"])
