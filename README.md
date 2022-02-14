@@ -11,7 +11,7 @@ For some online demos and documentations, make sure you pay the [project website
 
 > **Note well:** this is the main branch for the `multistream` version of Janus, which is the new version. If you want to check the legacy version of Janus instead (i.e., `0.x`, a.k.a. "legacy") click [here](https://github.com/meetecho/janus-gateway/tree/0.x) instead.
 
-If you have questions on Janus, or wish to discuss Janus with us and other users, please join our [meetecho-janus](https://groups.google.com/forum/#!forum/meetecho-janus) Google Group. If you encounter bugs, please submit an issue on [GitHub](https://github.com/meetecho/janus-gateway/issues): make sure you read the [guidelines](.github/ISSUE_TEMPLATE) before opening an issue, though.
+If you have questions on Janus, or wish to discuss Janus with us and other users, please join our [meetecho-janus](https://groups.google.com/forum/#!forum/meetecho-janus) Google Group. If you encounter bugs, please submit an issue on [GitHub](https://github.com/meetecho/janus-gateway/issues): make sure you read the [guidelines](.github/CONTRIBUTING.md) before opening an issue or a pull request, though.
 
 
 ## Dependencies
