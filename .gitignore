@@ -3,15 +3,12 @@ cmdline.h
 version.c
 docs/html/
 
-/src/janus
-/src/janus-cfgconv
-/src/janus-pp-rec
-/src/mjr2pcap
-/src/pcap2mjr
-/src/plugins/*.so
-/src/transports/*.so
-/src/events/*.so
-/src/loggers/*.so
+janus
+janus-cfgconv
+janus-pp-rec
+mjr2pcap
+pcap2mjr
+*.so
 
 Makefile
 Makefile.in
