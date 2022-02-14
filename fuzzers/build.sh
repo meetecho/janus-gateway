@@ -69,18 +69,22 @@ rm -f $WORK/*.a $WORK/*.o
 
 # Build and archive necessary Janus objects
 JANUS_LIB="$WORK/janus-lib.a"
-cd $SRC/$JANUSGW
+pushd $SRC/$JANUSGW
 # Use this variable to skip Janus objects building
 SKIP_JANUS_BUILD=${SKIP_JANUS_BUILD-"0"}
 if [ "$SKIP_JANUS_BUILD" -eq "0" ]; then
 	echo "Building Janus objects"
 	./autogen.sh
 	./configure CC="$FUZZ_CC" CFLAGS="$FUZZ_CFLAGS" $JANUS_CONF_FLAGS
+	pushd src
 	make clean
 	make -j$(nproc) $JANUS_OBJECTS
+	popd
 fi
+pushd src
 ar rcs $JANUS_LIB $JANUS_OBJECTS
-cd -
+popd
+popd
 
 # Build standalone fuzzing engines
 engines=$(find $SRC/$JANUSGW/fuzzers/engines/ -name "*.c")
@@ -97,7 +101,7 @@ for sourceFile in $fuzzers; do
   name=$(basename $sourceFile .c)
   echo "Building fuzzer: $name"
 
-  $FUZZ_CC -c $FUZZ_CFLAGS $DEPS_CFLAGS -I. -I$SRC/$JANUSGW $sourceFile -o $WORK/$name.o
+  $FUZZ_CC -c $FUZZ_CFLAGS $DEPS_CFLAGS -I. -I$SRC/$JANUSGW/src $sourceFile -o $WORK/$name.o
   $FUZZ_CCLD $FUZZ_LDFLAGS $WORK/${name}.o -o $OUT/${name} $FUZZ_ENGINE $JANUS_LIB $FUZZ_DEPS
 
   if [ -d "$SRC/$JANUSGW/fuzzers/corpora/${name}" ]; then

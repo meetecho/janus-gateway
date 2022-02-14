@@ -4,8 +4,8 @@
 #include <string.h>
 
 #include <glib.h>
-#include "../debug.h"
-#include "../sdp-utils.h"
+#include "../src/debug.h"
+#include "../src/sdp-utils.h"
 
 int janus_log_level = LOG_NONE;
 gboolean janus_log_timestamps = FALSE;
