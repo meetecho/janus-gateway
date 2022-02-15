@@ -68,7 +68,6 @@ var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
-var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
 var doOpusred = (getQueryStringValue("opusred") === "yes" || getQueryStringValue("opusred") === "true");
 var recordData = (getQueryStringValue("data") !== "" ? getQueryStringValue("data") : null);
 if(recordData !== "text" && recordData !== "binary")

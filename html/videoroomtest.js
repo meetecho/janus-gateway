@@ -66,7 +66,6 @@ var feeds = [], feedStreams = {};
 var bitrateTimer = [];
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
-var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var doDtx = (getQueryStringValue("dtx") === "yes" || getQueryStringValue("dtx") === "true");
@@ -485,7 +484,6 @@ function publishOwnFeed(useAudio) {
 			// pass a ?simulcast=true when opening this demo page: it will turn
 			// the following 'simulcast' property to pass to janus.js to true
 			simulcast: doSimulcast,
-			simulcast2: doSimulcast2,
 			customizeSdp: function(jsep) {
 				// If DTX is enabled, munge the SDP
 				if(doDtx) {
