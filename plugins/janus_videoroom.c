@@ -2926,6 +2926,15 @@ static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscr
 				json_object_set_new(m, "feed_mid", json_string(ps->mid));
 			if(ps->description)
 				json_object_set_new(m, "feed_description", json_string(ps->description));
+			if(stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
+				json_object_set_new(m, "codec", json_string(janus_audiocodec_name(stream->acodec)));
+			} else if(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+				json_object_set_new(m, "codec", json_string(janus_videocodec_name(stream->vcodec)));
+				if(stream->vcodec == JANUS_VIDEOCODEC_H264 && stream->h264_profile != NULL)
+					json_object_set_new(m, "h264-profile", json_string(stream->h264_profile));
+				if(stream->vcodec == JANUS_VIDEOCODEC_VP9 && stream->vp9_profile != NULL)
+					json_object_set_new(m, "vp9-profile", json_string(stream->vp9_profile));
+			}
 			if(ps->simulcast) {
 				json_t *simulcast = json_object();
 				json_object_set_new(simulcast, "substream", json_integer(stream->sim_context.substream));
@@ -3847,10 +3856,15 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 					json_object_set_new(m, "mid", json_string(ps->mid));
 					if(ps->description)
 						json_object_set_new(m, "description", json_string(ps->description));
-					if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO)
+					if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
 						json_object_set_new(m, "codec", json_string(janus_audiocodec_name(ps->acodec)));
-					else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO)
+					} else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 						json_object_set_new(m, "codec", json_string(janus_videocodec_name(ps->vcodec)));
+						if(ps->vcodec == JANUS_VIDEOCODEC_H264 && ps->h264_profile != NULL)
+							json_object_set_new(m, "h264-profile", json_string(ps->h264_profile));
+						if(ps->vcodec == JANUS_VIDEOCODEC_VP9 && ps->vp9_profile != NULL)
+							json_object_set_new(m, "vp9-profile", json_string(ps->vp9_profile));
+					}
 					if(ps->simulcast)
 						json_object_set_new(m, "simulcast", json_true());
 					if(ps->svc)
@@ -9927,15 +9941,8 @@ static void *janus_videoroom_handler(void *data) {
 									}
 								}
 								if(ps->pt == -1 && janus_sdp_get_codec_pt(offer, m->index, janus_videocodec_name(ps->vcodec)) != -1) {
+									/* We'll only get the profile later, when we've generated an answer  */
 									ps->pt = janus_videocodec_pt(ps->vcodec);
-									/* Check if video profile has been set */
-									if((ps->vcodec == JANUS_VIDEOCODEC_H264 && ps->h264_profile == NULL) || (ps->vcodec == JANUS_VIDEOCODEC_VP9 && ps->vp9_profile == NULL)) {
-										const char* vfmtp = janus_sdp_get_fmtp(answer, m->index, janus_sdp_get_codec_pt(answer, m->index, janus_videocodec_name(ps->vcodec)));
-										if(ps->vcodec == JANUS_VIDEOCODEC_H264)
-											ps->h264_profile = g_strdup(vfmtp);
-										if(ps->vcodec == JANUS_VIDEOCODEC_VP9)
-											ps->vp9_profile = g_strdup(vfmtp);
-									}
 								}
 							} else {
 								/* Check the codec priorities in the room configuration */
@@ -9970,16 +9977,9 @@ static void *janus_videoroom_handler(void *data) {
 									}
 									/* Check if the codec is available */
 									if(janus_sdp_get_codec_pt(offer, m->index, janus_videocodec_name(videoroom->vcodec[i])) != -1) {
+										/* We'll only get the profile later, when we've generated an answer  */
 										ps->vcodec = videoroom->vcodec[i];
 										ps->pt = janus_videocodec_pt(ps->vcodec);
-										/* Check if video profile has been set */
-										if((ps->vcodec == JANUS_VIDEOCODEC_H264 && ps->h264_profile == NULL) || (ps->vcodec == JANUS_VIDEOCODEC_VP9 && ps->vp9_profile == NULL)) {
-											const char* vfmtp = janus_sdp_get_fmtp(answer, m->index, janus_sdp_get_codec_pt(answer, m->index, janus_videocodec_name(ps->vcodec)));
-											if(ps->vcodec == JANUS_VIDEOCODEC_H264)
-												ps->h264_profile = g_strdup(vfmtp);
-											if(ps->vcodec == JANUS_VIDEOCODEC_VP9)
-												ps->vp9_profile = g_strdup(vfmtp);
-										}
 										break;
 									}
 								}
@@ -10061,6 +10061,17 @@ static void *janus_videoroom_handler(void *data) {
 							/* TODO Remove, this is just here for backwards compatibility */
 							if(videocodec == NULL)
 								videocodec = janus_videocodec_name(ps->vcodec);
+							/* Check if video profile has been set */
+							if((ps->vcodec == JANUS_VIDEOCODEC_H264 && ps->h264_profile == NULL) || (ps->vcodec == JANUS_VIDEOCODEC_VP9 && ps->vp9_profile == NULL)) {
+								int video_pt = janus_sdp_get_codec_pt(answer, m->index, janus_videocodec_name(ps->vcodec));
+								const char *vfmtp = janus_sdp_get_fmtp(answer, m->index, video_pt);
+								if(vfmtp != NULL) {
+									if(ps->vcodec == JANUS_VIDEOCODEC_H264)
+										ps->h264_profile = janus_sdp_get_video_profile(ps->vcodec, vfmtp);
+									else if(ps->vcodec == JANUS_VIDEOCODEC_VP9)
+										ps->vp9_profile = janus_sdp_get_video_profile(ps->vcodec, vfmtp);
+								}
+							}
 							/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
 							if(videoroom->bitrate > 0 && videoroom->bitrate_cap) {
 								if(participant->firefox) {

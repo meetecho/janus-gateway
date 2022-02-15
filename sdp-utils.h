@@ -19,6 +19,7 @@
 #include <inttypes.h>
 #include <glib.h>
 
+#include "rtp.h"
 #include "refcount.h"
 
 /*! \brief Janus SDP internal object representation */
@@ -413,6 +414,13 @@ const char *janus_sdp_get_codec_rtpmap(const char *codec);
  * @param pt The payload type to find
  * @returns The fmtp content, if found, or NULL otherwise */
 const char *janus_sdp_get_fmtp(janus_sdp *sdp, int index, int pt);
+
+/*! \brief Helper to extract the H.264 or VP9 profile from a fmtp string
+ * @note The returned profile string is allocated, so must be freed by the caller
+ * @param codec The video codec to refer to
+ * @param fmtp The fmtp value to parse
+ * @returns The profile content, if found, or NULL otherwise */
+char *janus_sdp_get_video_profile(janus_videocodec codec, const char *fmtp);
 
 /*! \brief Helper to get the opus/red payload type from an SDP, if present
  * @param sdp The Janus SDP instance to process
