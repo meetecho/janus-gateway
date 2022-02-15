@@ -994,6 +994,37 @@ const char *janus_sdp_get_fmtp(janus_sdp *sdp, int index, int pt) {
 	return NULL;
 }
 
+char *janus_sdp_get_video_profile(janus_videocodec codec, const char *fmtp) {
+	if(fmtp == NULL)
+		return NULL;
+	const char *needle = NULL;
+	if(codec == JANUS_VIDEOCODEC_H264) {
+		needle = "profile-level-id=";
+	} else if(codec == JANUS_VIDEOCODEC_VP9) {
+		needle = "profile-id=";
+	} else {
+		return NULL;
+	}
+	gchar **list = g_strsplit(fmtp, ";", -1);
+	int i=0;
+	gchar *index = list[0];
+	char *profile = NULL;
+	while(index != NULL) {
+		if(strstr(index, needle) != NULL) {
+			profile = index + strlen(needle);
+			if(strlen(profile) > 0)
+				profile = g_strdup(profile);
+			else
+				profile = NULL;
+			break;
+		}
+		i++;
+		index = list[i];
+	}
+	g_clear_pointer(&list, g_strfreev);
+	return profile;
+}
+
 int janus_sdp_get_opusred_pt(janus_sdp *sdp, int index) {
 	if(sdp == NULL)
 		return -1;

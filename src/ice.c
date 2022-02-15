@@ -3904,13 +3904,13 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 	uint16_t payload_start = payload ? (payload - packet->data) : 0;
 	if(packet->length < totlen)
 		packet->data = g_realloc(packet->data, totlen + SRTP_MAX_TAG_LEN);
-	/* Copy RTP extensions, if any */
+	/* Now check if we need to move the payload */
+	payload = payload_start ? (packet->data + payload_start) : NULL;
+	if(payload != NULL && plen > 0 && packet->length != totlen)
+		memmove(packet->data + RTP_HEADER_SIZE + extlen, payload, plen);
+	/* Finally, copy RTP extensions, if any */
 	if(extlen > 0) {
-		/* Check if we need to move the payload first */
-		payload = payload_start ? (packet->data + payload_start) : NULL;
-		if(payload != NULL && plen > 0 && packet->length != totlen)
-			memmove(packet->data + RTP_HEADER_SIZE + extlen, payload, plen);
-		/* Now copy the extensions after the RTP header */
+		/* Copy the extensions after the RTP header */
 		memcpy(packet->data + RTP_HEADER_SIZE, extensions, extlen);
 	}
 	packet->length = totlen;

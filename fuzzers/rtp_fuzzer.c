@@ -60,19 +60,21 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/* Janus checks for a minimum packet length
 	 * and the RTP header type value */
 	if (!janus_is_rtp((char *)data, size)) return 0;
+
+	char sdes_item[16];
+	janus_rtp_header_extension_parse_rid((char *)data, size, 1, sdes_item, sizeof(sdes_item));
+	janus_rtp_header_extension_parse_mid((char *)data, size, 1, sdes_item, sizeof(sdes_item));
+
 	/* Do same checks that libsrtp does */
 	if (srtp_validate_rtp_header((char *)data, size) < 0) return 0;
 
 	/* RTP extensions parsers */
-	char sdes_item[16];
 	guint16 transport_seq_num;
 	gboolean c, f, r1, r0;
 	uint8_t dd[256];
 	int sizedd = sizeof(dd);
 	janus_rtp_header_extension_parse_audio_level((char *)data, size, 1, NULL, NULL);
 	janus_rtp_header_extension_parse_playout_delay((char *)data, size, 1, NULL, NULL);
-	janus_rtp_header_extension_parse_rid((char *)data, size, 1, sdes_item, sizeof(sdes_item));
-	janus_rtp_header_extension_parse_mid((char *)data, size, 1, sdes_item, sizeof(sdes_item));
 	janus_rtp_header_extension_parse_transport_wide_cc((char *)data, size, 1, &transport_seq_num);
 	janus_rtp_header_extension_parse_abs_sent_time((char *)data, size, 1, NULL);
 	janus_rtp_header_extension_parse_video_orientation((char * )data, size, 1, &c, &f, &r1, &r0);
