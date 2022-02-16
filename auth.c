@@ -108,7 +108,7 @@ gboolean janus_auth_check_signature(const char *token, const char *realm) {
 	if(strcmp(data[1], realm))
 		goto fail;
 	/* Verify HMAC-SHA1 */
-	unsigned char signature[EVP_MAX_MD_SIZE];
+	unsigned char signature[EVP_MAX_MD_SIZE] = "";
 	unsigned int len;
 	HMAC(EVP_sha1(), auth_secret, strlen(auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
 	gchar *base64 = g_base64_encode(signature, len);
@@ -159,7 +159,7 @@ gboolean janus_auth_check_signature_contains(const char *token, const char *real
 	if (!result)
 		goto fail;
 	/* Verify HMAC-SHA1 */
-	unsigned char signature[EVP_MAX_MD_SIZE];
+	unsigned char signature[EVP_MAX_MD_SIZE] = "";
 	unsigned int len;
 	HMAC(EVP_sha1(), auth_secret, strlen(auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
 	gchar *base64 = g_base64_encode(signature, len);

@@ -1974,7 +1974,7 @@ static gboolean janus_ice_check_failed(gpointer data) {
 	return TRUE;
 
 stoptimer:
-	if(pc->icestate_source != NULL) {
+	if(pc && pc->icestate_source != NULL) {
 		g_source_destroy(pc->icestate_source);
 		g_source_unref(pc->icestate_source);
 		pc->icestate_source = NULL;

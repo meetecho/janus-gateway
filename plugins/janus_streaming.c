@@ -5571,6 +5571,7 @@ static void *janus_streaming_handler(void *data) {
 							error_code, error_cause, TRUE,
 							JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 						if(error_code != 0) {
+							g_free(s);
 							session->mountpoint = NULL;
 							janus_mutex_unlock(&session->mutex);
 							janus_mutex_unlock(&mp->mutex);
@@ -5609,6 +5610,7 @@ static void *janus_streaming_handler(void *data) {
 							error_code, error_cause, TRUE,
 							JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 						if(error_code != 0) {
+							g_free(s);
 							session->mountpoint = NULL;
 							janus_mutex_unlock(&session->mutex);
 							janus_mutex_unlock(&mp->mutex);
@@ -7172,7 +7174,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	}
 
 	/* Parse both video and audio first before proceed to setup as curldata will be reused */
-	janus_network_address audio_iface, video_iface;
+	janus_network_address audio_iface = { 0 }, video_iface = { 0 };
 	uint32_t audio_ssrc = 0, video_ssrc = 0;
 	int vresult = -1;
 	if(dovideo) {
@@ -8519,6 +8521,7 @@ static void *janus_streaming_relay_thread(void *data) {
 				}
 				if(stream == NULL) {
 					/* No stream..? Shouldn't happen, read the bytes and dump them */
+					addrlen = sizeof(remote);
 					(void)recvfrom(fds[i].fd, buffer, 1500, 0, (struct sockaddr *)&remote, &addrlen);
 					continue;
 				}

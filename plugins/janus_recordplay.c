@@ -2773,6 +2773,12 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 			janus_refcount_decrease(&rec->ref);
 			janus_refcount_decrease(&session->ref);
 			JANUS_LOG(LOG_ERR, "The recording session contains some data packets but seems to lack a recording file name\n");
+			if(afile)
+				fclose(afile);
+			afile = NULL;
+			if(vfile)
+				fclose(vfile);
+			vfile = NULL;
 			g_thread_unref(g_thread_self());
 			return NULL;
 		}
