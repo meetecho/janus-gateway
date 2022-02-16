@@ -518,8 +518,10 @@ struct janus_ice_peerconnection_medium {
 	guint32 ssrc_peer[3], ssrc_peer_new[3], ssrc_peer_orig[3], ssrc_peer_temp;
 	/*! \brief Retransmissions SSRC(s) of the peer for this medium (may be simulcasting) */
 	guint32 ssrc_peer_rtx[3], ssrc_peer_rtx_new[3], ssrc_peer_rtx_orig[3];
-	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
+	/*! \brief Array of RTP Stream IDs (for simulcasting, if enabled) */
 	char *rid[3];
+	/*! \brief Which simulcast rids are currently disabled, as per the latest negotiation */
+	gboolean disabled_rid[3];
 	/*! \brief Whether the order of the rids in the SDP will be h-m-l (TRUE) or l-m-h (FALSE) */
 	gboolean rids_hml;
 	/*! \brief Whether we should use the legacy simulcast syntax (a=simulcast:recv rid=..) or the proper one (a=simulcast:recv ..) */
