@@ -668,7 +668,10 @@
 #include <sofia-sip/nua.h>
 #include <sofia-sip/nua_tag.h>
 #include <sofia-sip/sdp.h>
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-prototypes"
 #include <sofia-sip/sip_header.h>
+#pragma GCC diagnostic pop
 #include <sofia-sip/sip_status.h>
 #include <sofia-sip/url.h>
 #include <sofia-sip/tport_tag.h>
@@ -1647,11 +1650,17 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 	if(!fmt)
 		return;
 	char line[255];
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#ifndef __clang__
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsuggest-attribute=format"
+#endif
 	g_vsnprintf(line, sizeof(line), fmt, ap);
-#pragma GCC diagnostic warning "-Wformat-nonliteral"
-#pragma GCC diagnostic warning "-Wsuggest-attribute=format"
+#ifndef __clang__
+#pragma GCC diagnostic pop
+#endif
+#pragma GCC diagnostic pop
 	if(skip) {
 		/* This is a message we're not interested in: just check when it ends */
 		if(line[3] == '-') {
@@ -4235,17 +4244,19 @@ static void *janus_sip_handler(void *data) {
 				/* Craft the Replaces header field */
 				sip_replaces_t *r = nua_handle_make_replaces(replaced->stack->s_nh_i, session->stack->s_home, 0);
 				char *replaces = sip_headers_as_url_query(session->stack->s_home, SIPTAG_REPLACES(r), TAG_END());
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winline"
 				refer_to = sip_refer_to_format(session->stack->s_home, "<%s?%s>", uri_text, replaces);
-#pragma GCC diagnostic warning "-Winline"
+#pragma GCC diagnostic pop
 				JANUS_LOG(LOG_VERB, "Attended transfer: <%s?%s>\n", uri_text, replaces);
 				su_free(session->stack->s_home, r);
 				su_free(session->stack->s_home, replaces);
 			}
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winline"
 			if(refer_to == NULL)
 				refer_to = sip_refer_to_format(session->stack->s_home, "<%s>", uri_text);
-#pragma GCC diagnostic warning "-Winline"
+#pragma GCC diagnostic pop
 			/* Send the REFER */
 			nua_refer(session->stack->s_nh_i,
 				SIPTAG_REFER_TO(refer_to),

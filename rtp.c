@@ -63,9 +63,10 @@ int janus_rtp_header_extension_get_id(const char *sdp, const char *extension) {
 			if(strstr(line, "a=extmap") && strstr(line, extension)) {
 				/* Gotcha! */
 				int id = 0;
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
 				if(sscanf(line, extmap, &id) == 1) {
-#pragma GCC diagnostic warning "-Wformat-nonliteral"
+#pragma GCC diagnostic pop
 					*next = '\n';
 					return id;
 				}
