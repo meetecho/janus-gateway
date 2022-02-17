@@ -3748,7 +3748,8 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 		totlen += plen;
 	/* We need to strip extensions, here, and add those that need to be there manually */
 	uint16_t extlen = 0;
-	char extensions[200];
+	char extensions[300];
+	uint16_t extbufsize = sizeof(extensions);
 	janus_rtp_header *header = (janus_rtp_header *)packet->data;
 	header->extension = 0;
 	/* Add core and plugin extensions, if any */
@@ -3768,6 +3769,7 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 		extheader->length = 0;
 		/* Iterate on all extensions we need */
 		char *index = extensions + 4;
+		extbufsize -= 4;
 		/* Check if we need to add the abs-send-time extension */
 		if(video && handle->pc->abs_send_time_ext_id > 0) {
 			int64_t now = (((janus_get_monotonic_time()/1000) << 18) + 500) / 1000;
@@ -3778,12 +3780,14 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 				memcpy(index+1, &abs24, 3);
 				index += 4;
 				extlen += 4;
+				extbufsize -= 4;
 			} else {
 				*index = handle->pc->abs_send_time_ext_id;
 				*(index+1) = 3;
 				memcpy(index+2, &abs24, 3);
 				index += 5;
 				extlen += 5;
+				extbufsize -= 5;
 			}
 		}
 		/* Check if we need to add the transport-wide CC extension */
@@ -3795,32 +3799,14 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 				memcpy(index+1, &transSeqNum, 2);
 				index += 3;
 				extlen += 3;
+				extbufsize -= 3;
 			} else {
 				*index = handle->pc->transport_wide_cc_ext_id;
 				*(index+1) = 2;
 				memcpy(index+2, &transSeqNum, 2);
 				index += 4;
 				extlen += 4;
-			}
-		}
-		/* Check if we need to add the mid extension */
-		if(handle->pc->mid_ext_id > 0) {
-			char *mid = medium->mid;
-			if(mid != NULL) {
-				if(!use_2byte) {
-					size_t midlen = strlen(mid) & 0x0F;
-					*index = (handle->pc->mid_ext_id << 4) + (midlen ? midlen-1 : 0);
-					memcpy(index+1, mid, midlen);
-					index += (midlen + 1);
-					extlen += (midlen + 1);
-				} else {
-					size_t midlen = strlen(mid);
-					*index = handle->pc->mid_ext_id;
-					*(index+1) = midlen;
-					memcpy(index+2, mid, midlen);
-					index += (midlen + 2);
-					extlen += (midlen + 2);
-				}
+				extbufsize -= 4;
 			}
 		}
 		/* Check if the plugin (or source) included other extensions */
@@ -3831,12 +3817,14 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 				*(index+1) = (packet->extensions.audio_level_vad << 7) + (packet->extensions.audio_level & 0x7F);
 				index += 2;
 				extlen += 2;
+				extbufsize -= 2;
 			} else {
 				*index = handle->pc->audiolevel_ext_id;
 				*(index+1) = 1;
 				*(index+2) = (packet->extensions.audio_level_vad << 7) + (packet->extensions.audio_level & 0x7F);
 				index += 3;
 				extlen += 3;
+				extbufsize -= 3;
 			}
 		}
 		if(video && packet->extensions.video_rotation != -1 && handle->pc->videoorientation_ext_id > 0) {
@@ -3867,28 +3855,66 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 				*(index+1) = (c<<3) + (f<<2) + (r1<<1) + r0;
 				index += 2;
 				extlen += 2;
+				extbufsize -= 2;
 			} else {
 				*index = handle->pc->videoorientation_ext_id;
 				*(index+1) = 1;
 				*(index+2) = (c<<3) + (f<<2) + (r1<<1) + r0;
 				index += 3;
 				extlen += 3;
+				extbufsize -= 3;
+			}
+		}
+		/* Check if we need to add the mid extension */
+		if(handle->pc->mid_ext_id > 0) {
+			char *mid = medium->mid;
+			if(mid != NULL) {
+				if(!use_2byte) {
+					size_t midlen = strlen(mid) & 0x0F;
+					if(extbufsize < (midlen + 1)) {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Not enough room for mid extension, skipping it...\n", handle->handle_id);
+					} else {
+						*index = (handle->pc->mid_ext_id << 4) + (midlen ? midlen-1 : 0);
+						memcpy(index+1, mid, midlen);
+						index += (midlen + 1);
+						extlen += (midlen + 1);
+						extbufsize -= (midlen + 1);
+					}
+				} else {
+					size_t midlen = strlen(mid);
+					if(extbufsize < (midlen + 2)) {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Not enough room for mid extension, skipping it...\n", handle->handle_id);
+					} else {
+						*index = handle->pc->mid_ext_id;
+						*(index+1) = midlen;
+						memcpy(index+2, mid, midlen);
+						index += (midlen + 2);
+						extlen += (midlen + 2);
+						extbufsize -= (midlen + 2);
+					}
+				}
 			}
 		}
 		if(video && packet->extensions.dd_len > 0 && handle->pc->dependencydesc_ext_id > 0) {
 			/* Add dependency descriptor extension */
-			if(!use_2byte) {
-				*index = (handle->pc->dependencydesc_ext_id << 4) + (packet->extensions.dd_len-1);
-				index++;
-				memcpy(index, packet->extensions.dd_content, packet->extensions.dd_len);
-				index += packet->extensions.dd_len;
-				extlen += packet->extensions.dd_len + 1;
+			if(extbufsize < (packet->extensions.dd_len + (use_2byte ? 2 : 1))) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Not enough room for dependency-descriptor extension, skipping it...\n", handle->handle_id);
 			} else {
-				*index = handle->pc->dependencydesc_ext_id;
-				*(index+1) = packet->extensions.dd_len;
-				memcpy(index+2, packet->extensions.dd_content, packet->extensions.dd_len);
-				index += packet->extensions.dd_len + 2;
-				extlen += packet->extensions.dd_len + 2;
+				if(!use_2byte) {
+					*index = (handle->pc->dependencydesc_ext_id << 4) + (packet->extensions.dd_len-1);
+					index++;
+					memcpy(index, packet->extensions.dd_content, packet->extensions.dd_len);
+					index += packet->extensions.dd_len;
+					extlen += packet->extensions.dd_len + 1;
+					extbufsize -= packet->extensions.dd_len + 1;
+				} else {
+					*index = handle->pc->dependencydesc_ext_id;
+					*(index+1) = packet->extensions.dd_len;
+					memcpy(index+2, packet->extensions.dd_content, packet->extensions.dd_len);
+					index += packet->extensions.dd_len + 2;
+					extlen += packet->extensions.dd_len + 2;
+					extbufsize -= packet->extensions.dd_len + 2;
+				}
 			}
 		}
 		/* Calculate the whole length */
