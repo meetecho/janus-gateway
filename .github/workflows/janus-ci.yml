@@ -37,6 +37,7 @@ jobs:
         sudo apt-get update && sudo apt-get --no-install-recommends -y install
         autoconf
         cmake
+        duktape-dev
         gengetopt
         gtk-doc-tools
         libavcodec-dev

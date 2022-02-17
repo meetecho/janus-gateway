@@ -23,7 +23,7 @@
 #ifndef JANUS_DUKTAPE_DATA_H
 #define JANUS_DUKTAPE_DATA_H
 
-#include "duktape-deps/duktape.h"
+#include <duktape.h>
 #include "duktape-deps/duk_console.h"
 #include "duktape-deps/duk_module_duktape.h"
 

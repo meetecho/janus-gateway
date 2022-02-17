@@ -38,6 +38,7 @@ A couple of plugins depend on a few more libraries:
 * [libogg](http://xiph.org/ogg/) (needed for the VoiceMail plugin and/or post-processor, and optionally AudioBridge and Streaming plugins)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are interested in RTSP support in the Streaming plugin or in the sample Event Handler plugin)
 * [Lua](https://www.lua.org/download.html) (only needed for the Lua plugin)
+* [Duktape](https://duktape.org/) (only needed for the Duktape plugin)
 
 Additionally, you'll need the following libraries and tools:
 
