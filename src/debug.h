@@ -54,6 +54,8 @@ extern char *janus_log_global_prefix;
 /*! \brief Maximum level of debugging */
 #define LOG_MAX LOG_DBG
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 /*! \brief Coloured prefixes for errors and warnings logging. */
 static const char *janus_log_prefix[] = {
 /* no colors */
@@ -76,6 +78,7 @@ static const char *janus_log_prefix[] = {
 	""
 };
 ///@}
+#pragma GCC diagnostic pop
 
 /** @name Janus log wrappers
  */

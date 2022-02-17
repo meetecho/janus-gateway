@@ -1043,7 +1043,8 @@ int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t
 				uint32_t recv_ssrc = ntohl(sr->ssrc);
 				if (recv_ssrc != ssrc_expected) {
 					if(ssrc_expected != 0) {
-						JANUS_LOG(LOG_WARN,"Incoming RTCP SR SSRC (%"SCNu32") does not match the expected one (%"SCNu32") video=%d\n", recv_ssrc, ssrc_expected, video);
+						JANUS_LOG(LOG_VERB,"Incoming RTCP SR SSRC (%"SCNu32") does not match the expected one (%"SCNu32") video=%d\n",
+							recv_ssrc, ssrc_expected, video);
 					}
 					return -3;
 				}

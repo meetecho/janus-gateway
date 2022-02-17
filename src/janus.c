@@ -3246,7 +3246,7 @@ json_t *janus_admin_peerconnection_medium_summary(janus_ice_peerconnection_mediu
 		json_object_set_new(m, "direction", md);
 	}
 	/* Payload type and codec */
-	if(medium->type != JANUS_MEDIA_DATA && (medium->payload_type > -1 || medium->payload_type > -1)) {
+	if(medium->type != JANUS_MEDIA_DATA && (medium->payload_type > -1 || medium->rtx_payload_type > -1)) {
 		json_t *sc = json_object();
 		if(medium->payload_type > -1)
 			json_object_set_new(sc, "pt", json_integer(medium->payload_type));
@@ -3796,7 +3796,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
 						have_abs_send_time = TRUE;
 				} else if(m->type == JANUS_SDP_AUDIO && medium != NULL && medium->opusred_pt > 0 &&
-						!strcasecmp(a->name, "rtpmap") && strstr(a->value, "red/48000/2")) {
+						a->name && a->value && !strcasecmp(a->name, "rtpmap") && strstr(a->value, "red/48000/2")) {
 					opusred_pt = atoi(a->value);
 				}
 				tempA = tempA->next;

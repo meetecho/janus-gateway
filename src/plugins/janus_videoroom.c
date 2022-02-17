@@ -2485,7 +2485,7 @@ static janus_videoroom_rtp_forwarder *janus_videoroom_rtp_forwarder_add_helper(j
 	forward->source = ps;
 	forward->rtcp_fd = fd;
 	forward->local_rtcp_port = local_rtcp_port;
-	forward->remote_rtcp_port = rtcp_port;
+	forward->remote_rtcp_port = rtcp_port > 0 ? rtcp_port : 0;
 	/* First of all, let's check if we need to setup an SRTP forwarder */
 	if(!is_data && srtp_suite > 0 && srtp_crypto != NULL) {
 		/* First of all, let's check if there's already an RTP forwarder with
@@ -5126,8 +5126,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					continue;
 				}
 				/* If we got here, it's RTP media, check the other properties too */
-				json_t *stream_pt = json_object_get(root, "pt");
-				json_t *stream_ssrc = json_object_get(root, "ssrc");
+				json_t *stream_pt = json_object_get(s, "pt");
+				json_t *stream_ssrc = json_object_get(s, "ssrc");
 				json_t *stream_rtcp_port = json_object_get(s, "rtcp_port");
 				if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
 					f = janus_videoroom_rtp_forwarder_add_helper(publisher, ps,
@@ -5154,7 +5154,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 						}
 					}
 				} else {
-					json_t *stream_simulcast = json_object_get(root, "simulcast");
+					json_t *stream_simulcast = json_object_get(s, "simulcast");
 					f = janus_videoroom_rtp_forwarder_add_helper(publisher, ps,
 						host, port, stream_rtcp_port ? json_integer_value(stream_rtcp_port) : -1,
 						json_integer_value(stream_pt), json_integer_value(stream_ssrc),
@@ -5182,8 +5182,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 						/* Check if there's simulcast substreams we need to relay */
 						stream_port = json_object_get(s, "port_2");
 						port = json_integer_value(stream_port);
-						stream_pt = json_object_get(root, "pt_2");
-						stream_ssrc = json_object_get(root, "ssrc_2");
+						stream_pt = json_object_get(s, "pt_2");
+						stream_ssrc = json_object_get(s, "ssrc_2");
 						if(json_integer_value(stream_port) > 0) {
 							f = janus_videoroom_rtp_forwarder_add_helper(publisher, ps,
 								host, port, 0, json_integer_value(stream_pt), json_integer_value(stream_ssrc),
@@ -5211,8 +5211,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 						}
 						stream_port = json_object_get(s, "port_3");
 						port = json_integer_value(stream_port);
-						stream_pt = json_object_get(root, "pt_3");
-						stream_ssrc = json_object_get(root, "ssrc_3");
+						stream_pt = json_object_get(s, "pt_3");
+						stream_ssrc = json_object_get(s, "ssrc_3");
 						if(json_integer_value(stream_port) > 0) {
 							f = janus_videoroom_rtp_forwarder_add_helper(publisher, ps,
 								host, port, 0, json_integer_value(stream_pt), json_integer_value(stream_ssrc),
@@ -10244,7 +10244,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 		return;
 	janus_videoroom_publisher_stream *ps = stream->publisher_streams ?
 		stream->publisher_streams->data : NULL;
-	if(ps != packet->source)
+	if(ps != packet->source || ps == NULL)
 		return;
 	janus_videoroom_subscriber *subscriber = stream->subscriber;
 	janus_videoroom_session *session = subscriber->session;
@@ -10448,7 +10448,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* If we got here, update the RTP header and send the packet */
 			janus_rtp_header_update(packet->data, &stream->context, TRUE, 0);
 			char vp8pd[6];
-			if(ps && ps->vcodec == JANUS_VIDEOCODEC_VP8) {
+			if(ps->vcodec == JANUS_VIDEOCODEC_VP8) {
 				/* For VP8, we save the original payload descriptor, to restore it after */
 				memcpy(vp8pd, payload, sizeof(vp8pd));
 				janus_vp8_simulcast_descriptor_update(payload, plen, &stream->vp8_context,
@@ -10463,7 +10463,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* Restore the timestamp and sequence number to what the publisher set them to */
 			packet->data->timestamp = htonl(packet->timestamp);
 			packet->data->seq_number = htons(packet->seq_number);
-			if(ps && ps->vcodec == JANUS_VIDEOCODEC_VP8) {
+			if(ps->vcodec == JANUS_VIDEOCODEC_VP8) {
 				/* Restore the original payload descriptor as well, as it will be needed by the next viewer */
 				memcpy(payload, vp8pd, sizeof(vp8pd));
 			}

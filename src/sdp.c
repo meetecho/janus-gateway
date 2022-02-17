@@ -108,6 +108,7 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 	janus_ice_peerconnection_medium *medium = NULL;
 	gchar *ruser = NULL, *rpass = NULL, *rhashing = NULL, *rfingerprint = NULL;
 	gboolean rtx = FALSE;
+	char *simulcast_rids = NULL;
 	/* Ok, let's start with global attributes */
 	GList *temp = remote_sdp->attributes;
 	while(temp) {
@@ -375,6 +376,7 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse rid attribute...\n", handle->handle_id);
 				} else {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsed rid: %s\n", handle->handle_id, rid);
+					medium->disabled_rid[rids_hml ? 2 : 0] = FALSE;
 					if(medium->rid[rids_hml ? 2 : 0] == NULL) {
 						medium->rid[rids_hml ? 2 : 0] = g_strdup(rid);
 					} else if(medium->rid[1] == NULL) {
@@ -388,6 +390,16 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 			} else if(a->name && !strcasecmp(a->name, "simulcast") && a->value) {
 				/* Firefox and Chrome signal simulcast support differently */
 				medium->legacy_rid = strstr(a->value, "rid=") ? TRUE : FALSE;
+				/* If the attribute contains a tilde, some of the substreams
+				 * are currently disabled, so let's track it and use it later */
+				if(!medium->legacy_rid && strstr(a->value, "~") != NULL) {
+					char *index = strstr(a->value, "send ");
+					if(index != NULL) {
+						index += strlen("send ");
+						if(index != NULL && simulcast_rids == NULL)
+							simulcast_rids = g_strdup(index);
+					}
+				}
 			}
 			tempA = tempA->next;
 		}
@@ -400,6 +412,35 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 		if(medium->rid[0] == NULL && medium->rid[1] != NULL) {
 			medium->rid[0] = medium->rid[1];
 			medium->rid[1] = NULL;
+		}
+		if(simulcast_rids != NULL) {
+			/* Some substreams are disabled, check which ones */
+			gchar **list = g_strsplit(simulcast_rids, ";", 3);
+			gchar *index = list[0];
+			char rid[50];
+			if(index != NULL) {
+				int i=0, j=0;
+				while(index != NULL) {
+					if(strlen(index) > 0 && strstr(index, "~") == index) {
+						for(j=0; j<3; j++) {
+							if(medium->rid[j] != NULL) {
+								g_snprintf(rid, sizeof(rid), "~%s", medium->rid[j]);
+								if(!strcasecmp(index, rid)) {
+									JANUS_LOG(LOG_VERB, "[%"SCNu64"] rid %s is currently disabled\n",
+										handle->handle_id, medium->rid[j]);
+									medium->disabled_rid[j] = TRUE;
+									break;
+								}
+							}
+						}
+					}
+					i++;
+					index = list[i];
+				}
+			}
+			g_clear_pointer(&list, g_strfreev);
+			g_free(simulcast_rids);
+			simulcast_rids = NULL;
 		}
 		/* Let's start figuring out the SSRCs, and any grouping that may be there */
 		medium->ssrc_peer_new[0] = 0;
@@ -1486,9 +1527,13 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				a = janus_sdp_attribute_create("rid", "%s recv", medium->rid[index]);
 				m->attributes = g_list_append(m->attributes, a);
 				if(strlen(rids) == 0) {
+					if(medium->disabled_rid[index])
+						janus_strlcat(rids, "~", sizeof(rids));
 					janus_strlcat(rids, medium->rid[index], sizeof(rids));
 				} else {
 					janus_strlcat(rids, ";", sizeof(rids));
+					if(medium->disabled_rid[index])
+						janus_strlcat(rids, "~", sizeof(rids));
 					janus_strlcat(rids, medium->rid[index], sizeof(rids));
 				}
 			}
