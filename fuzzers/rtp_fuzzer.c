@@ -3,9 +3,9 @@
 #include <stdlib.h>
 
 #include <glib.h>
-#include "../debug.h"
-#include "../utils.h"
-#include "../rtp.h"
+#include "../src/debug.h"
+#include "../src/utils.h"
+#include "../src/rtp.h"
 
 int janus_log_level = LOG_NONE;
 gboolean janus_log_timestamps = FALSE;
