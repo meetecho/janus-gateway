@@ -174,7 +174,7 @@ cmdline.h: cmdline.c
 cmdline.c: janus.c
 	gengetopt --set-package="janus" --set-version="$(VERSION)" < janus.ggo
 
-directory = .git
+directory = ../.git
 dir_target = $(directory)-$(wildcard $(directory))
 dir_present = $(directory)-$(directory)
 dir_absent = $(directory)-
