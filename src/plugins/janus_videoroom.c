@@ -1641,6 +1641,9 @@ static struct janus_json_parameter publish_parameters[] = {
 	/* Only needed when configuring, to make a stream active/inactive */
 	{"mid", JANUS_JSON_STRING, 0},
 	{"send", JANUS_JSON_BOOL, 0},
+	/* For the playout-delay RTP extension, if negotiated */
+	{"min_delay", JSON_INTEGER, 0},
+	{"max_delay", JSON_INTEGER, 0},
 	/* Deprecated, use mid+send instead */
 	{"audio", JANUS_JSON_BOOL, 0},	/* Deprecated! */
 	{"video", JANUS_JSON_BOOL, 0},	/* Deprecated! */
@@ -2950,6 +2953,12 @@ static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscr
 					json_object_set_new(m, "h264-profile", json_string(stream->h264_profile));
 				if(stream->vcodec == JANUS_VIDEOCODEC_VP9 && stream->vp9_profile != NULL)
 					json_object_set_new(m, "vp9-profile", json_string(stream->vp9_profile));
+				if(stream->min_delay > -1 && stream->max_delay > -1) {
+					json_t *pd = json_object();
+					json_object_set_new(pd, "min-delay", json_integer(stream->min_delay));
+					json_object_set_new(pd, "max-delay", json_integer(stream->max_delay));
+					json_object_set_new(m, "playout-delay", pd);
+				}
 			}
 			if(ps->simulcast) {
 				json_t *simulcast = json_object();
@@ -3880,6 +3889,12 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 							json_object_set_new(m, "h264-profile", json_string(ps->h264_profile));
 						if(ps->vcodec == JANUS_VIDEOCODEC_VP9 && ps->vp9_profile != NULL)
 							json_object_set_new(m, "vp9-profile", json_string(ps->vp9_profile));
+						if(ps->min_delay > -1 && ps->max_delay > -1) {
+							json_t *pd = json_object();
+							json_object_set_new(pd, "min-delay", json_integer(ps->min_delay));
+							json_object_set_new(pd, "max-delay", json_integer(ps->max_delay));
+							json_object_set_new(m, "playout-delay", pd);
+						}
 					}
 					if(ps->simulcast)
 						json_object_set_new(m, "simulcast", json_true());
@@ -6747,8 +6762,8 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 		packet.timestamp = ntohl(packet.data->timestamp);
 		packet.seq_number = ntohs(packet.data->seq_number);
 		if(ps->min_delay > -1 && ps->max_delay > -1) {
-			pkt->extensions.min_delay = ps->min_delay;
-			pkt->extensions.max_delay = ps->max_delay;
+			packet.extensions.min_delay = ps->min_delay;
+			packet.extensions.max_delay = ps->max_delay;
 		}
 		/* Go: some viewers may decide to drop the packet, but that's up to them */
 		janus_mutex_lock_nodebug(&ps->subscribers_mutex);
@@ -8032,6 +8047,8 @@ static void *janus_videoroom_handler(void *data) {
 					json_t *temporal = json_object_get(s, "temporal_layer");
 					json_t *sc_temporal = json_object_get(s, "temporal");
 					json_t *sc_fallback = json_object_get(s, "fallback");
+					json_t *min_delay = json_object_get(s, "min_delay");
+					json_t *max_delay = json_object_get(s, "max_delay");
 					if(mid) {
 						/* Subscribe to a specific mid */
 						janus_videoroom_publisher_stream *ps = g_hash_table_lookup(publisher->streams_bymid, mid);
@@ -8072,6 +8089,31 @@ static void *janus_videoroom_handler(void *data) {
 							if(temporal)
 								stream->target_temporal_layer = json_integer_value(temporal);
 						}
+						if(stream && ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+							/* Override the playout-delay properties */
+							if(min_delay) {
+								int16_t md = json_integer_value(min_delay);
+								if(md < 0) {
+									stream->min_delay = -1;
+									stream->max_delay = -1;
+								} else {
+									stream->min_delay = md;
+									if(stream->min_delay > stream->max_delay)
+										stream->max_delay = stream->min_delay;
+								}
+							}
+							if(max_delay) {
+								int16_t md = json_integer_value(max_delay);
+								if(md < 0) {
+									stream->min_delay = -1;
+									stream->max_delay = -1;
+								} else {
+									stream->max_delay = md;
+									if(stream->max_delay < stream->min_delay)
+										stream->min_delay = stream->max_delay;
+								}
+							}
+						}
 						if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA) {
 							data_added = TRUE;
 							data_stream = stream;
@@ -8109,6 +8151,31 @@ static void *janus_videoroom_handler(void *data) {
 									stream->target_spatial_layer = json_integer_value(spatial);
 								if(temporal)
 									stream->target_temporal_layer = json_integer_value(temporal);
+							}
+							if(stream && ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+								/* Override the playout-delay properties */
+								if(min_delay) {
+									int16_t md = json_integer_value(min_delay);
+									if(md < 0) {
+										stream->min_delay = -1;
+										stream->max_delay = -1;
+									} else {
+										stream->min_delay = md;
+										if(stream->min_delay > stream->max_delay)
+											stream->max_delay = stream->min_delay;
+									}
+								}
+								if(max_delay) {
+									int16_t md = json_integer_value(max_delay);
+									if(md < 0) {
+										stream->min_delay = -1;
+										stream->max_delay = -1;
+									} else {
+										stream->max_delay = md;
+										if(stream->max_delay < stream->min_delay)
+											stream->min_delay = stream->max_delay;
+									}
+								}
 							}
 							if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA) {
 								data_added = TRUE;
@@ -8270,6 +8337,8 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *update = json_object_get(root, "update");
 				json_t *user_audio_active_packets = json_object_get(root, "audio_active_packets");
 				json_t *user_audio_level_average = json_object_get(root, "audio_level_average");
+				json_t *min_delay = json_object_get(root, "min_delay");
+				json_t *max_delay = json_object_get(root, "max_delay");
 				/* Audio, video and data are deprecated properties */
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
@@ -8327,7 +8396,7 @@ static void *janus_videoroom_handler(void *data) {
 					}
 				}
 				/* Update the audio/video/data flags, if set (and just configuring) */
-				if(audio || video || data || (mid && send)) {
+				if(audio || video || data || (mid && send) || min_delay || max_delay) {
 					janus_mutex_lock(&participant->streams_mutex);
 					GList *temp = participant->streams;
 					while(temp) {
@@ -8377,6 +8446,30 @@ static void *janus_videoroom_handler(void *data) {
 								keyframe && json_is_true(keyframe)) {
 							/* Send a PLI */
 							janus_videoroom_reqpli(ps, "Keyframe request");
+						}
+						if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+							if(min_delay) {
+								int16_t md = json_integer_value(min_delay);
+								if(md < 0) {
+									ps->min_delay = -1;
+									ps->max_delay = -1;
+								} else {
+									ps->min_delay = md;
+									if(ps->min_delay > ps->max_delay)
+										ps->max_delay = ps->min_delay;
+								}
+							}
+							if(max_delay) {
+								int16_t md = json_integer_value(max_delay);
+								if(md < 0) {
+									ps->min_delay = -1;
+									ps->max_delay = -1;
+								} else {
+									ps->max_delay = md;
+									if(ps->max_delay < ps->min_delay)
+										ps->min_delay = ps->max_delay;
+								}
+							}
 						}
 						temp = temp->next;
 					}
@@ -8747,6 +8840,8 @@ static void *janus_videoroom_handler(void *data) {
 					json_t *temporal = json_object_get(s, "temporal_layer");
 					json_t *sc_temporal = json_object_get(s, "temporal");
 					json_t *sc_fallback = json_object_get(s, "fallback");
+					json_t *min_delay = json_object_get(s, "min_delay");
+					json_t *max_delay = json_object_get(s, "max_delay");
 					if(mid != NULL) {
 						janus_mutex_lock(&publisher->streams_mutex);
 						janus_videoroom_publisher_stream *ps = g_hash_table_lookup(publisher->streams_bymid, mid);
@@ -8777,6 +8872,31 @@ static void *janus_videoroom_handler(void *data) {
 								if(temporal)
 									stream->target_temporal_layer = json_integer_value(temporal);
 							}
+							if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+								/* Override the playout-delay properties */
+								if(min_delay) {
+									int16_t md = json_integer_value(min_delay);
+									if(md < 0) {
+										stream->min_delay = -1;
+										stream->max_delay = -1;
+									} else {
+										stream->min_delay = md;
+										if(stream->min_delay > stream->max_delay)
+											stream->max_delay = stream->min_delay;
+									}
+								}
+								if(max_delay) {
+									int16_t md = json_integer_value(max_delay);
+									if(md < 0) {
+										stream->min_delay = -1;
+										stream->max_delay = -1;
+									} else {
+										stream->max_delay = md;
+										if(stream->max_delay < stream->min_delay)
+											stream->min_delay = stream->max_delay;
+									}
+								}
+							}
 						}
 					} else {
 						janus_mutex_lock(&publisher->streams_mutex);
@@ -8805,6 +8925,31 @@ static void *janus_videoroom_handler(void *data) {
 										stream->target_spatial_layer = json_integer_value(spatial);
 									if(temporal)
 										stream->target_temporal_layer = json_integer_value(temporal);
+								}
+								if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+									/* Override the playout-delay properties */
+									if(min_delay) {
+										int16_t md = json_integer_value(min_delay);
+										if(md < 0) {
+											stream->min_delay = -1;
+											stream->max_delay = -1;
+										} else {
+											stream->min_delay = md;
+											if(stream->min_delay > stream->max_delay)
+												stream->max_delay = stream->min_delay;
+										}
+									}
+									if(max_delay) {
+										int16_t md = json_integer_value(max_delay);
+										if(md < 0) {
+											stream->min_delay = -1;
+											stream->max_delay = -1;
+										} else {
+											stream->max_delay = md;
+											if(stream->max_delay < stream->min_delay)
+												stream->min_delay = stream->max_delay;
+										}
+									}
 								}
 							}
 							temp = temp->next;
