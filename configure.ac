@@ -31,7 +31,6 @@ CFLAGS="$CFLAGS \
 	-Wformat-security \
 	-Wformat=2 \
 	-Winit-self \
-	-Winline \
 	-Wlarger-than=65537 \
 	-Wmissing-declarations \
 	-Wmissing-format-attribute \
@@ -39,11 +38,6 @@ CFLAGS="$CFLAGS \
 	-Wmissing-noreturn \
 	-Wmissing-prototypes \
 	-Wnested-externs \
-	-Wno-aggregate-return \
-	-Wno-missing-field-initializers \
-	-Wno-redundant-decls \
-	-Wno-undef \
-	-Wno-unused-parameter \
 	-Wold-style-definition \
 	-Wpacked \
 	-Wpointer-arith \
@@ -51,6 +45,8 @@ CFLAGS="$CFLAGS \
 	-Wstrict-prototypes \
 	-Wswitch-default \
 	-Wunused \
+	-Wno-unused-parameter \
+	-Wno-unused-result \
 	-Wwrite-strings \
 	-Werror=implicit-function-declaration"
 

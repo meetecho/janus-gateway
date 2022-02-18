@@ -43,6 +43,8 @@ const char *janus_wsevh_get_package(void);
 void janus_wsevh_incoming_event(json_t *event);
 json_t *janus_wsevh_handle_request(json_t *request);
 
+#define WS_LIST_TERM 0, NULL, 0
+
 /* Event handler setup */
 static janus_eventhandler janus_wsevh =
 	JANUS_EVENTHANDLER_INIT (
@@ -181,8 +183,8 @@ static janus_mutex writable_mutex;
 
 static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len);
 static struct lws_protocols protocols[] = {
-	{ "janus-event-handlers", janus_wsevh_callback, sizeof(janus_wsevh_client), 0 },	/* Subprotocol will be configurable */
-	{ NULL, NULL, 0, 0 }
+	{ "janus-event-handlers", janus_wsevh_callback, sizeof(janus_wsevh_client), 0, WS_LIST_TERM },	/* Subprotocol will be configurable */
+	{ NULL, NULL, 0, 0, WS_LIST_TERM }
 };
 static const struct lws_extension exts[] = {
 #ifndef LWS_WITHOUT_EXTENSIONS
