@@ -734,6 +734,8 @@ room-<unique room ID>: {
 	"audio_level_average" : "<new audio_level_average to overwrite the room one; optional>",
 	"mid" : <mid of the m-line to refer to for this configure request; optional>,
 	"send" : <true|false, depending on whether the media addressed by the above mid should be relayed or not; optional>,
+	"min_delay" : <minimum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
+	"max_delay" : <maximum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
 	"descriptions" : [
 		// Updated descriptions for the published streams; see "publish" for syntax; optional
 	]
@@ -1289,6 +1291,8 @@ room-<unique room ID>: {
 	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>,
 	"audio_level_average" : "<if provided, overrides the room audio_level_average for this user; optional>",
 	"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>",
+	"min_delay" : <minimum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
+	"max_delay" : <maximum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
 	"restart" : <trigger an ICE restart; optional>
 }
 \endverbatim
@@ -1712,6 +1716,9 @@ static struct janus_json_parameter configure_parameters[] = {
 	/* For VP9 SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	/* For the playout-delay RTP extension, if negotiated */
+	{"min_delay", JSON_INTEGER, 0},
+	{"max_delay", JSON_INTEGER, 0},
 	/* The following is to handle a renegotiation */
 	{"update", JANUS_JSON_BOOL, 0},
 	/* Deprecated properties, use mid+send instead */
@@ -1749,7 +1756,10 @@ static struct janus_json_parameter subscriber_stream_parameters[] = {
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"spatial_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"temporal_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"temporal_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	/* For the playout-delay RTP extension, if negotiated */
+	{"min_delay", JSON_INTEGER, 0},
+	{"max_delay", JSON_INTEGER, 0}
 };
 static struct janus_json_parameter subscriber_update_parameters[] = {
 	{"streams", JANUS_JSON_ARRAY, JANUS_JSON_PARAM_REQUIRED}
@@ -2043,6 +2053,8 @@ typedef struct janus_videoroom_publisher_stream {
 	guint8 video_orient_extmap_id;			/* Video orientation extmap ID */
 	guint8 playout_delay_extmap_id;			/* Playout delay extmap ID */
 	janus_sdp_mdirection audio_level_mdir, video_orient_mdir, playout_delay_mdir;
+	/* Playout delays to enforce when relaying this stream, if the extension has been negotiated */
+	int16_t min_delay, max_delay;
 	/* Audio level processing, if enabled */
 	int audio_dBov_level;					/* Value in dBov of the audio level (last value from extension) */
 	int audio_active_packets;				/* Participant's number of audio packets to accumulate */
@@ -2112,6 +2124,8 @@ typedef struct janus_videoroom_subscriber_stream {
 	int spatial_layer, target_spatial_layer;
 	gint64 last_spatial_layer[3];
 	int temporal_layer, target_temporal_layer;
+	/* Playout delays to enforce when relaying this stream, if the extension has been negotiated */
+	int16_t min_delay, max_delay;
 	volatile gint ready, destroyed;
 	janus_refcount ref;
 } janus_videoroom_subscriber_stream;
@@ -2739,6 +2753,8 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(
 	}
 	stream->pt = ps->pt;
 	stream->opusfec = ps->opusfec;
+	stream->min_delay = -1;
+	stream->max_delay = -1;
 	char mid[5];
 	g_snprintf(mid, sizeof(mid), "%d", stream->mindex);
 	stream->mid = g_strdup(mid);
@@ -6730,6 +6746,10 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 		/* Backup the actual timestamp and sequence number set by the publisher, in case switching is involved */
 		packet.timestamp = ntohl(packet.data->timestamp);
 		packet.seq_number = ntohs(packet.data->seq_number);
+		if(ps->min_delay > -1 && ps->max_delay > -1) {
+			pkt->extensions.min_delay = ps->min_delay;
+			pkt->extensions.max_delay = ps->max_delay;
+		}
 		/* Go: some viewers may decide to drop the packet, but that's up to them */
 		janus_mutex_lock_nodebug(&ps->subscribers_mutex);
 		g_slist_foreach(ps->subscribers, janus_videoroom_relay_rtp_packet, &packet);
@@ -9069,6 +9089,8 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 				json_t *sc_fallback = json_object_get(root, "fallback");
+				json_t *min_delay = json_object_get(root, "min_delay");
+				json_t *max_delay = json_object_get(root, "max_delay");
 				/* Update the audio/video/data flags, if set */
 				janus_mutex_lock(&subscriber->streams_mutex);
 				GList *temp = subscriber->streams;
@@ -9205,6 +9227,30 @@ static void *janus_videoroom_handler(void *data) {
 								json_decref(event);
 							}
 							stream->target_temporal_layer = temporal_layer;
+						}
+					}
+					if(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+						if(min_delay) {
+							int16_t md = json_integer_value(min_delay);
+							if(md < 0) {
+								stream->min_delay = -1;
+								stream->max_delay = -1;
+							} else {
+								stream->min_delay = md;
+								if(stream->min_delay > stream->max_delay)
+									stream->max_delay = stream->min_delay;
+							}
+						}
+						if(max_delay) {
+							int16_t md = json_integer_value(max_delay);
+							if(md < 0) {
+								stream->min_delay = -1;
+								stream->max_delay = -1;
+							} else {
+								stream->max_delay = md;
+								if(stream->max_delay < stream->min_delay)
+									stream->min_delay = stream->max_delay;
+							}
 						}
 					}
 					temp = temp->next;
@@ -9836,6 +9882,8 @@ static void *janus_videoroom_handler(void *data) {
 						ps->acodec = participant->acodec;
 						ps->vcodec = participant->vcodec;
 						ps->pt = -1;
+						ps->min_delay = -1;
+						ps->max_delay = -1;
 						g_atomic_int_set(&ps->destroyed, 0);
 						janus_refcount_init(&ps->ref, janus_videoroom_publisher_stream_free);
 						janus_refcount_increase(&ps->ref);	/* This is for the mid-indexed hashtable */
@@ -10392,6 +10440,10 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			if(gateway != NULL) {
 				janus_plugin_rtp rtp = { .mindex = stream->mindex, .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length,
 					.extensions = packet->extensions };
+				if(stream->min_delay > -1 && stream->max_delay > -1) {
+					rtp.extensions.min_delay = stream->min_delay;
+					rtp.extensions.max_delay = stream->max_delay;
+				}
 				gateway->relay_rtp(session->handle, &rtp);
 			}
 			if(override_mark_bit && !has_marker_bit) {
@@ -10458,6 +10510,10 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			if(gateway != NULL) {
 				janus_plugin_rtp rtp = { .mindex = stream->mindex, .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length,
 					.extensions = packet->extensions };
+				if(stream->min_delay > -1 && stream->max_delay > -1) {
+					rtp.extensions.min_delay = stream->min_delay;
+					rtp.extensions.max_delay = stream->max_delay;
+				}
 				gateway->relay_rtp(session->handle, &rtp);
 			}
 			/* Restore the timestamp and sequence number to what the publisher set them to */
@@ -10474,6 +10530,10 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			if(gateway != NULL) {
 				janus_plugin_rtp rtp = { .mindex = stream->mindex, .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length,
 					.extensions = packet->extensions };
+				if(stream->min_delay > -1 && stream->max_delay > -1) {
+					rtp.extensions.min_delay = stream->min_delay;
+					rtp.extensions.max_delay = stream->max_delay;
+				}
 				gateway->relay_rtp(session->handle, &rtp);
 			}
 			/* Restore the timestamp and sequence number to what the publisher set them to */
