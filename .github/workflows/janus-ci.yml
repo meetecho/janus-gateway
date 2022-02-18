@@ -87,7 +87,7 @@ jobs:
       run: |
         git clone --depth 1 --quiet -b master https://gitlab.freedesktop.org/libnice/libnice.git libnice
         pushd libnice
-        if [ $CC = clang ]; then LNICE_CFLAGS="-Wno-cast-align"; fi; 
+        if [ $CC = clang ]; then LNICE_CFLAGS="-Wno-cast-align"; fi;
         meson setup -Dprefix=/usr -Dlibdir=lib -Dc_args="$LNICE_CFLAGS" -Ddebug=false -Doptimization=0 -Dexamples=disabled -Dgtk_doc=disabled -Dgupnp=disabled -Dgstreamer=disabled -Dtests=disabled build
         ninja -C build
         sudo ninja -C build install
@@ -96,7 +96,7 @@ jobs:
       uses: actions/checkout@v2
       with:
         repository: cisco/libsrtp
-        ref: v2.3.0
+        ref: v2.4.2
     - name: setup libsrtp from sources
       if: ${{ matrix.deps_from_src == 'yes' }}
       run: |
@@ -121,7 +121,7 @@ jobs:
       uses: actions/checkout@v2
       with:
         repository: warmcat/libwebsockets
-        ref: v4.1-stable
+        ref: v4.3.1
     - name: setup lws from sources
       if: ${{ matrix.deps_from_src == 'yes' }}
       run: |
@@ -135,7 +135,7 @@ jobs:
       uses: actions/checkout@v2
       with:
         repository: eclipse/paho.mqtt.c
-        ref: v1.3.1
+        ref: v1.3.9
     - name: setup paho-mqtt from sources
       if: ${{ matrix.deps_from_src == 'yes' }}
       run: |
