@@ -72,8 +72,6 @@ janus_SOURCES = \
 	apierror.h \
 	auth.c \
 	auth.h \
-	cmdline.c \
-	cmdline.h \
 	config.c \
 	config.h \
 	debug.h \
@@ -90,6 +88,8 @@ janus_SOURCES = \
 	log.c \
 	log.h \
 	mutex.h \
+	options.c \
+	options.h \
 	record.c \
 	record.h \
 	refcount.h \
@@ -167,13 +167,6 @@ janus_cfgconv_LDADD = \
 
 dist_man1_MANS += janus-cfgconv.1
 
-BUILT_SOURCES = cmdline.c cmdline.h version.c
-
-cmdline.h: cmdline.c
-
-cmdline.c: janus.c
-	gengetopt --set-package="janus" --set-version="$(VERSION)" < janus.ggo
-
 directory = ../.git
 dir_target = $(directory)-$(wildcard $(directory))
 dir_present = $(directory)-$(directory)
@@ -196,9 +189,6 @@ $(dir_present):
 
 $(dir_absent):
 	echo "not-a-git-repo" | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
-
-EXTRA_DIST += janus.ggo
-CLEANFILES += cmdline.c cmdline.h version.c
 
 ##
 # Transports
@@ -544,8 +534,6 @@ bin_PROGRAMS += pcap2mjr
 endif
 
 janus_pp_rec_SOURCES = \
-	postprocessing/pp-cmdline.c \
-	postprocessing/pp-cmdline.h \
 	postprocessing/pp-g711.c \
 	postprocessing/pp-g711.h \
 	postprocessing/pp-g722.c \
@@ -561,6 +549,8 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-opus.c \
 	postprocessing/pp-opus.h \
 	postprocessing/pp-opus-silence.h \
+	postprocessing/pp-options.c \
+	postprocessing/pp-options.h \
 	postprocessing/pp-rtp.h \
 	postprocessing/pp-srt.c \
 	postprocessing/pp-srt.h \
@@ -588,21 +578,12 @@ janus_pp_rec_LDADD = \
 	$(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) \
 	$(NULL)
 
-BUILT_SOURCES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
-
-postprocessing/pp-cmdline.h: postprocessing/pp-cmdline.c
-
-postprocessing/pp-cmdline.c: postprocessing/janus-pp-rec.c
-	gengetopt --set-package="janus-pp-rec" --set-version="$(VERSION)" -F postprocessing/pp-cmdline < postprocessing/janus-pp-rec.ggo
-
-EXTRA_DIST += postprocessing/janus-pp-rec.ggo
-CLEANFILES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
-
 mjr2pcap_SOURCES = \
 	postprocessing/pp-rtp.h \
 	postprocessing/mjr2pcap.c \
 	log.c \
 	utils.c \
+	version.c \
 	$(NULL)
 
 mjr2pcap_CFLAGS = \
@@ -619,12 +600,11 @@ mjr2pcap_LDADD = \
 
 if ENABLE_PCAP2MJR
 pcap2mjr_SOURCES = \
-	postprocessing/p2m-cmdline.c \
-	postprocessing/p2m-cmdline.h \
 	postprocessing/pp-rtp.h \
 	postprocessing/pcap2mjr.c \
 	log.c \
 	utils.c \
+	version.c \
 	$(NULL)
 
 pcap2mjr_CFLAGS = \
@@ -641,16 +621,6 @@ pcap2mjr_LDADD = \
 	$(POST_PROCESSING_MANUAL_LIBS) \
 	$(PCAP_LIBS) \
 	$(NULL)
-
-BUILT_SOURCES += postprocessing/p2m-cmdline.c postprocessing/p2m-cmdline.h
-
-postprocessing/p2m-cmdline.h: postprocessing/p2m-cmdline.c
-
-postprocessing/p2m-cmdline.c: postprocessing/pcap2mjr.c
-	gengetopt --set-package="pcap2mjr" --set-version="$(VERSION)" -F postprocessing/p2m-cmdline < postprocessing/pcap2mjr.ggo
-
-EXTRA_DIST += postprocessing/pcap2mjr.ggo
-CLEANFILES += postprocessing/p2m-cmdline.c postprocessing/p2m-cmdline.h
 endif
 
 dist_man1_MANS += postprocessing/janus-pp-rec.1

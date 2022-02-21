@@ -54,7 +54,7 @@
 #include <pcap/sll.h>
 
 #include "../debug.h"
-#include "p2m-cmdline.h"
+#include "../version.h"
 #include "pp-rtp.h"
 
 
@@ -87,21 +87,48 @@ static void janus_p2m_handle_signal(int signum) {
 	working = 0;
 }
 
-/* Main Code */
-int main(int argc, char *argv[])
-{
-	struct gengetopt_args_info args_info;
-	/* Let's call our cmdline parser */
-	if(cmdline_parser(argc, argv, &args_info) != 0)
-		exit(1);
+/* Supported command-line arguments */
+static uint32_t ssrc = 0;
+static const char *codec = NULL;
+static gboolean show_warnings = FALSE;
+static const char **paths = NULL;
+static GOptionEntry opt_entries[] = {
+	{ "codec", 'c', 0, G_OPTION_ARG_STRING, &codec, "Codec the recording will contain (e.g., opus, vp8, etc.)", NULL },
+	{ "ssrc", 's', 0, G_OPTION_ARG_INT, &ssrc, "SSRC of the packets in the pcap file to save (pass 0 to autodetect)", NULL },
+	{ "warnings", 'w', 0, G_OPTION_ARG_NONE, &show_warnings, "Show warnings for skipped packets (e.g., not RTP or wrong SSRC)", NULL },
+	{ G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &paths, NULL, NULL },
+	{ NULL },
+};
 
+/* Main Code */
+int main(int argc, char *argv[]) {
 	janus_log_init(FALSE, TRUE, NULL);
 	atexit(janus_log_destroy);
 
+	JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
+	JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
+	JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
+
+	/* Parse the command-line arguments */
+	GError *error = NULL;
+	GOptionContext *opts = g_option_context_new("source.pcap destination.mjr");
+	g_option_context_set_help_enabled(opts, TRUE);
+	g_option_context_add_main_entries(opts, opt_entries, NULL);
+	if(!g_option_context_parse(opts, &argc, &argv, &error)) {
+		g_print("%s\n", error->message);
+		g_error_free(error);
+		exit(1);
+	}
+	/* If some arguments are missing, fail */
+	if(codec == NULL || paths == NULL || paths[0] == NULL || paths[1] == NULL) {
+		char *help = g_option_context_get_help(opts, TRUE, NULL);
+		g_print("%s", help);
+		g_free(help);
+		g_option_context_free(opts);
+		exit(1);
+	}
+
 	/* Evaluate arguments to find source and target */
-	uint32_t ssrc = args_info.ssrc_arg;
-	const char *codec = args_info.codec_arg;
-	gboolean show_warnings = args_info.warnings_given;
 	gboolean video = FALSE;
 	if(!strcasecmp(codec, "vp8") || !strcasecmp(codec, "vp9") || !strcasecmp(codec, "h264")
 			|| !strcasecmp(codec, "av1") || !strcasecmp(codec, "h265")) {
@@ -113,38 +140,19 @@ int main(int argc, char *argv[])
 	} else if(!strcasecmp(codec, "text") || !strcasecmp(codec, "binary")) {
 		/* We only do processing for RTP */
 		JANUS_LOG(LOG_ERR, "Data channels not supported by this tool\n");
-		cmdline_parser_free(&args_info);
+		g_option_context_free(opts);
 		exit(1);
 	} else {
 		JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
-		cmdline_parser_free(&args_info);
+		g_option_context_free(opts);
 		exit(1);
 	}
-	char *source = NULL, *destination = NULL, *setting = NULL;
-	int i=0;
-	for(i=1; i<argc; i++) {
-		if(argv[i] == NULL || strlen(argv[i]) == 0) {
-			setting = NULL;
-			continue;
-		}
-		if(argv[i][0] == '-') {
-			setting = argv[i];
-			continue;
-		}
-		if(setting == NULL || (
-				(strcmp(setting, "-c")) && (strcmp(setting, "--codec")) &&
-				(strcmp(setting, "-s")) && (strcmp(setting, "--ssrc"))
-		)) {
-			if(source == NULL)
-				source = argv[i];
-			else if(destination == NULL)
-				destination = argv[i];
-		}
-		setting = NULL;
-	}
+	const char *source = paths[0], *destination = paths[1];
 	if(source == NULL || destination == NULL) {
-		cmdline_parser_print_help();
-		cmdline_parser_free(&args_info);
+		char *help = g_option_context_get_help(opts, TRUE, NULL);
+		g_print("%s", help);
+		g_free(help);
+		g_option_context_free(opts);
 		exit(1);
 	}
 	JANUS_LOG(LOG_INFO, "[%s/%"SCNu32"] %s --> %s\n", codec, ssrc, source, destination);
@@ -156,14 +164,14 @@ int main(int argc, char *argv[])
 	pcap_t *pcap = pcap_open_offline(source, errbuf);
 	if(pcap == NULL) {
 		JANUS_LOG(LOG_ERR, "Could not open file %s: %s\n", source, errbuf);
-		cmdline_parser_free(&args_info);
+		g_option_context_free(opts);
 		exit(1);
 	}
 	int link = pcap_datalink(pcap);
 	if(link != DLT_LINUX_SLL && link != DLT_EN10MB) {
 		JANUS_LOG(LOG_ERR, "Unsupported link type %d (%s) in capture\n",
 			link, pcap_datalink_val_to_name(link));
-		cmdline_parser_free(&args_info);
+		g_option_context_free(opts);
 		exit(1);
 	}
 
@@ -171,7 +179,7 @@ int main(int argc, char *argv[])
 	FILE *outfile = fopen(destination, "wb");
 	if(outfile == NULL) {
 		JANUS_LOG(LOG_ERR, "Couldn't open output file\n");
-		cmdline_parser_free(&args_info);
+		g_option_context_free(opts);
 		pcap_close(pcap);
 		exit(1);
 	}
@@ -180,7 +188,7 @@ int main(int argc, char *argv[])
 	if(res != strlen(header)) {
 		JANUS_LOG(LOG_ERR, "Couldn't write .mjr header (%zu != %zu, %s)\n",
 			res, strlen(header), g_strerror(errno));
-		cmdline_parser_free(&args_info);
+		g_option_context_free(opts);
 		pcap_close(pcap);
 		exit(1);
 	}
@@ -358,7 +366,7 @@ done:
 		fclose(outfile);
 	}
 
-	cmdline_parser_free(&args_info);
+	g_option_context_free(opts);
 	JANUS_LOG(LOG_INFO, "Bye!\n");
 	return 0;
 }
