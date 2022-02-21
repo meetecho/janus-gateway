@@ -5256,14 +5256,21 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 				}
 			}
 		}
+		/* Get rid of streams and streams_byid while holding the mountpoint mutex */
+		g_list_free_full(session->streams, (GDestroyNotify)(janus_streaming_session_stream_free));
+		session->streams = NULL;
+		if(session->streams_byid != NULL)
+			g_hash_table_unref(session->streams_byid);
+		session->streams_byid = NULL;
 		janus_mutex_unlock(&mp->mutex);
+	} else {
+		/* Get rid of streams and streams_byid */
+		g_list_free_full(session->streams, (GDestroyNotify)(janus_streaming_session_stream_free));
+		session->streams = NULL;
+		if(session->streams_byid != NULL)
+			g_hash_table_unref(session->streams_byid);
+		session->streams_byid = NULL;
 	}
-	/* Get rid of streams and streams_byid */
-	g_list_free_full(session->streams, (GDestroyNotify)(janus_streaming_session_stream_free));
-	session->streams = NULL;
-	if(session->streams_byid != NULL)
-		g_hash_table_unref(session->streams_byid);
-	session->streams_byid = NULL;
 
 	g_atomic_int_set(&session->hangingup, 0);
 }
