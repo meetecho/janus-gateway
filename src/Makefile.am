@@ -167,6 +167,8 @@ janus_cfgconv_LDADD = \
 
 dist_man1_MANS += janus-cfgconv.1
 
+BUILT_SOURCES = version.c
+
 directory = ../.git
 dir_target = $(directory)-$(wildcard $(directory))
 dir_present = $(directory)-$(directory)
@@ -189,6 +191,8 @@ $(dir_present):
 
 $(dir_absent):
 	echo "not-a-git-repo" | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
+
+CLEANFILES += version.c
 
 ##
 # Transports
