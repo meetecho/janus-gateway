@@ -2144,6 +2144,8 @@ typedef struct janus_videoroom_rtp_relay_packet {
 	uint16_t seq_number;
 	/* Extensions to add, if any */
 	janus_plugin_rtp_extensions extensions;
+	/* Whether simulcast is involved */
+	gboolean simulcast;
 	/* The following are only relevant if we're doing VP9 SVC*/
 	gboolean svc;
 	janus_vp9_svc_info svc_info;
@@ -6733,7 +6735,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 			}
 		}
 		/* Done, relay it */
-		janus_videoroom_rtp_relay_packet packet;
+		janus_videoroom_rtp_relay_packet packet = { 0 };
 		packet.source = ps;
 		packet.data = rtp;
 		packet.length = len;
@@ -6755,6 +6757,8 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 				packet.svc = found;
 			}
 		}
+		if(video && ps->simulcast)
+			packet.simulcast = TRUE;
 		packet.ssrc[0] = (sc != -1 ? ps->vssrc[0] : 0);
 		packet.ssrc[1] = (sc != -1 ? ps->vssrc[1] : 0);
 		packet.ssrc[2] = (sc != -1 ? ps->vssrc[2] : 0);
@@ -6932,7 +6936,7 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_da
 	/* Save the message if we're recording */
 	janus_recorder_save_frame(ps->rc, buf, len);
 	/* Relay to all subscribers */
-	janus_videoroom_rtp_relay_packet pkt;
+	janus_videoroom_rtp_relay_packet pkt = { 0 };
 	pkt.source = ps;
 	pkt.data = (struct rtp_header *)buf;
 	pkt.length = len;
@@ -10597,7 +10601,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* Restore the timestamp and sequence number to what the publisher set them to */
 			packet->data->timestamp = htonl(packet->timestamp);
 			packet->data->seq_number = htons(packet->seq_number);
-		} else if(packet->ssrc[0] != 0) {
+		} else if(packet->simulcast) {
 			/* Handle simulcast: make sure we have a payload to work with */
 			int plen = 0;
 			char *payload = janus_rtp_payload((char *)packet->data, packet->length, &plen);
