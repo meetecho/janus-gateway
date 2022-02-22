@@ -1561,6 +1561,8 @@ int janus_process_incoming_request(janus_request *request) {
 					handle->stream->audiolevel_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 					/* Check if the video orientation ID extension is being negotiated */
 					handle->stream->videoorientation_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+					/* Check if the playout delay ID extension is being negotiated */
+					handle->stream->playoutdelay_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_PLAYOUT_DELAY);
 					/* Check if the abs-send-time ID extension is being negotiated */
 					handle->stream->abs_send_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
 					/* Check if transport wide CC is supported */
@@ -1626,6 +1628,8 @@ int janus_process_incoming_request(janus_request *request) {
 					handle->stream->audiolevel_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 					/* Check if the video orientation ID extension is being negotiated */
 					handle->stream->videoorientation_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+					/* Check if the playout delay ID extension is being negotiated */
+					handle->stream->playoutdelay_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_PLAYOUT_DELAY);
 					/* Check if the abs-send-time ID extension is being negotiated */
 					handle->stream->abs_send_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
 					/* Check if transport wide CC is supported */
@@ -3138,6 +3142,8 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_object_set_new(se, JANUS_RTP_EXTMAP_AUDIO_LEVEL, json_integer(stream->audiolevel_ext_id));
 	if(stream->videoorientation_ext_id > 0)
 		json_object_set_new(se, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION, json_integer(stream->videoorientation_ext_id));
+	if(stream->playoutdelay_ext_id > 0)
+		json_object_set_new(se, JANUS_RTP_EXTMAP_PLAYOUT_DELAY, json_integer(stream->playoutdelay_ext_id));
 	if(stream->dependencydesc_ext_id > 0)
 		json_object_set_new(se, JANUS_RTP_EXTMAP_DEPENDENCY_DESC, json_integer(stream->dependencydesc_ext_id));
 	json_object_set_new(s, "extensions", se);
@@ -3738,7 +3744,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		}
 		/* Make sure we don't send the rid/repaired-rid attributes when offering ourselves */
 		int mid_ext_id = 0, transport_wide_cc_ext_id = 0, abs_send_time_ext_id = 0,
-			audiolevel_ext_id = 0, videoorientation_ext_id = 0, dependencydesc_ext_id = 0;
+			audiolevel_ext_id = 0, videoorientation_ext_id = 0, playoutdelay_ext_id = 0, dependencydesc_ext_id = 0;
 		int opusred_pt = 0;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
@@ -3758,6 +3764,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 							audiolevel_ext_id = atoi(a->value);
 						else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
 							videoorientation_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_PLAYOUT_DELAY))
+							playoutdelay_ext_id = atoi(a->value);
 						else if(strstr(a->value, JANUS_RTP_EXTMAP_DEPENDENCY_DESC))
 							dependencydesc_ext_id = atoi(a->value);
 						else if(strstr(a->value, JANUS_RTP_EXTMAP_RID) ||
@@ -3791,6 +3799,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->stream->audiolevel_ext_id = audiolevel_ext_id;
 		if(ice_handle->stream && ice_handle->stream->videoorientation_ext_id != videoorientation_ext_id)
 			ice_handle->stream->videoorientation_ext_id = videoorientation_ext_id;
+		if(ice_handle->stream && ice_handle->stream->playoutdelay_ext_id != playoutdelay_ext_id)
+			ice_handle->stream->playoutdelay_ext_id = playoutdelay_ext_id;
 		if(ice_handle->stream && ice_handle->stream->dependencydesc_ext_id != dependencydesc_ext_id)
 			ice_handle->stream->dependencydesc_ext_id = dependencydesc_ext_id;
 	} else {

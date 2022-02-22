@@ -204,6 +204,8 @@ static struct janus_json_parameter request_parameters[] = {
 	{"videocodec", JSON_STRING, 0},
 	{"videoprofile", JSON_STRING, 0},
 	{"opusred", JANUS_JSON_BOOL, 0},
+	{"min_delay", JSON_INTEGER, 0},
+	{"max_delay", JSON_INTEGER, 0},
 };
 
 /* Useful stuff */
@@ -246,6 +248,7 @@ typedef struct janus_echotest_session {
 	gboolean e2ee;			/* Whether media is encrypted, e.g., using Insertable Streams */
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	guint16 slowlink_count;
+ 	int16_t min_delay, max_delay;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -430,6 +433,8 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
+	session->min_delay = -1;
+	session->max_delay = -1;
 	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
@@ -581,6 +586,10 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 		gboolean video = packet->video;
 		char *buf = packet->buffer;
 		uint16_t len = packet->length;
+		if(session->min_delay > -1 && session->max_delay > -1) {
+			packet->extensions.min_delay = session->min_delay;
+			packet->extensions.max_delay = session->max_delay;
+		}
 		if(video && session->video_active && (session->ssrc[0] != 0 || session->rid[0] != NULL)) {
 			/* Handle simulcast: backup the header information first */
 			janus_rtp_header *header = (janus_rtp_header *)buf;
@@ -849,6 +858,8 @@ static void janus_echotest_hangup_media_internal(janus_plugin_session *handle) {
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
+	session->min_delay = -1;
+	session->max_delay = -1;
 	g_atomic_int_set(&session->hangingup, 0);
 }
 
@@ -940,6 +951,8 @@ static void *janus_echotest_handler(void *data) {
 		json_t *videocodec = json_object_get(root, "videocodec");
 		json_t *videoprofile = json_object_get(root, "videoprofile");
 		json_t *opusred = json_object_get(root, "opusred");
+		json_t *min_delay = json_object_get(root, "min_delay");
+		json_t *max_delay = json_object_get(root, "max_delay");
 		/* Enforce request */
 		if(audio) {
 			session->audio_active = json_is_true(audio);
@@ -1003,6 +1016,28 @@ static void *janus_echotest_handler(void *data) {
 				gateway->send_pli(session->handle);
 			}
 		}
+		if(min_delay) {
+			int16_t md = json_integer_value(min_delay);
+			if(md < 0) {
+				session->min_delay = -1;
+				session->max_delay = -1;
+			} else {
+				session->min_delay = md;
+				if(session->min_delay > session->max_delay)
+					session->max_delay = session->min_delay;
+			}
+		}
+		if(max_delay) {
+			int16_t md = json_integer_value(max_delay);
+			if(md < 0) {
+				session->min_delay = -1;
+				session->max_delay = -1;
+			} else {
+				session->max_delay = md;
+				if(session->max_delay < session->min_delay)
+					session->min_delay = session->max_delay;
+			}
+		}
 
 		/* Any SDP to handle? */
 		if(msg_sdp) {
@@ -1012,7 +1047,8 @@ static void *janus_echotest_handler(void *data) {
 			session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);
 		}
 
-		if(!audio && !video && !videocodec && !videoprofile && !opusred && !bitrate && !substream && !temporal && !fallback && !record && !msg_sdp) {
+		if(!audio && !video && !videocodec && !videoprofile && !opusred && !bitrate &&
+				!substream && !temporal && !fallback && !record && !min_delay && !max_delay && !msg_sdp) {
 			JANUS_LOG(LOG_ERR, "No supported attributes found\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Message error: no supported attributes found");
@@ -1097,6 +1133,7 @@ static void *janus_echotest_handler(void *data) {
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION,
+ 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_DEPENDENCY_DESC,
 				JANUS_SDP_OA_DONE);
