@@ -2313,7 +2313,7 @@ function Janus(gatewayCallbacks) {
 			if(videoSupport && media) {
 				var simulcast = (callbacks.simulcast === true || callbacks.simulcast2 === true);
 				var svc = callbacks.svc;
-				if((simulcast || simulcast2 || svc) && !jsep && !media.video)
+				if((simulcast || svc) && !jsep && !media.video)
 					media.video = "hires";
 				if(media.video && media.video != 'screen' && media.video != 'window') {
 					if(typeof media.video === 'object') {
