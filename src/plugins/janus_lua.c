@@ -992,7 +992,7 @@ static int janus_lua_method_relayrtp(lua_State *s) {
 	}
 	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Send the RTP packet */
-	janus_plugin_rtp rtp = { .video = is_video, .buffer = (char *)payload, .length = len };
+	janus_plugin_rtp rtp = { .mindex = -1, .video = is_video, .buffer = (char *)payload, .length = len };
 	janus_plugin_rtp_extensions_reset(&rtp.extensions);
 	lua_janus_core->relay_rtp(session->handle, &rtp);
 	lua_pushnumber(s, 0);
@@ -2469,7 +2469,7 @@ static void janus_lua_relay_rtp_packet(gpointer data, gpointer user_data) {
 		}
 		/* Send the packet */
 		if(lua_janus_core != NULL) {
-			janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
+			janus_plugin_rtp rtp = { .mindex = -1, .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
 			janus_plugin_rtp_extensions_reset(&rtp.extensions);
 			lua_janus_core->relay_rtp(session->handle, &rtp);
 		}
@@ -2485,7 +2485,7 @@ static void janus_lua_relay_rtp_packet(gpointer data, gpointer user_data) {
 		janus_rtp_header_update(packet->data, packet->is_video ? &session->vrtpctx : &session->artpctx, packet->is_video, 0);
 		/* Send the packet */
 		if(lua_janus_core != NULL) {
-			janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
+			janus_plugin_rtp rtp = { .mindex = -1, .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
 			janus_plugin_rtp_extensions_reset(&rtp.extensions);
 			lua_janus_core->relay_rtp(session->handle, &rtp);
 		}
