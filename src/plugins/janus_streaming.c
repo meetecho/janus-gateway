@@ -4740,8 +4740,10 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						codec = "av1";
 					else if(strstr(stream->codecs.rtpmap, "h265") || strstr(stream->codecs.rtpmap, "H265"))
 						codec = "h265";
+					file = json_string_value(video);
 				} else if(stream->type == JANUS_STREAMING_MEDIA_DATA) {
 					codec = "text";
+					file = json_string_value(data);
 				}
 				janus_recorder *rc = janus_recorder_create(NULL, codec, (char *)file);
 				if(rc == NULL) {
@@ -4796,7 +4798,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						GList *temp = source->media;
 						while(temp) {
 							janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
-							if(strcasecmp(stream->mid, mid)) {
+							if(strcasecmp(stream->mid, mid) || stream->rc == NULL) {
 								temp = temp->next;
 								continue;
 							}
@@ -4833,7 +4835,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
 				if((stream->type == JANUS_STREAMING_MEDIA_AUDIO && !json_is_true(audio)) ||
 						(stream->type == JANUS_STREAMING_MEDIA_VIDEO && !json_is_true(video)) ||
-						(stream->type == JANUS_STREAMING_MEDIA_DATA && !json_is_true(data))) {
+						(stream->type == JANUS_STREAMING_MEDIA_DATA && !json_is_true(data)) || stream->rc == NULL) {
 					temp = temp->next;
 					continue;
 				}
