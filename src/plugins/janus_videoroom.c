@@ -450,8 +450,7 @@ room-<unique room ID>: {
 			"id" : <unique numeric ID of the participant>,
 			"display" : "<display name of the participant, if any; optional>",
 			"publisher" : "<true|false, whether user is an active publisher in the room>",
-			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>,
-			"subscribers" : <number of subscribers for this participant, if any>
+			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>
 		},
 		// Other participants
 	]
