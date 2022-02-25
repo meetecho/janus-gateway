@@ -4679,6 +4679,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					}
 				}
 				janus_mutex_unlock(&source->rec_mutex);
+				janus_refcount_decrease(&mp->ref);
+				janus_mutex_unlock(&mountpoints_mutex);
 				/* Send a success response back */
 				response = json_object();
 				json_object_set_new(response, "streaming", json_string("ok"));
@@ -4782,7 +4784,6 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			janus_mutex_lock(&source->rec_mutex);
 			if(media) {
 				/* Iterate on all media to stop */
-				janus_mutex_lock(&source->rec_mutex);
 				if(json_array_size(media) > 0) {
 					size_t i = 0;
 					for(i=0; i<json_array_size(media); i++) {
@@ -4810,6 +4811,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					}
 				}
 				janus_mutex_unlock(&source->rec_mutex);
+				janus_refcount_decrease(&mp->ref);
+				janus_mutex_unlock(&mountpoints_mutex);
 				/* Send a success response back */
 				response = json_object();
 				json_object_set_new(response, "streaming", json_string("ok"));
