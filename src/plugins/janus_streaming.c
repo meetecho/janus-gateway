@@ -4787,9 +4787,9 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					size_t i = 0;
 					for(i=0; i<json_array_size(media); i++) {
 						json_t *m = json_array_get(media, i);
-						if(!json_is_string(m))
+						if(!json_is_object(m))
 							continue;
-						const char *mid = json_string_value(m);
+						const char *mid = json_string_value(json_object_get(m, "mid"));
 						if(mid == NULL)
 							continue;
 						GList *temp = source->media;
