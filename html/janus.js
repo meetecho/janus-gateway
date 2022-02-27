@@ -967,8 +967,10 @@ function Janus(gatewayCallbacks) {
 				}
 				if(errorThrown === "")
 					callbacks.error(textStatus + ": Is the server down?");
-				else
+				else if (errorThrown && errorThrown.error)
 					callbacks.error(textStatus + ": " + errorThrown.error.stack);
+				else
+					callbacks.error(textStatus + ": " + errorThrown);
 			}
 		});
 	}
