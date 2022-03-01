@@ -3997,6 +3997,20 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 	}
 
 	if(pc && pc->do_transport_wide_cc && medium) {
+		/* Simulcast layers that have not received data will not have a recorded peer SSRC. */
+		/* Pick the first layer that has a peer SSRC */
+		guint32 ssrc_peer = 0;
+		for(int i = 0; i < 3; i++) {
+			if(medium->ssrc_peer[i] != 0) {
+				ssrc_peer = medium->ssrc_peer[i];
+				break;
+			}
+		}
+		if (ssrc_peer == 0) {
+			JANUS_LOG(LOG_WARN, "No peer SSRC, cannot send transport-wide CC feedback\n");
+			return G_SOURCE_CONTINUE;
+		}
+
 		/* Create a transport wide feedback message */
 		size_t size = 1300;
 		char rtcpbuf[1300];
@@ -4065,7 +4079,7 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 			guint8 feedback_packet_count = pc->transport_wide_cc_feedback_count++;
 			/* Create RTCP packet */
 			int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
-				medium->ssrc, medium->ssrc_peer[0], feedback_packet_count, packets_to_process);
+				medium->ssrc, ssrc_peer, feedback_packet_count, packets_to_process);
 			/* Enqueue it, we'll send it later */
 			if(len > 0) {
 				janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = TRUE, .buffer = rtcpbuf, .length = len };
