@@ -3052,7 +3052,7 @@ sudo supervisorctl update
  * Should you encounter a bug or a crash, open a new
  * <a href="https://github.com/meetecho/janus-gateway/issues/new">issue</a>
  * on GitHub. Make sure you carefully read the
- * <a href="https://github.com/meetecho/janus-gateway/blob/master/CONTRIBUTING.md">guidelines</a>
+ * <a href="https://github.com/meetecho/janus-gateway/blob/master/.github/CONTRIBUTING.md">guidelines</a>
  * for contributing, or otherwise we may decide to close the issue and
  * not even look at it.
  *
