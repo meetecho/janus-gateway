@@ -3979,6 +3979,7 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	janus_ice_peerconnection *pc = handle->pc;
 
+	guint32 ssrc_peer = 0;
 	janus_ice_peerconnection_medium *medium = NULL;
 	if(pc) {
 		/* Find inbound video medium */
@@ -3989,28 +3990,31 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_ice_peerconnection_medium *m = value;
 			if(m && m->type == JANUS_MEDIA_VIDEO && m->recv) {
-				medium = m;
-				break;
+				/* If a medium (or simulcast layer, if applicable) has not received data, its SSRC may be unknown. */
+				/* Pick the first valid SSRC we find across all considered mediums */
+				int i = 0;
+				for(i = 0; i < 3; i++) {
+					if(m->ssrc_peer[i] != 0)
+						break;
+				}
+
+				/* Stop if we found a valid SSRC/medium to use */
+				if(i < 3) {
+					ssrc_peer = m->ssrc_peer[i];
+					medium = m;
+					break;
+				}
 			}
 		}
 		janus_mutex_unlock(&handle->mutex);
 	}
 
-	if(pc && pc->do_transport_wide_cc && medium) {
-		/* Simulcast layers that have not received data will not have a recorded peer SSRC. */
-		/* Pick the first layer that has a peer SSRC */
-		guint32 ssrc_peer = 0;
-		for(int i = 0; i < 3; i++) {
-			if(medium->ssrc_peer[i] != 0) {
-				ssrc_peer = medium->ssrc_peer[i];
-				break;
-			}
-		}
-		if (ssrc_peer == 0) {
-			JANUS_LOG(LOG_WARN, "No peer SSRC, cannot send transport-wide CC feedback\n");
-			return G_SOURCE_CONTINUE;
-		}
+	if(!medium) {
+		JANUS_LOG(LOG_HUGE, "No medium with a valid peer SSRC found for transport-wide CC feedback\n");
+		return G_SOURCE_CONTINUE;
+	}
 
+	if(pc && pc->do_transport_wide_cc) {
 		/* Create a transport wide feedback message */
 		size_t size = 1300;
 		char rtcpbuf[1300];
