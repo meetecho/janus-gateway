@@ -4211,6 +4211,19 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	janus_ice_stream *stream = handle->stream;
 	if(stream && stream->video_recv && stream->do_transport_wide_cc) {
+		/* Make sure we have an SSRC to report about */
+		guint ssrc_peer = 0;
+		int i = 0;
+		for(i=0; i<3; i++) {
+			if(stream->video_ssrc_peer[i] != 0) {
+				ssrc_peer = stream->video_ssrc_peer[i];
+				break;
+			}
+		}
+		if(ssrc_peer == 0) {
+			JANUS_LOG(LOG_HUGE, "No valid peer SSRC found for transport-wide CC feedback\n");
+			return G_SOURCE_CONTINUE;
+		}
 		/* Create a transport wide feedback message */
 		size_t size = 1300;
 		char rtcpbuf[1300];
@@ -4279,7 +4292,7 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 			guint8 feedback_packet_count = stream->transport_wide_cc_feedback_count++;
 			/* Create RTCP packet */
 			int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
-				stream->video_ssrc, stream->video_ssrc_peer[0], feedback_packet_count, packets_to_process);
+				stream->video_ssrc, ssrc_peer, feedback_packet_count, packets_to_process);
 			/* Enqueue it, we'll send it later */
 			if(len > 0) {
 				janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = rtcpbuf, .length = len };
