@@ -444,6 +444,8 @@ struct janus_ice_peerconnection {
 	gint audiolevel_ext_id;
 	/*! \brief Video orientation extension ID */
 	gint videoorientation_ext_id;
+	/*! \brief Playout delay extension ID */
+	gint playoutdelay_ext_id;
 	/*! \brief Dependency descriptor extension ID */
 	gint dependencydesc_ext_id;
 	/*! \brief Absolute Send Time ext ID */

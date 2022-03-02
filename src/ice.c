@@ -2715,7 +2715,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				janus_plugin_rtp rtp = { .mindex = medium->mindex, .video = video, .buffer = buf, .length = buflen };
 				janus_plugin_rtp_extensions_reset(&rtp.extensions);
 				/* Parse RTP extensions before involving the plugin */
-				if(pc->audiolevel_ext_id != -1) {
+				if(!video && pc->audiolevel_ext_id != -1) {
 					gboolean vad = FALSE;
 					int level = -1;
 					if(janus_rtp_header_extension_parse_audio_level(buf, buflen,
@@ -2724,7 +2724,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						rtp.extensions.audio_level_vad = vad;
 					}
 				}
-				if(pc->videoorientation_ext_id != -1) {
+				if(video && pc->videoorientation_ext_id != -1) {
 					gboolean c = FALSE, f = FALSE, r1 = FALSE, r0 = FALSE;
 					if(janus_rtp_header_extension_parse_video_orientation(buf, buflen,
 							pc->videoorientation_ext_id, &c, &f, &r1, &r0) == 0) {
@@ -2739,7 +2739,15 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						rtp.extensions.video_flipped = f;
 					}
 				}
-				if(pc->dependencydesc_ext_id != -1) {
+				if(video && pc->playoutdelay_ext_id != -1) {
+					uint16_t min = 0, max = 0;
+					if(janus_rtp_header_extension_parse_playout_delay(buf, buflen,
+							pc->playoutdelay_ext_id, &min, &max) == 0) {
+						rtp.extensions.min_delay = min;
+						rtp.extensions.max_delay = max;
+					}
+				}
+				if(video && pc->dependencydesc_ext_id != -1) {
 					uint8_t dd[256];
 					int len = sizeof(dd);
 					if(janus_rtp_header_extension_parse_dependency_desc(buf, buflen,
@@ -3756,8 +3764,9 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 	gboolean video = (packet->type == JANUS_ICE_PACKET_VIDEO);
 	if(handle->pc->mid_ext_id > 0 || (video && handle->pc->abs_send_time_ext_id > 0) ||
 			(video && handle->pc->transport_wide_cc_ext_id > 0) ||
-			(!video && packet->extensions.audio_level != -1 && handle->pc->audiolevel_ext_id > 0) ||
-			(video && packet->extensions.video_rotation != -1 && handle->pc->videoorientation_ext_id > 0) ||
+			(!video && packet->extensions.audio_level > -1 && handle->pc->audiolevel_ext_id > 0) ||
+			(video && packet->extensions.video_rotation > -1 && handle->pc->videoorientation_ext_id > 0) ||
+			(video && (packet->extensions.min_delay > -1 || packet->extensions.max_delay > -1) && handle->pc->playoutdelay_ext_id > 0) ||
 			(video && packet->extensions.dd_len > 0 && handle->pc->dependencydesc_ext_id > 0)) {
 		/* Do we need 2-byte extemsions, or are 1-byte extensions fine? */
 		gboolean use_2byte = (video && packet->extensions.dd_len > 16 && handle->pc->dependencydesc_ext_id > 0);
@@ -3810,7 +3819,7 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 			}
 		}
 		/* Check if the plugin (or source) included other extensions */
-		if(!video && packet->extensions.audio_level != -1 && handle->pc->audiolevel_ext_id > 0) {
+		if(!video && packet->extensions.audio_level > -1 && handle->pc->audiolevel_ext_id > 0) {
 			/* Add audio-level extension */
 			if(!use_2byte) {
 				*index = (handle->pc->audiolevel_ext_id << 4);
@@ -3827,7 +3836,7 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 				extbufsize -= 3;
 			}
 		}
-		if(video && packet->extensions.video_rotation != -1 && handle->pc->videoorientation_ext_id > 0) {
+		if(video && packet->extensions.video_rotation > -1 && handle->pc->videoorientation_ext_id > 0) {
 			/* Add video-orientation extension */
 			gboolean c = (packet->extensions.video_back_camera == TRUE),
 				f = (packet->extensions.video_flipped == TRUE), r1 = FALSE, r0 = FALSE;
@@ -3863,6 +3872,27 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 				index += 3;
 				extlen += 3;
 				extbufsize -= 3;
+			}
+		}
+		if(video && (packet->extensions.min_delay > -1 || packet->extensions.max_delay > -1) && handle->pc->playoutdelay_ext_id > 0) {
+			/* Add playout-delay extension */
+			uint32_t min_delay = (uint32_t)packet->extensions.min_delay;
+			uint32_t max_delay = (uint32_t)packet->extensions.max_delay;
+			uint32_t pd = ((min_delay << 12) & 0x00FFF000) + (max_delay & 0x00000FFF);
+			uint32_t pd24 = htonl(pd) >> 8;
+			if(!use_2byte) {
+				*index = (handle->pc->playoutdelay_ext_id << 4) + 2;
+				memcpy(index+1, &pd24, 3);
+				index += 4;
+				extlen += 4;
+				extbufsize -= 4;
+			} else {
+				*index = handle->pc->playoutdelay_ext_id;
+				*(index+1) = 3;
+				memcpy(index+2, &pd24, 3);
+				index += 5;
+				extlen += 5;
+				extbufsize -= 5;
 			}
 		}
 		/* Check if we need to add the mid extension */
@@ -3949,6 +3979,7 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	janus_ice_peerconnection *pc = handle->pc;
 
+	guint32 ssrc_peer = 0;
 	janus_ice_peerconnection_medium *medium = NULL;
 	if(pc) {
 		/* Find inbound video medium */
@@ -3959,14 +3990,31 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_ice_peerconnection_medium *m = value;
 			if(m && m->type == JANUS_MEDIA_VIDEO && m->recv) {
-				medium = m;
-				break;
+				/* If a medium (or simulcast layer, if applicable) has not received data, its SSRC may be unknown. */
+				/* Pick the first valid SSRC we find across all considered mediums */
+				int i = 0;
+				for(i = 0; i < 3; i++) {
+					if(m->ssrc_peer[i] != 0) {
+						ssrc_peer = m->ssrc_peer[i];
+						medium = m;
+						break;
+					}
+				}
+
+				/* Stop if we found a valid SSRC/medium to use */
+				if(medium && ssrc_peer)
+					break;
 			}
 		}
 		janus_mutex_unlock(&handle->mutex);
 	}
 
-	if(pc && pc->do_transport_wide_cc && medium) {
+	if(medium == NULL) {
+		JANUS_LOG(LOG_HUGE, "No medium with a valid peer SSRC found for transport-wide CC feedback\n");
+		return G_SOURCE_CONTINUE;
+	}
+
+	if(pc && pc->do_transport_wide_cc) {
 		/* Create a transport wide feedback message */
 		size_t size = 1300;
 		char rtcpbuf[1300];
@@ -4035,7 +4083,7 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 			guint8 feedback_packet_count = pc->transport_wide_cc_feedback_count++;
 			/* Create RTCP packet */
 			int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
-				medium->ssrc, medium->ssrc_peer[0], feedback_packet_count, packets_to_process);
+				medium->ssrc, ssrc_peer, feedback_packet_count, packets_to_process);
 			/* Enqueue it, we'll send it later */
 			if(len > 0) {
 				janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = TRUE, .buffer = rtcpbuf, .length = len };

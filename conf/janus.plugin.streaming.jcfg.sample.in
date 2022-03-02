@@ -74,6 +74,12 @@
 # DO NOT SET THIS PROPERTY IF YOU DON'T KNOW WHAT YOU'RE DOING!
 # e2ee = true
 #
+# To allow mountpoints to negotiate the playout-delay RTP extension,
+# you can set the 'playoutdelay_ext' property to true: this way, any
+# subscriber can customize the playout delay of incoming video streams,
+# assuming the browser supports the RTP extension in the first place.
+# playoutdelay_ext = true
+#
 # The following options are only valid for the 'rtsp' type:
 # url = RTSP stream URL (only for restreaming RTSP)
 # rtsp_user = RTSP authorization username (only if type=rtsp)

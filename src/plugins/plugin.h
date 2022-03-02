@@ -171,7 +171,7 @@ janus_plugin *create(void) {
  * Janus instance or it will crash.
  *
  */
-#define JANUS_PLUGIN_API_VERSION	100
+#define JANUS_PLUGIN_API_VERSION	101
 
 /*! \brief Initialization of all plugin properties to NULL
  *
@@ -569,6 +569,8 @@ struct janus_plugin_rtp_extensions {
 	/*! \brief Whether the video orientation extension says it's flipped horizontally
 	 * @note Will be ignored if no rotation value is set */
 	gboolean video_flipped;
+	/*! \brief Min and max playout delay, if available; -1 means no extension */
+	int16_t min_delay, max_delay;
 	/*! \brief Length of Dependency Descriptor data, if available */
 	uint8_t dd_len;
 	/*! \brief Dependency Descriptor content */

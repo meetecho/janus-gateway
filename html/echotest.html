@@ -72,6 +72,15 @@
 						your machine. If you're interested in a demo that shows you how you
 						can select specific devices with <code>janus.js</code>, open the
 						<a class="alert-link" href="devicetest.html">Devices</a> demo instead.</div>
+						<div class="alert alert-info">The <b>Lua</b> and <b>Duktape</b> plugins, when
+						installed out of the box, come with a script that mimics the default EchoTest
+						<b>C</b> plugin: this means that you can use this demo page to talk to them
+						as well, so long as you tell the page code to connect to the respective plugin.
+						To talk to the <b>Lua</b> plugin instead of the stock EchoTest plugin,
+						add the <code>?plugin=lua</code> query string to the url of this page;
+						to talk to the <b>Duktape</b> plugin instead, use <code>?plugin=duktape</code>.
+						Since they both share pretty much the same syntax as the stock
+						EchoTest plugin, most if not all features should work just the same way.</div>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>

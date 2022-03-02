@@ -135,6 +135,12 @@ so neither Janus nor the Streaming plugin have access to anything.
 DO NOT SET THIS PROPERTY IF YOU DON'T KNOW WHAT YOU'RE DOING!
 e2ee = true
 
+To allow mountpoints to negotiate the playout-delay RTP extension,
+you can set the 'playoutdelay_ext' property to true: this way, any
+subscriber can customize the playout delay of incoming video streams,
+assuming the browser supports the RTP extension in the first place.
+playoutdelay_ext = true
+
 The following options are only valid for the 'rtsp' type:
 url = RTSP stream URL
 rtsp_user = RTSP authorization username, if needed
@@ -750,7 +756,9 @@ multistream-test: {
 	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
 	"fallback" : <How much time (in us, default 250000) without receiving packets will make us drop to the substream below>,
 	"spatial_layer" : <spatial layer to receive (0-1), in case VP9-SVC is enabled; optional>,
-	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>
+	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>,
+	"min_delay" : <minimum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
+	"max_delay" : <maximum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>
 }
 \endverbatim
  *
@@ -990,7 +998,8 @@ static struct janus_json_parameter rtp_parameters[] = {
 	{"threads", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"srtpsuite", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"srtpcrypto", JSON_STRING, 0},
-	{"e2ee", JANUS_JSON_BOOL, 0}
+	{"e2ee", JANUS_JSON_BOOL, 0},
+	{"playoutdelay_ext", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter live_parameters[] = {
 	{"filename", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -1124,6 +1133,9 @@ static struct janus_json_parameter configure_parameters[] = {
 	/* For VP9 SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	/* For the playout-delay RTP extension, if negotiated */
+	{"min_delay", JSON_INTEGER, 0},
+	{"max_delay", JSON_INTEGER, 0},
 	/* Deprecated parameters: still there only for
 	 * backwards compatibility, but not for long */
 	{"audio", JSON_STRING, 0},
@@ -1262,6 +1274,8 @@ typedef struct janus_streaming_rtp_source {
 	srtp_policy_t srtp_policy;
 	/* If the media is end-to-end encrypted, we may need to know */
 	gboolean e2ee;
+	/* Whether the playout-delay extension should be negotiated or not for new subscribers */
+	gboolean playoutdelay_ext;
 } janus_streaming_rtp_source;
 
 typedef enum janus_streaming_media {
@@ -1408,7 +1422,7 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 		gboolean textdata, gboolean buffermsg);
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
-		GList *media, int srtpsuite, char *srtpcrypto, int threads, int rtp_collision, gboolean e2ee);
+		GList *media, int srtpsuite, char *srtpcrypto, int threads, int rtp_collision, gboolean e2ee, gboolean playoutdelay_ext);
 /* Helper to create a file/ondemand live source */
 janus_streaming_mountpoint *janus_streaming_create_file_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata, char *filename, gboolean live,
@@ -1445,6 +1459,8 @@ typedef struct janus_streaming_session_stream {
 	int spatial_layer, target_spatial_layer;
 	gint64 last_spatial_layer[3];
 	int temporal_layer, target_temporal_layer;
+	/* Playout delays to enforce when relaying this stream, if the extension has been negotiated */
+	int16_t min_delay, max_delay;
 } janus_streaming_session_stream;
 static void janus_streaming_session_stream_free(janus_streaming_session_stream *s) {
 	if(s && s->stream)
@@ -1463,6 +1479,8 @@ typedef struct janus_streaming_session {
 	GHashTable *streams_byid;	/* Map of streams this session is subscribed to, indexed by mountpoint mindex */
 	/* If the media is end-to-end encrypted, we may need to know */
 	gboolean e2ee;
+	/* Whether the playout-delay extension should be negotiated */
+	gboolean playoutdelay_ext;
 	janus_mutex mutex;
 	volatile gint dataready;
 	volatile gint stopping;
@@ -1960,6 +1978,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *ssuite = janus_config_get(config, cat, janus_config_type_item, "srtpsuite");
 				janus_config_item *scrypto = janus_config_get(config, cat, janus_config_type_item, "srtpcrypto");
 				janus_config_item *e2ee = janus_config_get(config, cat, janus_config_type_item, "e2ee");
+				janus_config_item *pd = janus_config_get(config, cat, janus_config_type_item, "playoutdelay_ext");
 				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
 				if(ssuite && ssuite->value && atoi(ssuite->value) != 32 && atoi(ssuite->value) != 80) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' mountpoint '%s', invalid SRTP suite...\n", cat->name);
@@ -2342,7 +2361,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						scrypto && scrypto->value ? (char *)scrypto->value : NULL,
 						(threads && threads->value) ? atoi(threads->value) : 0,
 						(rtpcollision && rtpcollision->value) ?  atoi(rtpcollision->value) : 0,
-						(e2ee && e2ee->value) ? janus_is_true(e2ee->value) : FALSE)) == NULL) {
+						(e2ee && e2ee->value) ? janus_is_true(e2ee->value) : FALSE,
+						(pd && pd->value) ? janus_is_true(pd->value) : FALSE)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtp' mountpoint '%s'...\n", cat->name);
 					cl = cl->next;
 					continue;
@@ -2800,6 +2820,12 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 					json_object_set_new(svc, "target-temporal-layer", json_integer(s->target_temporal_layer));
 					json_object_set_new(info, "svc", svc);
 				}
+				if(stream->type == JANUS_STREAMING_MEDIA_VIDEO && session->playoutdelay_ext) {
+					json_t *pd = json_object();
+					json_object_set_new(pd, "min-delay", json_integer(s->min_delay));
+					json_object_set_new(pd, "max-delay", json_integer(s->max_delay));
+					json_object_set_new(info, "playout-delay", pd);
+				}
 				json_array_append_new(media, info);
 				temp = temp->next;
 			}
@@ -3165,6 +3191,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_t *ssuite = json_object_get(root, "srtpsuite");
 			json_t *scrypto = json_object_get(root, "srtpcrypto");
 			json_t *e2ee = json_object_get(root, "e2ee");
+			json_t *pd = json_object_get(root, "playoutdelay_ext");
 			if(ssuite && json_integer_value(ssuite) != 32 && json_integer_value(ssuite) != 80) {
 				JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, invalid SRTP suite...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
@@ -3564,7 +3591,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					scrypto ? (char *)json_string_value(scrypto) : NULL,
 					threads ? json_integer_value(threads) : 0,
 					rtpcollision ? json_integer_value(rtpcollision) : 0,
-					e2ee ? json_is_true(e2ee) : FALSE);
+					e2ee ? json_is_true(e2ee) : FALSE,
+					pd ? json_is_true(pd) : FALSE);
 			janus_mutex_lock(&mountpoints_mutex);
 			g_hash_table_remove(mountpoints_temp, string_ids ? (gpointer)mpid_str : (gpointer)&mpid);
 			janus_mutex_unlock(&mountpoints_mutex);
@@ -3893,6 +3921,10 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					g_snprintf(value, BUFSIZ, "%d", mp->helper_threads);
 					janus_config_add(config, c, janus_config_item_create("threads", value));
 				}
+				if(source->e2ee)
+					janus_config_add(config, c, janus_config_item_create("e2ee", "yes"));
+				if(source->playoutdelay_ext)
+					janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", "yes"));
 				/* Iterate on all media streams */
 				janus_config_array *media = janus_config_array_create("media");
 				janus_config_add(config, c, media);
@@ -4263,6 +4295,10 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						g_snprintf(value, BUFSIZ, "%d", mp->helper_threads);
 						janus_config_add(config, c, janus_config_item_create("threads", value));
 					}
+					if(source->e2ee)
+						janus_config_add(config, c, janus_config_item_create("e2ee", "yes"));
+					if(source->playoutdelay_ext)
+						janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", "yes"));
 					/* Iterate on all media streams */
 					janus_config_array *media = janus_config_array_create("media");
 					janus_config_add(config, c, media);
@@ -4643,6 +4679,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					}
 				}
 				janus_mutex_unlock(&source->rec_mutex);
+				janus_refcount_decrease(&mp->ref);
+				janus_mutex_unlock(&mountpoints_mutex);
 				/* Send a success response back */
 				response = json_object();
 				json_object_set_new(response, "streaming", json_string("ok"));
@@ -4702,8 +4740,10 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						codec = "av1";
 					else if(strstr(stream->codecs.rtpmap, "h265") || strstr(stream->codecs.rtpmap, "H265"))
 						codec = "h265";
+					file = json_string_value(video);
 				} else if(stream->type == JANUS_STREAMING_MEDIA_DATA) {
 					codec = "text";
+					file = json_string_value(data);
 				}
 				janus_recorder *rc = janus_recorder_create(NULL, codec, (char *)file);
 				if(rc == NULL) {
@@ -4746,20 +4786,19 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			janus_mutex_lock(&source->rec_mutex);
 			if(media) {
 				/* Iterate on all media to stop */
-				janus_mutex_lock(&source->rec_mutex);
 				if(json_array_size(media) > 0) {
 					size_t i = 0;
 					for(i=0; i<json_array_size(media); i++) {
 						json_t *m = json_array_get(media, i);
-						if(!json_is_string(m))
+						if(!json_is_object(m))
 							continue;
-						const char *mid = json_string_value(m);
+						const char *mid = json_string_value(json_object_get(m, "mid"));
 						if(mid == NULL)
 							continue;
 						GList *temp = source->media;
 						while(temp) {
 							janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
-							if(strcasecmp(stream->mid, mid)) {
+							if(strcasecmp(stream->mid, mid) || stream->rc == NULL) {
 								temp = temp->next;
 								continue;
 							}
@@ -4774,6 +4813,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					}
 				}
 				janus_mutex_unlock(&source->rec_mutex);
+				janus_refcount_decrease(&mp->ref);
+				janus_mutex_unlock(&mountpoints_mutex);
 				/* Send a success response back */
 				response = json_object();
 				json_object_set_new(response, "streaming", json_string("ok"));
@@ -4794,7 +4835,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
 				if((stream->type == JANUS_STREAMING_MEDIA_AUDIO && !json_is_true(audio)) ||
 						(stream->type == JANUS_STREAMING_MEDIA_VIDEO && !json_is_true(video)) ||
-						(stream->type == JANUS_STREAMING_MEDIA_DATA && !json_is_true(data))) {
+						(stream->type == JANUS_STREAMING_MEDIA_DATA && !json_is_true(data)) || stream->rc == NULL) {
 					temp = temp->next;
 					continue;
 				}
@@ -5256,14 +5297,21 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 				}
 			}
 		}
+		/* Get rid of streams and streams_byid while holding the mountpoint mutex */
+		g_list_free_full(session->streams, (GDestroyNotify)(janus_streaming_session_stream_free));
+		session->streams = NULL;
+		if(session->streams_byid != NULL)
+			g_hash_table_unref(session->streams_byid);
+		session->streams_byid = NULL;
 		janus_mutex_unlock(&mp->mutex);
+	} else {
+		/* Get rid of streams and streams_byid */
+		g_list_free_full(session->streams, (GDestroyNotify)(janus_streaming_session_stream_free));
+		session->streams = NULL;
+		if(session->streams_byid != NULL)
+			g_hash_table_unref(session->streams_byid);
+		session->streams_byid = NULL;
 	}
-	/* Get rid of streams and streams_byid */
-	g_list_free_full(session->streams, (GDestroyNotify)(janus_streaming_session_stream_free));
-	session->streams = NULL;
-	if(session->streams_byid != NULL)
-		g_hash_table_unref(session->streams_byid);
-	session->streams_byid = NULL;
 
 	g_atomic_int_set(&session->hangingup, 0);
 }
@@ -5500,6 +5548,8 @@ static void *janus_streaming_handler(void *data) {
 				s->send = TRUE;
 				s->pt = -1;
 				janus_rtp_switching_context_reset(&s->context);
+				s->min_delay = -1;
+				s->max_delay = -1;
 				session->streams = g_list_append(session->streams, s);
 				if(session->streams_byid == NULL)
 					session->streams_byid = g_hash_table_new(NULL, NULL);
@@ -5566,6 +5616,8 @@ static void *janus_streaming_handler(void *data) {
 					s->send = TRUE;
 					s->pt = stream->codecs.pt;
 					janus_rtp_switching_context_reset(&s->context);
+					s->min_delay = -1;
+					s->max_delay = -1;
 					if(stream && stream->simulcast) {
 						JANUS_VALIDATE_JSON_OBJECT(root, simulcast_parameters,
 							error_code, error_cause, TRUE,
@@ -5648,6 +5700,8 @@ static void *janus_streaming_handler(void *data) {
 				/* If this mountpoint is broadcasting end-to-end encrypted media,
 				 * add the info to the JSEP offer we'll be sending them */
 				session->e2ee = source->e2ee;
+				/* Also check if we have to offer the playout-delay extension */
+				session->playoutdelay_ext = source->playoutdelay_ext;
 			}
 			janus_refcount_increase(&session->ref);
 done:
@@ -5750,6 +5804,10 @@ done:
 						janus_strlcat(sdptemp, buffer, sizeof(sdptemp));
 						g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 2, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
 						janus_strlcat(sdptemp, buffer, 2048);
+						if(session->playoutdelay_ext) {
+							g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 3, JANUS_RTP_EXTMAP_PLAYOUT_DELAY);
+							janus_strlcat(sdptemp, buffer, 2048);
+						}
 					}
 #ifdef HAVE_SCTP
 					else if(stream->type == JANUS_STREAMING_MEDIA_DATA && data) {
@@ -5975,6 +6033,33 @@ done:
 								json_decref(event);
 							}
 							s->target_temporal_layer = temporal_layer;
+						}
+					}
+					if(stream && stream->type == JANUS_STREAMING_MEDIA_VIDEO && session->playoutdelay_ext) {
+						/* Check if we need to specify a custom playout delay for this stream */
+						json_t *min_delay = json_object_get(root, "min_delay");
+						if(min_delay) {
+							int16_t md = json_integer_value(min_delay);
+							if(md < 0) {
+								s->min_delay = -1;
+								s->max_delay = -1;
+							} else {
+								s->min_delay = md;
+								if(s->min_delay > s->max_delay)
+									s->max_delay = s->min_delay;
+							}
+						}
+						json_t *max_delay = json_object_get(root, "max_delay");
+						if(max_delay) {
+							int16_t md = json_integer_value(max_delay);
+							if(md < 0) {
+								s->min_delay = -1;
+								s->max_delay = -1;
+							} else {
+								s->max_delay = md;
+								if(s->max_delay < s->min_delay)
+									s->min_delay = s->max_delay;
+							}
 						}
 					}
 					temp = temp->next;
@@ -6651,7 +6736,7 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
-		GList *media, int srtpsuite, char *srtpcrypto, int threads, int rtp_collision, gboolean e2ee) {
+		GList *media, int srtpsuite, char *srtpcrypto, int threads, int rtp_collision, gboolean e2ee, gboolean playoutdelay_ext) {
 	char id_num[30];
 	if(!string_ids) {
 		g_snprintf(id_num, sizeof(id_num), "%"SCNu64, id);
@@ -6776,6 +6861,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	janus_mutex_init(&live_rtp_source->rec_mutex);
 	live_rtp_source->rtp_collision = rtp_collision;
 	live_rtp_source->e2ee = e2ee;
+	live_rtp_source->playoutdelay_ext = playoutdelay_ext;
 	live_rtp->source = live_rtp_source;
 	live_rtp->source_destroy = (GDestroyNotify) janus_streaming_rtp_source_free;
 	live_rtp->viewers = NULL;
@@ -9133,6 +9219,10 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 					packet->data->type = s->pt;
 				janus_plugin_rtp rtp = { .mindex = s->mindex, .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
 				janus_plugin_rtp_extensions_reset(&rtp.extensions);
+				if(s->min_delay > -1 && s->max_delay > -1) {
+					rtp.extensions.min_delay = s->min_delay;
+					rtp.extensions.max_delay = s->max_delay;
+				}
 				if(gateway != NULL)
 					gateway->relay_rtp(session->handle, &rtp);
 				if(override_mark_bit && !has_marker_bit) {
@@ -9203,6 +9293,10 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				/* Send the packet */
 				janus_plugin_rtp rtp = { .mindex = s->mindex, .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
 				janus_plugin_rtp_extensions_reset(&rtp.extensions);
+				if(s->min_delay > -1 && s->max_delay > -1) {
+					rtp.extensions.min_delay = s->min_delay;
+					rtp.extensions.max_delay = s->max_delay;
+				}
 				if(gateway != NULL)
 					gateway->relay_rtp(session->handle, &rtp);
 				/* Restore the timestamp and sequence number to what the publisher set them to */
@@ -9220,6 +9314,10 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 					packet->data->type = s->pt;
 				janus_plugin_rtp rtp = { .mindex = s->mindex, .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
 				janus_plugin_rtp_extensions_reset(&rtp.extensions);
+				if(s->min_delay > -1 && s->max_delay > -1) {
+					rtp.extensions.min_delay = s->min_delay;
+					rtp.extensions.max_delay = s->max_delay;
+				}
 				if(gateway != NULL)
 					gateway->relay_rtp(session->handle, &rtp);
 				/* Restore the timestamp and sequence number to what the video source set them to */

@@ -71,6 +71,16 @@ var doDtx = (getQueryStringValue("dtx") === "yes" || getQueryStringValue("dtx") 
 var doOpusred = (getQueryStringValue("opusred") === "yes" || getQueryStringValue("opusred") === "true");
 var simulcastStarted = false;
 
+// By default we talk to the "regular" EchoTest plugin
+var echotestPluginBackend = "janus.plugin.echotest";
+// We can use query string arguments to talk to the Lua or Duktape EchoTest
+// demo scripts instead. Notice that this assumes that the Lua or Duktape
+// plugins are configured to run the sample scripts that comes with the repo
+if(getQueryStringValue("plugin") === "lua")
+	echotestPluginBackend = "janus.plugin.echolua";
+else if(getQueryStringValue("plugin") === "duktape")
+	echotestPluginBackend = "janus.plugin.echojs";
+
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
@@ -99,7 +109,7 @@ $(document).ready(function() {
 						// Attach to EchoTest plugin
 						janus.attach(
 							{
-								plugin: "janus.plugin.echotest",
+								plugin: echotestPluginBackend,
 								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
