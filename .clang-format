@@ -1,4 +1,4 @@
-# This configuration is meant to be used with  clang-format v12.0
+# Please bear in mind this file DOES NOT perfectly match the current Janus code style
 
 Language: Cpp
 AlignAfterOpenBracket: Align
