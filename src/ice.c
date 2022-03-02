@@ -3994,22 +3994,22 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 				/* Pick the first valid SSRC we find across all considered mediums */
 				int i = 0;
 				for(i = 0; i < 3; i++) {
-					if(m->ssrc_peer[i] != 0)
+					if(m->ssrc_peer[i] != 0) {
+						ssrc_peer = m->ssrc_peer[i];
+						medium = m;
 						break;
+					}
 				}
 
 				/* Stop if we found a valid SSRC/medium to use */
-				if(i < 3) {
-					ssrc_peer = m->ssrc_peer[i];
-					medium = m;
+				if(medium && ssrc_peer)
 					break;
-				}
 			}
 		}
 		janus_mutex_unlock(&handle->mutex);
 	}
 
-	if(!medium) {
+	if(medium == NULL) {
 		JANUS_LOG(LOG_HUGE, "No medium with a valid peer SSRC found for transport-wide CC feedback\n");
 		return G_SOURCE_CONTINUE;
 	}
