@@ -2160,7 +2160,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					continue;
 				}
 				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
-				gboolean rtsp_quirk = quirk && quirk->value && janus_is_true(priv->value);
+				gboolean rtsp_quirk = quirk && quirk->value && janus_is_true(quirk->value);
 				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
 				gboolean dovideo = video && video->value && janus_is_true(video->value);
 				gboolean bufferkf = video && vkf && vkf->value && janus_is_true(vkf->value);
@@ -6548,8 +6548,8 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 				res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
 				if((res == CURLE_OK) && (code != 404)) {
 					source->rtsp_stream_uri = g_strdup(path);
-					curl_free(path);
 				}
+				curl_free(path);
 			}
 		}
 		curl_url_cleanup(curl_u);
