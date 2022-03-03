@@ -3,6 +3,27 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.0.0] - 2022-03-03
+
+- Refactored Janus to support multistream PeerConnections [[PR-2211](https://github.com/meetecho/janus-gateway/pull/2211)]
+- Moved all source files under new 'src' folder to unclutter the repo [[PR-2885](https://github.com/meetecho/janus-gateway/pull/2885)]
+- Fixed definition of trylock wrapper when using pthreads [[Issue-2894](https://github.com/meetecho/janus-gateway/issues/2894)]
+- Fixed broken RTP when no extensions are negotiated
+- Added checks when inserting RTP extensions to avoid buffer overflows
+- Added missing support for disabled rid simulcast substreams in SDP [[PR-2888](https://github.com/meetecho/janus-gateway/pull/2888)]
+- Fixed TWCC feedback when simulcast SSRCs are missing (thanks @OxleyS!) [[PR-2908](https://github.com/meetecho/janus-gateway/pull/2908)]
+- Added support for playout-delay RTP extension [[PR-2895](https://github.com/meetecho/janus-gateway/pull/2895)]
+- Fixed partially broken H.264 support when using Firefox in VideoRoom
+- Fixed new VideoRoom rtp_forward API ignoring some properties
+- Fixed deadlock and segfault when stopping Streaming mountpoint recordings [[Issue-2902](https://github.com/meetecho/janus-gateway/issues/2902)]
+- Fixed RTSP support in Streaming plugin for cameras that expect path-only DESCRIBE requests (thanks @jp-bennett!) [[PR-2909](https://github.com/meetecho/janus-gateway/pull/2909)]
+- Fixed RTP being relayed incorrectly in Lua and Duktape plugins
+- Added Duktape as optional dependency, instead of embedding the engine code [[PR-2886](https://github.com/meetecho/janus-gateway/pull/2886)]
+- Fixed crash at startup when not able to connect to RabbitMQ server
+- Improved fuzzing and checks on RTP extensions
+- Removed distinction between simulcast and simulcast2 in janus.js [[PR-2887](https://github.com/meetecho/janus-gateway/pull/2887)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.11.8] - 2022-02-11
 
 - Added initial (and limited) integration of RED audio [[PR-2685](https://github.com/meetecho/janus-gateway/pull/2685)]
