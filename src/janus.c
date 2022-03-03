@@ -33,7 +33,7 @@
 
 #include "janus.h"
 #include "version.h"
-#include "cmdline.h"
+#include "options.h"
 #include "config.h"
 #include "apierror.h"
 #include "debug.h"
@@ -55,6 +55,10 @@
 #endif
 
 
+/* Command line options */
+static janus_options options = { 0 };
+
+/* Configuration file */
 static janus_config *config = NULL;
 static char *config_file = NULL;
 static char *configs_folder = NULL;
@@ -4178,27 +4182,34 @@ gboolean janus_plugin_auth_signature_contains(janus_plugin *plugin, const char *
 
 
 /* Main */
-gint main(int argc, char *argv[])
-{
+gint main(int argc, char *argv[]) {
 	/* Core dumps may be disallowed by parent of this process; change that */
 	struct rlimit core_limits;
 	core_limits.rlim_cur = core_limits.rlim_max = RLIM_INFINITY;
 	setrlimit(RLIMIT_CORE, &core_limits);
 
+	g_print("Janus version: %d (%s)\n", janus_version, janus_version_string);
 	g_print("Janus commit: %s\n", janus_build_git_sha);
 	g_print("Compiled on:  %s\n\n", janus_build_git_time);
 
-	struct gengetopt_args_info args_info;
+	/* Initialize some command line options defaults */
+	options.debug_level = -1;
+	options.session_timeout = -1;
+	options.reclaim_session_timeout = -1;
+	options.min_nack_queue = -1;
+	options.no_media_timer = -1;
+	options.slowlink_threshold = -1;
+	options.twcc_period = -1;
 	/* Let's call our cmdline parser */
-	if(cmdline_parser(argc, argv, &args_info) != 0)
+	if(!janus_options_parse(&options, argc, argv))
 		exit(1);
 
 	/* Any configuration to open? */
-	if(args_info.config_given) {
-		config_file = g_strdup(args_info.config_arg);
+	if(options.config_file) {
+		config_file = g_strdup(options.config_file);
 	}
-	if(args_info.configs_folder_given) {
-		configs_folder = g_strdup(args_info.configs_folder_arg);
+	if(options.configs_folder) {
+		configs_folder = g_strdup(options.configs_folder);
 	} else {
 		configs_folder = g_strdup(CONFDIR);
 	}
@@ -4215,9 +4226,10 @@ gint main(int argc, char *argv[])
 		g_snprintf(file, 255, "%s/janus.cfg", configs_folder);
 		config_file = g_strdup(file);
 		if((config = janus_config_parse(config_file)) == NULL) {
-			if(args_info.config_given) {
+			if(options.config_file) {
 				/* We only give up if the configuration file was explicitly provided */
 				g_print("Error reading configuration from %s\n", config_file);
+				janus_options_destroy();
 				exit(1);
 			}
 			g_print("Error reading/parsing the configuration file in %s, going on with the defaults and the command line arguments\n",
@@ -4225,6 +4237,7 @@ gint main(int argc, char *argv[])
 			config = janus_config_create("janus.cfg");
 			if(config == NULL) {
 				/* If we can't even create an empty configuration, something's definitely wrong */
+				janus_options_destroy();
 				exit(1);
 			}
 		}
@@ -4258,18 +4271,18 @@ gint main(int argc, char *argv[])
 
 	/* Check if we need to log to console and/or file */
 	gboolean use_stdout = TRUE;
-	if(args_info.disable_stdout_given) {
+	if(options.disable_stdout) {
 		use_stdout = FALSE;
 		janus_config_add(config, config_general, janus_config_item_create("log_to_stdout", "no"));
-	} else if(!args_info.log_stdout_given) {
+	} else if(!options.log_stdout) {
 		/* Check if the configuration file is saying anything about this */
 		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "log_to_stdout");
 		if(item && item->value && !janus_is_true(item->value))
 			use_stdout = FALSE;
 	}
 	const char *logfile = NULL;
-	if(args_info.log_file_given) {
-		logfile = args_info.log_file_arg;
+	if(options.log_file) {
+		logfile = options.log_file;
 		janus_config_add(config, config_general, janus_config_item_create("log_to_file", "no"));
 	} else {
 		/* Check if the configuration file is saying anything about this */
@@ -4279,7 +4292,7 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Check if we're going to daemonize Janus */
-	if(args_info.daemon_given) {
+	if(options.daemon) {
 		daemonize = TRUE;
 		janus_config_add(config, config_general, janus_config_item_create("daemonize", "yes"));
 	} else {
@@ -4289,7 +4302,7 @@ gint main(int argc, char *argv[])
 			daemonize = TRUE;
 	}
 	/* If we're going to daemonize, make sure logging to stdout is disabled and a log file has been specified */
-	if(daemonize && use_stdout && !args_info.log_stdout_given) {
+	if(daemonize && use_stdout && !options.log_stdout) {
 		use_stdout = FALSE;
 	}
 	/* Daemonize now, if we need to */
@@ -4350,7 +4363,7 @@ gint main(int argc, char *argv[])
 			exit(1);
 		}
 		/* Change the current working directory */
-		const char *cwd = (args_info.cwd_path_given) ? args_info.cwd_path_arg : "/";
+		const char *cwd = options.cwd_path ? options.cwd_path : "/";
 		if((chdir(cwd)) < 0) {
 			g_print("Error changing the current working directory!\n");
 			exit(1);
@@ -4359,13 +4372,11 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Was a custom instance name provided? */
-	if(args_info.server_name_given) {
-		janus_config_add(config, config_general, janus_config_item_create("server_name", args_info.server_name_arg));
-	}
+	if(options.server_name)
+		janus_config_add(config, config_general, janus_config_item_create("server_name", options.server_name));
 	janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "server_name");
-	if(item && item->value) {
+	if(item && item->value)
 		server_name = g_strdup(item->value);
-	}
 
 	/* Check if we should exit immediately on dlopen or dlsym errors */
 	item = janus_config_get(config, config_general, janus_config_type_item, "exit_on_dl_error");
@@ -4503,18 +4514,18 @@ gint main(int argc, char *argv[])
 	janus_log_level = LOG_INFO;
 	janus_log_timestamps = FALSE;
 	janus_log_colors = TRUE;
-	if(args_info.debug_level_given) {
-		if(args_info.debug_level_arg < LOG_NONE)
-			args_info.debug_level_arg = 0;
-		else if(args_info.debug_level_arg > LOG_MAX)
-			args_info.debug_level_arg = LOG_MAX;
-		janus_log_level = args_info.debug_level_arg;
+	if(options.debug_level > -1) {
+		if(options.debug_level < LOG_NONE)
+			options.debug_level = 0;
+		else if(options.debug_level > LOG_MAX)
+			options.debug_level = LOG_MAX;
+		janus_log_level = options.debug_level;
 	}
 
 	/* Any PID we need to create? */
 	const char *pidfile = NULL;
-	if(args_info.pid_file_given) {
-		pidfile = args_info.pid_file_arg;
+	if(options.pid_file) {
+		pidfile = options.pid_file;
 		janus_config_add(config, config_general, janus_config_item_create("pid_file", pidfile));
 	} else {
 		/* Check if the configuration file is saying anything about this */
@@ -4527,9 +4538,9 @@ gint main(int argc, char *argv[])
 
 	/* Proceed with the rest of the configuration */
 	janus_config_print(config);
-	if(args_info.debug_level_given) {
+	if(options.debug_level > -1) {
 		char debug[5];
-		g_snprintf(debug, 5, "%d", args_info.debug_level_arg);
+		g_snprintf(debug, 5, "%d", options.debug_level);
 		janus_config_add(config, config_general, janus_config_item_create("debug_level", debug));
 	} else {
 		/* No command line directive on logging, try the configuration file */
@@ -4549,124 +4560,100 @@ gint main(int argc, char *argv[])
 	}
 	/* Any command line argument that should overwrite the configuration? */
 	JANUS_PRINT("Checking command line arguments...\n");
-	if(args_info.debug_timestamps_given) {
+	if(options.debug_timestamps)
 		janus_config_add(config, config_general, janus_config_item_create("debug_timestamps", "yes"));
-	}
-	if(args_info.disable_colors_given) {
+	if(options.disable_colors)
 		janus_config_add(config, config_general, janus_config_item_create("debug_colors", "no"));
-	}
-	if(args_info.debug_locks_given) {
+	if(options.debug_locks)
 		janus_config_add(config, config_general, janus_config_item_create("debug_locks", "yes"));
-	}
-	if(args_info.session_timeout_given) {
+	if(options.session_timeout > -1) {
 		char st[20];
-		g_snprintf(st, 20, "%d", args_info.session_timeout_arg);
+		g_snprintf(st, 20, "%d", options.session_timeout);
 		janus_config_add(config, config_general, janus_config_item_create("session_timeout", st));
 	}
-	if(args_info.reclaim_session_timeout_given) {
+	if(options.reclaim_session_timeout > -1) {
 		char st[20];
-		g_snprintf(st, 20, "%d", args_info.reclaim_session_timeout_arg);
+		g_snprintf(st, 20, "%d", options.reclaim_session_timeout);
 		janus_config_add(config, config_general, janus_config_item_create("reclaim_session_timeout", st));
 	}
- 	if(args_info.interface_given) {
-		janus_config_add(config, config_general, janus_config_item_create("interface", args_info.interface_arg));
-	}
-	if(args_info.configs_folder_given) {
-		janus_config_add(config, config_general, janus_config_item_create("configs_folder", args_info.configs_folder_arg));
-	}
-	if(args_info.plugins_folder_given) {
-		janus_config_add(config, config_general, janus_config_item_create("plugins_folder", args_info.plugins_folder_arg));
-	}
-	if(args_info.apisecret_given) {
-		janus_config_add(config, config_general, janus_config_item_create("api_secret", args_info.apisecret_arg));
-	}
-	if(args_info.token_auth_given) {
-		janus_config_add(config, config_general, janus_config_item_create("token_auth", "yes"));
-	}
-	if(args_info.token_auth_secret_given) {
-		janus_config_add(config, config_general, janus_config_item_create("token_auth_secret", args_info.token_auth_secret_arg));
-	}
-	if(args_info.no_webrtc_encryption_given) {
-		janus_config_add(config, config_general, janus_config_item_create("no_webrtc_encryption", "yes"));
-	}
-	if(args_info.cert_pem_given) {
-		janus_config_add(config, config_certs, janus_config_item_create("cert_pem", args_info.cert_pem_arg));
-	}
-	if(args_info.cert_key_given) {
-		janus_config_add(config, config_certs, janus_config_item_create("cert_key", args_info.cert_key_arg));
-	}
-	if(args_info.cert_pwd_given) {
-		janus_config_add(config, config_certs, janus_config_item_create("cert_pwd", args_info.cert_pwd_arg));
-	}
-	if(args_info.stun_server_given) {
+ 	if(options.interface)
+		janus_config_add(config, config_general, janus_config_item_create("interface", options.interface));
+	if(options.configs_folder)
+		janus_config_add(config, config_general, janus_config_item_create("configs_folder", options.configs_folder));
+	if(options.plugins_folder)
+		janus_config_add(config, config_general, janus_config_item_create("plugins_folder", options.plugins_folder));
+	if(options.apisecret)
+		janus_config_add(config, config_general, janus_config_item_create("api_secret", options.apisecret));
+	if(options.token_auth)
+		janus_config_add(config, config_general, janus_config_item_create("token_auth", "true"));
+	if(options.token_auth_secret)
+		janus_config_add(config, config_general, janus_config_item_create("token_auth_secret", options.token_auth_secret));
+	if(options.no_webrtc_encryption)
+		janus_config_add(config, config_general, janus_config_item_create("no_webrtc_encryption", "true"));
+	if(options.cert_pem)
+		janus_config_add(config, config_certs, janus_config_item_create("cert_pem", options.cert_pem));
+	if(options.cert_key)
+		janus_config_add(config, config_certs, janus_config_item_create("cert_key", options.cert_key));
+	if(options.cert_pwd)
+		janus_config_add(config, config_certs, janus_config_item_create("cert_pwd", options.cert_pwd));
+	if(options.stun_server) {
 		/* Split in server and port (if port missing, use 3478 as default) */
-		char *stunport = strrchr(args_info.stun_server_arg, ':');
+		char *stunport = strrchr(options.stun_server, ':');
 		if(stunport != NULL) {
 			*stunport = '\0';
 			stunport++;
-			janus_config_add(config, config_nat, janus_config_item_create("stun_server", args_info.stun_server_arg));
+			janus_config_add(config, config_nat, janus_config_item_create("stun_server", options.stun_server));
 			janus_config_add(config, config_nat, janus_config_item_create("stun_port", stunport));
 		} else {
-			janus_config_add(config, config_nat, janus_config_item_create("stun_server", args_info.stun_server_arg));
+			janus_config_add(config, config_nat, janus_config_item_create("stun_server", options.stun_server));
 			janus_config_add(config, config_nat, janus_config_item_create("stun_port", "3478"));
 		}
 	}
-	if(args_info.nat_1_1_given) {
-		janus_config_add(config, config_nat, janus_config_item_create("nat_1_1_mapping", args_info.nat_1_1_arg));
-	}
-	if(args_info.keep_private_host_given) {
+	if(options.nat_1_1)
+		janus_config_add(config, config_nat, janus_config_item_create("nat_1_1_mapping", options.nat_1_1));
+	if(options.keep_private_host)
 		janus_config_add(config, config_nat, janus_config_item_create("keep_private_host", "true"));
-	}
-	if(args_info.ice_enforce_list_given) {
-		janus_config_add(config, config_nat, janus_config_item_create("ice_enforce_list", args_info.ice_enforce_list_arg));
-	}
-	if(args_info.ice_ignore_list_given) {
-		janus_config_add(config, config_nat, janus_config_item_create("ice_ignore_list", args_info.ice_ignore_list_arg));
-	}
-	if(args_info.libnice_debug_given) {
+	if(options.ice_enforce_list)
+		janus_config_add(config, config_nat, janus_config_item_create("ice_enforce_list", options.ice_enforce_list));
+	if(options.ice_ignore_list)
+		janus_config_add(config, config_nat, janus_config_item_create("ice_ignore_list", options.ice_ignore_list));
+	if(options.libnice_debug)
 		janus_config_add(config, config_nat, janus_config_item_create("nice_debug", "true"));
-	}
-	if(args_info.full_trickle_given) {
+	if(options.full_trickle)
 		janus_config_add(config, config_nat, janus_config_item_create("full_trickle", "true"));
-	}
-	if(args_info.ice_lite_given) {
+	if(options.ice_lite)
 		janus_config_add(config, config_nat, janus_config_item_create("ice_lite", "true"));
-	}
-	if(args_info.ice_tcp_given) {
+	if(options.ice_tcp)
 		janus_config_add(config, config_nat, janus_config_item_create("ice_tcp", "true"));
-	}
-	if(args_info.ipv6_candidates_given) {
+	if(options.ipv6_candidates)
 		janus_config_add(config, config_media, janus_config_item_create("ipv6", "true"));
-	}
-	if(args_info.ipv6_link_local_given) {
+	if(options.ipv6_link_local)
 		janus_config_add(config, config_media, janus_config_item_create("ipv6_linklocal", "true"));
-	}
-	if(args_info.min_nack_queue_given) {
+	if(options.min_nack_queue > -1) {
 		char mnq[20];
-		g_snprintf(mnq, 20, "%d", args_info.min_nack_queue_arg);
+		g_snprintf(mnq, 20, "%d", options.min_nack_queue);
 		janus_config_add(config, config_media, janus_config_item_create("min_nack_queue", mnq));
 	}
-	if(args_info.no_media_timer_given) {
+	if(options.no_media_timer > -1) {
 		char nmt[20];
-		g_snprintf(nmt, 20, "%d", args_info.no_media_timer_arg);
+		g_snprintf(nmt, 20, "%d", options.no_media_timer);
 		janus_config_add(config, config_media, janus_config_item_create("no_media_timer", nmt));
 	}
-	if(args_info.slowlink_threshold_given) {
+	if(options.slowlink_threshold > -1) {
 		char st[20];
-		g_snprintf(st, 20, "%d", args_info.slowlink_threshold_arg);
+		g_snprintf(st, 20, "%d", options.slowlink_threshold);
 		janus_config_add(config, config_media, janus_config_item_create("slowlink_threshold", st));
 	}
-	if(args_info.twcc_period_given) {
+	if(options.twcc_period > -1) {
 		char tp[20];
-		g_snprintf(tp, 20, "%d", args_info.twcc_period_arg);
+		g_snprintf(tp, 20, "%d", options.twcc_period);
 		janus_config_add(config, config_media, janus_config_item_create("twcc_period", tp));
 	}
-	if(args_info.rtp_port_range_given) {
-		janus_config_add(config, config_media, janus_config_item_create("rtp_port_range", args_info.rtp_port_range_arg));
+	if(options.rtp_port_range) {
+		janus_config_add(config, config_media, janus_config_item_create("rtp_port_range", options.rtp_port_range));
 	}
-	if(args_info.event_handlers_given) {
+	if(options.event_handlers)
 		janus_config_add(config, config_events, janus_config_item_create("broadcast", "yes"));
-	}
 	janus_config_print(config);
 
 	/* Logging/debugging */
@@ -4997,6 +4984,7 @@ gint main(int argc, char *argv[])
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
 		if(!ignore_unreachable_ice_server) {
 			JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
+			janus_options_destroy();
 			exit(1);
 		} else {
 			JANUS_LOG(LOG_ERR, "Invalid STUN address %s:%u. STUN will be disabled\n", stun_server, stun_port);
@@ -5016,6 +5004,7 @@ gint main(int argc, char *argv[])
 	if(janus_ice_set_turn_server(turn_server, turn_port, turn_type, turn_user, turn_pwd) < 0) {
 		if(!ignore_unreachable_ice_server) {
 			JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
+			janus_options_destroy();
 			exit(1);
 		} else {
 			JANUS_LOG(LOG_ERR, "Invalid TURN address %s:%u. TURN will be disabled\n", turn_server, turn_port);
@@ -5028,6 +5017,7 @@ gint main(int argc, char *argv[])
 #else
 	if(janus_ice_set_turn_rest_api(turn_rest_api, turn_rest_api_key, turn_rest_api_method, turn_rest_api_timeout) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid TURN REST API configuration: %s (%s, %s)\n", turn_rest_api, turn_rest_api_key, turn_rest_api_method);
+		janus_options_destroy();
 		exit(1);
 	}
 #endif
@@ -5165,6 +5155,7 @@ gint main(int argc, char *argv[])
 	/* Check if random pool looks ok (this does not give any guarantees for later, though) */
 	if(RAND_status() != 1) {
 		JANUS_LOG(LOG_FATAL, "Random pool is not properly seeded, cannot generate random numbers\n");
+		janus_options_destroy();
 		exit(1);
 	}
 	/* ... and DTLS-SRTP in particular */
@@ -5187,6 +5178,7 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		dtls_accept_selfsigned = janus_is_true(item->value);
 	if(janus_dtls_srtp_init(server_pem, server_key, password, dtls_ciphers, dtls_timeout, rsa_private_key, dtls_accept_selfsigned) < 0) {
+		janus_options_destroy();
 		exit(1);
 	}
 	/* Check if there's any custom value for the starting MTU to use in the BIO filter */
@@ -5197,6 +5189,7 @@ gint main(int argc, char *argv[])
 #ifdef HAVE_SCTP
 	/* Initialize SCTP for DataChannels */
 	if(janus_sctp_init() < 0) {
+		janus_options_destroy();
 		exit(1);
 	}
 #else
@@ -5215,6 +5208,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions timeout watchdog...\n",
 			error->code, error->message ? error->message : "??");
 		g_error_free(error);
+		janus_options_destroy();
 		exit(1);
 	}
 	/* Start the thread that will dispatch incoming requests */
@@ -5224,6 +5218,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start requests thread...\n",
 			error->code, error->message ? error->message : "??");
 		g_error_free(error);
+		janus_options_destroy();
 		exit(1);
 	}
 	/* Create a thread pool to handle asynchronous requests, no matter what the transport */
@@ -5234,6 +5229,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the request pool task thread...\n",
 			error->code, error->message ? error->message : "??");
 		g_error_free(error);
+		janus_options_destroy();
 		exit(1);
 	}
 	/* Wait 120 seconds before stopping idle threads to avoid the creation of too many threads for AddressSanitizer. */
@@ -5322,17 +5318,21 @@ gint main(int argc, char *argv[])
 				memset(eventpath, 0, 1024);
 				g_snprintf(eventpath, 1024, "%s/%s", path, eventent->d_name);
 				void *event = dlopen(eventpath, RTLD_NOW | RTLD_GLOBAL);
-				if (!event) {
+				if(!event) {
 					JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load event handler plugin '%s': %s\n", eventent->d_name, dlerror());
-					if (exit_on_dl_error)
+					if(exit_on_dl_error) {
+						janus_options_destroy();
 						exit(1);
+					}
 				} else {
 					create_e *create = (create_e*) dlsym(event, "create");
 					const char *dlsym_error = dlerror();
-					if (dlsym_error) {
+					if(dlsym_error) {
 						JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
-						if (exit_on_dl_error)
+						if(exit_on_dl_error) {
+							janus_options_destroy();
 							exit(1);
+						}
 						continue;
 					}
 					janus_eventhandler *janus_eventhandler = create();
@@ -5398,6 +5398,7 @@ gint main(int argc, char *argv[])
 		/* Initialize the event broadcaster */
 		if(janus_events_init(enable_events, (server_name ? server_name : (char *)JANUS_SERVER_NAME), eventhandlers) < 0) {
 			JANUS_LOG(LOG_FATAL, "Error initializing the Event handlers mechanism...\n");
+			janus_options_destroy();
 			exit(1);
 		}
 	}
@@ -5411,6 +5412,7 @@ gint main(int argc, char *argv[])
 	dir = opendir(path);
 	if(!dir) {
 		JANUS_LOG(LOG_FATAL, "\tCouldn't access plugins folder...\n");
+		janus_options_destroy();
 		exit(1);
 	}
 	/* Any plugin to ignore? */
@@ -5454,17 +5456,21 @@ gint main(int argc, char *argv[])
 		memset(pluginpath, 0, 1024);
 		g_snprintf(pluginpath, 1024, "%s/%s", path, pluginent->d_name);
 		void *plugin = dlopen(pluginpath, RTLD_NOW | RTLD_GLOBAL);
-		if (!plugin) {
+		if(!plugin) {
 			JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load plugin '%s': %s\n", pluginent->d_name, dlerror());
-			if (exit_on_dl_error)
+			if(exit_on_dl_error) {
+				janus_options_destroy();
 				exit(1);
+			}
 		} else {
 			create_p *create = (create_p*) dlsym(plugin, "create");
 			const char *dlsym_error = dlerror();
-			if (dlsym_error) {
+			if(dlsym_error) {
 				JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
-				if (exit_on_dl_error)
+				if(exit_on_dl_error) {
+					janus_options_destroy();
 					exit(1);
+				}
 				continue;
 			}
 			janus_plugin *janus_plugin = create();
@@ -5534,6 +5540,7 @@ gint main(int argc, char *argv[])
 	dir = opendir(path);
 	if(!dir) {
 		JANUS_LOG(LOG_FATAL, "\tCouldn't access transport plugins folder...\n");
+		janus_options_destroy();
 		exit(1);
 	}
 	/* Any transport to ignore? */
@@ -5577,17 +5584,21 @@ gint main(int argc, char *argv[])
 		memset(transportpath, 0, 1024);
 		g_snprintf(transportpath, 1024, "%s/%s", path, transportent->d_name);
 		void *transport = dlopen(transportpath, RTLD_NOW | RTLD_GLOBAL);
-		if (!transport) {
+		if(!transport) {
 			JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load transport plugin '%s': %s\n", transportent->d_name, dlerror());
-			if (exit_on_dl_error)
+			if(exit_on_dl_error) {
+				janus_options_destroy();
 				exit(1);
+			}
 		} else {
 			create_t *create = (create_t*) dlsym(transport, "create");
 			const char *dlsym_error = dlerror();
-			if (dlsym_error) {
+			if(dlsym_error) {
 				JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
-				if (exit_on_dl_error)
+				if(exit_on_dl_error) {
+					janus_options_destroy();
 					exit(1);
+				}
 				continue;
 			}
 			janus_transport *janus_transport = create();
@@ -5645,11 +5656,13 @@ gint main(int argc, char *argv[])
 	/* Make sure at least a Janus API transport is available */
 	if(!janus_api_enabled) {
 		JANUS_LOG(LOG_FATAL, "No Janus API transport is available... enable at least one and restart Janus\n");
+		janus_options_destroy();
 		exit(1);	/* FIXME Should we really give up? */
 	}
 	/* Make sure at least an admin API transport is available, if the auth mechanism is enabled */
 	if(!admin_api_enabled && janus_auth_is_stored_mode()) {
 		JANUS_LOG(LOG_FATAL, "No Admin/monitor transport is available, but the stored token based authentication mechanism is enabled... this will cause all requests to fail, giving up! If you want to use tokens, enable the Admin/monitor API or set the token auth secret.\n");
+		janus_options_destroy();
 		exit(1);	/* FIXME Should we really give up? */
 	}
 
@@ -5786,6 +5799,7 @@ gint main(int argc, char *argv[])
 #endif
 	g_clear_pointer(&janus_log_global_prefix, g_free);
 
+	janus_options_destroy();
 	JANUS_PRINT("Bye!\n");
 
 	exit(0);

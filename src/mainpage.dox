@@ -94,7 +94,6 @@
  *
  * - \b GLib: http://library.gnome.org/devel/glib/
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
- * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
  * - \b libnice: https://libnice.freedesktop.org/ (ICE/STUN/TURN, at least v0.1.16 suggested, v0.1.18 recommended)
@@ -3845,7 +3844,6 @@ ldd janus | grep asan
  *
  * - \b GLib: http://library.gnome.org/devel/glib/
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
- * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
  * - \b libnice: https://libnice.freedesktop.org/ (ICE/STUN/TURN, at least v0.1.16 suggested, v0.1.18 recommended)

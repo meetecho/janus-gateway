@@ -120,8 +120,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr
 
 #include "../debug.h"
 #include "../utils.h"
-#include "../version.h"
-#include "pp-cmdline.h"
+#include "pp-options.h"
 #include "pp-rtp.h"
 #include "pp-webm.h"
 #include "pp-h264.h"
@@ -142,29 +141,17 @@ gboolean janus_log_colors = TRUE;
 char *janus_log_global_prefix = NULL;
 int lock_debug = 0;
 
-gboolean janus_faststart = FALSE;
+static janus_pprec_options options = { 0 };
 
 static janus_pp_frame_packet *list = NULL, *last = NULL;
-static char *metadata = NULL;
 static int working = 0;
-
-static int ignore_first_packets = 0;
 
 #define SKEW_DETECTION_WAIT_TIME_SECS 10
 #define DEFAULT_AUDIO_SKEW_TH 0
-static int audioskew_th = DEFAULT_AUDIO_SKEW_TH;
-
 #define DEFAULT_SILENCE_DISTANCE 0
-static int silence_distance = DEFAULT_SILENCE_DISTANCE;
-
 #define DEFAULT_RESTAMP_MULTIPLIER 0
-static int restamp_multiplier = DEFAULT_RESTAMP_MULTIPLIER;
-
 #define DEFAULT_RESTAMP_MIN_TH 500
-static int restamp_min_th = DEFAULT_RESTAMP_MIN_TH;
-
 #define DEFAULT_RESTAMP_PACKETS 10
-static int restamp_packets = DEFAULT_RESTAMP_PACKETS;
 
 /* Signal handler */
 static void janus_pp_handle_signal(int signum) {
@@ -172,10 +159,8 @@ static void janus_pp_handle_signal(int signum) {
 }
 
 /* Helper method to return an audio level from the related RTP extension, if any */
-static int audio_level_extmap_id = -1;
 static int janus_pp_rtp_header_extension_parse_audio_level(char *buf, int len, int id, int *level);
 /* Helper method to return the video rotation from the related RTP extension, if any */
-static int video_orient_extmap_id = -1;
 static int janus_pp_rtp_header_extension_parse_video_orientation(char *buf, int len, int id, int *rotation);
 
 typedef struct janus_pp_rtp_skew_context {
@@ -223,18 +208,27 @@ static char *janus_pp_extensions_string(const char **allowed, char *supported, s
 }
 
 /* Main Code */
-int main(int argc, char *argv[])
-{
-	struct gengetopt_args_info args_info;
-	/* Let's call our cmdline parser */
-	if(cmdline_parser(argc, argv, &args_info) != 0)
-		exit(1);
-
+int main(int argc, char *argv[]) {
 	janus_log_init(FALSE, TRUE, NULL);
 	atexit(janus_log_destroy);
 
+	/* Initialize some command line options defaults */
+	options.debug_level = g_getenv("JANUS_PPREC_DEBUG") ? atoi(g_getenv("JANUS_PPREC_DEBUG")) : 4;
+	options.ignore_first_packets = g_getenv("JANUS_PPREC_IGNOREFIRST") ? atoi(g_getenv("JANUS_PPREC_IGNOREFIRST")) : 0;
+	options.match_pt = -1;
+	options.audio_level_extmap_id = g_getenv("JANUS_PPREC_AUDIOLEVELEXT") ? atoi(g_getenv("JANUS_PPREC_AUDIOLEVELEXT")) : -1;
+	options.video_orient_extmap_id = g_getenv("JANUS_PPREC_VIDEOORIENTEXT") ? atoi(g_getenv("JANUS_PPREC_VIDEOORIENTEXT")) : -1;
+	options.audioskew_th = g_getenv("JANUS_PPREC_AUDIOSKEW") ? atoi(g_getenv("JANUS_PPREC_AUDIOSKEW")) : DEFAULT_AUDIO_SKEW_TH;
+	options.silence_distance = g_getenv("JANUS_PPREC_SILENCE_DISTANCE") ? atoi(g_getenv("JANUS_PPREC_SILENCE_DISTANCE")) : DEFAULT_SILENCE_DISTANCE;
+	options.restamp_multiplier = g_getenv("JANUS_PPREC_RESTAMP") ? atoi(g_getenv("JANUS_PPREC_RESTAMP")) : DEFAULT_RESTAMP_MULTIPLIER;
+	options.restamp_min_th = g_getenv("JANUS_PPREC_RESTAMP_MIN_TH") ? atoi(g_getenv("JANUS_PPREC_RESTAMP_MIN_TH")) : DEFAULT_RESTAMP_MIN_TH;
+	options.restamp_packets = g_getenv("JANUS_PPREC_RESTAMP_PACKETS") ? atoi(g_getenv("JANUS_PPREC_RESTAMP_PACKETS")) : DEFAULT_RESTAMP_PACKETS;
+	/* Let's call our cmdline parser */
+	if(!janus_pprec_options_parse(&options, argc, argv))
+		exit(1);
+
 	/* Check if we only need to print the supported extensions for all codecs */
-	if(args_info.file_extensions_given) {
+	if(options.fileexts_only) {
 		JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
 		JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
 		JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
@@ -250,19 +244,19 @@ int main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "  -- H.265:  %s\n", janus_pp_extensions_string(janus_pp_h265_get_extensions(), supported, sizeof(supported)));
 		JANUS_LOG(LOG_INFO, "  -- Text:   %s\n", janus_pp_extensions_string(janus_pp_srt_get_extensions(), supported, sizeof(supported)));
 		JANUS_LOG(LOG_INFO, "  -- Binary: any\n");
-		cmdline_parser_free(&args_info);
+		janus_pprec_options_destroy();
 		exit(0);
 	}
 
 	/* If we're asked to print the JSON header as it is, we must not print anything else */
 	gboolean jsonheader_only = FALSE, header_only = FALSE, parse_only = FALSE, extjson_only = FALSE;
-	if(args_info.json_given)
+	if(options.jsonheader_only)
 		jsonheader_only = TRUE;
-	if(args_info.header_given && !jsonheader_only)
+	if(options.header_only && !jsonheader_only)
 		header_only = TRUE;
-	if(args_info.parse_given && !jsonheader_only && !header_only)
+	if(options.parse_only && !jsonheader_only && !header_only)
 		parse_only = TRUE;
-	if(args_info.extended_json_given) {
+	if(options.extjson_only) {
 		jsonheader_only = FALSE;
 		header_only = FALSE;
 		parse_only = TRUE;
@@ -270,111 +264,42 @@ int main(int argc, char *argv[])
 	}
 
 	/* We support both command line arguments and, for backwards compatibility, env variables in some cases */
-	if(args_info.debug_level_given || (g_getenv("JANUS_PPREC_DEBUG") != NULL)) {
-		int val = args_info.debug_level_given ? args_info.debug_level_arg : atoi(g_getenv("JANUS_PPREC_DEBUG"));
-		if(val >= LOG_NONE && val <= LOG_MAX)
-			janus_log_level = val;
-	}
-	if(args_info.disable_colors_given)
+	janus_log_level = (options.debug_level >= LOG_NONE && options.debug_level <= LOG_MAX) ? options.debug_level : 4;
+	if(options.disable_colors)
 		janus_log_colors = FALSE;
-	if(args_info.debug_timestamps_given)
+	if(options.debug_timestamps)
 		janus_log_timestamps = TRUE;
-	if(args_info.metadata_given || (g_getenv("JANUS_PPREC_METADATA") != NULL)) {
-		metadata = g_strdup(args_info.metadata_given ? args_info.metadata_arg : g_getenv("JANUS_PPREC_METADATA"));
-	}
-	if(args_info.ignore_first_given || (g_getenv("JANUS_PPREC_IGNOREFIRST") != NULL)) {
-		int val = args_info.ignore_first_given ? args_info.ignore_first_arg : atoi(g_getenv("JANUS_PPREC_IGNOREFIRST"));
-		if(val >= 0)
-			ignore_first_packets = val;
-	}
+	char *metadata = NULL;
+	if(options.metadata != NULL || (g_getenv("JANUS_PPREC_METADATA") != NULL))
+		metadata = g_strdup(options.metadata ? options.metadata : g_getenv("JANUS_PPREC_METADATA"));
+	if(options.ignore_first_packets < 0)
+		options.ignore_first_packets = 0;
 	/* If we're just printing the JSON header (extended or not), disable debugging */
 	if(jsonheader_only || extjson_only)
 		janus_log_level = LOG_NONE;
 
-	int match_pt = -1;
-	if(args_info.payload_type_given) {
-		int val = args_info.payload_type_arg;
-		if(val >= 0 && val <= 127)
-			match_pt = val;
-	}
-
-	if(args_info.audiolevel_ext_given || (g_getenv("JANUS_PPREC_AUDIOLEVELEXT") != NULL)) {
-		int val = args_info.audiolevel_ext_given ? args_info.audiolevel_ext_arg : atoi(g_getenv("JANUS_PPREC_AUDIOLEVELEXT"));
-		if(val >= 0)
-			audio_level_extmap_id = val;
-	}
-	if(args_info.videoorient_ext_given || (g_getenv("JANUS_PPREC_VIDEOORIENTEXT") != NULL)) {
-		int val = args_info.videoorient_ext_given ? args_info.videoorient_ext_arg : atoi(g_getenv("JANUS_PPREC_VIDEOORIENTEXT"));
-		if(val >= 0)
-			video_orient_extmap_id = val;
-	}
+	if(options.match_pt < 0 || options.match_pt > 127)
+		options.match_pt = -1;
 	char *extension = NULL;
-	if(args_info.format_given || (g_getenv("JANUS_PPREC_FORMAT") != NULL)) {
-		extension = g_strdup(args_info.format_given ? args_info.format_arg : g_getenv("JANUS_PPREC_FORMAT"));
-	}
-	if(args_info.faststart_given)
-		janus_faststart = TRUE;
-	if(args_info.audioskew_given || (g_getenv("JANUS_PPREC_AUDIOSKEW") != NULL)) {
-		int val = args_info.audioskew_given ? args_info.audioskew_arg : atoi(g_getenv("JANUS_PPREC_AUDIOSKEW"));
-		if(val >= 0)
-			audioskew_th = val;
-	}
-	if(args_info.silence_distance_given || (g_getenv("JANUS_PPREC_SILENCE_DISTANCE") != NULL)) {
-		int val = args_info.silence_distance_given ? args_info.silence_distance_arg : atoi(g_getenv("JANUS_PPREC_SILENCE_DISTANCE"));
-		if(val >= 0)
-			silence_distance = val;
-	}
-	if(args_info.restamp_given || (g_getenv("JANUS_PPREC_RESTAMP") != NULL)) {
-		int val = args_info.restamp_given ? args_info.restamp_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP"));
-		if(val >= 0)
-			restamp_multiplier = val;
-	}
-	if(args_info.restamp_packets_given || (g_getenv("JANUS_PPREC_RESTAMP_PACKETS") != NULL)) {
-		int val = args_info.restamp_packets_given ? args_info.restamp_packets_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP_PACKETS"));
-		if(val >= 0)
-			restamp_packets = val;
-	}
-	if(args_info.restamp_min_th_given || (g_getenv("JANUS_PPREC_RESTAMP_MIN_TH") != NULL)) {
-		int val = args_info.restamp_min_th_given ? args_info.restamp_min_th_arg : atoi(g_getenv("JANUS_PPREC_RESTAMP_MIN_TH"));
-		if(val >= 0)
-			restamp_min_th = val;
-	}
+	if(options.extension || (g_getenv("JANUS_PPREC_FORMAT") != NULL))
+		extension = g_strdup(options.extension ? options.extension : g_getenv("JANUS_PPREC_FORMAT"));
+	if(options.audioskew_th < 0)
+		options.audioskew_th = DEFAULT_AUDIO_SKEW_TH;
+	if(options.silence_distance < 0)
+		options.silence_distance = DEFAULT_SILENCE_DISTANCE;
+	if(options.restamp_multiplier < 0)
+		options.restamp_multiplier = DEFAULT_RESTAMP_MULTIPLIER;
+	if(options.restamp_packets < 0)
+		options.restamp_packets = DEFAULT_RESTAMP_PACKETS;
+	if(options.restamp_min_th < 0)
+		options.restamp_packets = DEFAULT_RESTAMP_MIN_TH;
+
 	/* Evaluate arguments to find source and target */
-	char *source = NULL, *destination = NULL, *setting = NULL;
-	int i=0;
-	for(i=1; i<argc; i++) {
-		if(argv[i] == NULL || strlen(argv[i]) == 0) {
-			setting = NULL;
-			continue;
-		}
-		if(argv[i][0] == '-') {
-			setting = argv[i];
-			continue;
-		}
-		if(setting == NULL || (
-				(strcmp(setting, "-m")) && (strcmp(setting, "--metadata")) &&
-				(strcmp(setting, "-i")) && (strcmp(setting, "--ignore-first")) &&
-				(strcmp(setting, "-P")) && (strcmp(setting, "--payload-type")) &&
-				(strcmp(setting, "-a")) && (strcmp(setting, "--audiolevel-ext")) &&
-				(strcmp(setting, "-v")) && (strcmp(setting, "--videoorient-ext")) &&
-				(strcmp(setting, "-d")) && (strcmp(setting, "--debug-level")) &&
-				(strcmp(setting, "-f")) && (strcmp(setting, "--format")) &&
-				(strcmp(setting, "-S")) && (strcmp(setting, "--audioskew")) &&
-				(strcmp(setting, "-C")) && (strcmp(setting, "--silence-distance")) &&
-				(strcmp(setting, "-r")) && (strcmp(setting, "--restamp")) &&
-				(strcmp(setting, "-c")) && (strcmp(setting, "--restamp-packets")) &&
-				(strcmp(setting, "-n")) && (strcmp(setting, "--restamp-min-th"))
-		)) {
-			if(source == NULL)
-				source = argv[i];
-			else if(destination == NULL)
-				destination = argv[i];
-		}
-		setting = NULL;
-	}
+	char *source = options.paths ? options.paths[0] : NULL;
+	char *destination = (options.paths && options.paths[0]) ? options.paths[1] : NULL;
 	if(source == NULL || (destination == NULL && !jsonheader_only && !header_only && !parse_only)) {
-		cmdline_parser_print_help();
-		cmdline_parser_free(&args_info);
+		janus_pprec_options_help();
+		janus_pprec_options_destroy();
 		exit(1);
 	}
 
@@ -385,16 +310,16 @@ int main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Logging level: %d\n", janus_log_level);
 		if(metadata)
 			JANUS_LOG(LOG_INFO, "Metadata: %s\n", metadata);
-		if(audioskew_th != DEFAULT_AUDIO_SKEW_TH)
-			JANUS_LOG(LOG_INFO, "Audio skew threshold: %d\n", audioskew_th);
-		if(ignore_first_packets > 0)
-			JANUS_LOG(LOG_INFO, "Ignoring first packets: %d\n", ignore_first_packets);
-		if(audio_level_extmap_id > 0)
-			JANUS_LOG(LOG_INFO, "Audio level extension ID: %d\n", audio_level_extmap_id);
-		if(video_orient_extmap_id > 0)
-			JANUS_LOG(LOG_INFO, "Video orientation extension ID: %d\n", video_orient_extmap_id);
-		if(silence_distance > 0)
-			JANUS_LOG(LOG_INFO, "RTP silence suppression distance: %d\n", silence_distance);
+		if(options.audioskew_th != DEFAULT_AUDIO_SKEW_TH)
+			JANUS_LOG(LOG_INFO, "Audio skew threshold: %d\n", options.audioskew_th);
+		if(options.ignore_first_packets > 0)
+			JANUS_LOG(LOG_INFO, "Ignoring first packets: %d\n", options.ignore_first_packets);
+		if(options.audio_level_extmap_id > 0)
+			JANUS_LOG(LOG_INFO, "Audio level extension ID: %d\n", options.audio_level_extmap_id);
+		if(options.video_orient_extmap_id > 0)
+			JANUS_LOG(LOG_INFO, "Video orientation extension ID: %d\n", options.video_orient_extmap_id);
+		if(options.silence_distance > 0)
+			JANUS_LOG(LOG_INFO, "RTP silence suppression distance: %d\n", options.silence_distance);
 		JANUS_LOG(LOG_INFO, "\n");
 		if(source != NULL)
 			JANUS_LOG(LOG_INFO, "Source file: %s\n", source);
@@ -413,22 +338,23 @@ int main(int argc, char *argv[])
 		if(extension == NULL) {
 			/* No extension? */
 			JANUS_LOG(LOG_ERR, "No extension? Unsupported target file\n");
-			cmdline_parser_free(&args_info);
+			janus_pprec_options_destroy();
 			exit(1);
 		}
 		extension++;
+		extension = g_strdup(extension);
 	}
 
-	if(janus_faststart && strcasecmp(extension, "mp4")) {
+	if(options.faststart && strcasecmp(extension, "mp4")) {
 		JANUS_LOG(LOG_ERR, "Faststart only supported for MP4");
-		cmdline_parser_free(&args_info);
+		janus_pprec_options_destroy();
 		exit(1);
 	}
 
 	FILE *file = fopen(source, "rb");
 	if(file == NULL) {
 		JANUS_LOG(LOG_ERR, "Could not open file %s\n", source);
-		cmdline_parser_free(&args_info);
+		janus_pprec_options_destroy();
 		exit(1);
 	}
 	fseek(file, 0L, SEEK_END);
@@ -466,7 +392,7 @@ int main(int argc, char *argv[])
 	while(working && offset < fsize) {
 		if(header_only && parsed_header) {
 			/* We only needed to parse the header */
-			cmdline_parser_free(&args_info);
+			janus_pprec_options_destroy();
 			exit(0);
 		}
 		/* Read frame header */
@@ -489,7 +415,7 @@ int main(int argc, char *argv[])
 				parsed_header = TRUE;
 				JANUS_LOG(LOG_WARN, "Old .mjr header format\n");
 				if(jsonheader_only) {	/* No JSON header to print */
-					cmdline_parser_free(&args_info);
+					janus_pprec_options_destroy();
 					exit(1);
 				}
 				bytes = fread(prebuffer, sizeof(char), 5, file);
@@ -500,7 +426,7 @@ int main(int argc, char *argv[])
 					vp8 = TRUE;
 					if(extension && strcasecmp(extension, "webm")) {
 						JANUS_LOG(LOG_ERR, "VP8 RTP packets can only be converted to a .webm file\n");
-						cmdline_parser_free(&args_info);
+						janus_pprec_options_destroy();
 						exit(1);
 					}
 				} else if(prebuffer[0] == 'a') {
@@ -510,7 +436,7 @@ int main(int argc, char *argv[])
 					opus = TRUE;
 					if(extension && strcasecmp(extension, "opus")) {
 						JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to an .opus file\n");
-						cmdline_parser_free(&args_info);
+						janus_pprec_options_destroy();
 						exit(1);
 					}
 				} else if(prebuffer[0] == 'd') {
@@ -519,12 +445,12 @@ int main(int argc, char *argv[])
 					data = TRUE;
 					if(extension && strcasecmp(extension, "srt")) {
 						JANUS_LOG(LOG_ERR, "Data channel packets can only be converted to a .srt file\n");
-						cmdline_parser_free(&args_info);
+						janus_pprec_options_destroy();
 						exit(1);
 					}
 				} else {
 					JANUS_LOG(LOG_WARN, "Unsupported recording media type...\n");
-					cmdline_parser_free(&args_info);
+					janus_pprec_options_destroy();
 					exit(1);
 				}
 				offset += len;
@@ -556,7 +482,7 @@ int main(int argc, char *argv[])
 				if(jsonheader_only && !extjson_only) {
 					/* Print the header as it is and exit */
 					JANUS_PRINT("%s\n", prebuffer);
-					cmdline_parser_free(&args_info);
+					janus_pprec_options_destroy();
 					exit(0);
 				}
 				json_error_t error;
@@ -564,7 +490,7 @@ int main(int argc, char *argv[])
 				if(!info) {
 					JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 					JANUS_LOG(LOG_WARN, "Error parsing info header...\n");
-					cmdline_parser_free(&args_info);
+					janus_pprec_options_destroy();
 					exit(1);
 				}
 				/* First of all let's check if this is an end-to-end encrypted recording */
@@ -576,7 +502,7 @@ int main(int argc, char *argv[])
 				if(!type || !json_is_string(type)) {
 					JANUS_LOG(LOG_WARN, "Missing/invalid recording type in info header...\n");
 					json_decref(info);
-					cmdline_parser_free(&args_info);
+					janus_pprec_options_destroy();
 					exit(1);
 				}
 				const char *t = json_string_value(type);
@@ -592,7 +518,7 @@ int main(int argc, char *argv[])
 				} else {
 					JANUS_LOG(LOG_WARN, "Unsupported recording type '%s' in info header...\n", t);
 					json_decref(info);
-					cmdline_parser_free(&args_info);
+					janus_pprec_options_destroy();
 					exit(1);
 				}
 				/* What codec was used? */
@@ -600,7 +526,7 @@ int main(int argc, char *argv[])
 				if(!codec || !json_is_string(codec)) {
 					JANUS_LOG(LOG_WARN, "Missing recording codec in info header...\n");
 					json_decref(info);
-					cmdline_parser_free(&args_info);
+					janus_pprec_options_destroy();
 					exit(1);
 				}
 				const char *c = json_string_value(codec);
@@ -612,7 +538,7 @@ int main(int argc, char *argv[])
 							JANUS_LOG(LOG_ERR, "VP8 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
 								janus_pp_extensions_string(janus_pp_webm_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
-							cmdline_parser_free(&args_info);
+							janus_pprec_options_destroy();
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "vp9")) {
@@ -621,7 +547,7 @@ int main(int argc, char *argv[])
 							JANUS_LOG(LOG_ERR, "VP9 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
 								janus_pp_extensions_string(janus_pp_webm_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
-							cmdline_parser_free(&args_info);
+							janus_pprec_options_destroy();
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "h264")) {
@@ -630,7 +556,7 @@ int main(int argc, char *argv[])
 							JANUS_LOG(LOG_ERR, "H.264 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
 								janus_pp_extensions_string(janus_pp_h264_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
-							cmdline_parser_free(&args_info);
+							janus_pprec_options_destroy();
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "av1")) {
@@ -639,7 +565,7 @@ int main(int argc, char *argv[])
 							JANUS_LOG(LOG_ERR, "AV1 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
 								janus_pp_extensions_string(janus_pp_av1_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
-							cmdline_parser_free(&args_info);
+							janus_pprec_options_destroy();
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "h265")) {
@@ -648,13 +574,13 @@ int main(int argc, char *argv[])
 							JANUS_LOG(LOG_ERR, "H.265 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
 								janus_pp_extensions_string(janus_pp_h265_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
-							cmdline_parser_free(&args_info);
+							janus_pprec_options_destroy();
 							exit(1);
 						}
 					} else {
 						JANUS_LOG(LOG_WARN, "The post-processor only supports VP8, VP9, H.264, AV1 and H.265 video for now (was '%s')...\n", c);
 						json_decref(info);
-						cmdline_parser_free(&args_info);
+						janus_pprec_options_destroy();
 						exit(1);
 					}
 				} else if(!video && !data) {
@@ -666,7 +592,7 @@ int main(int argc, char *argv[])
 								multiopus ? "Multiopus" : "Opus",
 								janus_pp_extensions_string(janus_pp_opus_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
-							cmdline_parser_free(&args_info);
+							janus_pprec_options_destroy();
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "g711") || !strcasecmp(c, "pcmu") || !strcasecmp(c, "pcma")) {
@@ -675,7 +601,7 @@ int main(int argc, char *argv[])
 							JANUS_LOG(LOG_ERR, "G.711 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
 								janus_pp_extensions_string(janus_pp_g711_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
-							cmdline_parser_free(&args_info);
+							janus_pprec_options_destroy();
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "g722")) {
@@ -684,20 +610,20 @@ int main(int argc, char *argv[])
 							JANUS_LOG(LOG_ERR, "G.722 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
 								janus_pp_extensions_string(janus_pp_g722_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
-							cmdline_parser_free(&args_info);
+							janus_pprec_options_destroy();
 							exit(1);
 						}
 					} else {
 						JANUS_LOG(LOG_WARN, "The post-processor only supports Opus, G.711 and G.722 audio for now (was '%s')...\n", c);
 						json_decref(info);
-						cmdline_parser_free(&args_info);
+						janus_pprec_options_destroy();
 						exit(1);
 					}
 				} else if(data) {
 					if(strcasecmp(c, "text") && strcasecmp(c, "binary")) {
 						JANUS_LOG(LOG_WARN, "The post-processor only supports text and binary data (was '%s')...\n", c);
 						json_decref(info);
-						cmdline_parser_free(&args_info);
+						janus_pprec_options_destroy();
 						exit(1);
 					}
 					textdata = !strcasecmp(c, "text");
@@ -705,7 +631,7 @@ int main(int argc, char *argv[])
 						JANUS_LOG(LOG_ERR, "Text data channel packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
 							janus_pp_extensions_string(janus_pp_srt_get_extensions(), supported, sizeof(supported)));
 						json_decref(info);
-						cmdline_parser_free(&args_info);
+						janus_pprec_options_destroy();
 						exit(1);
 					}
 				}
@@ -729,25 +655,25 @@ int main(int argc, char *argv[])
 						extmap = json_string_value(value);
 						if(!strcasecmp(extmap, JANUS_PP_RTP_EXTMAP_AUDIO_LEVEL)) {
 							/* Audio level */
-							if(audio_level_extmap_id != -1) {
-								if(audio_level_extmap_id != extid) {
+							if(options.audio_level_extmap_id != -1) {
+								if(options.audio_level_extmap_id != extid) {
 									JANUS_LOG(LOG_WARN, "Audio level extension ID found in header (%d) is different from the one provided via argument (%d)\n",
-										audio_level_extmap_id, extid);
+										options.audio_level_extmap_id, extid);
 								}
 							} else {
-								audio_level_extmap_id = extid;
-								JANUS_LOG(LOG_INFO, "Audio level extension ID: %d\n", audio_level_extmap_id);
+								options.audio_level_extmap_id = extid;
+								JANUS_LOG(LOG_INFO, "Audio level extension ID: %d\n", options.audio_level_extmap_id);
 							}
 						} else if(!strcasecmp(extmap, JANUS_PP_RTP_EXTMAP_VIDEO_ORIENTATION)) {
 							/* Video orientation */
-							if(video_orient_extmap_id != -1) {
-								if(video_orient_extmap_id != extid) {
+							if(options.video_orient_extmap_id != -1) {
+								if(options.video_orient_extmap_id != extid) {
 									JANUS_LOG(LOG_WARN, "Video orientation extension ID found in header (%d) is different from the one provided via argument (%d)\n",
-										video_orient_extmap_id, extid);
+										options.video_orient_extmap_id, extid);
 								}
 							} else {
-								video_orient_extmap_id = extid;
-								JANUS_LOG(LOG_INFO, "Video orientation extension ID: %d\n", video_orient_extmap_id);
+								options.video_orient_extmap_id = extid;
+								JANUS_LOG(LOG_INFO, "Video orientation extension ID: %d\n", options.video_orient_extmap_id);
 							}
 						}
 					}
@@ -757,7 +683,7 @@ int main(int argc, char *argv[])
 				if(!created || !json_is_integer(created)) {
 					JANUS_LOG(LOG_WARN, "Missing recording created time in info header...\n");
 					json_decref(info);
-					cmdline_parser_free(&args_info);
+					janus_pprec_options_destroy();
 					exit(1);
 				}
 				c_time = json_integer_value(created);
@@ -766,7 +692,7 @@ int main(int argc, char *argv[])
 				if(!written || !json_is_integer(written)) {
 					JANUS_LOG(LOG_WARN, "Missing recording written time in info header...\n");
 					json_decref(info);
-					cmdline_parser_free(&args_info);
+					janus_pprec_options_destroy();
 					exit(1);
 				}
 				w_time = json_integer_value(written);
@@ -792,14 +718,16 @@ int main(int argc, char *argv[])
 			}
 		} else {
 			JANUS_LOG(LOG_ERR, "Invalid header...\n");
-			cmdline_parser_free(&args_info);
+			janus_pprec_options_destroy();
 			exit(1);
 		}
 		/* Skip data for now */
 		offset += len;
 	}
 	if(!working || jsonheader_only) {
-		cmdline_parser_free(&args_info);
+		g_free(metadata);
+		g_free(extension);
+		janus_pprec_options_destroy();
 		exit(0);
 	}
 
@@ -813,7 +741,9 @@ int main(int argc, char *argv[])
 		JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
 		if(info)
 			json_decref(info);
-		cmdline_parser_free(&args_info);
+		g_free(metadata);
+		g_free(extension);
+		janus_pprec_options_destroy();
 		exit(1);
 	}
 
@@ -875,7 +805,7 @@ int main(int argc, char *argv[])
 			offset += len;
 			continue;
 		}
-		if(ignore_first_packets && ignored < ignore_first_packets) {
+		if(options.ignore_first_packets && ignored < options.ignore_first_packets) {
 			/* We've been told to ignore the first X packets */
 			ignored++;
 			offset += len;
@@ -938,9 +868,9 @@ int main(int argc, char *argv[])
 			count++;
 			continue;
 		}
-		if(match_pt != -1 && rtp->type != match_pt) {
+		if(options.match_pt != -1 && rtp->type != options.match_pt) {
 			JANUS_LOG(LOG_WARN, "Dropping packet with non-matching payload type: %d != %d\n",
-				rtp->type, match_pt);
+				rtp->type, options.match_pt);
 			/* Skip data */
 			offset += len;
 			count++;
@@ -977,10 +907,10 @@ int main(int argc, char *argv[])
 			} else {
 				rtp_header_len += rtp_read_n;
 			}
-			if(audio_level_extmap_id > 0)
-				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, len, audio_level_extmap_id, &audiolevel);
-			if(video_orient_extmap_id > 0) {
-				janus_pp_rtp_header_extension_parse_video_orientation(prebuffer, len, video_orient_extmap_id, &rotation);
+			if(options.audio_level_extmap_id > 0)
+				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, len, options.audio_level_extmap_id, &audiolevel);
+			if(options.video_orient_extmap_id > 0) {
+				janus_pp_rtp_header_extension_parse_video_orientation(prebuffer, len, options.video_orient_extmap_id, &rotation);
 				if(rotation != -1 && rotation != last_rotation) {
 					if(!extjson_only)
 						last_rotation = rotation;
@@ -1029,7 +959,7 @@ int main(int argc, char *argv[])
 				} else if(rtp->markerbit == 1) {
 					/* Try to detect RTP silence suppression */
 					int32_t seq_distance = abs((int16_t)(p->seq - highest_seq));
-					if(seq_distance < silence_distance) {
+					if(seq_distance < options.silence_distance) {
 						/* Consider 20 ms audio packets */
 						int32_t inter_rtp_ts = opus ? 960 : 160;
 						int32_t expected_rtp_distance = inter_rtp_ts * seq_distance;
@@ -1195,7 +1125,9 @@ int main(int argc, char *argv[])
 	if(!working) {
 		if(info)
 			json_decref(info);
-		cmdline_parser_free(&args_info);
+		g_free(metadata);
+		g_free(extension);
+		janus_pprec_options_destroy();
 		exit(0);
 	}
 
@@ -1247,7 +1179,9 @@ int main(int argc, char *argv[])
 				JANUS_LOG(LOG_ERR, "Error pre-processing %s RTP frames...\n", vp8 ? "VP8" : "VP9");
 				if(info)
 					json_decref(info);
-				cmdline_parser_free(&args_info);
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
 				exit(1);
 			}
 		} else if(h264) {
@@ -1255,7 +1189,9 @@ int main(int argc, char *argv[])
 				JANUS_LOG(LOG_ERR, "Error pre-processing H.264 RTP frames...\n");
 				if(info)
 					json_decref(info);
-				cmdline_parser_free(&args_info);
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
 				exit(1);
 			}
 		} else if(av1) {
@@ -1263,7 +1199,9 @@ int main(int argc, char *argv[])
 				JANUS_LOG(LOG_ERR, "Error pre-processing AV1 RTP frames...\n");
 				if(info)
 					json_decref(info);
-				cmdline_parser_free(&args_info);
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
 				exit(1);
 			}
 		} else if(h265) {
@@ -1271,7 +1209,9 @@ int main(int argc, char *argv[])
 				JANUS_LOG(LOG_ERR, "Error pre-processing H.265 RTP frames...\n");
 				if(info)
 					json_decref(info);
-				cmdline_parser_free(&args_info);
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
 				exit(1);
 			}
 		}
@@ -1283,13 +1223,17 @@ int main(int argc, char *argv[])
 		JANUS_PRINT("%s\n", info_text);
 		free(info_text);
 		json_decref(info);
-		cmdline_parser_free(&args_info);
+		g_free(metadata);
+		g_free(extension);
+		janus_pprec_options_destroy();
 		exit(0);
 	}
 	if(parse_only) {
 		/* We only needed to parse and re-order the packets, we're done here */
 		JANUS_LOG(LOG_INFO, "Parsing and reordering completed, bye!\n");
-		cmdline_parser_free(&args_info);
+		g_free(metadata);
+		g_free(extension);
+		janus_pprec_options_destroy();
 		exit(0);
 	}
 
@@ -1300,16 +1244,18 @@ int main(int argc, char *argv[])
 	 * the key to decrypt the content), but at the moment we just drop it */
 	if(e2ee) {
 		JANUS_LOG(LOG_ERR, "End-to-end encrypted media recording, can't process...\n");
-		cmdline_parser_free(&args_info);
+		g_free(metadata);
+		g_free(extension);
+		janus_pprec_options_destroy();
 		exit(1);
 	}
 
 	/* Run restamping */
-	if(!video && !data && restamp_multiplier > 0) {
+	if(!video && !data && options.restamp_multiplier > 0) {
 		tmp = list;
 		uint64_t restamping_offset = 0;
-		double restamp_threshold = (double) restamp_min_th/1000;
-		double restamp_jump_multiplier = (double) restamp_multiplier/1000;
+		double restamp_threshold = (double) options.restamp_min_th/1000;
+		double restamp_jump_multiplier = (double) options.restamp_multiplier/1000;
 
 		while(tmp) {
 			uint64_t original_ts = tmp->ts;
@@ -1324,7 +1270,7 @@ int main(int argc, char *argv[])
 
 			if(current_latency > restamp_threshold) {
 				/* Check for possible jump compared to previous latency values */
-				double moving_avg_latency = get_moving_average_of_latency(tmp->prev, rate, restamp_packets);
+				double moving_avg_latency = get_moving_average_of_latency(tmp->prev, rate, options.restamp_packets);
 				JANUS_LOG(LOG_VERB, "latency=%.2f mavg=%.2f\n", current_latency, moving_avg_latency);
 
 				/* Found a new jump in latency? */
@@ -1348,7 +1294,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Run audioskew */
-	if(!video && !data && audioskew_th > 0) {
+	if(!video && !data && options.audioskew_th > 0) {
 		tmp = list;
 		janus_pp_rtp_skew_context context = {};
 		context.ssrc = ssrc;
@@ -1380,19 +1326,25 @@ int main(int argc, char *argv[])
 		if(opus) {
 			if(janus_pp_opus_create(destination, metadata, multiopus, extension, opusred_pt) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .opus file...\n");
-				cmdline_parser_free(&args_info);
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
 				exit(1);
 			}
 		} else if(g711) {
 			if(janus_pp_g711_create(destination, metadata) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .wav file...\n");
-				cmdline_parser_free(&args_info);
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
 				exit(1);
 			}
 		} else if(g722) {
 			if(janus_pp_g722_create(destination, metadata) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .wav file...\n");
-				cmdline_parser_free(&args_info);
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
 				exit(1);
 			}
 		}
@@ -1400,13 +1352,17 @@ int main(int argc, char *argv[])
 		if(textdata) {
 			if(janus_pp_srt_create(destination, metadata) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .srt file...\n");
-				cmdline_parser_free(&args_info);
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
 				exit(1);
 			}
 		} else {
 			if(janus_pp_binary_create(destination, metadata) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating binary file...\n");
-				cmdline_parser_free(&args_info);
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
 				exit(1);
 			}
 		}
@@ -1414,25 +1370,33 @@ int main(int argc, char *argv[])
 		if(vp8 || vp9) {
 			if(janus_pp_webm_create(destination, metadata, vp8, extension) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .webm file...\n");
-				cmdline_parser_free(&args_info);
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
 				exit(1);
 			}
 		} else if(h264) {
-			if(janus_pp_h264_create(destination, metadata, janus_faststart, extension) < 0) {
+			if(janus_pp_h264_create(destination, metadata, options.faststart, extension) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
-				cmdline_parser_free(&args_info);
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
 				exit(1);
 			}
 		} else if(av1) {
-			if(janus_pp_av1_create(destination, metadata, janus_faststart, extension) < 0) {
+			if(janus_pp_av1_create(destination, metadata, options.faststart, extension) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
-				cmdline_parser_free(&args_info);
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
 				exit(1);
 			}
 		} else if(h265) {
-			if(janus_pp_h265_create(destination, metadata, janus_faststart, extension) < 0) {
+			if(janus_pp_h265_create(destination, metadata, options.faststart, extension) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
-				cmdline_parser_free(&args_info);
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
 				exit(1);
 			}
 		}
@@ -1528,7 +1492,9 @@ int main(int argc, char *argv[])
 		temp = next;
 	}
 
-	cmdline_parser_free(&args_info);
+	g_free(metadata);
+	g_free(extension);
+	janus_pprec_options_destroy();
 
 	JANUS_LOG(LOG_INFO, "Bye!\n");
 	return 0;
@@ -1657,8 +1623,9 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 			context->prev_delay = delay_estimate;
 			/* Evaluate the distance between active delay and current delay estimate */
 			gint64 offset = context->active_delay - delay_estimate;
-			JANUS_LOG(LOG_HUGE, "audio skew SSRC=%"SCNu32" status RECVD_TS=%"SCNu64" EXPTD_TS=%"SCNu64" AVG_OFFSET=%"SCNi64" TS_OFFSET=%"SCNi64" SEQ_OFFSET=%"SCNi16"\n", context->ssrc, context->last_ts, expected_ts, offset, context->ts_offset, context->seq_offset);
-			gint64 skew_th = audioskew_th * akhz;
+			JANUS_LOG(LOG_HUGE, "audio skew SSRC=%"SCNu32" status RECVD_TS=%"SCNu64" EXPTD_TS=%"SCNu64" AVG_OFFSET=%"SCNi64" TS_OFFSET=%"SCNi64" SEQ_OFFSET=%"SCNi16"\n",
+				context->ssrc, context->last_ts, expected_ts, offset, context->ts_offset, context->seq_offset);
+			gint64 skew_th = options.audioskew_th * akhz;
 
 			/* Evaluation phase */
 			if (context->evaluating_start_time) {
