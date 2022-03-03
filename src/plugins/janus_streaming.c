@@ -145,6 +145,8 @@ The following options are only valid for the 'rtsp' type:
 url = RTSP stream URL
 rtsp_user = RTSP authorization username, if needed
 rtsp_pwd = RTSP authorization password, if needed
+rtsp_quirk = Some RTSP servers offer the stream using only the path, instead of the fully qualified URL.
+	If set true, this boolean informs Janus that we should try a path-only DESCRIBE request if the initial request returns 404.
 rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=true)
 rtspiface = network interface IP address or device name to listen on when receiving RTSP streams
 rtsp_reconnect_delay = after n seconds passed and no media assumed, the RTSP server has gone and schedule a reconnect (default=5s)
@@ -1255,6 +1257,8 @@ typedef struct janus_streaming_rtp_source {
 	janus_streaming_buffer *curldata;
 	char *rtsp_url;
 	char *rtsp_username, *rtsp_password;
+	char *rtsp_stream_uri;
+	gboolean rtsp_quirk;
 	gint64 ka_timeout;
 	char *rtsp_ahost, *rtsp_vhost;
 	janus_streaming_codecs rtsp_acodecs, rtsp_vcodecs;
@@ -1431,7 +1435,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
-		gboolean doaudio, int audiopt, char *artpmap, char *afmtp,
+		gboolean quirk, gboolean doaudio, int audiopt, char *artpmap, char *afmtp,
 		gboolean dovideo, int videopt, char *vrtpmap, char *vfmtp, gboolean bufferkf,
 		const janus_network_address *iface, int threads,
 		gint64 reconnect_delay, gint64 session_timeout, int rtsp_timeout, int rtsp_conn_timeout,
@@ -2520,6 +2524,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *file = janus_config_get(config, cat, janus_config_type_item, "url");
 				janus_config_item *username = janus_config_get(config, cat, janus_config_type_item, "rtsp_user");
 				janus_config_item *password = janus_config_get(config, cat, janus_config_type_item, "rtsp_pwd");
+				janus_config_item *quirk = janus_config_get(config, cat, janus_config_type_item, "rtsp_quirk");
 				janus_config_item *audio = janus_config_get(config, cat, janus_config_type_item, "audio");
 				janus_config_item *artpmap = janus_config_get(config, cat, janus_config_type_item, "audiortpmap");
 				janus_config_item *acodec = janus_config_get(config, cat, janus_config_type_item, "audiopt");
@@ -2543,6 +2548,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					continue;
 				}
 				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
+				gboolean rtsp_quirk = quirk && quirk->value && janus_is_true(quirk->value);
 				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
 				gboolean dovideo = video && video->value && janus_is_true(video->value);
 				gboolean bufferkf = video && vkf && vkf->value && janus_is_true(vkf->value);
@@ -2577,6 +2583,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(char *)file->value,
 						username ? (char *)username->value : NULL,
 						password ? (char *)password->value : NULL,
+						rtsp_quirk,
 						doaudio,
 						(acodec && acodec->value) ? atoi(acodec->value) : -1,
 						artpmap ? (char *)artpmap->value : NULL,
@@ -3014,6 +3021,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						json_object_set_new(ml, "rtsp_user", json_string(source->rtsp_username));
 					if(source->rtsp_password)
 						json_object_set_new(ml, "rtsp_pwd", json_string(source->rtsp_password));
+					if(source->rtsp_quirk)
+						json_object_set_new(ml, "rtsp_quirk", json_true());
 				}
 			}
 #endif
@@ -3806,6 +3815,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_t *url = json_object_get(root, "url");
 			json_t *username = json_object_get(root, "rtsp_user");
 			json_t *password = json_object_get(root, "rtsp_pwd");
+			json_t *quirk = json_object_get(root, "rtsp_quirk");
 			json_t *iface = json_object_get(root, "rtspiface");
 			json_t *threads = json_object_get(root, "threads");
 			json_t *failerr = json_object_get(root, "rtsp_failcheck");
@@ -3817,6 +3827,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				failerr = json_object_get(root, "rtsp_check");
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE;
+			gboolean doquirk = quirk ? json_is_true(quirk) : FALSE;
 			gboolean error_on_failure = failerr ? json_is_true(failerr) : TRUE;
 			if(!doaudio && !dovideo) {
 				JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream, no audio or video have to be streamed...\n");
@@ -3850,6 +3861,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					(char *)json_string_value(url),
 					username ? (char *)json_string_value(username) : NULL,
 					password ? (char *)json_string_value(password) : NULL,
+					doquirk,
 					doaudio, (audiopt ? json_integer_value(audiopt) : -1),
 						(char *)json_string_value(audiortpmap), (char *)json_string_value(audiofmtp),
 					dovideo, (videopt ? json_integer_value(videopt) : -1),
@@ -3995,6 +4007,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					janus_config_add(config, c, janus_config_item_create("rtsp_user", source->rtsp_username));
 				if(source->rtsp_password)
 					janus_config_add(config, c, janus_config_item_create("rtsp_pwd", source->rtsp_password));
+				if(source->rtsp_quirk)
+					janus_config_add(config, c, janus_config_item_create("rtsp_quirk", "yes"));
 #endif
 				GList *temp = source->media;
 				while(temp) {
@@ -4251,6 +4265,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						janus_config_add(config, c, janus_config_item_create("rtsp_user", source->rtsp_username));
 					if(source->rtsp_password)
 						janus_config_add(config, c, janus_config_item_create("rtsp_pwd", source->rtsp_password));
+					if(source->rtsp_quirk)
+						janus_config_add(config, c, janus_config_item_create("rtsp_quirk", "yes"));
 #endif
 					GList *temp = source->media;
 					while(temp) {
@@ -6568,6 +6584,7 @@ static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) 
 	g_free(source->rtsp_url);
 	g_free(source->rtsp_username);
 	g_free(source->rtsp_password);
+	g_free(source->rtsp_stream_uri);
 	g_free(source->rtsp_ahost);
 	g_free(source->rtsp_vhost);
 	g_free(source->rtsp_acodecs.rtpmap);
@@ -7203,6 +7220,25 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	}
 	long code = 0;
 	res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+#if CURL_AT_LEAST_VERSION(7, 62, 0)
+	if(source->rtsp_quirk && code == 404) {
+		/* Possibly a quirk in the RTSP server, where the DESCRIBE request expects a path only. */
+		CURLU *curl_u = curl_url();
+		char *path = NULL;
+		if(!(curl_url_set(curl_u, CURLUPART_URL, source->rtsp_url, 0))) {
+			if(!(curl_url_get(curl_u, CURLUPART_PATH, &path, 0))) {
+				curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, path);
+				curl_easy_perform(curl);
+				res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+				if((res == CURLE_OK) && (code != 404)) {
+					source->rtsp_stream_uri = g_strdup(path);
+				}
+				curl_free(path);
+			}
+		}
+		curl_url_cleanup(curl_u);
+	}
+#endif
 	if(res != CURLE_OK) {
 		JANUS_LOG(LOG_ERR, "Couldn't get DESCRIBE answer: %s\n", curl_easy_strerror(res));
 		curl_easy_cleanup(curl);
@@ -7806,7 +7842,7 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 	source->curldata->buffer = g_malloc0(1);
 	source->curldata->size = 0;
 	JANUS_LOG(LOG_VERB, "Sending PLAY request...\n");
-	curl_easy_setopt(source->curl, CURLOPT_RTSP_STREAM_URI, source->rtsp_url);
+	curl_easy_setopt(source->curl, CURLOPT_RTSP_STREAM_URI, source->rtsp_stream_uri ? source->rtsp_stream_uri : source->rtsp_url);
 	curl_easy_setopt(source->curl, CURLOPT_RANGE, "npt=0.000-");
 	curl_easy_setopt(source->curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_PLAY);
 	int res = curl_easy_perform(source->curl);
@@ -7824,7 +7860,7 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
-		gboolean doaudio, int acodec, char *artpmap, char *afmtp,
+		gboolean quirk, gboolean doaudio, int acodec, char *artpmap, char *afmtp,
 		gboolean dovideo, int vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
 		const janus_network_address *iface, int threads,
 		gint64 reconnect_delay, gint64 session_timeout, int rtsp_timeout, int rtsp_conn_timeout,
@@ -7899,6 +7935,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp_source->rtsp_url = g_strdup(url);
 	live_rtsp_source->rtsp_username = username ? g_strdup(username) : NULL;
 	live_rtsp_source->rtsp_password = password ? g_strdup(password) : NULL;
+	live_rtsp_source->rtsp_stream_uri = NULL;
+	live_rtsp_source->rtsp_quirk = quirk;
 	live_rtsp_source->media = NULL;		/* We'll prepare this later */
 	live_rtsp_source->media_byid = g_hash_table_new(NULL, NULL);
 	live_rtsp_source->media_byfd = g_hash_table_new(NULL, NULL);
@@ -8012,7 +8050,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
-		gboolean doaudio, int acodec, char *audiortpmap, char *audiofmtp,
+		gboolean quirk, gboolean doaudio, int acodec, char *audiortpmap, char *audiofmtp,
 		gboolean dovideo, int vcodec, char *videortpmap, char *videofmtp, gboolean bufferkf,
 		const janus_network_address *iface, int threads,
 		gint64 reconnect_delay, gint64 session_timeout, int rtsp_timeout, int rtsp_conn_timeout,
