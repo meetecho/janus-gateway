@@ -3429,7 +3429,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					janus_config_add(config, c, janus_config_item_create("rtsp_user", source->rtsp_username));
 				if(source->rtsp_password)
 					janus_config_add(config, c, janus_config_item_create("rtsp_pwd", source->rtsp_password));
-				if(source->rtsp_password)
+				if(source->rtsp_quirk)
 					janus_config_add(config, c, janus_config_item_create("rtsp_quirk", "yes"));
 #endif
 				janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt >= 0 ? "yes" : "no"));
@@ -3645,7 +3645,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						janus_config_add(config, c, janus_config_item_create("rtsp_user", source->rtsp_username));
 					if(source->rtsp_password)
 						janus_config_add(config, c, janus_config_item_create("rtsp_pwd", source->rtsp_password));
-					if(source->rtsp_password)
+					if(source->rtsp_quirk)
 						janus_config_add(config, c, janus_config_item_create("rtsp_quirk", "yes"));
 #endif
 					janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt >= 0 ? "yes" : "no"));
