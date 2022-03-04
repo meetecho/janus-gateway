@@ -44,7 +44,7 @@ admin: {
 	admin_https = false					# Whether to enable HTTPS (default=false)
 	#admin_secure_port = 7889			# Admin/monitor web server HTTPS port, if enabled
 	#admin_secure_interface = "eth0"	# Whether we should bind this server to a specific interface only
-	#admin_secure_ip = "192.168.0.1		# Whether we should bind this server to a specific IP address (v4 or v6) only
+	#admin_secure_ip = "192.168.0.1"	# Whether we should bind this server to a specific IP address (v4 or v6) only
 	#admin_acl = "127.,192.168.0."		# Only allow requests coming from this comma separated list of addresses
 }
 
