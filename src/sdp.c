@@ -683,6 +683,12 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 					}
 					if(handle->pc_mid == NULL)
 						handle->pc_mid = g_strdup(a->value);
+					/* Remove this mid attribute, the core will add it again later */
+					GList *mid_attr = tempA;
+					tempA = tempA->next;
+					m->attributes = g_list_remove_link(m->attributes, mid_attr);
+					g_list_free_full(mid_attr, (GDestroyNotify)janus_sdp_attribute_destroy);
+					continue;
 				}
 			}
 			tempA = tempA->next;
