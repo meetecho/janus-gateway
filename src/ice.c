@@ -4223,11 +4223,17 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 			if(no_media_timer > 0 && pc->dtls && pc->dtls->dtls_connected > 0 && (now - pc->dtls->dtls_connected >= G_USEC_PER_SEC)) {
 				gint64 last = medium->in_stats.info[vindex].updated;
 				if(!medium->in_stats.info[vindex].notified_lastsec && last &&
-						!medium->in_stats.info[vindex].bytes_lastsec && !medium->in_stats.info[0].bytes_lastsec_temp &&
+						!medium->in_stats.info[vindex].bytes_lastsec && !medium->in_stats.info[vindex].bytes_lastsec_temp &&
 							now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of video! */
 					medium->in_stats.info[vindex].notified_lastsec = TRUE;
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio or video for more than a second...\n", handle->handle_id);
+					if(vindex == 0) {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive %s for more than a second...\n",
+							handle->handle_id, medium->type == JANUS_MEDIA_VIDEO ? "video" : "audio");
+					} else {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive %s (substream #%d) for more than a second...\n",
+							handle->handle_id, medium->type == JANUS_MEDIA_VIDEO ? "video" : "audio", vindex);
+					}
 					janus_ice_notify_media(handle, medium->mid, medium->type == JANUS_MEDIA_VIDEO, medium->rtcp_ctx[1] != NULL, vindex, FALSE);
 				}
 			}
