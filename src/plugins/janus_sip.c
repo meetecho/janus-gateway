@@ -4826,6 +4826,23 @@ static void *janus_sip_handler(void *data) {
 			/* Notify the result */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("dtmfsent"));
+		} else if(!strcasecmp(request_text, "reset")) {
+			/* Apparently, under some particular circumstances that we haven't
+			 * managed to replicate ourselves yet, it can sometimes happen that
+			 * a janus_sip_session remains with the establishing atomic set to
+			 * 1, even though the last call has been correctly closed. This
+			 * prevents further incoming calls to be established, as the
+			 * plugin automatically answers with a 486 busy thinking another
+			 * call is currently in progress. This "reset" request is here
+			 * to reset the establishing flag back to 0, in case the call
+			 * state is idle but the flag is still set to 1 instead */
+			if(session->status == janus_sip_call_status_idle) {
+				g_atomic_int_set(&session->established, 0);
+				g_atomic_int_set(&session->establishing, 0);
+			}
+			/* Notify the result */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("reset"));
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request (%s)\n", request_text);
 			error_code = JANUS_SIP_ERROR_INVALID_REQUEST;
