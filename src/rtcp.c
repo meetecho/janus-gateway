@@ -828,13 +828,16 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 		ctx->tb = clock_rate;
 	/* Now parse this RTP packet header and update the rtcp_context instance */
 	uint16_t seq_number = ntohs(rtp->seq_number);
-	if(ctx->base_seq == 0 && ctx->seq_cycle == 0)
+	gboolean first_pkt = FALSE;
+	if(ctx->base_seq == 0 && ctx->seq_cycle == 0) {
 		ctx->base_seq = seq_number;
+		first_pkt = TRUE;
+	}
 
 	int64_t now = janus_get_monotonic_time();
 	if (!rfc4588_pkt) {
 		/* Non-RTX packet */
-		if ((int16_t)(seq_number - ctx->max_seq_nr) > 0) {
+		if ((int16_t)(seq_number - ctx->max_seq_nr) > 0 || first_pkt) {
 			/* In-order packet */
 			ctx->received++;
 
