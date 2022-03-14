@@ -9259,7 +9259,7 @@ static void *janus_videoroom_handler(void *data) {
 						gboolean oldvideo = stream->send;
 						gboolean newvideo = json_is_true(video);
 						if(!oldvideo && newvideo) {
-							/* Audio just resumed, reset the RTP sequence numbers */
+							/* Video just resumed, reset the RTP sequence numbers */
 							stream->context.seq_reset = TRUE;
 						}
 						stream->send = newvideo;
@@ -9283,6 +9283,10 @@ static void *janus_videoroom_handler(void *data) {
 							stream->context.seq_reset = TRUE;
 						}
 						stream->send = json_is_true(send);
+						if(newsend) {
+							/* Send a PLI */
+							janus_videoroom_reqpli(ps, "Restoring video for subscriber");
+						}
 					}
 					/* Next properties are for video only */
 					if(stream->type != JANUS_VIDEOROOM_MEDIA_VIDEO) {
