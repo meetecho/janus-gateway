@@ -526,8 +526,10 @@
 	"action" : "<start|stop, depending on whether you want to start or stop recording something>"
 	"audio" : <true|false; whether or not our audio should be recorded>,
 	"video" : <true|false; whether or not our video should be recorded>,
+	"data" : <true|false; whether or not our data should be recorded>,
 	"peer_audio" : <true|false; whether or not our peer's audio should be recorded>,
 	"peer_video" : <true|false; whether or not our peer's video should be recorded>,
+	"peer_data" : <true|false; whether or not our peer's data should be recorded>,
 	"filename" : "<base path/filename to use for all the recordings>"
 }
 \endverbatim
@@ -819,8 +821,10 @@ static struct janus_json_parameter recording_parameters[] = {
 	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
+	{"data", JANUS_JSON_BOOL, 0},
 	{"peer_audio", JANUS_JSON_BOOL, 0},
 	{"peer_video", JANUS_JSON_BOOL, 0},
+	{"peer_data", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0}
 };
 static struct janus_json_parameter dtmf_info_parameters[] = {
@@ -1035,6 +1039,9 @@ typedef struct janus_sip_media {
 	gboolean updated;
 	int video_orientation_extension_id;
 	int audio_level_extension_id;
+	int data_pt;
+	const char *data_pt_name;
+	gboolean has_data;
 } janus_sip_media;
 
 typedef struct janus_sip_session {
@@ -1044,6 +1051,7 @@ typedef struct janus_sip_session {
 	janus_sip_call_status status;
 	janus_sip_media media;
 	char *transaction;
+	char *recording_callee;          
 	char *callee;
 	char *callid;
 	guint32 refer_id;			/* In case we were asked to transfer, keep track of the ID */
@@ -1052,6 +1060,8 @@ typedef struct janus_sip_session {
 	janus_recorder *arc_peer;	/* The Janus recorder instance for the peer's audio, if enabled */
 	janus_recorder *vrc;		/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
+	janus_recorder *drc;		/* The Janus recorder instance for this user's data, if enabled */
+	janus_recorder *drc_peer;	/* The Janus recorder instance for the peer's data, if enabled */
 	janus_mutex rec_mutex;		/* Mutex to protect the recorders from race conditions */
 	GThread *relayer_thread;
 	volatile gint establishing, established;
@@ -1157,6 +1167,10 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 	if(session->account.authuser) {
 		g_free(session->account.authuser);
 		session->account.authuser = NULL;
+	}
+	if(session->recording_callee) {
+		g_free(session->recording_callee);
+		session->recording_callee = NULL;
 	}
 	if(session->callee) {
 		g_free(session->callee);
@@ -1474,6 +1488,9 @@ static void janus_sip_media_reset(janus_sip_session *session) {
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	session->media.video_orientation_extension_id = -1;
 	session->media.audio_level_extension_id = -1;
+	session->media.data_pt = -1;
+	session->media.data_pt_name = NULL;	/* Immutable string, no need to free*/
+	session->media.has_data = FALSE;
 	janus_rtp_switching_context_reset(&session->media.acontext);
 	janus_rtp_switching_context_reset(&session->media.vcontext);
 }
@@ -2107,6 +2124,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->status = janus_sip_call_status_idle;
 	session->stack = NULL;
 	session->transaction = NULL;
+	session->recording_callee = NULL;
 	session->callee = NULL;
 	session->callid = NULL;
 	session->sdp = NULL;
@@ -2158,6 +2176,9 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	session->media.video_orientation_extension_id = -1;
 	session->media.audio_level_extension_id = -1;
+	session->media.data_pt = -1;
+	session->media.data_pt_name = NULL;	/* Immutable string, no need to free*/
+	session->media.has_data = FALSE;
 	/* Initialize the RTP context */
 	janus_rtp_switching_context_reset(&session->media.acontext);
 	janus_rtp_switching_context_reset(&session->media.vcontext);
@@ -2304,10 +2325,14 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 			json_object_set_new(recording, "audio", json_string(session->arc->filename));
 		if(session->vrc && session->vrc->filename)
 			json_object_set_new(recording, "video", json_string(session->vrc->filename));
+		if(session->drc && session->drc->filename)
+			json_object_set_new(recording, "data", json_string(session->drc->filename));
 		if(session->arc_peer && session->arc_peer->filename)
 			json_object_set_new(recording, "audio-peer", json_string(session->arc_peer->filename));
 		if(session->vrc_peer && session->vrc_peer->filename)
 			json_object_set_new(recording, "video-peer", json_string(session->vrc_peer->filename));
+		if(session->drc_peer && session->drc_peer->filename)
+			json_object_set_new(recording, "data-peer", json_string(session->drc_peer->filename));
 		json_object_set_new(info, "recording", recording);
 	}
 	json_object_set_new(info, "establishing", json_integer(g_atomic_int_get(&session->establishing)));
@@ -2566,7 +2591,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *pa
 }
 
 static void janus_sip_recorder_close(janus_sip_session *session,
-		gboolean stop_audio, gboolean stop_audio_peer, gboolean stop_video, gboolean stop_video_peer) {
+		gboolean stop_audio, gboolean stop_audio_peer, gboolean stop_video, gboolean stop_video_peer, gboolean stop_data, gboolean stop_data_peer) {
 	if(session->arc && stop_audio) {
 		janus_recorder *rc = session->arc;
 		session->arc = NULL;
@@ -2593,6 +2618,20 @@ static void janus_sip_recorder_close(janus_sip_session *session,
 		session->vrc_peer = NULL;
 		janus_recorder_close(rc);
 		JANUS_LOG(LOG_INFO, "Closed peer's video recording %s\n", rc->filename ? rc->filename : "??");
+		janus_recorder_destroy(rc);
+	}
+	if(session->drc && stop_data) {
+		janus_recorder *rc = session->drc;
+		session->drc = NULL;
+		janus_recorder_close(rc);
+		JANUS_LOG(LOG_INFO, "Closed user's data recording %s\n", rc->filename ? rc->filename : "??");
+		janus_recorder_destroy(rc);
+	}
+	if(session->drc_peer && stop_data_peer) {
+		janus_recorder *rc = session->drc_peer;
+		session->drc_peer = NULL;
+		janus_recorder_close(rc);
+		JANUS_LOG(LOG_INFO, "Closed peer's data recording %s\n", rc->filename ? rc->filename : "??");
 		janus_recorder_destroy(rc);
 	}
 }
@@ -2625,7 +2664,7 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	}
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&session->rec_mutex);
-	janus_sip_recorder_close(session, TRUE, TRUE, TRUE, TRUE);
+	janus_sip_recorder_close(session, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE);
 	janus_mutex_unlock(&session->rec_mutex);
 	if(!(session->status == janus_sip_call_status_inviting ||
 			session->status == janus_sip_call_status_invited ||
@@ -2640,6 +2679,10 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	if(session->stack->s_nh_i != NULL && session->callee != NULL) {
 		g_free(session->callee);
 		session->callee = NULL;
+		if(session->recording_callee != NULL) {
+			g_free(session->recording_callee);
+			session->recording_callee = NULL;
+		}
 		janus_mutex_unlock(&session->mutex);
 		/* Send a BYE */
 		session->media.earlymedia = FALSE;
@@ -3479,12 +3522,6 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Media encryption unsupported by this plugin");
 				goto error;
 			}
-			if(strstr(msg_sdp, "m=application")) {
-				JANUS_LOG(LOG_ERR, "The SIP plugin does not support DataChannels\n");
-				error_code = JANUS_SIP_ERROR_MISSING_SDP;
-				g_snprintf(error_cause, 512, "The SIP plugin does not support DataChannels");
-				goto error;
-			}
 			JANUS_LOG(LOG_VERB, "%s is calling %s\n", session->account.username, uri_text);
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
 			/* Clean up SRTP stuff from before first, in case it's still needed */
@@ -3834,6 +3871,10 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
+			if(strstr(msg_sdp, "m=application") && !strstr(msg_sdp, "m=application 0")) {
+				JANUS_LOG(LOG_VERB, "Going to negotiate data...\n");
+				session->media.has_data = TRUE;	/* FIXME Maybe we need a better way to signal this */
+			}
 			janus_mutex_lock(&session->mutex);
 			if(janus_sip_allocate_local_ports(session, FALSE) < 0) {
 				janus_mutex_unlock(&session->mutex);
@@ -4000,10 +4041,13 @@ static void *janus_sip_handler(void *data) {
 
 			gboolean audio_added = strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0") && session->media.local_audio_rtp_port == 0;
 			gboolean video_added = strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0") && session->media.local_video_rtp_port == 0;
+			gboolean data_added = strstr(msg_sdp, "m=application") && !strstr(msg_sdp, "m=application 0");
 			if(audio_added)
 				session->media.has_audio = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			if(video_added)
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
+			if(data_added)
+				session->media.has_data = TRUE;		/* FIXME Maybe we need a better way to signal this */
 
 			if(offer) {
 				gboolean offer_srtp = session->media.require_srtp || session->media.has_srtp_local_audio || session->media.has_srtp_local_video;
@@ -4430,6 +4474,9 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			g_free(session->recording_callee);
+			session->recording_callee=g_strdup(session->callee);
+			JANUS_LOG(LOG_VERB, "Recording callee=(%s)\n ", session->recording_callee);
 			janus_mutex_unlock(&session->mutex);
 			JANUS_VALIDATE_JSON_OBJECT(root, recording_parameters,
 				error_code, error_cause, TRUE,
@@ -4445,16 +4492,24 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Invalid action (should be start|stop|pause|resume)");
 				goto error;
 			}
-			gboolean record_audio = FALSE, record_video = FALSE,	/* No media is recorded by default */
-				record_peer_audio = FALSE, record_peer_video = FALSE;
+			gboolean record_audio = FALSE, record_video = FALSE, record_data = FALSE, /* No media is recorded by default */
+				record_peer_audio = FALSE, record_peer_video = FALSE, record_peer_data = FALSE;
 			json_t *audio = json_object_get(root, "audio");
 			record_audio = audio ? json_is_true(audio) : FALSE;
 			json_t *video = json_object_get(root, "video");
 			record_video = video ? json_is_true(video) : FALSE;
+			json_t *data = json_object_get(root, "data");
+			record_data = data ? json_is_true(data) : FALSE;
 			json_t *peer_audio = json_object_get(root, "peer_audio");
 			record_peer_audio = peer_audio ? json_is_true(peer_audio) : FALSE;
 			json_t *peer_video = json_object_get(root, "peer_video");
 			record_peer_video = peer_video ? json_is_true(peer_video) : FALSE;
+			json_t *peer_data = json_object_get(root, "peer_data");
+			record_peer_data = peer_data ? json_is_true(peer_data) : FALSE;
+			if(record_data) {
+				session->media.data_pt_name="text";
+				JANUS_LOG(LOG_VERB, "Set data_pt_name (%s)\n",session->media.data_pt_name);
+			}
 			if(!record_audio && !record_video && !record_peer_audio && !record_peer_video) {
 				JANUS_LOG(LOG_ERR, "Invalid request (at least one of audio, video, peer_audio and peer_video should be true)\n");
 				error_code = JANUS_SIP_ERROR_RECORDING_ERROR;
@@ -4527,6 +4582,30 @@ static void *janus_sip_handler(void *data) {
 							session->vrc_peer = rc;
 						}
 					}
+					if(record_peer_data) {
+						memset(filename, 0, 255);
+						if(recording_base) {
+							/* Use the filename and path we have been provided */
+							g_snprintf(filename, 255, "%s-peer-data", recording_base);
+							/* FIXME This only works if offer/answer happened */
+							rc = janus_recorder_create(NULL, session->media.data_pt_name, filename);
+						} else {
+							/* Build a filename */
+							g_snprintf(filename, 255, "sip-%s-%s-%"SCNi64"-peer-data",
+								session->account.username ? session->account.username : "unknown",
+								session->transaction ? session->transaction : "unknown",
+								now);
+							/* FIXME This only works if offer/answer happened */
+							rc = janus_recorder_create(NULL, session->media.data_pt_name, filename);
+						}
+						/* TODO We should send a FIR/PLI to this peer... */
+						if(rc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this peer!\n");
+						} else {
+							session->drc_peer = rc;
+						}
+					}
 				}
 				if(record_audio || record_video) {
 					/* Start recording the user's audio and/or video */
@@ -4588,28 +4667,61 @@ static void *janus_sip_handler(void *data) {
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 						gateway->send_pli(session->handle);
 					}
+					if (record_data) {
+						memset(filename, 0, 255);
+                                                if(recording_base) {
+                                                        /* Use the filename and path we have been provided */
+                                                        g_snprintf(filename, 255, "%s-user-data", recording_base);
+                                                        /* FIXME This only works if offer/answer happened */
+                                                	JANUS_LOG(LOG_VERB, "Recording data berfore create %s %s\n",session->media.data_pt_name,filename);
+
+                                                        rc = janus_recorder_create(NULL, session->media.data_pt_name, filename);
+                                                } else {
+                                                        /* Build a filename */
+                                                        g_snprintf(filename, 255, "sip-%s-%s-%"SCNi64"-own-data",
+                                                                session->account.username ? session->account.username : "unknown",
+                                                                session->transaction ? session->transaction : "unknown",
+                                                                now);
+                                                        /* FIXME This only works if offer/answer happened */
+                                                        rc = janus_recorder_create(NULL, session->media.data_pt_name, filename);
+                                                }
+                                                if(rc == NULL) {
+                                                        /* FIXME We should notify the fact the recorder could not be created */
+                                                        JANUS_LOG(LOG_ERR, "Couldn't open a data recording file for this user!\n");
+                                                } else {
+                                                        session->drc = rc;
+                                                }
+					}
 				}
 			} else if(!strcasecmp(action_text, "pause")) {
 				if(record_audio)
 					janus_recorder_pause(session->arc);
 				if(record_video)
 					janus_recorder_pause(session->vrc);
+				if(record_data)
+                                        janus_recorder_pause(session->drc);
 				if(record_peer_audio)
 					janus_recorder_pause(session->arc_peer);
 				if(record_peer_video)
 					janus_recorder_pause(session->vrc_peer);
+				if(record_peer_data)
+					janus_recorder_pause(session->drc_peer);
 			} else if(!strcasecmp(action_text, "resume")) {
 				if(record_audio)
 					janus_recorder_resume(session->arc);
 				if(record_video && !janus_recorder_resume(session->vrc))
 					gateway->send_pli(session->handle);
+				if(record_data)
+					janus_recorder_resume(session->drc);
 				if(record_peer_audio)
 					janus_recorder_resume(session->arc_peer);
 				if(record_peer_video)
 					janus_recorder_resume(session->vrc_peer);
+				if(record_peer_data)
+					janus_recorder_resume(session->drc_peer);
 			} else {
 				/* Stop recording something: notice that this never returns an error, even when we were not recording anything */
-				janus_sip_recorder_close(session, record_audio, record_peer_audio, record_video, record_peer_video);
+				janus_sip_recorder_close(session, record_audio, record_peer_audio, record_video, record_peer_video, record_data, record_peer_data);
 			}
 			janus_mutex_unlock(&session->rec_mutex);
 			/* Notify the result */
@@ -4777,6 +4889,23 @@ static void *janus_sip_handler(void *data) {
 			g_hash_table_insert(messageids, g_strdup(message_callid), session);
 			janus_mutex_unlock(&sessions_mutex);
 			g_free(message_callid);
+
+			if (session->callee) {
+                                JANUS_LOG(LOG_VERB, "[%s]: callee:%s\n", session->account.username, session->callee);
+                                if (session->recording_callee) {
+                                        JANUS_LOG(LOG_VERB, "[%s]: rec:%s call:%s\n", session->account.username, session->recording_callee, session->callee);
+
+                                        const gboolean local=strcmp(session->recording_callee, session->callee)==0;
+
+                                        char *buf = (char *)msg_content;
+                                        uint16_t len = strlen(buf);
+
+                                        janus_recorder_save_frame(local?session->drc:session->drc_peer, buf, len);
+
+                                        JANUS_LOG(LOG_VERB, "RECORD MESSAGE %s Callee (%s) (%s)\n",local?"local":"peer", session->callee, msg_content);
+                                }
+                        }
+
 		} else if(!strcasecmp(request_text, "dtmf_info")) {
 			/* Send DMTF tones using SIP INFO
 			 * (https://tools.ietf.org/html/draft-kaplan-dispatch-info-dtmf-package-00)
@@ -5420,6 +5549,18 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_object_set_new(result, "event", json_string("message"));
 			char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
 			json_object_set_new(result, "sender", json_string(caller_text));
+			if (session->recording_callee) {
+                                JANUS_LOG(LOG_VERB, "[%s]: rec:%s caller:%s\n", session->account.username, session->recording_callee, caller_text);
+
+                                const gboolean local=strcmp(session->recording_callee, caller_text)!=0;
+
+                                char *buf = payload;
+                                uint16_t len = strlen(buf);
+
+                                janus_recorder_save_frame(local?session->drc:session->drc_peer, buf, len);
+
+                                JANUS_LOG(LOG_VERB, "RECORD MESSAGE %s Caller (%s) (%s)\n",local?"local":"peer", caller_text, buf);
+                        }
 			su_free(session->stack->s_home, caller_text);
 			if(sip->sip_from && sip->sip_from->a_display && strlen(sip->sip_from->a_display) > 0) {
 				json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
