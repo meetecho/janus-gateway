@@ -530,9 +530,17 @@ function unpublishOwnFeed() {
 	sfutest.send({ message: unpublish });
 }
 
-var creatingFeed = false;
+var creatingSubscription = false;
 function subscribeTo(sources) {
-	// New feeds are available, do we need create a new plugin handle first?
+	// Check if we're still creating the subscription handle
+	if(creatingSubscription) {
+		// Still working on the handle, send this request later when it's ready
+		setTimeout(function() {
+			subscribeTo(sources);
+		}, 500);
+		return;
+	}
+	// If we already have a working subscription handle, just update that one
 	if(remoteFeed) {
 		// Prepare the streams to subscribe to, as an array: we have the list of
 		// streams the feeds are publishing, so we can choose what to pick or skip
@@ -588,17 +596,11 @@ function subscribeTo(sources) {
 			request: "subscribe",
 			streams: subscription
 		}});
+		// Nothing else we need to do
 		return;
 	}
-	// We don't have a handle yet, but we may be creating one already
-	if(creatingFeed) {
-		// Still working on the handle
-		setTimeout(function() {
-			subscribeTo(sources);
-		}, 500);
-		return;
-	}
-	creatingFeed = true;
+	// If we got here, we're creating a new handle for the subscriptions (we only need one)
+	creatingSubscription = true;
 	janus.attach(
 		{
 			plugin: "janus.plugin.videoroom",
@@ -687,7 +689,8 @@ function subscribeTo(sources) {
 					bootbox.alert(msg["error"]);
 				} else if(event) {
 					if(event === "attached") {
-						creatingFeed = false;
+						// Now we have a working subscription, next requests will update this one
+						creatingSubscription = false;
 						Janus.log("Successfully attached to feed in room " + msg["room"]);
 					} else if(event === "event") {
 						// Check if we got an event on a simulcast-related event from this publisher
