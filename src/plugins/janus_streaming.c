@@ -3071,7 +3071,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						json_object_set_new(info, "port3", json_integer(stream->port[2]));
 				}
 				if(stream->fd[0] != -1 || stream->fd[1] != -1 || stream->fd[2] != -1)
-					json_object_set_new(info, "age_ms", json_integer((now - stream->last_received / 1000)));
+					json_object_set_new(info, "age_ms", json_integer((now - stream->last_received) / 1000));
 				janus_mutex_lock(&source->rec_mutex);
 				if(admin && stream->rc && stream->rc->filename)
 					json_object_set_new(info, "recording", json_string(stream->rc->filename));
