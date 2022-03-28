@@ -900,9 +900,9 @@ void *janus_pfunix_thread(void *data) {
 		}
 	}
 
-	socklen_t addrlen = sizeof(struct sockaddr_un);
-	void *addr = g_malloc(addrlen+1);
+	void *addr = g_malloc(sizeof(struct sockaddr_un)+1);
 	if(pfd > -1) {
+		socklen_t addrlen = sizeof(struct sockaddr_un);
 		/* Unlink the path name first */
 #ifdef HAVE_LIBSYSTEMD
 		if((getsockname(pfd, (struct sockaddr *)addr, &addrlen) != -1) && (FALSE == sd_socket)) {
@@ -917,6 +917,7 @@ void *janus_pfunix_thread(void *data) {
 	}
 	pfd = -1;
 	if(admin_pfd > -1) {
+		socklen_t addrlen = sizeof(struct sockaddr_un);
 		/* Unlink the path name first */
 #ifdef HAVE_LIBSYSTEMD
 		if((getsockname(admin_pfd, (struct sockaddr *)addr, &addrlen) != -1) && (FALSE == admin_sd_socket)) {
