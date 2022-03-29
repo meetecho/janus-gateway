@@ -2511,6 +2511,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Unadvertized SSRC (%"SCNu32") is video! (mid %s)\n", handle->handle_id, packet_ssrc, sdes_item);
 							video = 1;
 							/* Check if simulcasting is involved */
+							janus_mutex_lock(&handle->mutex);
 							if(stream->rid[0] == NULL || stream->rid_ext_id < 1) {
 								stream->video_ssrc_peer[0] = packet_ssrc;
 								found = TRUE;
@@ -2561,6 +2562,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 									}
 								}
 							}
+							janus_mutex_unlock(&handle->mutex);
 						}
 					}
 				}

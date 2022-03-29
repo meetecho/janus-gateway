@@ -3843,6 +3843,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		if(!do_mid && ice_handle->stream)
 			ice_handle->stream->mid_ext_id = 0;
 		if(!do_rid && ice_handle->stream) {
+			janus_mutex_lock(&ice_handle->mutex);
 			ice_handle->stream->rid_ext_id = 0;
 			ice_handle->stream->ridrtx_ext_id = 0;
 			g_free(ice_handle->stream->rid[0]);
@@ -3855,6 +3856,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				ice_handle->stream->video_ssrc_peer[0] = ice_handle->stream->video_ssrc_peer_temp;
 				ice_handle->stream->video_ssrc_peer_temp = 0;
 			}
+			janus_mutex_unlock(&ice_handle->mutex);
 		}
 		if(!do_repaired_rid && ice_handle->stream)
 			ice_handle->stream->ridrtx_ext_id = 0;

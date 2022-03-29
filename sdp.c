@@ -437,6 +437,12 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 		/* Is simulcasting enabled, using rid? (we need to check this before parsing SSRCs) */
 		tempA = m->attributes;
 		stream->rids_hml = rids_hml;
+		g_free(stream->rid[0]);
+		stream->rid[0] = NULL;
+		g_free(stream->rid[1]);
+		stream->rid[1] = NULL;
+		g_free(stream->rid[2]);
+		stream->rid[2] = NULL;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 			if(a->name && !strcasecmp(a->name, "rid") && a->value) {
