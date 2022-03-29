@@ -2480,6 +2480,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								handle->handle_id, packet_ssrc, medium->mid);
 							gboolean found = FALSE;
 							/* Check if simulcasting is involved */
+							janus_mutex_lock(&handle->mutex);
 							if(medium->rid[0] == NULL || pc->rid_ext_id < 1) {
 								medium->ssrc_peer[0] = packet_ssrc;
 								found = TRUE;
@@ -2521,6 +2522,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 									}
 								}
 							}
+							janus_mutex_unlock(&handle->mutex);
 							if(found) {
 								g_hash_table_insert(pc->media_byssrc, GINT_TO_POINTER(packet_ssrc), medium);
 								janus_refcount_increase(&medium->ref);

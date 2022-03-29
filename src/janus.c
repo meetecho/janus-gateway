@@ -3819,6 +3819,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			if(opusred_pt < 0 && medium != NULL && medium->opusred_pt > 0)
 				medium->opusred_pt = 0;
 			/* Check if rid-based simulcasting is available */
+			janus_mutex_lock(&ice_handle->mutex);
 			if(!have_rid && medium != NULL) {
 				g_free(medium->rid[0]);
 				medium->rid[0] = NULL;
@@ -3831,6 +3832,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					medium->ssrc_peer_temp = 0;
 				}
 			}
+			janus_mutex_unlock(&ice_handle->mutex);
 			do_mid = do_mid || have_mid;
 			do_rid = do_rid || have_rid;
 			do_repaired_rid = do_repaired_rid || have_repaired_rid;
