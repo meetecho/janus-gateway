@@ -68,6 +68,7 @@ void janus_websockets_session_over(janus_transport_session *transport, guint64 s
 void janus_websockets_session_claimed(janus_transport_session *transport, guint64 session_id);
 json_t *janus_websockets_query_transport(json_t *request);
 
+#define WS_LIST_TERM 0, NULL, 0
 
 /* Transport setup */
 static janus_transport janus_websockets_transport =
@@ -221,24 +222,24 @@ static int janus_websockets_admin_callback_secure(
 		void *user, void *in, size_t len);
 /* Protocol mappings */
 static struct lws_protocols ws_protocols[] = {
-	{ "http-only", janus_websockets_callback_http, 0, 0 },
-	{ "janus-protocol", janus_websockets_callback, sizeof(janus_websockets_client), 0 },
-	{ NULL, NULL, 0 }
+	{ "http-only", janus_websockets_callback_http, 0, 0, WS_LIST_TERM },
+	{ "janus-protocol", janus_websockets_callback, sizeof(janus_websockets_client), 0, WS_LIST_TERM },
+	{ NULL, NULL, 0, 0, WS_LIST_TERM }
 };
 static struct lws_protocols sws_protocols[] = {
-	{ "http-only", janus_websockets_callback_https, 0, 0 },
-	{ "janus-protocol", janus_websockets_callback_secure, sizeof(janus_websockets_client), 0 },
-	{ NULL, NULL, 0 }
+	{ "http-only", janus_websockets_callback_https, 0, 0, WS_LIST_TERM },
+	{ "janus-protocol", janus_websockets_callback_secure, sizeof(janus_websockets_client), 0, WS_LIST_TERM },
+	{ NULL, NULL, 0, 0, WS_LIST_TERM }
 };
 static struct lws_protocols admin_ws_protocols[] = {
-	{ "http-only", janus_websockets_callback_http, 0, 0 },
-	{ "janus-admin-protocol", janus_websockets_admin_callback, sizeof(janus_websockets_client), 0 },
-	{ NULL, NULL, 0 }
+	{ "http-only", janus_websockets_callback_http, 0, 0, WS_LIST_TERM },
+	{ "janus-admin-protocol", janus_websockets_admin_callback, sizeof(janus_websockets_client), 0, WS_LIST_TERM },
+	{ NULL, NULL, 0, 0, WS_LIST_TERM }
 };
 static struct lws_protocols admin_sws_protocols[] = {
-	{ "http-only", janus_websockets_callback_https, 0, 0 },
-	{ "janus-admin-protocol", janus_websockets_admin_callback_secure, sizeof(janus_websockets_client), 0 },
-	{ NULL, NULL, 0 }
+	{ "http-only", janus_websockets_callback_https, 0, 0, WS_LIST_TERM },
+	{ "janus-admin-protocol", janus_websockets_admin_callback_secure, sizeof(janus_websockets_client), 0, WS_LIST_TERM },
+	{ NULL, NULL, 0, 0, WS_LIST_TERM }
 };
 /* Helper for debugging reasons */
 #define CASE_STR(name) case name: return #name

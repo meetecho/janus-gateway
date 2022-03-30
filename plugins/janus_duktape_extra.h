@@ -24,7 +24,7 @@
 #ifndef JANUS_DUKTAPE_EXTRA_H
 #define JANUS_DUKTAPE_EXTRA_H
 
-#include "duktape-deps/duktape.h"
+#include <duktape.h>
 
 /*! \brief Method to register extra JavaScript functions in the C code
  * @param[in] ctx The Duktape context to register the functions on */

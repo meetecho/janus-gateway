@@ -13,13 +13,14 @@
 #define JANUS_PP_WEBM
 
 #include <stdio.h>
+#include <jansson.h>
 
 #include "pp-rtp.h"
 
 /* WebM stuff */
 const char **janus_pp_webm_get_extensions(void);
 int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8, const char *extension);
-int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean vp8);
+int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean vp8, json_t *info);
 int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8, int *working);
 void janus_pp_webm_close(void);
 

@@ -74,10 +74,18 @@
 # DO NOT SET THIS PROPERTY IF YOU DON'T KNOW WHAT YOU'RE DOING!
 # e2ee = true
 #
+# To allow mountpoints to negotiate the playout-delay RTP extension,
+# you can set the 'playoutdelay_ext' property to true: this way, any
+# subscriber can customize the playout delay of incoming video streams,
+# assuming the browser supports the RTP extension in the first place.
+# playoutdelay_ext = true
+#
 # The following options are only valid for the 'rtsp' type:
 # url = RTSP stream URL (only for restreaming RTSP)
 # rtsp_user = RTSP authorization username (only if type=rtsp)
 # rtsp_pwd = RTSP authorization password (only if type=rtsp)
+# rtsp_quirk = Some RTSP servers offer the stream using only the path, instead of the fully qualified URL.
+#		If set true, this boolean informs Janus that we should try a path-only DESCRIBE request if the initial request returns 404.
 # rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=true)
 # rtspiface = network interface or IP address to bind to, if any (binds to all otherwise), when receiving RTSP streams
 # rtsp_reconnect_delay = after n seconds passed and no media assumed, the RTSP server has gone and schedule a reconnect (default=5s)

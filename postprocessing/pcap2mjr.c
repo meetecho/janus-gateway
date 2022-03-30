@@ -19,7 +19,13 @@
 ./pcap2mjr -c vp8 -s 12345678 /path/to/source.pcap /path/to/destination.mjr
 \endverbatim
  *
- * If the tool can't detect any RTP packet with that SSRC, it will result in an error.
+ * The SSRC is optional but recommended, since a pcap capture may contain
+ * multiple streams, RTP or not, and so the tool might need help figuring
+ * out which RTP stream specifically should be converted to .mjr. Omitting
+ * the SSRC will instruct the tool to try and autodetect the first SSRC
+ * it finds, and use that one as a filter.
+ *
+ * If the tool can't detect any RTP packet with the specified SSRC, itwill result in an error.
  *
  * \ingroup postprocessing
  * \ref postprocessing
@@ -142,6 +148,8 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 	JANUS_LOG(LOG_INFO, "[%s/%"SCNu32"] %s --> %s\n", codec, ssrc, source, destination);
+	if(ssrc == 0)
+		JANUS_LOG(LOG_WARN, "No SSRC provided, will try to autodetect an RTP stream\n");
 
 	/* Open and parse the pcap file */
 	char errbuf[PCAP_ERRBUF_SIZE];
@@ -186,7 +194,7 @@ int main(int argc, char *argv[])
     const u_char *buffer = NULL, *temp = NULL;
 	uint32_t count = 0, written = 0, pssrc = 0;
     int ret = 0;
-    size_t min_size = sizeof(pcap2mjr_ethernet_header) + sizeof(struct iphdr) +
+    size_t min_size = sizeof(pcap2mjr_ethernet_header) + sizeof(struct ip) +
 		sizeof(struct udphdr) + 12, pkt_size = 0;
 	gboolean header_written = FALSE;
 	gint64 start_ts = 0, pkt_ts = 0;
@@ -227,10 +235,10 @@ int main(int argc, char *argv[])
 		}
 		if(protocol == 0x0800) {
 			/* IPv4 */
-			struct iphdr *v4 = (struct iphdr *)temp;
-			protocol = v4->protocol;
-			temp += sizeof(struct iphdr);
-			pkt_size -= sizeof(struct iphdr);
+			struct ip *v4 = (struct ip *)temp;
+			protocol = v4->ip_p;
+			temp += sizeof(struct ip);
+			pkt_size -= sizeof(struct ip);
 		} else if(protocol == 0x86DD) {
 			/* IPv6 */
 			struct ip6_hdr *v6 = (struct ip6_hdr *)temp;
@@ -261,6 +269,10 @@ int main(int argc, char *argv[])
 			continue;
 		}
 		pssrc = htonl(rtp->ssrc);
+		if(ssrc == 0) {
+			ssrc = pssrc;
+			JANUS_LOG(LOG_INFO, "Autodetected SSRC %"SCNu32"\n", ssrc);
+		}
 		if(pssrc != ssrc) {
 			if(show_warnings) {
 				JANUS_LOG(LOG_WARN, "Not the SSRC we need (%"SCNu32" != %"SCNu32"), skipping packet #%"SCNu32"\n",

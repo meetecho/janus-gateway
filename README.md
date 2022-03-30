@@ -1,5 +1,5 @@
-Janus WebRTC Server
-===================
+Janus WebRTC Server (0.x)
+=========================
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-brightgreen.svg)](COPYING)
 ![janus-ci](https://github.com/meetecho/janus-gateway/workflows/janus-ci/badge.svg)
 [![Coverity Scan Build Status](https://scan.coverity.com/projects/13265/badge.svg)](https://scan.coverity.com/projects/meetecho-janus-gateway)
@@ -7,9 +7,11 @@ Janus WebRTC Server
 
 Janus is an open source, general purpose, WebRTC server designed and developed by [Meetecho](https://www.meetecho.com). This version of the server is tailored for Linux systems, although it can be compiled for, and installed on, MacOS machines as well. Windows is not supported, but if that's a requirement, Janus is known to work in the "Windows Subsystem for Linux" on Windows 10: do **NOT** trust repos that provide .exe builds of Janus, they are not official and will not be supported.
 
-For some online demos and documentations, make sure you pay the [project website](https://janus.conf.meetecho.com/) a visit!
+For some online demos and documentations, make sure you pay the [project website](https://janus-legacy.conf.meetecho.com/) a visit!
 
-If you have questions on Janus, or wish to discuss Janus with us and other users, please join our [meetecho-janus](https://groups.google.com/forum/#!forum/meetecho-janus) Google Group. If you encounter bugs, please submit an issue on [GitHub](https://github.com/meetecho/janus-gateway/issues): make sure you read the [guidelines](.github/ISSUE_TEMPLATE.md) before opening an issue, though.
+> **Note well:** this is the main branch for the `0.x` version of Janus, which is considered legacy. If you want to check a more recent version of Janus instead (e.g., `1.x`, a.k.a. "multistream") click [here](https://github.com/meetecho/janus-gateway) instead.
+
+If you have questions on Janus, or wish to discuss Janus with us and other users, please join our [meetecho-janus](https://groups.google.com/forum/#!forum/meetecho-janus) Google Group. If you encounter bugs, please submit an issue on [GitHub](https://github.com/meetecho/janus-gateway/issues): make sure you read the [guidelines](.github/CONTRIBUTING.md) before opening an issue or a pull request, though.
 
 
 ## Dependencies
@@ -36,6 +38,7 @@ A couple of plugins depend on a few more libraries:
 * [libogg](http://xiph.org/ogg/) (needed for the VoiceMail plugin and/or post-processor, and optionally AudioBridge and Streaming plugins)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are interested in RTSP support in the Streaming plugin or in the sample Event Handler plugin)
 * [Lua](https://www.lua.org/download.html) (only needed for the Lua plugin)
+* [Duktape](https://duktape.org/) (only needed for the Duktape plugin)
 
 Additionally, you'll need the following libraries and tools:
 
@@ -339,10 +342,10 @@ This will start the server, and have it look at the configuration file.
 
 Make sure you have a look at all of the configuration files, to tailor Janus to your specific needs: each configuration file is documented, so it shouldn't be hard to make changes according to your requirements. The repo comes with some defaults (assuming you issues `make configs` after installing the server) that tend to make sense for generic deployments, and also includes some sample configurations for all the plugins (e.g., web servers to listen on, conference rooms to create, streaming mountpoints to make available at startup, etc.).
 
-To test whether it's working correctly, you can use the demos provided with this package in the `html` folder: these are exactly the same demos available online on the [project website](https://janus.conf.meetecho.com/). Just copy the file it contains in a webserver, or use a userspace webserver to serve the files in the `html` folder (e.g., with php or python), and open the `index.html` page in either Chrome or Firefox. A list of demo pages exploiting the different plugins will be available. Remember to edit the transport/port details in the demo JavaScript files if you changed any transport-related configuration from its defaults. Besides, the demos refer to the pre-configured plugin resources, so if you add some new resources (e.g., a new videoconference) you may have to tweak the demo pages to actually use them.
+To test whether it's working correctly, you can use the demos provided with this package in the `html` folder: these are exactly the same demos available online on the [project website](https://janus-legacy.conf.meetecho.com/). Just copy the file it contains in a webserver, or use a userspace webserver to serve the files in the `html` folder (e.g., with php or python), and open the `index.html` page in either Chrome or Firefox. A list of demo pages exploiting the different plugins will be available. Remember to edit the transport/port details in the demo JavaScript files if you changed any transport-related configuration from its defaults. Besides, the demos refer to the pre-configured plugin resources, so if you add some new resources (e.g., a new videoconference) you may have to tweak the demo pages to actually use them.
 
 ## Documentation
-Janus is thoroughly documented. You can find the current documentation, automatically generated with Doxygen, on the [project website](https://janus.conf.meetecho.com/docs/).
+Janus is thoroughly documented. You can find the current documentation, automatically generated with Doxygen, on the [project website](https://janus-legacy.conf.meetecho.com/docs/).
 
 ## Help us!
 Any thought, feedback or (hopefully not!) insult is welcome!

@@ -3,6 +3,67 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.12.0] - 2022-03-03
+
+- Fixed definition of trylock wrapper when using pthreads [[Issue-2894](https://github.com/meetecho/janus-gateway/issues/2894)]
+- Fixed broken RTP when no extensions are negotiated
+- Added checks when inserting RTP extensions to avoid buffer overflows
+- Added missing support for disabled rid simulcast substreams in SDP [[PR-2888](https://github.com/meetecho/janus-gateway/pull/2888)]
+- Fixed TWCC feedback when simulcast SSRCs are missing (thanks @OxleyS!) [[PR-2908](https://github.com/meetecho/janus-gateway/pull/2908)]
+- Added support for playout-delay RTP extension [[PR-2895](https://github.com/meetecho/janus-gateway/pull/2895)]
+- Fixed RTSP support in Streaming plugin for cameras that expect path-only DESCRIBE requests (thanks @jp-bennett!) [[PR-2909](https://github.com/meetecho/janus-gateway/pull/2909)]
+- Added Duktape as optional dependency, instead of embedding the engine code [[PR-2886](https://github.com/meetecho/janus-gateway/pull/2886)]
+- Fixed crash at startup when not able to connect to RabbitMQ server
+- Removed distinction between simulcast and simulcast2 in janus.js [[PR-2887](https://github.com/meetecho/janus-gateway/pull/2887)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+## [v0.11.8] - 2022-02-11
+
+- Added initial (and limited) integration of RED audio [[PR-2685](https://github.com/meetecho/janus-gateway/pull/2685)]
+- Added support for Two-Byte header RTP extensions (RFC8285) and, partially, for the new Depencency Descriptor RTP extension (needed for AV1-SVC) [[PR-2741](https://github.com/meetecho/janus-gateway/pull/2741)]
+- Fixed rare race conditions between sending a packet and closing a connection [[PR-2869](https://github.com/meetecho/janus-gateway/pull/2869)]
+- Fix last stats before closing PeerConnection not being sent to handlers (thanks @zodiak83!) [[PR-2874](https://github.com/meetecho/janus-gateway/pull/2874)]
+- Changed automatic allocation on static loops from round robin to least used [[PR-2878](https://github.com/meetecho/janus-gateway/pull/2878)]
+- Added new API to bulk start/stop MJR-based recordings in AudioBridge [[PR-2862](https://github.com/meetecho/janus-gateway/pull/2862)]
+- Fixed broken duration in spatial AudioBridge recordings
+- Fixed broken G.711 RTP forwarding in AudioBridge (thanks @AlexYaremchuk!) [[PR-2875](https://github.com/meetecho/janus-gateway/pull/2875)]
+- Fixed broken recordings in NoSIP plugin
+- Fixed warnings when postprocessing Opus recordings with DTX packets
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+## [v0.11.7] - 2022-01-24
+
+- Added faster strlcat variant that uses memccpy for writing SDPs [[PR-2835](https://github.com/meetecho/janus-gateway/pull/2835)]
+- Fixed occasional crash when updating WebRTC sessions [[Issue-2840](https://github.com/meetecho/janus-gateway/issues/2840)]
+- Changed SDP syntax for AV1 from "AV1X" to "AV1" [[Issue-2844](https://github.com/meetecho/janus-gateway/issues/2844)]
+- Fixed signed_tokens property not being saved to permanent rooms in VideoRoom (thanks @timsolov!) [[PR-2843](https://github.com/meetecho/janus-gateway/pull/2843)]
+- Made record directory changeable via "edit" in both AudioBridge and VideoRoom
+- Added configurable expected loss to AudioBridge to actually send FEC [[PR-2802](https://github.com/meetecho/janus-gateway/pull/2802)]
+- Fixed SIP plugin not working when using Sofia SIP >= 1.13 [[Issue-2683](https://github.com/meetecho/janus-gateway/issues/2683)]
+- Fixed occasional crashes in SIP plugin [[Issue-2853](https://github.com/meetecho/janus-gateway/issues/2853)]
+- Take note of video orientation extension when recording video in SIP plugin (thanks @adnanel!) [[PR-2836](https://github.com/meetecho/janus-gateway/pull/2836)]
+- Allow 180 besides 183 to have SDP as well (thanks @lejlasolak!) [[PR-2849](https://github.com/meetecho/janus-gateway/pull/2849)]
+- Fixed post-processor compilation issue with newer versions of FFmpeg [[Issue-2833](https://github.com/meetecho/janus-gateway/issues/2833)]
+- Added option to print extended info on MJR file as JSON in postprocessor (thanks @adnanel!) [[PR-2858](https://github.com/meetecho/janus-gateway/pull/2858)]
+- Allow pcap2mjr to autodetect SSRC
+- Fixed problems compiling post-processor with older versions of FFmpeg
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+## [v0.11.6] - 2021-12-13
+
+- Added strlcat helper to detect and report truncations [[PR-2792](https://github.com/meetecho/janus-gateway/pull/2792)]
+- Grow buffer as needed when generating SDPs [[PR-2797](https://github.com/meetecho/janus-gateway/pull/2797)]
+- Added DTX support to some plugins [[PR-2789](https://github.com/meetecho/janus-gateway/pull/2789)]
+- Added option to forcibly quit Janus when getting dlopen errors (thanks @tmatth!) [[PR-2828](https://github.com/meetecho/janus-gateway/pull/2828)]
+- Fixed broken signed tokens in VideoRoom when using UUIDs (thanks @timsolov!) [[PR-2812](https://github.com/meetecho/janus-gateway/pull/2812)]
+- Added option to choose whether signed tokens should be used in the VideoRoom when enabled in the core [[PR-2825](https://github.com/meetecho/janus-gateway/pull/2825)]
+- Added MESSAGE authentication and out-of-dialog MESSAGE support to SIP plugin (thanks thetechpanda!) [[PR-2786](https://github.com/meetecho/janus-gateway/pull/2786)]
+- Fixed potential race conditions in SIP plugin [[PR-2823](https://github.com/meetecho/janus-gateway/pull/2823)]
+- Added basic history support to TextRoom plugin [[PR-2814](https://github.com/meetecho/janus-gateway/pull/2814)]
+- Fixed Cross-site Scripting (XSS) vulnerability in some of the demos (thanks @SoufElhabti!) [[PR-2817](https://github.com/meetecho/janus-gateway/pull/2817)]
+- Added support for custom datachannel options in janus.js (thanks @sqxieshuai!) [[PR-2806](https://github.com/meetecho/janus-gateway/pull/2806)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.11.5] - 2021-10-18
 
 - Add API to optionally force Janus to use TURN [[PR-2774](https://github.com/meetecho/janus-gateway/pull/2774)]

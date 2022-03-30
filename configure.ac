@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.11.6],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.12.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -31,7 +31,6 @@ CFLAGS="$CFLAGS \
 	-Wformat-security \
 	-Wformat=2 \
 	-Winit-self \
-	-Winline \
 	-Wlarger-than=65537 \
 	-Wmissing-declarations \
 	-Wmissing-format-attribute \
@@ -39,11 +38,6 @@ CFLAGS="$CFLAGS \
 	-Wmissing-noreturn \
 	-Wmissing-prototypes \
 	-Wnested-externs \
-	-Wno-aggregate-return \
-	-Wno-missing-field-initializers \
-	-Wno-redundant-decls \
-	-Wno-undef \
-	-Wno-unused-parameter \
 	-Wold-style-definition \
 	-Wpacked \
 	-Wpointer-arith \
@@ -51,6 +45,8 @@ CFLAGS="$CFLAGS \
 	-Wstrict-prototypes \
 	-Wswitch-default \
 	-Wunused \
+	-Wno-unused-parameter \
+	-Wno-unused-result \
 	-Wwrite-strings \
 	-Werror=implicit-function-declaration"
 
@@ -75,9 +71,9 @@ cc*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=116
+JANUS_VERSION=121
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.11.6"
+JANUS_VERSION_STRING="0.12.1"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -849,6 +845,19 @@ PKG_CHECK_MODULES([LUA],
                   ])
 AC_SUBST([LUA_CFLAGS])
 AC_SUBST([LUA_LIBS])
+
+PKG_CHECK_MODULES([DUKTAPE],
+                  [duktape],
+                  [
+                    AS_IF([test "x$enable_plugin_duktape" = "xmaybe"],
+                          [enable_plugin_duktape=yes])
+                  ],
+                  [
+                    AS_IF([test "x$enable_plugin_duktape" = "xyes"],
+                          [AC_MSG_ERROR([duktape not found. See README.md for installation instructions or use --disable-plugin-duktape])])
+                  ])
+AC_SUBST([DUKTAPE_CFLAGS])
+AC_SUBST([DUKTAPE_LIBS])
 
 AM_CONDITIONAL([ENABLE_PLUGIN_AUDIOBRIDGE], [test "x$enable_plugin_audiobridge" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_DUKTAPE], [test "x$enable_plugin_duktape" = "xyes"])

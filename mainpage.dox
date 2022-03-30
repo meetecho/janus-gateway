@@ -1,5 +1,12 @@
 /*!
- * \mainpage Janus - General purpose WebRTC server
+ * \mainpage Janus (0.x) - General purpose WebRTC server
+ *
+ * <div class="alert alert-warning">
+ *		<b>Note Well:</b> these are the demos and documentation for the <code>0.x</code> version
+ *		of Janus, which is considered legacy. If you want to check a more recent version of
+ *		Janus instead (e.g., <code>1.x</code>, a.k.a. "multistream") click
+ *		<a href="https://janus.conf.meetecho.com">here</a> instead.
+ * </div>
  *
  * \par Developer Documentation for the Janus WebRTC server
  * This is the main developer documentation for the Janus WebRTC
@@ -68,7 +75,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Server © 2014-2021 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2022 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -106,6 +113,7 @@
  * RTSP support in the Streaming plugin and the sample Event Handler plugin)
  * - \b zlib: https://zlib.net/ (gzip compression utility)
  * - \b Lua: https://www.lua.org/download.html (\c optional, only needed for the Lua plugin)
+ * - \b Duktape: https://duktape.org/ (\c optional, only needed for the Duktape plugin)
  * - \b npm: https://docs.npmjs.com/ (\c optional, used during build for generating JavaScript modules)
  *
  */
@@ -2273,7 +2281,10 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']);
  * - \c ping: a simple ping/pong mechanism for the Admin API, that returns
  * a \c pong back that the client can use as a healthcheck or to measure
  * the protocol round-trip time; together with the \c info request introduced
- * above, it's the only one that doesn't require a secret.
+ * above, it's the only one that doesn't require a secret;
+ * - \c loops_info: returns a summary of how many handles each static
+ * event loop is currently responsible for, in case static event loops
+ * are in use (returns an empty array otherwise).
  *
  * \subsection adminreqc Configuration-related requests
  * - \c get_status: returns the current value for the settings that can be
@@ -3824,7 +3835,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Server © 2014-2021 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2022 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -3852,6 +3863,7 @@ ldd janus | grep asan
  * RTSP support in the Streaming plugin and the sample Event Handler plugin)
  * - \b zlib: https://zlib.net/ (gzip compression utility)
  * - \b Lua: https://www.lua.org/download.html (\c optional, only needed for the Lua plugin)
+ * - \b Duktape: https://duktape.org/ (\c optional, only needed for the Duktape plugin)
  * - \b npm: https://docs.npmjs.com/ (\c optional, used during build for generating JavaScript modules)
  *
  */
@@ -4016,7 +4028,7 @@ ldd janus | grep asan
  *    - Presentation on Janus at <a href="https://www.youtube.com/watch?v=2LHto3iufzU">ClueCon 2019</a>;
  *    - Presentation on Simulcast and SVC at <a href="https://www.youtube.com/watch?v=6COV44AORlo">IIT RTC 2019</a>;
  *    - Presentation on RTP forwarders at <a href="https://fosdem.org/2020/schedule/event/janus/">FOSDEM 2020</a>;
- *    - Presentation on using Janus for Virtual Events at <a href="https://www.youtube.com/watch?v=oSZw90guaUw">CommCon 2020</a>;
+ *    - Presentation on using Janus for Virtual Events at <a href="https://2020.commcon.xyz/session/turning-live-events-to-virtual-with-janus/">CommCon 2020</a>;
  *    - Workshop on Janus (lesson/tutorial) at <a href="https://www.youtube.com/watch?v=Ga_7lukslxw">ClueCon 2020</a>;
  *    - Presentation on E2EE (end-to-end encryption) and Insertable Streams at <a href="https://youtu.be/SmN8-6ZFuOo?t=2004">ClueCon 2020</a>;
  *    - Workshop on Janus and SIP (lesson/tutorial) at <a href="https://youtu.be/fv9KwrguR-4?t=3544">OpenSIPS 2020</a>;
@@ -4026,7 +4038,11 @@ ldd janus | grep asan
  *    - Workshop on Janus RTP forwarders (lesson/tutorial) at <a href="https://www.youtube.com/watch?v=uW8ztFCkxVk">ClueCon TGI2021</a>;
  *    - Presentation on Janus and NDI at <a href="https://youtu.be/RZ58vapWfUw?t=1755">ClueCon TGI2021</a>;
  *    - Presentation on Janus and multicast at the <a href="https://youtu.be/cT_74CRBsQs?t=5910">MBONED WG session (IETF 110)</a>;
- *    - Presentation on how to use WHIP and Janus for broadcasting at <a href="https://www.youtube.com/watch?v=b_QBd3WnGgY">IIT RTC 2021</a>. \n\n
+ *    - Presentation on how to use WHIP and Janus for broadcasting at <a href="https://www.youtube.com/watch?v=b_QBd3WnGgY">IIT RTC 2021</a>;
+ *    - Presentation on the efforts to integrate audio redundancy via RED in Janus at <a href="https://www.youtube.com/watch?v=NWEYv6OILZI">ClueCon 2021</a>;
+ *    - Presentation on how to use WHIP, NDI and Janus together at <a href="https://2021.commcon.xyz/talks/whip-ndi-and-janus-genesis-of-a-broadcasting-demo">CommCon 2021</a>;
+ *    - Presentation on Janode, the official Janus nodejs SDK, at <a href="https://2021.commcon.xyz/talks/janode-the-janus-node-js-sdk">CommCon 2021</a>;
+ *    - Presentation on WebRTC broadcasting with WHIP and how to scale at <a href="https://fosdem.org/2022/schedule/event/rtc_whip/">FOSDEM 2022</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
  *    and presentations from <a href="https://januscon.it/2019">JanusCon</a>,
  *    the Janus conference we hosted here in Napoli.

@@ -86,6 +86,8 @@ typedef struct janus_rtp_header_extension {
 #define JANUS_RTP_EXTMAP_RID				"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
 /*! \brief a=extmap:5 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id */
 #define JANUS_RTP_EXTMAP_REPAIRED_RID		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id"
+/*! \brief a=extmap:10 https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension */
+#define JANUS_RTP_EXTMAP_DEPENDENCY_DESC	"https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension"
 /*! \brief \note Note: We don't support encrypted extensions yet */
 #define JANUS_RTP_EXTMAP_ENCRYPTED			"urn:ietf:params:rtp-hdrext:encrypt"
 
@@ -94,6 +96,7 @@ typedef enum janus_audiocodec {
 	JANUS_AUDIOCODEC_NONE,
 	JANUS_AUDIOCODEC_OPUS,
 	JANUS_AUDIOCODEC_MULTIOPUS,
+	JANUS_AUDIOCODEC_OPUSRED,
 	JANUS_AUDIOCODEC_PCMU,
 	JANUS_AUDIOCODEC_PCMA,
 	JANUS_AUDIOCODEC_G722,
@@ -195,6 +198,16 @@ int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
 int janus_rtp_header_extension_parse_rid(char *buf, int len, int id,
 	char *sdes_item, int sdes_len);
 
+/*! \brief Helper to parse a dependency descriptor RTP extension (https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] dd_item Buffer where the dependency descriptor will be written
+ * @param[out] dd_len Size of the input/output buffer, will be updated with the size of the data
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_dependency_desc(char *buf, int len, int id,
+	uint8_t *dd_item, int *dd_len);
+
 /*! \brief Helper to parse an abs-send-time RTP extension (http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time)
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
@@ -281,6 +294,9 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
 int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now);
 
 
+/** @name Janus simulcast processing methods
+ */
+///@{
 /*! \brief Helper struct for processing and tracking simulcast streams */
 typedef struct janus_rtp_simulcasting_context {
 	/*! \brief RTP Stream extension ID, if any */
@@ -319,7 +335,7 @@ void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t
 
 /*! \brief Process an RTP packet, and decide whether this should be relayed or not, updating the context accordingly
  * \note Calling this method resets the \c changed_substream , \c changed_temporal and \c need_pli
- * properties, and updates them according to the decisions made after processinf the packet
+ * properties, and updates them according to the decisions made after processing the packet
  * @param[in] context The simulcasting context to use
  * @param[in] buf The RTP packet to process
  * @param[in] len The length of the RTP packet (header, extension and payload)
@@ -331,5 +347,54 @@ void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t
 gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
 	char *buf, int len, uint32_t *ssrcs, char **rids,
 	janus_videocodec vcodec, janus_rtp_switching_context *sc);
+///@}
+
+/** @name Janus AV1-SVC processing methods
+ */
+///@{
+/*! \brief Helper struct for processing and tracking AV1-SVC streams */
+typedef struct janus_av1_svc_context {
+	/*! \brief Number of templates advertised via Dependency Descriptor */
+	uint8_t tcnt;
+	/*! \brief Template ID offset, as advertised via Dependency Descriptor */
+	uint8_t tioff;
+	/*! \brief Map of templates advertised via Dependency Descriptor, indexed by ID */
+	GHashTable *templates;
+	/*! \brief How many spatial and temporal layers are available */
+	int spatial_layers, temporal_layers;
+	/*! \brief Whether this context changed since the last update */
+	gboolean updated;
+} janus_av1_svc_context;
+
+/*! \brief Helper struct to track SVC templates
+ * \note This is very incomplete, since we only track the spatial and
+ * temporal layer associated with a specific template ID for now */
+typedef struct janus_av1_svc_template {
+	/*! \brief Template ID */
+	uint8_t id;
+	/*! \brief Spatial layer associated to this template */
+	int spatial;
+	/*! \brief Temporal layer associated to this template */
+	int temporal;
+} janus_av1_svc_template;
+
+/*! \brief Set (or reset) the context fields to their default values
+ * @param[in] context The context to (re)set */
+void janus_av1_svc_context_reset(janus_av1_svc_context *context);
+
+/*! \brief Process a Dependency Descriptor payload, updating the SVC context accordingly
+ * \note At the moment, this code is quite naive, as it mostly looks at the target
+ * spatial/temporal layers, and the one written in the Dependency Descriptor data.
+ * In the future, this should become more sophisticated, and use additional
+ * information like dependency chains and stuff like that
+ * @param[in] context The av1svc context to use
+ * @param[in] dd Pointer to the Dependency Descriptor data
+ * @param[in] dd_len The length of the Dependendy Descriptor data
+ * @param[out] template_id Pointer to the ID of the template referenced in this packet
+ * @returns TRUE if the packet is valid, FALSE if it should be dropped instead */
+gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
+	uint8_t *dd, int dd_len, uint8_t *template_id);
+///@}
+
 
 #endif

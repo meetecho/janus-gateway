@@ -346,6 +346,8 @@ struct janus_ice_handle {
 	GMainContext *mainctx;
 	/*! \brief GLib loop for the handle and libnice */
 	GMainLoop *mainloop;
+	/*! \brief In case static event loops are used, opaque pointer to the loop */
+	void *static_event_loop;
 	/*! \brief GLib thread for the handle and libnice */
 	GThread *thread;
 	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats (and optionally TWCC) */
@@ -422,8 +424,10 @@ struct janus_ice_stream {
 	guint32 video_ssrc_peer[3], video_ssrc_peer_new[3], video_ssrc_peer_orig[3], video_ssrc_peer_temp;
 	/*! \brief Video retransmissions SSRC(s) of the peer for this stream */
 	guint32 video_ssrc_peer_rtx[3], video_ssrc_peer_rtx_new[3], video_ssrc_peer_rtx_orig[3];
-	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
+	/*! \brief Array of RTP Stream IDs (for simulcasting, if enabled) */
 	char *rid[3];
+	/*! \brief Which simulcast rids are currently disabled, as per the latest negotiation */
+	gboolean disabled_rid[3];
 	/*! \brief Whether the order of the rids in the SDP will be h-m-l (TRUE) or l-m-h (FALSE) */
 	gboolean rids_hml;
 	/*! \brief Whether we should use the legacy simulcast syntax (a=simulcast:recv rid=..) or the proper one (a=simulcast:recv ..) */
@@ -436,6 +440,8 @@ struct janus_ice_stream {
 	GList *video_payload_types;
 	/*! \brief Mapping of rtx payload types to actual media-related packet types */
 	GHashTable *rtx_payload_types;
+	/*! \brief opus/red payload type, if enabled */
+	int opusred_pt;
 	/*! \brief Mapping of payload types to their clock rates, as advertised in the SDP */
 	GHashTable *clock_rates;
 	/*! \brief RTP payload types of this stream */
@@ -482,6 +488,10 @@ struct janus_ice_stream {
 	gint audiolevel_ext_id;
 	/*! \brief Video orientation extension ID */
 	gint videoorientation_ext_id;
+	/*! \brief Playout delay extension ID */
+	gint playoutdelay_ext_id;
+	/*! \brief Dependency descriptor extension ID */
+	gint dependencydesc_ext_id;
 	/*! \brief Absolute Send Time ext ID */
 	gint abs_send_time_ext_id;
 	/*! \brief Whether we do transport wide cc for video */
@@ -767,6 +777,10 @@ int janus_ice_get_static_event_loops(void);
 /*! \brief Method to check whether loop indication via API is allowed
  * @returns true if allowed, false otherwise */
 gboolean janus_ice_is_loop_indication_allowed(void);
+/*! \brief Helper method to return a summary of the static loops activity
+ * @note This is only used by the Admin API
+ * @returns a json_t array with the required info */
+json_t *janus_ice_static_event_loops_info(void);
 /*! \brief Method to stop all the static event loops, if enabled
  * @note This will wait for the related threads to exit, and so may delay the shutdown process */
 void janus_ice_stop_static_event_loops(void);

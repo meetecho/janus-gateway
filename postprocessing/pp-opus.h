@@ -18,7 +18,7 @@
 
 /* Opus stuff */
 const char **janus_pp_opus_get_extensions(void);
-int janus_pp_opus_create(char *destination, char *metadata, gboolean multiopus, const char *extension);
+int janus_pp_opus_create(char *destination, char *metadata, gboolean multiopus, const char *extension, int opusred_pt);
 int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working);
 void janus_pp_opus_close(void);
 

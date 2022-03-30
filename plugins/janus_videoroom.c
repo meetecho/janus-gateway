@@ -56,6 +56,8 @@ room-<unique room ID>: {
 	pin = <optional password needed for joining the room>
 	require_pvtid = true|false (whether subscriptions are required to provide a valid private_id
 				 to associate with a publisher, default=false)
+	signed_tokens = true|false (whether access to the room requires signed tokens; default=false,
+				 only works if signed tokens are used in the core as well)
 	publishers = <max number of concurrent senders> (e.g., 6 for a video
 				 conference or 1 for a webinar, default=3)
 	bitrate = <max video bitrate for senders> (e.g., 128000)
@@ -213,6 +215,7 @@ room-<unique room ID>: {
 	"new_fir_freq" : <new period for regular PLI keyframe requests to publishers>,
 	"new_publishers" : <new cap on the number of concurrent active WebRTC publishers>,
 	"new_lock_record" : <true|false, whether recording state can only be changed when providing the room secret>,
+	"new_rec_dir" : "<the new path where the next .mjr files should being saved>",
 	"permanent" : <true|false, whether the room should be also removed from the config file, default=false>
 }
 \endverbatim
@@ -430,7 +433,8 @@ room-<unique room ID>: {
 			"id" : <unique numeric ID of the participant>,
 			"display" : "<display name of the participant, if any; optional>",
 			"publisher" : "<true|false, whether user is an active publisher in the room>",
-			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>
+			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>,
+			"subscribers" : <number of subscribers for this participant, if any>
 		},
 		// Other participants
 	]
@@ -681,6 +685,8 @@ room-<unique room ID>: {
 	"display" : "<new display name to use in the room; optional>",
 	"audio_active_packets" : "<new audio_active_packets to overwrite in the room one; optional>",
 	"audio_level_average" : "<new audio_level_average to overwrite the room one; optional>",
+	"min_delay" : <minimum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
+	"max_delay" : <maximum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
 }
 \endverbatim
  *
@@ -1084,7 +1090,9 @@ room-<unique room ID>: {
 	"spatial_layer" : <spatial layer to receive (0-2), in case VP9-SVC is enabled; optional>,
 	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>,
 	"audio_level_average" : "<if provided, overrides the room audio_level_average for this user; optional>",
-	"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>"
+	"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>",
+	"min_delay" : <minimum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
+	"max_delay" : <maximum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>
 }
 \endverbatim
  *
@@ -1262,6 +1270,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"secret", JSON_STRING, 0},
 	{"pin", JSON_STRING, 0},
 	{"require_pvtid", JANUS_JSON_BOOL, 0},
+	{"signed_tokens", JANUS_JSON_BOOL, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"bitrate_cap", JANUS_JSON_BOOL, 0},
 	{"fir_freq", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1297,6 +1306,8 @@ static struct janus_json_parameter edit_parameters[] = {
 	{"new_bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"new_fir_freq", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"new_publishers", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"new_lock_record", JANUS_JSON_BOOL, 0},
+	{"new_rec_dir", JSON_STRING, 0},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter room_parameters[] = {
@@ -1376,6 +1387,9 @@ static struct janus_json_parameter publish_parameters[] = {
 	{"secret", JSON_STRING, 0},
 	{"audio_level_averge", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	/* For the playout-delay RTP extension, if negotiated */
+	{"min_delay", JSON_INTEGER, 0},
+	{"max_delay", JSON_INTEGER, 0},
 	/* The following are just to force a renegotiation and/or an ICE restart */
 	{"update", JANUS_JSON_BOOL, 0},
 	{"restart", JANUS_JSON_BOOL, 0}
@@ -1425,6 +1439,9 @@ static struct janus_json_parameter configure_parameters[] = {
 	/* For VP9 SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	/* For the playout-delay RTP extension, if negotiated */
+	{"min_delay", JSON_INTEGER, 0},
+	{"max_delay", JSON_INTEGER, 0},
 	/* The following is to handle a renegotiation */
 	{"update", JANUS_JSON_BOOL, 0}
 };
@@ -1444,6 +1461,9 @@ static struct janus_json_parameter subscriber_parameters[] = {
 	/* For VP9 SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	/* For the playout-delay RTP extension, if negotiated */
+	{"min_delay", JSON_INTEGER, 0},
+	{"max_delay", JSON_INTEGER, 0},
 };
 
 /* Static configuration instance */
@@ -1486,6 +1506,7 @@ typedef struct janus_videoroom {
 	gchar *room_pin;			/* Password needed to join this room, if any */
 	gboolean is_private;		/* Whether this room is 'private' (as in hidden) or not */
 	gboolean require_pvtid;		/* Whether subscriptions in this room require a private_id */
+	gboolean signed_tokens;		/* Whether signed tokens are required (assuming they're enabled in the core)  */
 	gboolean require_e2ee;		/* Whether end-to-end encrypted publishers are required */
 	int max_publishers;			/* Maximum number of concurrent publishers */
 	uint32_t bitrate;			/* Global bitrate limit */
@@ -1654,6 +1675,8 @@ typedef struct janus_videoroom_publisher {
 	int user_audio_active_packets;	/* Participant's audio_active_packets overwriting global room setting */
 	int user_audio_level_average;	/* Participant's audio_level_average overwriting global room setting */
 	gboolean talking; /* Whether this participant is currently talking (uses audio levels extension) */
+	/* Playout delays to enforce when relaying this stream, if the extension has been negotiated */
+	int16_t min_delay, max_delay;
 	gboolean data_active, data_muted;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
 	uint32_t bitrate;
@@ -1662,7 +1685,7 @@ typedef struct janus_videoroom_publisher {
 	gint64 fir_latest;	/* Time of latest sent FIR (to avoid flooding) */
 	gint fir_seq;		/* FIR sequence number */
 	gboolean recording_active;	/* Whether this publisher has to be recorded or not */
-	gchar *recording_base;	/* Base name for the recording (e.g., /path/to/filename, will generate /path/to/filename-audio.mjr and/or /path/to/filename-video.mjr */
+	gchar *recording_base;	/* Base name for the recording (e.g., /path/to/filename, will generate /path/to/filename-audio.mjr and/or /path/to/filename-video.mjr) */
 	janus_recorder *arc;	/* The Janus recorder instance for this publisher's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *drc;	/* The Janus recorder instance for this publisher's data, if enabled */
@@ -1709,6 +1732,8 @@ typedef struct janus_videoroom_subscriber {
 	int spatial_layer, target_spatial_layer;
 	gint64 last_spatial_layer[3];
 	int temporal_layer, target_temporal_layer;
+	/* Playout delays to enforce when relaying this stream, if the extension has been negotiated */
+	int16_t min_delay, max_delay;
 	gboolean e2ee;		/* If media for this subscriber is end-to-end encrypted */
 	/* Congestion related stuff */
 	volatile gint congested;
@@ -2255,6 +2280,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
 			janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
 			janus_config_item *req_pvtid = janus_config_get(config, cat, janus_config_type_item, "require_pvtid");
+			janus_config_item *signed_tokens = janus_config_get(config, cat, janus_config_type_item, "signed_tokens");
 			janus_config_item *bitrate = janus_config_get(config, cat, janus_config_type_item, "bitrate");
 			janus_config_item *bitrate_cap = janus_config_get(config, cat, janus_config_type_item, "bitrate_cap");
 			janus_config_item *maxp = janus_config_get(config, cat, janus_config_type_item, "publishers");
@@ -2327,6 +2353,13 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			}
 			videoroom->is_private = priv && priv->value && janus_is_true(priv->value);
 			videoroom->require_pvtid = req_pvtid && req_pvtid->value && janus_is_true(req_pvtid->value);
+			if(signed_tokens && signed_tokens->value && janus_is_true(signed_tokens->value)) {
+				if(!gateway->auth_is_signed()) {
+					JANUS_LOG(LOG_WARN, "Can't enforce signed tokens for this room, signed-mode not in use in the core\n");
+				} else {
+					videoroom->signed_tokens = TRUE;
+				}
+			}
 			videoroom->require_e2ee = req_e2ee && req_e2ee->value && janus_is_true(req_e2ee->value);
 			videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
 			if(maxp != NULL && maxp->value != NULL)
@@ -2999,9 +3032,9 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 	}
 	if(check_join) {
 		char error_cause2[100];
-		/* signed tokens bypass pin validation */
-		json_t *token = json_object_get(root, "token");
-		if(token) {
+		/* Signed tokens are enforced, so they precede any pin validation */
+		if(gateway->auth_is_signed() && (*videoroom)->signed_tokens) {
+			json_t *token = json_object_get(root, "token");
 			char room_descriptor[100];
 			g_snprintf(room_descriptor, sizeof(room_descriptor), "room=%s", room_id_str);
 			if(!gateway->auth_signature_contains(&janus_videoroom_plugin, json_string_value(token), room_descriptor)) {
@@ -3066,6 +3099,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *desc = json_object_get(root, "description");
 		json_t *is_private = json_object_get(root, "is_private");
 		json_t *req_pvtid = json_object_get(root, "require_pvtid");
+		json_t *signed_tokens = json_object_get(root, "signed_tokens");
 		json_t *req_e2ee = json_object_get(root, "require_e2ee");
 		json_t *secret = json_object_get(root, "secret");
 		json_t *pin = json_object_get(root, "pin");
@@ -3228,6 +3262,13 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		videoroom->room_name = description;
 		videoroom->is_private = is_private ? json_is_true(is_private) : FALSE;
 		videoroom->require_pvtid = req_pvtid ? json_is_true(req_pvtid) : FALSE;
+		if(signed_tokens && json_is_true(signed_tokens)) {
+			if(!gateway->auth_is_signed()) {
+				JANUS_LOG(LOG_WARN, "Can't enforce signed tokens for this room, signed-mode not in use in the core\n");
+			} else {
+				videoroom->signed_tokens = TRUE;
+			}
+		}
 		videoroom->require_e2ee = req_e2ee ? json_is_true(req_e2ee) : FALSE;
 		if(secret)
 			videoroom->room_secret = g_strdup(json_string_value(secret));
@@ -3430,6 +3471,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
 			if(videoroom->require_pvtid)
 				janus_config_add(config, c, janus_config_item_create("require_pvtid", "yes"));
+			if(videoroom->signed_tokens)
+				janus_config_add(config, c, janus_config_item_create("signed_tokens", "yes"));
 			if(videoroom->require_e2ee)
 				janus_config_add(config, c, janus_config_item_create("require_e2ee", "yes"));
 			g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->bitrate);
@@ -3548,6 +3591,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *fir_freq = json_object_get(root, "new_fir_freq");
 		json_t *publishers = json_object_get(root, "new_publishers");
 		json_t *lock_record = json_object_get(root, "new_lock_record");
+		json_t *rec_dir = json_object_get(root, "new_rec_dir");
 		json_t *permanent = json_object_get(root, "permanent");
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
 		if(save && config == NULL) {
@@ -3597,6 +3641,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		if(lock_record)
 			videoroom->lock_record = json_is_true(lock_record);
+		if(rec_dir) {
+			char *old_rec_dir = videoroom->rec_dir;
+			char *new_rec_dir = g_strdup(json_string_value(rec_dir));
+			videoroom->rec_dir = new_rec_dir;
+			g_free(old_rec_dir);
+		}
 		if(save) {
 			/* This room is permanent: save to the configuration file too
 			 * FIXME: We should check if anything fails... */
@@ -3614,6 +3664,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
 			if(videoroom->require_pvtid)
 				janus_config_add(config, c, janus_config_item_create("require_pvtid", "yes"));
+			if(videoroom->signed_tokens)
+				janus_config_add(config, c, janus_config_item_create("signed_tokens", "yes"));
 			if(videoroom->require_e2ee)
 				janus_config_add(config, c, janus_config_item_create("require_e2ee", "yes"));
 			g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->bitrate);
@@ -4822,6 +4874,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(p->sdp && g_atomic_int_get(&p->session->started)) {
 				if(p->audio_level_extmap_id > 0)
 					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
+				janus_mutex_lock_nodebug(&p->subscribers_mutex);
+				json_object_set_new(pl, "subscribers", json_integer(g_slist_length(p->subscribers)));
+				janus_mutex_unlock_nodebug(&p->subscribers_mutex);
 			}
 			json_array_append_new(list, pl);
 		}
@@ -4948,13 +5003,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			goto prepare_response;
 		json_t *record = json_object_get(root, "record");
 		gboolean recording_active = json_is_true(record);
-		JANUS_LOG(LOG_VERB, "Enable Recording : %d \n", (recording_active ? 1 : 0));
+		JANUS_LOG(LOG_VERB, "Enable Recording: %d\n", (recording_active ? 1 : 0));
 		/* Lookup room */
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = NULL;
 		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
 		if(error_code != 0) {
-			JANUS_LOG(LOG_ERR, "Failed to access videoroom\n");
 			janus_mutex_unlock(&rooms_mutex);
 			goto prepare_response;
 		}
@@ -4976,7 +5030,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					janus_mutex_lock(&participant->rec_mutex);
 					gboolean prev_recording_active = participant->recording_active;
 					participant->recording_active = recording_active;
-					JANUS_LOG(LOG_VERB, "Setting record property: %s (room %"SCNu64", user %"SCNu64")\n", participant->recording_active ? "true" : "false", participant->room_id, participant->user_id);
+					JANUS_LOG(LOG_VERB, "Setting record property: %s (room %s, user %s)\n",
+						participant->recording_active ? "true" : "false", participant->room_id_str, participant->user_id_str);
 					/* Do we need to do something with the recordings right now? */
 					if(participant->recording_active != prev_recording_active) {
 						/* Something changed */
@@ -5493,6 +5548,10 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 		/* Backup the actual timestamp and sequence number set by the publisher, in case switching is involved */
 		packet.timestamp = ntohl(packet.data->timestamp);
 		packet.seq_number = ntohs(packet.data->seq_number);
+		if(participant->min_delay > -1 && participant->max_delay > -1) {
+			packet.extensions.min_delay = participant->min_delay;
+			packet.extensions.max_delay = participant->max_delay;
+		}
 		/* Go: some viewers may decide to drop the packet, but that's up to them */
 		janus_mutex_lock_nodebug(&participant->subscribers_mutex);
 		g_slist_foreach(participant->subscribers, janus_videoroom_relay_rtp_packet, &packet);
@@ -6575,6 +6634,8 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 				json_t *sc_fallback = json_object_get(root, "fallback");
+				json_t *min_delay = json_object_get(root, "min_delay");
+				json_t *max_delay = json_object_get(root, "max_delay");
 				janus_videoroom_publisher *owner = NULL;
 				janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
 					string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
@@ -6668,6 +6729,31 @@ static void *janus_videoroom_handler(void *data) {
 						subscriber->target_spatial_layer = spatial ? json_integer_value(spatial) : 2;
 						subscriber->temporal_layer = -1;
 						subscriber->target_temporal_layer = temporal ? json_integer_value(temporal) : 2;
+					}
+					/* Override the playout-delay properties */
+					subscriber->min_delay = -1;
+					subscriber->max_delay = -1;
+					if(min_delay) {
+						int16_t md = json_integer_value(min_delay);
+						if(md < 0) {
+							subscriber->min_delay = -1;
+							subscriber->max_delay = -1;
+						} else {
+							subscriber->min_delay = md;
+							if(subscriber->min_delay > subscriber->max_delay)
+								subscriber->max_delay = subscriber->min_delay;
+						}
+					}
+					if(max_delay) {
+						int16_t md = json_integer_value(max_delay);
+						if(md < 0) {
+							subscriber->min_delay = -1;
+							subscriber->max_delay = -1;
+						} else {
+							subscriber->max_delay = md;
+							if(subscriber->max_delay < subscriber->min_delay)
+								subscriber->min_delay = subscriber->max_delay;
+						}
 					}
 					session->participant = subscriber;
 					janus_mutex_lock(&publisher->subscribers_mutex);
@@ -6807,6 +6893,8 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *update = json_object_get(root, "update");
 				json_t *user_audio_active_packets = json_object_get(root, "audio_active_packets");
 				json_t *user_audio_level_average = json_object_get(root, "audio_level_average");
+				json_t *min_delay = json_object_get(root, "min_delay");
+				json_t *max_delay = json_object_get(root, "max_delay");
 				if(audio) {
 					gboolean audio_active = json_is_true(audio);
 					if(g_atomic_int_get(&session->started) && audio_active && !participant->audio_active && !participant->audio_muted) {
@@ -6919,6 +7007,29 @@ static void *janus_videoroom_handler(void *data) {
 					if(error_code != 0) {
 						/* Wrong secret provided, we'll prevent the recording state from being changed */
 						record_locked = TRUE;
+					}
+				}
+				/* Override the playout-delay properties */
+				if(min_delay) {
+					int16_t md = json_integer_value(min_delay);
+					if(md < 0) {
+						participant->min_delay = -1;
+						participant->max_delay = -1;
+					} else {
+						participant->min_delay = md;
+						if(participant->min_delay > participant->max_delay)
+							participant->max_delay = participant->min_delay;
+					}
+				}
+				if(max_delay) {
+					int16_t md = json_integer_value(max_delay);
+					if(md < 0) {
+						participant->min_delay = -1;
+						participant->max_delay = -1;
+					} else {
+						participant->max_delay = md;
+						if(participant->max_delay < participant->min_delay)
+							participant->min_delay = participant->max_delay;
 					}
 				}
 				janus_mutex_lock(&participant->rec_mutex);
@@ -7107,6 +7218,8 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 				json_t *sc_fallback = json_object_get(root, "fallback");
+				json_t *min_delay = json_object_get(root, "min_delay");
+				json_t *max_delay = json_object_get(root, "max_delay");
 				/* Update the audio/video/data flags, if set */
 				janus_videoroom_publisher *publisher = subscriber->feed;
 				if(publisher) {
@@ -7214,6 +7327,29 @@ static void *janus_videoroom_handler(void *data) {
 							json_decref(event);
 						}
 						subscriber->target_temporal_layer = temporal_layer;
+					}
+				}
+				/* Override the playout-delay properties */
+				if(min_delay) {
+					int16_t md = json_integer_value(min_delay);
+					if(md < 0) {
+						subscriber->min_delay = -1;
+						subscriber->max_delay = -1;
+					} else {
+						subscriber->min_delay = md;
+						if(subscriber->min_delay > subscriber->max_delay)
+							subscriber->max_delay = subscriber->min_delay;
+					}
+				}
+				if(max_delay) {
+					int16_t md = json_integer_value(max_delay);
+					if(md < 0) {
+						subscriber->min_delay = -1;
+						subscriber->max_delay = -1;
+					} else {
+						subscriber->max_delay = md;
+						if(subscriber->max_delay < subscriber->min_delay)
+							subscriber->min_delay = subscriber->max_delay;
 					}
 				}
 				event = json_object();
@@ -7382,6 +7518,8 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 				json_t *sc_fallback = json_object_get(root, "fallback");
+				json_t *min_delay = json_object_get(root, "min_delay");
+				json_t *max_delay = json_object_get(root, "max_delay");
 				if(!subscriber->room) {
 					JANUS_LOG(LOG_ERR, "Room Destroyed\n");
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
@@ -7463,6 +7601,29 @@ static void *janus_videoroom_handler(void *data) {
 					subscriber->last_spatial_layer[2] = 0;
 					subscriber->temporal_layer = -1;
 					subscriber->target_temporal_layer = temporal ? json_integer_value(temporal) : 2;
+				}
+				/* Override the playout-delay properties */
+				if(min_delay) {
+					int16_t md = json_integer_value(min_delay);
+					if(md < 0) {
+						subscriber->min_delay = -1;
+						subscriber->max_delay = -1;
+					} else {
+						subscriber->min_delay = md;
+						if(subscriber->min_delay > subscriber->max_delay)
+							subscriber->max_delay = subscriber->min_delay;
+					}
+				}
+				if(max_delay) {
+					int16_t md = json_integer_value(max_delay);
+					if(md < 0) {
+						subscriber->min_delay = -1;
+						subscriber->max_delay = -1;
+					} else {
+						subscriber->max_delay = md;
+						if(subscriber->max_delay < subscriber->min_delay)
+							subscriber->min_delay = subscriber->max_delay;
+					}
 				}
 				janus_mutex_lock(&publisher->subscribers_mutex);
 				publisher->subscribers = g_slist_append(publisher->subscribers, subscriber);
@@ -8142,6 +8303,10 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			if(gateway != NULL) {
 				janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length,
 					.extensions = packet->extensions };
+				if(subscriber->min_delay > -1 && subscriber->max_delay > -1) {
+					rtp.extensions.min_delay = subscriber->min_delay;
+					rtp.extensions.max_delay = subscriber->max_delay;
+				}
 				gateway->relay_rtp(session->handle, &rtp);
 			}
 			if(override_mark_bit && !has_marker_bit) {
@@ -8207,6 +8372,10 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			if(gateway != NULL) {
 				janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length,
 					.extensions = packet->extensions };
+				if(subscriber->min_delay > -1 && subscriber->max_delay > -1) {
+					rtp.extensions.min_delay = subscriber->min_delay;
+					rtp.extensions.max_delay = subscriber->max_delay;
+				}
 				gateway->relay_rtp(session->handle, &rtp);
 			}
 			/* Restore the timestamp and sequence number to what the publisher set them to */
@@ -8223,6 +8392,10 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			if(gateway != NULL) {
 				janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length,
 					.extensions = packet->extensions };
+				if(subscriber->min_delay > -1 && subscriber->max_delay > -1) {
+					rtp.extensions.min_delay = subscriber->min_delay;
+					rtp.extensions.max_delay = subscriber->max_delay;
+				}
 				gateway->relay_rtp(session->handle, &rtp);
 			}
 			/* Restore the timestamp and sequence number to what the publisher set them to */

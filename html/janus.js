@@ -1963,22 +1963,34 @@ function Janus(gatewayCallbacks) {
 		}
 		if(addTracks && stream) {
 			Janus.log('Adding local stream');
-			var simulcast2 = (callbacks.simulcast2 === true);
+			var simulcast = (callbacks.simulcast === true || callbacks.simulcast2 === true) && Janus.unifiedPlan;
+			var svc = callbacks.svc;
 			stream.getTracks().forEach(function(track) {
 				Janus.log('Adding local track:', track);
 				var sender = null;
-				if(!simulcast2 || track.kind === 'audio') {
+				if((!simulcast && !svc) || track.kind === 'audio') {
 					sender = config.pc.addTrack(track, stream);
-				} else {
+				} else if(simulcast) {
 					Janus.log('Enabling rid-based simulcasting:', track);
-					var maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
-					var tr = config.pc.addTransceiver(track, {
+					let maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
+					let tr = config.pc.addTransceiver(track, {
 						direction: "sendrecv",
 						streams: [stream],
 						sendEncodings: callbacks.sendEncodings || [
 							{ rid: "h", active: true, maxBitrate: maxBitrates.high },
 							{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
 							{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
+						]
+					});
+					if(tr)
+						sender = tr.sender;
+				} else {
+					Janus.log('Enabling SVC (' + svc + '):', track);
+					let tr = config.pc.addTransceiver(track, {
+						direction: "sendrecv",
+						streams: [stream],
+						sendEncodings: [
+							{ scalabilityMode: svc }
 						]
 					});
 					if(tr)
@@ -2299,9 +2311,9 @@ function Janus(gatewayCallbacks) {
 				audioSupport = media.audio;
 			var videoSupport = isVideoSendEnabled(media);
 			if(videoSupport && media) {
-				var simulcast = (callbacks.simulcast === true);
-				var simulcast2 = (callbacks.simulcast2 === true);
-				if((simulcast || simulcast2) && !jsep && !media.video)
+				var simulcast = (callbacks.simulcast === true || callbacks.simulcast2 === true);
+				var svc = callbacks.svc;
+				if((simulcast || svc) && !jsep && !media.video)
 					media.video = "hires";
 				if(media.video && media.video != 'screen' && media.video != 'window') {
 					if(typeof media.video === 'object') {
@@ -2790,14 +2802,12 @@ function Janus(gatewayCallbacks) {
 				callbacks.customizeSdp(jsep);
 				offer.sdp = jsep.sdp;
 				Janus.log("Setting local description");
-				if(sendVideo && simulcast) {
-					// This SDP munging only works with Chrome (Safari STP may support it too)
+				if(sendVideo && simulcast && !Janus.unifiedPlan) {
+					// We only do simulcast via SDP munging on older versions of Chrome and Safari
 					if(Janus.webRTCAdapter.browserDetails.browser === "chrome" ||
 							Janus.webRTCAdapter.browserDetails.browser === "safari") {
 						Janus.log("Enabling Simulcasting for Chrome (SDP munging)");
 						offer.sdp = mungeSdpForSimulcasting(offer.sdp);
-					} else if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
-						Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
 					}
 				}
 				config.mySdp = {
@@ -2832,7 +2842,7 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
-		var simulcast = (callbacks.simulcast === true);
+		var simulcast = (callbacks.simulcast === true || callbacks.simulcast2 === true);
 		if(!simulcast) {
 			Janus.log("Creating answer (iceDone=" + config.iceDone + ")");
 		} else {
@@ -3033,15 +3043,13 @@ function Janus(gatewayCallbacks) {
 				callbacks.customizeSdp(jsep);
 				answer.sdp = jsep.sdp;
 				Janus.log("Setting local description");
-				if(sendVideo && simulcast) {
-					// This SDP munging only works with Chrome
+				if(sendVideo && simulcast && !Janus.unifiedPlan) {
+					// We only do simulcast via SDP munging on older versions of Chrome and Safari
 					if(Janus.webRTCAdapter.browserDetails.browser === "chrome") {
 						// FIXME Apparently trying to simulcast when answering breaks video in Chrome...
 						//~ Janus.log("Enabling Simulcasting for Chrome (SDP munging)");
 						//~ answer.sdp = mungeSdpForSimulcasting(answer.sdp);
 						Janus.warn("simulcast=true, but this is an answer, and video breaks in Chrome if we enable it");
-					} else if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
-						Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
 					}
 				}
 				config.mySdp = {

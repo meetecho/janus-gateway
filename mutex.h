@@ -34,9 +34,9 @@ typedef pthread_mutex_t janus_mutex;
 /*! \brief Janus mutex lock wrapper (selective locking debug) */
 #define janus_mutex_lock(a) { if(!lock_debug) { janus_mutex_lock_nodebug(a); } else { janus_mutex_lock_debug(a); } }
 /*! \brief Janus mutex try lock without debug */
-#define janus_mutex_trylock_nodebug(a) { ret = pthread_mutex_trylock(a); }
+#define janus_mutex_trylock_nodebug(a) { ret = !pthread_mutex_trylock(a); }
 /*! \brief Janus mutex try lock with debug (prints the line that tried to lock a mutex) */
-#define janus_mutex_trylock_debug(a) { JANUS_PRINT("[%s:%s:%d:trylock] %p\n", __FILE__, __FUNCTION__, __LINE__, a); ret = pthread_mutex_trylock(a); }
+#define janus_mutex_trylock_debug(a) { JANUS_PRINT("[%s:%s:%d:trylock] %p\n", __FILE__, __FUNCTION__, __LINE__, a); ret = !pthread_mutex_trylock(a); }
 /*! \brief Janus mutex try lock wrapper (selective locking debug) */
 #define janus_mutex_trylock(a) ({ int ret; if(!lock_debug) { janus_mutex_trylock_nodebug(a); } else { janus_mutex_trylock_debug(a); } ret; })
 /*! \brief Janus mutex unlock without debug */

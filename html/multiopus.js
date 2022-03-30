@@ -59,7 +59,6 @@ var audioenabled = false;
 var videoenabled = false;
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
-var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
 var acodec = "multiopus";
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
@@ -138,7 +137,6 @@ $(document).ready(function() {
 											// pass a ?simulcast=true when opening this demo page: it will turn
 											// the following 'simulcast' property to pass to janus.js to true
 											simulcast: doSimulcast,
-											simulcast2: doSimulcast2,
 											customizeSdp(jsep) {
 												// Offer multiopus
 												jsep.sdp = jsep.sdp
