@@ -1710,6 +1710,9 @@ typedef struct janus_videoroom_subscriber {
 	gint64 last_spatial_layer[3];
 	int temporal_layer, target_temporal_layer;
 	gboolean e2ee;		/* If media for this subscriber is end-to-end encrypted */
+	/* Congestion related stuff */
+	volatile gint congested;
+	gint64 congestion_updated;
 	volatile gint destroyed;
 	janus_refcount ref;
 } janus_videoroom_subscriber;
@@ -5736,6 +5739,18 @@ void janus_videoroom_congestion_update(janus_plugin_session *handle, gboolean co
 	janus_mutex_unlock(&sessions_mutex);
 
 	/* TODO This is where we'll handle congestion updates from the core */
+	if(session->participant_type == janus_videoroom_p_type_subscriber) {
+		janus_videoroom_subscriber *subscriber = janus_videoroom_session_get_subscriber(session);
+		if(subscriber) {
+			gint64 now = janus_get_monotonic_time(), last_updated = subscriber->congestion_updated;
+			subscriber->congestion_updated = now;
+			gboolean current = g_atomic_int_get(&subscriber->congested);
+			if(g_atomic_int_compare_and_exchange(&subscriber->congested, current, congested)) {
+				/* FIXME Something changed */
+				JANUS_LOG(LOG_WARN, "Congestion update: %s\n", congested ? "congested" : "not congested");
+			}
+		}
+	}
 
 	janus_refcount_decrease(&session->ref);
 }
