@@ -6302,6 +6302,8 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->audio_level_extmap_id = 0;
 				publisher->video_orient_extmap_id = 0;
 				publisher->playout_delay_extmap_id = 0;
+				publisher->min_delay = -1;	/* We'll deal with this later */
+				publisher->max_delay = -1;	/* We'll deal with this later */
 				publisher->remb_startup = 4;
 				publisher->remb_latest = 0;
 				publisher->fir_latest = 0;
