@@ -81,7 +81,7 @@
 		"event" : "<name of the error event>",
 		"code" : <SIP error code>,
 		"reason" : "<SIP error reason>",
-		"reason_header" : "<Reason header; optional>",
+		"reason_header" : "<Reason header text; optional>",
 		"reason_header_protocol" : "<Reason header protocol; optional>",
 		"reason_header_cause" : "<Reason header cause code; optional>"
 	}
