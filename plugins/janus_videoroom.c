@@ -1473,6 +1473,7 @@ static janus_mutex config_mutex = JANUS_MUTEX_INITIALIZER;
 static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static gboolean string_ids = FALSE;
+static gboolean ipv6_disabled = FALSE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static void *janus_videoroom_handler(void *data);
@@ -1981,13 +1982,17 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 	if(!p || !host) {
 		return 0;
 	}
+	if(ipv6_disabled && strstr(host, ":") != NULL) {
+		JANUS_LOG(LOG_ERR, "Attempt to create an IPv6 forwarder, but IPv6 networking is not available\n");
+		return 0;
+	}
 	janus_refcount_increase(&p->ref);
 	janus_mutex_lock(&p->rtp_forwarders_mutex);
 	/* Do we need to bind to a port for RTCP? */
 	int fd = -1;
 	uint16_t local_rtcp_port = 0;
 	if(!is_data && rtcp_port > 0) {
-		fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+		fd = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 		if(fd < 0) {
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
 			janus_refcount_decrease(&p->ref);
@@ -1995,23 +2000,36 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 				errno, g_strerror(errno));
 			return 0;
 		}
-		int v6only = 0;
-		if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
-			janus_mutex_unlock(&p->rtp_forwarders_mutex);
-			janus_refcount_decrease(&p->ref);
-			JANUS_LOG(LOG_ERR, "Error creating RTCP socket for new RTP forwarder... %d (%s)\n",
-				errno, g_strerror(errno));
-			close(fd);
-			return 0;
+		struct sockaddr *address = NULL;
+		struct sockaddr_in addr4 = { 0 };
+		struct sockaddr_in6 addr6 = { 0 };
+		socklen_t len = 0;
+		if(!ipv6_disabled) {
+			/* Configure the socket so that it can be used both on IPv4 and IPv6 */
+			int v6only = 0;
+			if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+				janus_mutex_unlock(&p->rtp_forwarders_mutex);
+				janus_refcount_decrease(&p->ref);
+				JANUS_LOG(LOG_ERR, "Error configuring RTCP socket for new RTP forwarder... %d (%s)\n",
+					errno, g_strerror(errno));
+				close(fd);
+				return 0;
+			}
+			len = sizeof(addr6);
+			addr6.sin6_family = AF_INET6;
+			addr6.sin6_port = htons(0);		/* The RTCP port we received is the remote one */
+			addr6.sin6_addr = in6addr_any;
+			address = (struct sockaddr *)&addr6;
+		} else {
+			/* IPv6 is disabled, only do IPv4 */
+			len = sizeof(addr4);
+			addr4.sin_family = AF_INET;
+			addr4.sin_port = htons(0);		/* The RTCP port we received is the remote one */
+			addr4.sin_addr.s_addr = INADDR_ANY;
+			address = (struct sockaddr *)&addr4;
 		}
-		struct sockaddr_in6 address = { 0 };
-		socklen_t len = sizeof(address);
-		memset(&address, 0, sizeof(address));
-		address.sin6_family = AF_INET6;
-		address.sin6_port = htons(0);	/* The RTCP port we received is the remote one */
-		address.sin6_addr = in6addr_any;
-		if(bind(fd, (struct sockaddr *)&address, len) < 0 ||
-				getsockname(fd, (struct sockaddr *)&address, &len) < 0) {
+		if(bind(fd, (struct sockaddr *)address, len) < 0 ||
+				getsockname(fd, (struct sockaddr *)address, &len) < 0) {
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
 			janus_refcount_decrease(&p->ref);
 			JANUS_LOG(LOG_ERR, "Error binding RTCP socket for new RTP forwarder... %d (%s)\n",
@@ -2019,7 +2037,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 			close(fd);
 			return 0;
 		}
-		local_rtcp_port = ntohs(address.sin6_port);
+		local_rtcp_port = ntohs(!ipv6_disabled ? addr6.sin6_port : addr4.sin_port);
 		JANUS_LOG(LOG_VERB, "Bound local %s RTCP port: %"SCNu16"\n",
 			is_video ? "video" : "audio", local_rtcp_port);
 	}
@@ -2576,6 +2594,22 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VideoRoom RTCP thread for RTP forwarders...\n",
 			error->code, error->message ? error->message : "??");
 		g_error_free(error);
+	}
+
+	/* Finally, let's check if IPv6 is disabled, as we may need to know for forwarders */
+	int fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+	if(fd <= 0) {
+		ipv6_disabled = TRUE;
+	} else {
+		int v6only = 0;
+		if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)
+			ipv6_disabled = TRUE;
+	}
+	if(fd > 0)
+		close(fd);
+	ipv6_disabled = TRUE;
+	if(ipv6_disabled) {
+		JANUS_LOG(LOG_WARN, "IPv6 disabled, will only create VideoRoom forwarders to IPv4 addresses\n");
 	}
 
 	g_atomic_int_set(&initialized, 1);
@@ -4126,14 +4160,15 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		janus_refcount_increase(&publisher->ref);	/* This is just to handle the request for now */
 		if(publisher->udp_sock <= 0) {
-			publisher->udp_sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+			publisher->udp_sock = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 			int v6only = 0;
 			if(publisher->udp_sock <= 0 ||
-					setsockopt(publisher->udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+					(!ipv6_disabled && setsockopt(publisher->udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)) {
 				janus_refcount_decrease(&publisher->ref);
 				janus_mutex_unlock(&videoroom->mutex);
 				janus_refcount_decrease(&videoroom->ref);
-				JANUS_LOG(LOG_ERR, "Could not open UDP socket for RTP stream for publisher (%s)\n", publisher_id_str);
+				JANUS_LOG(LOG_ERR, "Could not open UDP socket for RTP stream for publisher (%s), %d (%s)\n",
+					publisher_id_str, errno, g_strerror(errno));
 				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
 				g_snprintf(error_cause, 512, "Could not open UDP socket for RTP stream");
 				goto prepare_response;
