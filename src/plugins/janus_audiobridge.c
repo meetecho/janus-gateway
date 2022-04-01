@@ -1251,6 +1251,7 @@ static janus_mutex config_mutex = JANUS_MUTEX_INITIALIZER;
 static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static gboolean string_ids = FALSE;
+static gboolean ipv6_disabled = FALSE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static void *janus_audiobridge_handler(void *data);
@@ -2075,15 +2076,19 @@ static int janus_audiobridge_create_udp_socket_if_needed(janus_audiobridge_room 
 		return 0;
 	}
 
-	audiobridge->rtp_udp_sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+	audiobridge->rtp_udp_sock = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if(audiobridge->rtp_udp_sock <= 0) {
-		JANUS_LOG(LOG_ERR, "Could not open UDP socket for RTP forwarder (room %s)\n", audiobridge->room_id_str);
+		JANUS_LOG(LOG_ERR, "Could not open UDP socket for RTP forwarder (room %s), %d (%s)\n",
+			audiobridge->room_id_str, errno, g_strerror(errno));
 		return -1;
 	}
-	int v6only = 0;
-	if(setsockopt(audiobridge->rtp_udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
-		JANUS_LOG(LOG_ERR, "Could not open UDP socket for RTP forwarder (room %s)\n", audiobridge->room_id_str);
-		return -1;
+	if(!ipv6_disabled) {
+		int v6only = 0;
+		if(setsockopt(audiobridge->rtp_udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+			JANUS_LOG(LOG_ERR, "Could not configure UDP socket for RTP forwarder (room %s), %d (%s))\n",
+				audiobridge->room_id_str, errno, g_strerror(errno));
+			return -1;
+		}
 	}
 
 	return 0;
@@ -2352,7 +2357,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_network_address_string_buffer ibuf;
 			if(getifaddrs(&ifas) == -1) {
 				JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected... %d (%s)\n",
-					errno, strerror(errno));
+					errno, g_strerror(errno));
 			} else {
 				if(janus_network_lookup_interface(ifas, lip->value, &iface) != 0) {
 					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", lip->value);
@@ -2677,6 +2682,21 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			ar->room_id_str, ar->room_name, ar->sampling_rate, g_atomic_int_get(&ar->record) ? "will" : "will NOT");
 	}
 	janus_mutex_unlock(&rooms_mutex);
+
+	/* Finally, let's check if IPv6 is disabled, as we may need to know for forwarders */
+	int fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+	if(fd <= 0) {
+		ipv6_disabled = TRUE;
+	} else {
+		int v6only = 0;
+		if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)
+			ipv6_disabled = TRUE;
+	}
+	if(fd > 0)
+		close(fd);
+	if(ipv6_disabled) {
+		JANUS_LOG(LOG_WARN, "IPv6 disabled, will only create VideoRoom forwarders to IPv4 addresses\n");
+	}
 
 	g_atomic_int_set(&initialized, 1);
 
@@ -4579,6 +4599,12 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			goto prepare_response;
 		}
 		host = resolved_host;
+		if(ipv6_disabled && strstr(host, ":") != NULL) {
+			JANUS_LOG(LOG_ERR, "Attempt to create an IPv6 forwarder, but IPv6 networking is not available\n");
+			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Attempt to create an IPv6 forwarder, but IPv6 networking is not available");
+			goto prepare_response;
+		}
 		json_t *always = json_object_get(root, "always_on");
 		gboolean always_on = always ? json_is_true(always) : FALSE;
 		/* Besides, we may need to SRTP-encrypt this stream */
@@ -6423,7 +6449,7 @@ static void *janus_audiobridge_handler(void *data) {
 						if(connect(participant->plainrtp_media.audio_rtp_fd, (struct sockaddr *)&audio_server_addr, sizeof(struct sockaddr)) == -1) {
 							JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Couldn't connect audio RTP? (%s:%d)\n", session,
 								participant->plainrtp_media.remote_audio_ip, participant->plainrtp_media.remote_audio_rtp_port);
-							JANUS_LOG(LOG_ERR, "[AudioBridge-%p]   -- %d (%s)\n", session, errno, strerror(errno));
+							JANUS_LOG(LOG_ERR, "[AudioBridge-%p]   -- %d (%s)\n", session, errno, g_strerror(errno));
 						} else {
 							participant->plainrtp_media.audio_send = TRUE;
 						}
@@ -8504,7 +8530,7 @@ static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data
 		if(participant->plainrtp_media.audio_send) {
 			int ret = send(participant->plainrtp_media.audio_rtp_fd, (char *)packet->data, packet->length, 0);
 			if(ret < 0) {
-				JANUS_LOG(LOG_WARN, "Error sending plain RTP packet: %d (%s)\n", errno, strerror(errno));
+				JANUS_LOG(LOG_WARN, "Error sending plain RTP packet: %d (%s)\n", errno, g_strerror(errno));
 			}
 		}
 	} else if(gateway != NULL) {
@@ -8633,11 +8659,11 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 		resfd = poll(fds, num, 1000);
 		if(resfd < 0) {
 			if(errno == EINTR) {
-				JANUS_LOG(LOG_HUGE, "[AudioBridge-%p] Got an EINTR (%s), ignoring...\n", session, strerror(errno));
+				JANUS_LOG(LOG_HUGE, "[AudioBridge-%p] Got an EINTR (%s), ignoring...\n", session, g_strerror(errno));
 				continue;
 			}
 			JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Error polling...\n", session);
-			JANUS_LOG(LOG_ERR, "[AudioBridge-%p]   -- %d (%s)\n", session, errno, strerror(errno));
+			JANUS_LOG(LOG_ERR, "[AudioBridge-%p]   -- %d (%s)\n", session, errno, g_strerror(errno));
 			break;
 		} else if(resfd == 0) {
 			/* No data, keep going */
@@ -8662,7 +8688,7 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 					continue;
 				JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Too many errors polling %d (socket #%d): %s...\n", session,
 					fds[i].fd, i, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
-				JANUS_LOG(LOG_ERR, "[AudioBridge-%p]   -- %d (%s)\n", session, error, strerror(error));
+				JANUS_LOG(LOG_ERR, "[AudioBridge-%p]   -- %d (%s)\n", session, error, g_strerror(error));
 				/* Can we assume it's pretty much over, after a POLLERR? */
 				goon = FALSE;
 				/* Close the channel */
