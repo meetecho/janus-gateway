@@ -65,3 +65,4 @@ p2m-cmdline.h
 .idea
 
 .vscode
+node_modules
