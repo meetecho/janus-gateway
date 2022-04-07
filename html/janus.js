@@ -2053,10 +2053,9 @@ function Janus(gatewayCallbacks) {
 			for(let i in tracks) {
 				var track = tracks[i];
 				track.onended = function(ev) {
-					// FIXME What does this event contain? Is there a reference to the track?
 					Janus.log("Local track removed:", ev);
 					try {
-						pluginHandle.onlocaltrack(ev.track, false);
+						pluginHandle.onlocaltrack(ev.target, false);
 					} catch(e) {
 						Janus.error(e);
 					}
