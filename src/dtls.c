@@ -689,7 +689,6 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 	}
 	/* Try to read data */
 	char data[1500];	/* FIXME */
-	memset(&data, 0, 1500);
 	int read = SSL_read(dtls->ssl, &data, 1500);
 	JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     ... and read %d of them from SSL...\n", handle->handle_id, read);
 	if(read < 0) {
