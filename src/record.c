@@ -116,6 +116,7 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 	rc->file = NULL;
 	rc->codec = g_strdup(codec);
 	rc->fmtp = fmtp ? g_strdup(fmtp) : NULL;
+	rc->description = NULL;
 	rc->created = janus_get_real_time();
 	const char *rec_dir = NULL;
 	const char *rec_file = NULL;
