@@ -10413,7 +10413,6 @@ static void *janus_videoroom_handler(void *data) {
 					while(temp) {
 						janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
 						janus_videoroom_recorder_create(ps);
-						AAA
 						temp = temp->next;
 					}
 					participant->recording_active = TRUE;
