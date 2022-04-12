@@ -349,6 +349,8 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		json_object_set_new(info, "c", json_string(recorder->codec));					/* Media codec */
 		if(recorder->fmtp)
 			json_object_set_new(info, "f", json_string(recorder->fmtp));				/* Codec-specific info */
+		if(recorder->description)
+			json_object_set_new(info, "desc", json_string(recorder->description));		/* Stream description */
 		if(recorder->extensions) {
 			/* Add the extmaps to the JSON object */
 			json_t *extmaps = NULL;
