@@ -49,6 +49,8 @@ typedef struct janus_recorder {
 	char *codec;
 	/*! \brief Codec-specific info (e.g., H.264 or VP9 profile) */
 	char *fmtp;
+	/*! \brief Stream description */
+	char *description;
 	/*! \brief List of RTP extensions (as a hashtable, indexed by ID) in this recording */
 	GHashTable *extensions;
 	/*! \brief When the recording file has been created and started */
