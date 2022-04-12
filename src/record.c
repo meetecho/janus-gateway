@@ -293,6 +293,16 @@ int janus_recorder_add_extmap(janus_recorder *recorder, int id, const char *extm
 	return 0;
 }
 
+int janus_recorder_description(janus_recorder *recorder, const char *description) {
+	if (!description)
+		return -1;
+	if (recorder->description) {
+		g_free(recorder->description);
+	}
+	recorder->description = g_strdup(description);
+	return 0;
+}
+
 int janus_recorder_opusred(janus_recorder *recorder, int red_pt) {
 	if(!recorder)
 		return -1;

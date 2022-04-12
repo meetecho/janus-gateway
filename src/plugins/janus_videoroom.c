@@ -7105,7 +7105,7 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher_stream *ps
 		}
 		/* If the stream has a description, store it in the recording */
 		if(ps->description && rc)
-			rc->description = g_strdup(ps->description);
+			janus_recorder_description(rc, ps->description);
 		/* If the video-orientation extension has been negotiated, mark it in the recording */
 		if(ps->video_orient_extmap_id > 0)
 			janus_recorder_add_extmap(rc, ps->video_orient_extmap_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
@@ -8620,11 +8620,8 @@ static void *janus_videoroom_handler(void *data) {
 								desc_updated = TRUE;
 								g_free(ps->description);
 								ps->description = g_strdup(d_desc);
-								if(ps->rc) {
-									if(ps->rc->description)
-										g_free(ps->rc->description);
-									ps->rc->description = g_strdup(d_desc);
-								}
+								if(ps->rc)
+									janus_recorder_description(ps->rc, d_desc);
 							}
 						}
 					}
