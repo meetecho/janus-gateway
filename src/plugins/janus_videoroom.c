@@ -8620,8 +8620,6 @@ static void *janus_videoroom_handler(void *data) {
 								desc_updated = TRUE;
 								g_free(ps->description);
 								ps->description = g_strdup(d_desc);
-								if(ps->rc)
-									janus_recorder_description(ps->rc, d_desc);
 							}
 						}
 					}
