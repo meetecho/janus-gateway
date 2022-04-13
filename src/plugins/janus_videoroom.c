@@ -7104,7 +7104,7 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher_stream *ps
 			}
 		}
 		/* If the stream has a description, store it in the recording */
-		if(ps->description && rc)
+		if(ps->description)
 			janus_recorder_description(rc, ps->description);
 		/* If the video-orientation extension has been negotiated, mark it in the recording */
 		if(ps->video_orient_extmap_id > 0)

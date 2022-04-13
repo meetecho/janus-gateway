@@ -294,6 +294,8 @@ int janus_recorder_add_extmap(janus_recorder *recorder, int id, const char *extm
 }
 
 int janus_recorder_description(janus_recorder *recorder, const char *description) {
+	if(!recorder)
+		return -1;
 	if (!description)
 		return -1;
 	if(recorder->description)
