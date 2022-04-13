@@ -298,9 +298,17 @@ int janus_recorder_description(janus_recorder *recorder, const char *description
 		return -1;
 	if (!description)
 		return -1;
+	janus_mutex_lock_nodebug(&recorder->mutex);
+	if(g_atomic_int_get(&recorder->header)) {
+		/* No use setting description once it's already written in the MJR file */
+		janus_mutex_unlock_nodebug(&recorder->mutex);
+		return 0;
+	}
+
 	if(recorder->description)
 		g_free(recorder->description);
 	recorder->description = g_strdup(description);
+	janus_mutex_unlock_nodebug(&recorder->mutex);
 	return 0;
 }
 
