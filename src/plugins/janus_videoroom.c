@@ -3966,7 +3966,9 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				json_object_set_new(info, "paused", participant->paused ? json_true() : json_false());
 				if(participant->e2ee)
 					json_object_set_new(info, "e2ee", json_true());
+				janus_mutex_lock(&participant->streams_mutex);
 				json_t *media = janus_videoroom_subscriber_streams_summary(participant, FALSE, NULL);
+				janus_mutex_unlock(&participant->streams_mutex);
 				json_object_set_new(info, "streams", media);
 			}
 			if(participant)
@@ -7225,6 +7227,9 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 					json_object_set_new(event, "room", string_ids ?
 						json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 					json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
+					json_t *media_event = NULL;
+					if(notify_events && gateway->events_is_enabled())
+						media_event = json_deep_copy(media);
 					json_object_set_new(event, "streams", media);
 					/* Generate a new offer */
 					json_t *jsep = janus_videoroom_subscriber_offer(subscriber);
@@ -7241,8 +7246,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 						json_object_set_new(info, "event", json_string("updated"));
 						json_object_set_new(info, "room", string_ids ?
 							json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-						json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
-						json_object_set_new(info, "streams", media);
+						json_object_set_new(info, "streams", media_event);
 						json_object_set_new(info, "private_id", json_integer(subscriber->pvt_id));
 						gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 					}
@@ -8262,12 +8266,15 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(event, "id", string_ids ? json_string(feed_id_str) : json_integer(feed_id));
 					json_object_set_new(event, "warning", json_string("deprecated_api"));
 				}
+				janus_mutex_lock(&subscriber->streams_mutex);
 				json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, legacy, event);
+				json_t *media_event = NULL;
+				if(notify_events && gateway->events_is_enabled())
+					media_event = json_deep_copy(media);
 				json_object_set_new(event, "streams", media);
 				session->participant_type = janus_videoroom_p_type_subscriber;
 				JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
 				/* Negotiate by crafting a new SDP matching the subscriptions */
-				janus_mutex_lock(&subscriber->streams_mutex);
 				json_t *jsep = janus_videoroom_subscriber_offer(subscriber);
 				janus_mutex_unlock(&subscriber->streams_mutex);
 				/* How long will the Janus core take to push the event? */
@@ -8283,8 +8290,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(info, "event", json_string("subscribing"));
 					json_object_set_new(info, "room", string_ids ?
 						json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-					json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
-					json_object_set_new(info, "streams", media);
+					json_object_set_new(info, "streams", media_event);
 					json_object_set_new(info, "private_id", json_integer(pvt_id));
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 				}
@@ -9046,6 +9052,9 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", string_ids ?
 					json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 				json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
+				json_t *media_event = NULL;
+				if(notify_events && gateway->events_is_enabled())
+					media_event = json_deep_copy(media);
 				json_object_set_new(event, "streams", media);
 				/* Generate a new offer */
 				json_t *jsep = janus_videoroom_subscriber_offer(subscriber);
@@ -9062,8 +9071,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(info, "event", json_string("updated"));
 					json_object_set_new(info, "room", string_ids ?
 						json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-					json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
-					json_object_set_new(info, "streams", media);
+					json_object_set_new(info, "streams", media_event);
 					json_object_set_new(info, "private_id", json_integer(subscriber->pvt_id));
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 				}
@@ -9806,7 +9814,12 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", string_ids ?
 					json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 				json_object_set_new(event, "changes", json_integer(changes));
+				janus_mutex_lock(&subscriber->streams_mutex);
 				json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
+				json_t *media_event = NULL;
+				if(notify_events && gateway->events_is_enabled())
+					media_event = json_deep_copy(media);
+				janus_mutex_unlock(&subscriber->streams_mutex);
 				json_object_set_new(event, "streams", media);
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
@@ -9815,8 +9828,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(info, "room", string_ids ?
 						json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 					json_object_set_new(event, "changes", json_integer(changes));
-					media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
-					json_object_set_new(event, "streams", media);
+					json_object_set_new(event, "streams", media_event);
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 				}
 				/* Check if we need a renegotiation as well */
@@ -9834,6 +9846,9 @@ static void *janus_videoroom_handler(void *data) {
 						json_object_set_new(revent, "room", string_ids ?
 							json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 						json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
+						json_t *media_event = NULL;
+						if(notify_events && gateway->events_is_enabled())
+							media_event = json_deep_copy(media);
 						json_object_set_new(revent, "streams", media);
 						/* Generate a new offer */
 						json_t *jsep = janus_videoroom_subscriber_offer(subscriber);
@@ -9851,8 +9866,7 @@ static void *janus_videoroom_handler(void *data) {
 							json_object_set_new(info, "room", string_ids ?
 								json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 							json_object_set_new(info, "room", json_integer(subscriber->room_id));
-							json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
-							json_object_set_new(info, "streams", media);
+							json_object_set_new(info, "streams", media_event);
 							json_object_set_new(info, "private_id", json_integer(subscriber->pvt_id));
 							gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 						}
@@ -9943,6 +9957,9 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(event, "room", string_ids ?
 						json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 					json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
+					json_t *media_event = NULL;
+					if(notify_events && gateway->events_is_enabled())
+						media_event = json_deep_copy(media);
 					json_object_set_new(event, "streams", media);
 					/* Generate a new offer */
 					json_t *jsep = janus_videoroom_subscriber_offer(subscriber);
@@ -9962,8 +9979,7 @@ static void *janus_videoroom_handler(void *data) {
 						json_object_set_new(info, "event", json_string("updated"));
 						json_object_set_new(info, "room", string_ids ?
 							json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-						json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
-						json_object_set_new(info, "streams", media);
+						json_object_set_new(info, "streams", media_event);
 						json_object_set_new(info, "private_id", json_integer(subscriber->pvt_id));
 						gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 					}
