@@ -294,9 +294,7 @@ int janus_recorder_add_extmap(janus_recorder *recorder, int id, const char *extm
 }
 
 int janus_recorder_description(janus_recorder *recorder, const char *description) {
-	if(!recorder)
-		return -1;
-	if (!description)
+	if(!recorder || !description)
 		return -1;
 	janus_mutex_lock_nodebug(&recorder->mutex);
 	if(g_atomic_int_get(&recorder->header)) {
@@ -304,9 +302,7 @@ int janus_recorder_description(janus_recorder *recorder, const char *description
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return 0;
 	}
-
-	if(recorder->description)
-		g_free(recorder->description);
+	g_free(recorder->description);
 	recorder->description = g_strdup(description);
 	janus_mutex_unlock_nodebug(&recorder->mutex);
 	return 0;
