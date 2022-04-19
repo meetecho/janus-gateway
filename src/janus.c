@@ -3577,13 +3577,13 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (handle not available anymore or negotiation stopped)\n", ice_handle->handle_id);
 				janus_refcount_decrease(&plugin_session->ref);
-				if(ice_event != NULL)
+				if(ice_handle != NULL)
 					janus_refcount_decrease(&ice_handle->ref);
 				return JANUS_ERROR_HANDLE_NOT_FOUND;
 			} else {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: problem with the SDP)\n", ice_handle->handle_id);
 				janus_refcount_decrease(&plugin_session->ref);
-				if(ice_event != NULL)
+				if(ice_handle != NULL)
 					janus_refcount_decrease(&ice_handle->ref);
 				return JANUS_ERROR_JSEP_INVALID_SDP;
 			}
