@@ -49,6 +49,8 @@ typedef struct janus_recorder {
 	char *codec;
 	/*! \brief Codec-specific info (e.g., H.264 or VP9 profile) */
 	char *fmtp;
+	/*! \brief Stream description */
+	char *description;
 	/*! \brief List of RTP extensions (as a hashtable, indexed by ID) in this recording */
 	GHashTable *extensions;
 	/*! \brief When the recording file has been created and started */
@@ -117,6 +119,11 @@ int janus_recorder_resume(janus_recorder *recorder);
  * @param[in] extmap Namespace of the RTP extension
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_recorder_add_extmap(janus_recorder *recorder, int id, const char *extmap);
+/*! \brief Set the description for this recording
+ * @param[in] recorder The janus_recorder instance to add the description to
+ * @param[in] description The description
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_recorder_description(janus_recorder *recorder, const char *description);
 /*! \brief Mark this recording as using RED for audio
  * \note This will only be possible BEFORE the first frame is written, as it needs to
  * be reflected in the .mjr header: doing this after that will return an error.
