@@ -9,7 +9,7 @@ export default {
     },
     plugins: [
         replace({
-            JANUS_CODE: fs.readFileSync('../html/janus.js', 'utf-8'),
+            JANUS_CODE: fs.readFileSync('janus.js', 'utf-8'),
             delimiters: ['@','@'],
             includes: 'module.js'
         })

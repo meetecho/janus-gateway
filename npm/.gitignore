@@ -1,3 +1,5 @@
 bundles/
 node_modules/
+janus.js
 npm-debug.log
+package-lock.json
