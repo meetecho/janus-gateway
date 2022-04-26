@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.12.1] - 2022-04-26
+
+- Fix highest sequence number not being properly initialized in the RTCP context [[Issues-2920](https://github.com/meetecho/janus-gateway/issues/2920)]
+- Fixed segfault in UNIX transport teardown caused by pathnames of different sizes
+- Reset rids when renegotiating SDPs [[PR-2931](https://github.com/meetecho/janus-gateway/pull/2931)]
+- Check if IPv6 is disabled to avoid failure when creating forwarder sockets in AudioBridge and VideoRoom [[PR-2916](https://github.com/meetecho/janus-gateway/pull/2916)]
+- Fixed missing initialization of min/max delay in VideoRoom plugin (thanks @tmatth!) [[PR-2936](https://github.com/meetecho/janus-gateway/pull/2936)]
+- Also return reason header protocol and cause if present in BYE in the SIP plugin (thanks @ajsa-terko!) [[PR-2935](https://github.com/meetecho/janus-gateway/pull/2935)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.12.0] - 2022-03-03
 
 - Fixed definition of trylock wrapper when using pthreads [[Issue-2894](https://github.com/meetecho/janus-gateway/issues/2894)]
