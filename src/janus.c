@@ -3915,7 +3915,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX) &&
 				medium->rtx_payload_types == NULL) {
 			/* Make sure we have a list of rtx payload types to generate, if needed */
-			janus_sdp_mline *m = janus_sdp_mline_find(parsed_sdp, JANUS_SDP_VIDEO);
+			janus_sdp_mline *m = janus_sdp_mline_find_by_index(parsed_sdp, medium->mindex);
 			if(m && m->ptypes) {
 				medium->rtx_payload_types = g_hash_table_new(NULL, NULL);
 				GList *ptypes = g_list_copy(m->ptypes), *tempP = ptypes;
@@ -3940,6 +3940,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						g_hash_table_insert(medium->rtx_payload_types, GINT_TO_POINTER(ptype), GINT_TO_POINTER(rtx_ptype));
 					g_list_free(rtx_ptypes);
 					rtx_ptypes = g_hash_table_get_values(medium->rtx_payload_types);
+					medium->do_nacks = TRUE;
 					tempP = tempP->next;
 				}
 				g_list_free(ptypes);
