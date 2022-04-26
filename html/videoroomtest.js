@@ -183,6 +183,8 @@ $(document).ready(function() {
 												var list = msg["publishers"];
 												Janus.debug("Got a list of available publishers/feeds:", list);
 												for(var f in list) {
+													if(list[f]["dummy"])
+														continue;
 													var id = list[f]["id"];
 													var streams = list[f]["streams"];
 													for(var i in streams) {
@@ -215,6 +217,8 @@ $(document).ready(function() {
 												var list = msg["publishers"];
 												Janus.debug("Got a list of available publishers/feeds:", list);
 												for(var f in list) {
+													if(list[f]["dummy"])
+														continue;
 													var id = list[f]["id"];
 													var display = list[f]["display"];
 													var streams = list[f]["streams"];
