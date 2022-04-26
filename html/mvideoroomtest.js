@@ -855,11 +855,7 @@ function subscribeTo(sources) {
 			oncleanup: function() {
 				Janus.log(" ::: Got a cleanup notification (remote feed) :::");
 				for(var i=1;i<6;i++) {
-					$('#remotevideo'+i).remove();
-					$('#waitingvideo'+i).remove();
-					$('#novideo'+i).remove();
-					$('#curbitrate'+i).remove();
-					$('#curres'+i).remove();
+					$('#videoremote'+i).empty();
 					if(bitrateTimer[i])
 						clearInterval(bitrateTimer[i]);
 					bitrateTimer[i] = null;
