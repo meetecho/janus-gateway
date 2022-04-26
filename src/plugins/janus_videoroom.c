@@ -6082,6 +6082,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			}
 		}
 		ps->muted = muted;
+		janus_mutex_unlock(&participant->streams_mutex);
 		/* Prepare an event for this */
 		json_t *event = json_object();
 		json_object_set_new(event, "videoroom", json_string("event"));
@@ -9039,6 +9040,13 @@ static void *janus_videoroom_handler(void *data) {
 					g_atomic_int_set(&subscriber->pending_offer, 1);
 					janus_mutex_unlock(&subscriber->streams_mutex);
 					JANUS_LOG(LOG_VERB, "Post-poning new offer, waiting for previous answer\n");
+					/* Send a temporary event */
+					event = json_object();
+					json_object_set_new(event, "videoroom", json_string("updating"));
+					json_object_set_new(event, "room", string_ids ?
+						json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
+					gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, NULL);
+					json_decref(event);
 					/* Decrease the references we took before */
 					while(publishers) {
 						janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
@@ -9221,6 +9229,14 @@ static void *janus_videoroom_handler(void *data) {
 					g_atomic_int_set(&subscriber->pending_offer, 1);
 					janus_mutex_unlock(&subscriber->streams_mutex);
 					JANUS_LOG(LOG_VERB, "Post-poning new offer, waiting for previous answer\n");
+					/* Send a temporary event */
+					event = json_object();
+					json_object_set_new(event, "videoroom", json_string("updating"));
+					json_object_set_new(event, "room", string_ids ?
+						json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
+					gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, NULL);
+					json_decref(event);
+					/* Decrease the references */
 					janus_refcount_decrease(&subscriber->ref);
 					janus_videoroom_message_free(msg);
 					continue;
