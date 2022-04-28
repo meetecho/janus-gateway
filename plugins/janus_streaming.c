@@ -5988,7 +5988,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	if(dodata) {
 #ifdef HAVE_SCTP
 		data_fd = janus_streaming_create_fd(dport, INADDR_ANY, diface,
-			datahost, sizeof(datahost), "Data", "data", name ? name : tempname, FALSE);
+			datahost, sizeof(datahost), "Data", "data", name ? name : tempname, dport == 0);
 		if(data_fd < 0) {
 			JANUS_LOG(LOG_ERR, "Can't bind to port %d for data...\n", dport);
 			if(audio_fd > -1)
