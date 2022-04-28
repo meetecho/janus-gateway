@@ -4104,7 +4104,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						if(stream->fd[2] != -1) {
 							json_object_set_new(ml, "video_port_3", json_integer(stream->port[2]));
 						}
-					} else if(stream->type == JANUS_STREAMING_MEDIA_VIDEO) {
+					} else if(stream->type == JANUS_STREAMING_MEDIA_DATA) {
 						if(stream->fd[0] != -1) {
 							if(stream->host)
 								json_object_set_new(ml, "data_host", json_string(stream->host));
