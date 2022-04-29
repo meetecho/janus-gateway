@@ -10302,7 +10302,7 @@ static void *janus_videoroom_handler(void *data) {
 					g_hash_table_iter_init(&iter, videoroom->participants);
 					while (!g_atomic_int_get(&videoroom->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
 						janus_videoroom_publisher *p = value;
-						if(p != participant && g_atomic_int_get(&p->session->started))
+						if(p != participant && g_atomic_int_get(&p->session->started) && !p->dummy)
 							count++;
 					}
 					if(count == videoroom->max_publishers) {
