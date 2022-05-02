@@ -1208,7 +1208,6 @@ function Janus(gatewayCallbacks) {
 						detached : false,
 						webrtcStuff : {
 							started : false,
-							myStream : null,
 							myStreams : [],
 							streamExternal : false,
 							remoteStreams : [],
