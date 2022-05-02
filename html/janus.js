@@ -1209,8 +1209,9 @@ function Janus(gatewayCallbacks) {
 						webrtcStuff : {
 							started : false,
 							myStream : null,
+							myStreams : [],
 							streamExternal : false,
-							remoteStream : null,
+							remoteStreams : [],
 							mySdp : null,
 							mediaConstraints : null,
 							pc : null,
@@ -1283,9 +1284,9 @@ function Janus(gatewayCallbacks) {
 						detached : false,
 						webrtcStuff : {
 							started : false,
-							myStream : null,
+							myStreams : [],
 							streamExternal : false,
-							remoteStream : null,
+							remoteStreams : [],
 							mySdp : null,
 							mediaConstraints : null,
 							pc : null,
@@ -1731,16 +1732,31 @@ function Janus(gatewayCallbacks) {
 			Janus.debug("  -- Audio tracks:", stream.getAudioTracks());
 			Janus.debug("  -- Video tracks:", stream.getVideoTracks());
 		}
+
 		// We're now capturing the new stream: check if we're updating or if it's a new thing
 		var addTracks = false;
-		if(!config.myStream || !media.update || (config.streamExternal && !media.replaceAudio && !media.replaceVideo)) {
-			config.myStream = stream;
+
+		if(!config.myStreams.length || !media.update || (config.streamExternal && !media.replaceAudio && !media.replaceVideo)) {
+            if(stream) {
+			    config.myStreams.push(stream);
+            }
 			addTracks = true;
+
 		} else {
 			// We only need to update the existing stream
+
+            var myStream = config.myStreams[0];
+            if(media.streamId) {
+                myStream = config.myStreams.find(function(str) {
+                    return str.id === media.streamId;
+                });
+            }
+
 			if(((!media.update && isAudioSendEnabled(media)) || (media.update && (media.addAudio || media.replaceAudio))) &&
 					stream.getAudioTracks() && stream.getAudioTracks().length) {
-				config.myStream.addTrack(stream.getAudioTracks()[0]);
+
+				myStream.addTrack(stream.getAudioTracks()[0]);
+
 				if(Janus.unifiedPlan) {
 					// Use Transceivers
 					Janus.log((media.replaceAudio ? "Replacing" : "Adding") + " audio track:", stream.getAudioTracks()[0]);
@@ -1758,16 +1774,19 @@ function Janus(gatewayCallbacks) {
 					if(audioTransceiver && audioTransceiver.sender) {
 						audioTransceiver.sender.replaceTrack(stream.getAudioTracks()[0]);
 					} else {
-						config.pc.addTrack(stream.getAudioTracks()[0], stream);
+						config.pc.addTrack(stream.getAudioTracks()[0], myStream);
 					}
 				} else {
 					Janus.log((media.replaceAudio ? "Replacing" : "Adding") + " audio track:", stream.getAudioTracks()[0]);
-					config.pc.addTrack(stream.getAudioTracks()[0], stream);
+					config.pc.addTrack(stream.getAudioTracks()[0], myStream);
 				}
 			}
+
 			if(((!media.update && isVideoSendEnabled(media)) || (media.update && (media.addVideo || media.replaceVideo))) &&
 					stream.getVideoTracks() && stream.getVideoTracks().length) {
-				config.myStream.addTrack(stream.getVideoTracks()[0]);
+
+				myStream.addTrack(stream.getVideoTracks()[0]);
+
 				if(Janus.unifiedPlan) {
 					// Use Transceivers
 					Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
@@ -1785,11 +1804,11 @@ function Janus(gatewayCallbacks) {
 					if(videoTransceiver && videoTransceiver.sender) {
 						videoTransceiver.sender.replaceTrack(stream.getVideoTracks()[0]);
 					} else {
-						config.pc.addTrack(stream.getVideoTracks()[0], stream);
+						config.pc.addTrack(stream.getVideoTracks()[0], myStream);
 					}
 				} else {
 					Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
-					config.pc.addTrack(stream.getVideoTracks()[0], stream);
+					config.pc.addTrack(stream.getVideoTracks()[0], myStream);
 				}
 			}
 		}
@@ -1872,12 +1891,32 @@ function Janus(gatewayCallbacks) {
 				Janus.debug(event);
 				if(!event.streams)
 					return;
-				config.remoteStream = event.streams[0];
-				if(!event.track)
+
+				var incomingStream = event.streams[0];
+
+                var remoteStreamIndex;
+                var remoteStream = config.remoteStreams.find(function(str, index) {
+                    if(str.id === incomingStream.id) {
+                        remoteStreamIndex = index;
+                        return true;
+                    }
+                    return false;
+                });
+
+                if(remoteStream) {
+                    config.remoteStreams[remoteStreamIndex] = incomingStream
+                } else {
+                    config.remoteStreams.push(incomingStream)
+                    remoteStreamIndex = config.remoteStreams.length-1;
+                    remoteStream = config.remoteStreams[remoteStreamIndex];
+                }
+
+                if(!event.track)
 					return;
+
 				// Notify about the new track event
 				var mid = event.transceiver ? event.transceiver.mid : event.track.id;
-				try {
+                try {
 					pluginHandle.onremotetrack(event.track, mid, true);
 				} catch(e) {
 					Janus.error(e);
@@ -1912,9 +1951,9 @@ function Janus(gatewayCallbacks) {
 				Janus.log("Adding onended callback to track:", event.track);
 				event.track.onended = function(ev) {
 					Janus.log("Remote track removed:", ev);
-					if(config.remoteStream) {
+					if(remoteStream) {
 						clearTimeout(trackMutedTimeoutId);
-						config.remoteStream.removeTrack(ev.target);
+						config.remoteStreams[remoteStreamIndex].removeTrack(ev.target);
 						// Notify the application
 						var mid = ev.target.id;
 						if(Janus.unifiedPlan) {
@@ -1931,11 +1970,11 @@ function Janus(gatewayCallbacks) {
 				};
 				event.track.onmute = function(ev) {
 					Janus.log("Remote track muted:", ev);
-					if(config.remoteStream && trackMutedTimeoutId == null) {
+					if(remoteStream && trackMutedTimeoutId == null) {
 						trackMutedTimeoutId = setTimeout(function() {
 							Janus.log("Removing remote track");
-							if (config.remoteStream) {
-								config.remoteStream.removeTrack(ev.target);
+                            if (remoteStream) {
+								config.remoteStreams[remoteStreamIndex].removeTrack(ev.target);
 								// Notify the application the track is gone
 								var mid = ev.target.id;
 								if(Janus.unifiedPlan) {
@@ -1962,7 +2001,7 @@ function Janus(gatewayCallbacks) {
 						trackMutedTimeoutId = null;
 					} else {
 						try {
-							config.remoteStream.addTrack(ev.target);
+							config.remoteStreams[remoteStreamIndex].addTrack(ev.target);
 							// Notify the application the track is back
 							var mid = ev.target.id;
 							if(Janus.unifiedPlan) {
@@ -2050,8 +2089,12 @@ function Janus(gatewayCallbacks) {
 			};
 		}
 		// If there's a new local stream, let's notify the application
-		if(config.myStream) {
-			var tracks = config.myStream.getTracks();
+        var myStream = config.myStreams.find(function(str) {
+            return str.id === stream.id;
+        });
+
+		if(myStream) {
+			var tracks = myStream.getTracks();
 			for(let i in tracks) {
 				var track = tracks[i];
 				track.onended = function(ev) {
@@ -2123,6 +2166,24 @@ function Janus(gatewayCallbacks) {
 		}
 		var config = pluginHandle.webrtcStuff;
 		config.trickle = isTrickleEnabled(callbacks.trickle);
+        // Which stream we are going to work on?
+        var myStream = null;
+        var myStreamIndex = null;
+
+            if(media.streamId) {
+                myStream = config.myStreams.find(function(str, index) {
+                    if(str.id === media.streamId) {
+                        myStreamIndex = index;
+                        return true;
+                    }
+                    return false;
+                });
+            } else if(config.myStreams[0]) {
+                myStream = config.myStreams[0];
+                myStreamIndex = 0;
+            }
+        }
+
 		// Are we updating a session?
 		if(!config.pc) {
 			// Nope, new PeerConnection
@@ -2136,7 +2197,18 @@ function Janus(gatewayCallbacks) {
 			// can go directly to preparing the new SDP offer or answer
 			if(callbacks.stream) {
 				// External stream: is this the same as the one we were using before?
-				if(callbacks.stream !== config.myStream) {
+
+                var existingStream = config.myStreams.find(function(str) {
+                    if(str.id === callbacks.stream.id) {
+                        myStreamIndex = index;
+                        return true;
+                    }
+                    return false;
+                });
+
+                myStream = existingStream
+
+				if(callbacks.stream !== myStream) {
 					Janus.log("Renegotiation involves a new external stream");
 				}
 			} else {
@@ -2146,7 +2218,7 @@ function Janus(gatewayCallbacks) {
 					media.replaceAudio = false;
 					media.removeAudio = false;
 					media.audioSend = true;
-					if(config.myStream && config.myStream.getAudioTracks() && config.myStream.getAudioTracks().length) {
+					if(myStream && myStream.getAudioTracks() && myStream.getAudioTracks().length) {
 						Janus.error("Can't add audio stream, there already is one");
 						callbacks.error("Can't add audio stream, there already is one");
 						return;
@@ -2162,7 +2234,8 @@ function Janus(gatewayCallbacks) {
 					media.removeAudio = false;
 					media.audioSend = true;
 				}
-				if(!config.myStream) {
+
+				if(!myStream) {
 					// No media stream: if we were asked to replace, it's actually an "add"
 					if(media.replaceAudio) {
 						media.keepAudio = false;
@@ -2175,7 +2248,7 @@ function Janus(gatewayCallbacks) {
 						media.addAudio = true;
 					}
 				} else {
-					if(!config.myStream.getAudioTracks() || config.myStream.getAudioTracks().length === 0) {
+					if(!myStream.getAudioTracks() || myStream.getAudioTracks().length === 0) {
 						// No audio track: if we were asked to replace, it's actually an "add"
 						if(media.replaceAudio) {
 							media.keepAudio = false;
@@ -2201,7 +2274,8 @@ function Janus(gatewayCallbacks) {
 					media.replaceVideo = false;
 					media.removeVideo = false;
 					media.videoSend = true;
-					if(config.myStream && config.myStream.getVideoTracks() && config.myStream.getVideoTracks().length) {
+
+					if(myStream && myStream.getVideoTracks() && myStream.getVideoTracks().length) {
 						Janus.error("Can't add video stream, there already is one");
 						callbacks.error("Can't add video stream, there already is one");
 						return;
@@ -2217,7 +2291,8 @@ function Janus(gatewayCallbacks) {
 					media.removeVideo = false;
 					media.videoSend = true;
 				}
-				if(!config.myStream) {
+
+				if(!myStream) {
 					// No media stream: if we were asked to replace, it's actually an "add"
 					if(media.replaceVideo) {
 						media.keepVideo = false;
@@ -2230,7 +2305,7 @@ function Janus(gatewayCallbacks) {
 						media.addVideo = true;
 					}
 				} else {
-					if(!config.myStream.getVideoTracks() || config.myStream.getVideoTracks().length === 0) {
+					if(!myStream.getVideoTracks() || myStream.getVideoTracks().length === 0) {
 						// No video track: if we were asked to replace, it's actually an "add"
 						if(media.replaceVideo) {
 							media.keepVideo = false;
@@ -2258,17 +2333,17 @@ function Janus(gatewayCallbacks) {
 			if((isAudioSendEnabled(media) && media.keepAudio) &&
 					(isVideoSendEnabled(media) && media.keepVideo)) {
 				pluginHandle.consentDialog(false);
-				streamsDone(handleId, jsep, media, callbacks, config.myStream);
+				streamsDone(handleId, jsep, media, callbacks, myStream);
 				return;
 			}
 		}
 		// If we're updating, check if we need to remove/replace one of the tracks
 		if(media.update && (!config.streamExternal || (config.streamExternal && (media.replaceAudio || media.replaceVideo)))) {
 			if(media.removeAudio || media.replaceAudio) {
-				if(config.myStream && config.myStream.getAudioTracks() && config.myStream.getAudioTracks().length) {
-					var at = config.myStream.getAudioTracks()[0];
+				if(myStream && myStream.getAudioTracks() && myStream.getAudioTracks().length) {
+					var at = myStream.getAudioTracks()[0];
 					Janus.log("Removing audio track:", at);
-					config.myStream.removeTrack(at);
+					myStream.removeTrack(at);
 					try {
 						pluginHandle.onlocaltrack(at, false);
 					} catch(e) {
@@ -2295,10 +2370,10 @@ function Janus(gatewayCallbacks) {
 				}
 			}
 			if(media.removeVideo || media.replaceVideo) {
-				if(config.myStream && config.myStream.getVideoTracks() && config.myStream.getVideoTracks().length) {
-					var vt = config.myStream.getVideoTracks()[0];
+				if(myStream && myStream.getVideoTracks() && myStream.getVideoTracks().length) {
+					var vt = myStream.getVideoTracks()[0];
 					Janus.log("Removing video track:", vt);
-					config.myStream.removeTrack(vt);
+					myStream.removeTrack(vt);
 					try {
 						pluginHandle.onlocaltrack(vt, false);
 					} catch(e) {
@@ -2331,10 +2406,22 @@ function Janus(gatewayCallbacks) {
 			Janus.log("MediaStream provided by the application");
 			Janus.debug(stream);
 			// If this is an update, let's check if we need to release the previous stream
-			if(media.update && config.myStream && config.myStream !== callbacks.stream && !config.streamExternal && !media.replaceAudio && !media.replaceVideo) {
+
+            myStream = config.myStreams.find(function(str, index) {
+                if(str.id === stream.id) {
+                    myStreamIndex = index;
+                    return true;
+                }
+                return false;
+            });
+
+			if(media.update && myStream && myStream !== callbacks.stream && !config.streamExternal && !media.replaceAudio && !media.replaceVideo) {
 				// We're replacing a stream we captured ourselves with an external one
-				Janus.stopAllTracks(config.myStream);
-				config.myStream = null;
+				Janus.stopAllTracks(myStream);
+
+                config.myStreams.splice(myStreamIndex, 1);
+				myStream = null;
+				myStreamIndex = null;
 			}
 			// Skip the getUserMedia part
 			config.streamExternal = true;
@@ -3452,7 +3539,7 @@ function Janus(gatewayCallbacks) {
 				}
 			}
 			// Cleanup stack
-			config.remoteStream = null;
+			config.remoteStreams = [];
 			if(config.volume) {
 				if(config.volume["local"] && config.volume["local"].timer)
 					clearInterval(config.volume["local"].timer);
@@ -3469,7 +3556,7 @@ function Janus(gatewayCallbacks) {
 				Janus.stopAllTracks(config.myStream);
 			}
 			config.streamExternal = false;
-			config.myStream = null;
+			config.myStreams = [];
 			// Close PeerConnection
 			try {
 				config.pc.close();

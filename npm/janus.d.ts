@@ -168,14 +168,14 @@ declare namespace JanusJS {
 			sdp: string;
 			type: string;
 		};
-		myStream: MediaStream;
+		myStreams: Array<MediaStream>;
 		pc: RTCPeerConnection;
 		receiverTransforms: {
 			audio: TransformStream;
 			video: TransformStream;
 		};
 		remoteSdp: string;
-		remoteStream: MediaStream;
+		remoteStreams: Array<MediaStream>;
 		senderTransforms: {
 			audio: TransformStream;
 			video: TransformStream;
