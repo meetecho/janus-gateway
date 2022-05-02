@@ -2169,6 +2169,8 @@ function Janus(gatewayCallbacks) {
         var myStream = null;
         var myStreamIndex = null;
 
+        if(config.myStreams.length) {
+
             if(media.streamId) {
                 myStream = config.myStreams.find(function(str, index) {
                     if(str.id === media.streamId) {
