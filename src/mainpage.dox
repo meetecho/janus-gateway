@@ -658,6 +658,7 @@ janus.attach(
  * local audio track), and capture a new audio source;
  * - \c replaceVideo: if set, stop capturing the current video (remove the
  * local video track), and capture a new video source.
+ * - \c streamId: if set, above action / actions will be performed on the published external stream with this ID.
  *
  * Notice that these properties are only processed when you're trying a
  * renegotiation, and will be ignored when creating a new PeerConnection.
