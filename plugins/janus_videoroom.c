@@ -7454,9 +7454,9 @@ static void *janus_videoroom_handler(void *data) {
 						json_decref(jsep);
 						g_free(newsdp);
 						/* Any update in the media directions? */
-						subscriber->audio = publisher->audio && subscriber->audio_offered;
-						subscriber->video = publisher->video && subscriber->video_offered;
-						subscriber->data = publisher->data && subscriber->data_offered;
+						subscriber->audio = subscriber->audio && publisher->audio && subscriber->audio_offered;
+						subscriber->video = subscriber->video && publisher->video && subscriber->video_offered;
+						subscriber->data = subscriber->data && publisher->data && subscriber->data_offered;
 						/* Done */
 						janus_videoroom_message_free(msg);
 						janus_refcount_decrease(&subscriber->ref);
