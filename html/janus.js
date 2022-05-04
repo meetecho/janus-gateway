@@ -1736,20 +1736,20 @@ function Janus(gatewayCallbacks) {
 		var addTracks = false;
 
 		if(!config.myStreams.length || !media.update || (config.streamExternal && !media.replaceAudio && !media.replaceVideo)) {
-            if(stream) {
-			    config.myStreams.push(stream);
-            }
+			if(stream) {
+				config.myStreams.push(stream);
+			}
 			addTracks = true;
 
 		} else {
 			// We only need to update the existing stream
 
-            var myStream = config.myStreams[0];
-            if(media.streamId) {
-                myStream = config.myStreams.find(function(str) {
-                    return str.id === media.streamId;
-                });
-            }
+			var myStream = config.myStreams[0];
+			if(media.streamId) {
+				myStream = config.myStreams.find(function(str) {
+					return str.id === media.streamId;
+				});
+			}
 
 			if(((!media.update && isAudioSendEnabled(media)) || (media.update && (media.addAudio || media.replaceAudio))) &&
 					stream.getAudioTracks() && stream.getAudioTracks().length) {
@@ -1893,29 +1893,29 @@ function Janus(gatewayCallbacks) {
 
 				var incomingStream = event.streams[0];
 
-                var remoteStreamIndex;
-                var remoteStream = config.remoteStreams.find(function(str, index) {
-                    if(str.id === incomingStream.id) {
-                        remoteStreamIndex = index;
-                        return true;
-                    }
-                    return false;
-                });
+				var remoteStreamIndex;
+				var remoteStream = config.remoteStreams.find(function(str, index) {
+					if(str.id === incomingStream.id) {
+						remoteStreamIndex = index;
+						return true;
+					}
+					return false;
+				});
 
-                if(remoteStream) {
-                    config.remoteStreams[remoteStreamIndex] = incomingStream
-                } else {
-                    config.remoteStreams.push(incomingStream)
-                    remoteStreamIndex = config.remoteStreams.length-1;
-                    remoteStream = config.remoteStreams[remoteStreamIndex];
-                }
+				if(remoteStream) {
+					config.remoteStreams[remoteStreamIndex] = incomingStream
+				} else {
+					config.remoteStreams.push(incomingStream)
+					remoteStreamIndex = config.remoteStreams.length-1;
+					remoteStream = config.remoteStreams[remoteStreamIndex];
+				}
 
-                if(!event.track)
+				if(!event.track)
 					return;
 
 				// Notify about the new track event
 				var mid = event.transceiver ? event.transceiver.mid : event.track.id;
-                try {
+				try {
 					pluginHandle.onremotetrack(event.track, mid, true);
 				} catch(e) {
 					Janus.error(e);
@@ -1972,7 +1972,7 @@ function Janus(gatewayCallbacks) {
 					if(remoteStream && trackMutedTimeoutId == null) {
 						trackMutedTimeoutId = setTimeout(function() {
 							Janus.log("Removing remote track");
-                            if (remoteStream) {
+							if (remoteStream) {
 								config.remoteStreams[remoteStreamIndex].removeTrack(ev.target);
 								// Notify the application the track is gone
 								var mid = ev.target.id;
@@ -2088,9 +2088,9 @@ function Janus(gatewayCallbacks) {
 			};
 		}
 		// If there's a new local stream, let's notify the application
-        var myStream = config.myStreams.find(function(str) {
-            return str.id === stream.id;
-        });
+		var myStream = config.myStreams.find(function(str) {
+			return str.id === stream.id;
+		});
 
 		if(myStream) {
 			var tracks = myStream.getTracks();
@@ -2165,25 +2165,25 @@ function Janus(gatewayCallbacks) {
 		}
 		var config = pluginHandle.webrtcStuff;
 		config.trickle = isTrickleEnabled(callbacks.trickle);
-        // Which stream we are going to work on?
-        var myStream = null;
-        var myStreamIndex = null;
+		// Which stream we are going to work on?
+		var myStream = null;
+		var myStreamIndex = null;
 
-        if(config.myStreams.length) {
+		if(config.myStreams.length) {
 
-            if(media.streamId) {
-                myStream = config.myStreams.find(function(str, index) {
-                    if(str.id === media.streamId) {
-                        myStreamIndex = index;
-                        return true;
-                    }
-                    return false;
-                });
-            } else if(config.myStreams[0]) {
-                myStream = config.myStreams[0];
-                myStreamIndex = 0;
-            }
-        }
+			if(media.streamId) {
+				myStream = config.myStreams.find(function(str, index) {
+					if(str.id === media.streamId) {
+						myStreamIndex = index;
+						return true;
+					}
+					return false;
+				});
+			} else if(config.myStreams[0]) {
+				myStream = config.myStreams[0];
+				myStreamIndex = 0;
+			}
+		}
 
 		// Are we updating a session?
 		if(!config.pc) {
@@ -2199,15 +2199,15 @@ function Janus(gatewayCallbacks) {
 			if(callbacks.stream) {
 				// External stream: is this the same as the one we were using before?
 
-                var existingStream = config.myStreams.find(function(str) {
-                    if(str.id === callbacks.stream.id) {
-                        myStreamIndex = index;
-                        return true;
-                    }
-                    return false;
-                });
+				var existingStream = config.myStreams.find(function(str) {
+					if(str.id === callbacks.stream.id) {
+						myStreamIndex = index;
+						return true;
+					}
+					return false;
+				});
 
-                myStream = existingStream
+				myStream = existingStream
 
 				if(callbacks.stream !== myStream) {
 					Janus.log("Renegotiation involves a new external stream");
@@ -2408,19 +2408,19 @@ function Janus(gatewayCallbacks) {
 			Janus.debug(stream);
 			// If this is an update, let's check if we need to release the previous stream
 
-            myStream = config.myStreams.find(function(str, index) {
-                if(str.id === stream.id) {
-                    myStreamIndex = index;
-                    return true;
-                }
-                return false;
-            });
+			myStream = config.myStreams.find(function(str, index) {
+				if(str.id === stream.id) {
+					myStreamIndex = index;
+					return true;
+				}
+				return false;
+			});
 
 			if(media.update && myStream && myStream !== callbacks.stream && !config.streamExternal && !media.replaceAudio && !media.replaceVideo) {
 				// We're replacing a stream we captured ourselves with an external one
 				Janus.stopAllTracks(myStream);
 
-                config.myStreams.splice(myStreamIndex, 1);
+				config.myStreams.splice(myStreamIndex, 1);
 				myStream = null;
 				myStreamIndex = null;
 			}
