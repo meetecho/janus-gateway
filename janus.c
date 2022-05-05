@@ -4992,6 +4992,14 @@ gint main(int argc, char *argv[])
 			loops_api = janus_is_true(item->value);
 		janus_ice_set_static_event_loops(loops, loops_api);
 	}
+	/* Also check if we need a cap on the size of the task pool (default is no limit) */
+	int task_pool_size = -1;
+	item = janus_config_get(config, config_general, janus_config_type_item, "task_pool_size");
+	if(item && item->value) {
+		task_pool_size = atoi(item->value);
+		if(task_pool_size <= 0)
+			task_pool_size = -1;
+	}
 	/* Initialize the ICE stack now */
 	janus_ice_init(ice_lite, ice_tcp, full_trickle, ignore_mdns, ipv6, ipv6_linklocal, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
@@ -5228,7 +5236,7 @@ gint main(int argc, char *argv[])
 	}
 	/* Create a thread pool to handle asynchronous requests, no matter what the transport */
 	error = NULL;
-	tasks = g_thread_pool_new(janus_transport_task, NULL, -1, FALSE, &error);
+	tasks = g_thread_pool_new(janus_transport_task, NULL, task_pool_size, FALSE, &error);
 	if(error != NULL) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the request pool task thread...\n",
