@@ -117,6 +117,19 @@ general: {
 									# only if allow_loop_indication is set to true;
 									# it's set to false by default to avoid abuses.
 									# Don't change if you don't know what you're doing!
+	#task_pool_size = 100			# By default, while the Janus core is single thread
+									# when it comes to processing incoming messages, it
+									# also uses a task pool with an indefinite amount
+									# of helper threads spawned on demand to handle
+									# messages addressed to plugins. If you want to
+									# limit this task pool size with a maximum number
+									# of concurrent threads, set the 'task_pool_size'
+									# property accordingly: a value of '0' means
+									# 'indefinite' and is the default. Notice that
+									# threads are automatically destroyed when unused
+									# for a while, so whatever value you choose simply
+									# puts a cap on the maximum concurrency.
+									# Don't change if you don't know what you're doing!
 	#opaqueid_in_api = true			# Opaque IDs set by applications are typically
 									# only passed to event handlers for correlation
 									# purposes, but not sent back to the user or
