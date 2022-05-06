@@ -887,6 +887,20 @@ room-<unique room ID>: {
 }
 \endverbatim *
  *
+ * To enable or disable recording of a single participant, instead, you
+ * can make use of the \c record_participant request, which has to be
+ * formatted as follows:
+ *
+\verbatim
+{
+	"request" : "record_participant",
+	"room" : <unique numeric ID of the room>,
+	"secret" : "<room secret; mandatory if configured>"
+	"record" : <true|false, whether this publisher should be recorded or not>,
+	"filename" : "<if recording, the base path/file to use for the recording files; optional>"
+}
+\endverbatim *
+ *
  * Notice that, as we'll see later, participants can normally change their
  * own recording state via \c configure requests as well: this was done to
  * allow the maximum flexibility, where rather than globally or automatically
@@ -1394,6 +1408,10 @@ static struct janus_json_parameter publish_parameters[] = {
 };
 static struct janus_json_parameter record_parameters[] = {
 	{"record", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter record_participant_parameters[] = {
+	{"record", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED},
+	{"filename", JSON_STRING, 0}
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"video_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -4579,6 +4597,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 		}
+		if(error_code != 0)
+			goto prepare_response;
 		if(!string_ids) {
 			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
 				error_code, error_cause, TRUE,
@@ -4712,6 +4732,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 		}
+		if(error_code != 0)
+			goto prepare_response;
 		if(!string_ids) {
 			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
 				error_code, error_cause, TRUE,
@@ -5089,6 +5111,133 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
 		json_object_set_new(response, "record", json_boolean(recording_active));
+		goto prepare_response;
+	} else if(!strcasecmp(request_text, "record_participant")) {
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, pid_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, pidstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		JANUS_VALIDATE_JSON_OBJECT(root, record_participant_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		json_t *room = json_object_get(root, "room");
+		json_t *id = json_object_get(root, "publisher_id");
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
+		janus_mutex_lock(&rooms_mutex);
+		janus_videoroom *videoroom = NULL;
+		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&videoroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&videoroom->mutex);
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&videoroom->mutex);
+			janus_refcount_decrease(&videoroom->ref);
+			goto prepare_response;
+		}
+		guint64 user_id = 0;
+		char user_id_num[30], *user_id_str = NULL;
+		if(!string_ids) {
+			user_id = json_integer_value(id);
+			g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, user_id);
+			user_id_str = user_id_num;
+		} else {
+			user_id_str = (char *)json_string_value(id);
+		}
+		janus_videoroom_publisher *participant = g_hash_table_lookup(videoroom->participants,
+			string_ids ? (gpointer)user_id_str : (gpointer)&user_id);
+		if(participant == NULL) {
+			janus_mutex_unlock(&videoroom->mutex);
+			janus_refcount_decrease(&videoroom->ref);
+			JANUS_LOG(LOG_ERR, "No such user %s in room %s\n", user_id_str, room_id_str);
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+			g_snprintf(error_cause, 512, "No such user %s in room %s", user_id_str, room_id_str);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&participant->ref);
+		/* Prepare response */
+		response = json_object();
+		json_object_set_new(response, "videoroom", json_string("success"));
+		/* Change the recording status for this participant */
+		json_t *record = json_object_get(root, "record");
+		json_t *recfile = json_object_get(root, "filename");
+		janus_mutex_lock(&participant->rec_mutex);
+		gboolean prev_recording_active = participant->recording_active;
+		if(record) {
+			participant->recording_active = json_is_true(record);
+			JANUS_LOG(LOG_VERB, "Setting record property: %s (room %s, user %s)\n",
+				participant->recording_active ? "true" : "false", participant->room_id_str, participant->user_id_str);
+		}
+		if(recfile) {
+			participant->recording_base = g_strdup(json_string_value(recfile));
+			JANUS_LOG(LOG_VERB, "Setting recording basename: %s (room %s, user %s)\n",
+				participant->recording_base, participant->room_id_str, participant->user_id_str);
+		}
+		/* Do we need to do something with the recordings right now? */
+		if(participant->recording_active != prev_recording_active) {
+			/* Something changed */
+			if(!participant->recording_active) {
+				/* Not recording (anymore?) */
+				janus_videoroom_recorder_close(participant);
+			} else if(participant->recording_active && participant->sdp) {
+				/* We've started recording, send a PLI/FIR and go on */
+				janus_videoroom_recorder_create(
+					participant, strstr(participant->sdp, "m=audio") != NULL,
+					strstr(participant->sdp, "m=video") != NULL,
+					strstr(participant->sdp, "m=application") != NULL);
+				if(strstr(participant->sdp, "m=video")) {
+					/* Send a FIR */
+					janus_videoroom_reqpli(participant, "Recording video");
+				}
+				json_t *recording = json_object();
+				if(participant->arc && participant->arc->filename)
+					json_object_set_new(recording, "audio", json_string(participant->arc->filename));
+				if(participant->vrc && participant->vrc->filename)
+					json_object_set_new(recording, "video", json_string(participant->vrc->filename));
+				if(participant->drc && participant->drc->filename)
+					json_object_set_new(recording, "data", json_string(participant->drc->filename));
+				json_object_set_new(response, "recording", recording);
+			}
+		}
+		janus_mutex_unlock(&participant->rec_mutex);
+		janus_mutex_unlock(&videoroom->mutex);
+		/* Done */
+		janus_refcount_decrease(&videoroom->ref);
+		janus_refcount_decrease(&participant->ref);
 		goto prepare_response;
 	} else {
 		/* Not a request we recognize, don't do anything */
