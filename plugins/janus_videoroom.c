@@ -5105,7 +5105,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					janus_mutex_unlock(&participant->rec_mutex);
 				}
 			}
-        }
+		}
 		janus_mutex_unlock(&videoroom->mutex);
 		janus_refcount_decrease(&videoroom->ref);
 		response = json_object();
@@ -6679,11 +6679,11 @@ static void *janus_videoroom_handler(void *data) {
 					json_integer(publisher->room->room_id));
 					json_object_set_new(info, "id", string_ids ? json_string(user_id_str) : json_integer(user_id));
 					json_object_set_new(info, "private_id", json_integer(publisher->pvt_id));
-                    if(publisher->room->check_allowed) {
-                        const char *token = json_string_value(json_object_get(root, "token"));
-                        json_object_set_new(info, "token", json_string(token));
-                    }
-                    if(display_text != NULL)
+					if(publisher->room->check_allowed) {
+						const char *token = json_string_value(json_object_get(root, "token"));
+						json_object_set_new(info, "token", json_string(token));
+					}
+					if(display_text != NULL)
 						json_object_set_new(info, "display", json_string(display_text));
 					if(publisher->user_audio_active_packets)
 						json_object_set_new(info, "audio_active_packets", json_integer(publisher->user_audio_active_packets));
