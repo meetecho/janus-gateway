@@ -2878,23 +2878,6 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_
 
 static void janus_videoroom_subscriber_stream_remove(janus_videoroom_subscriber_stream *s,
 		janus_videoroom_publisher_stream *ps, gboolean lock_ps) {
-	janus_videoroom_subscriber *subscriber = s->subscriber;
-	if(subscriber && subscriber->pvt_id > 0 && subscriber->room != NULL) {
-		janus_mutex_lock(&subscriber->room->mutex);
-		janus_videoroom_publisher *owner = g_hash_table_lookup(subscriber->room->private_ids, GUINT_TO_POINTER(subscriber->pvt_id));
-		if(owner != NULL) {
-			janus_mutex_lock(&owner->subscribers_mutex);
-			/* Note: we should refcount these subscription-publisher mappings as well */
-			owner->subscriptions = g_slist_remove(owner->subscriptions, s);
-			janus_mutex_unlock(&owner->subscribers_mutex);
-		}
-		janus_mutex_unlock(&subscriber->room->mutex);
-		//~ if(subscriber->room)
-			//~ g_clear_pointer(&subscriber->room, janus_videoroom_room_dereference);
-		//~ /* If the subscriber itself has no more active active subscriptions, should we close it? */
-		//~ if(subscriber->streams == NULL && subscriber->session && subscriber->close_pc)
-			//~ gateway->close_pc(subscriber->session->handle);
-	}
 	if(ps != NULL) {
 		/* Unsubscribe from this stream in particular (datachannels can have multiple sources) */
 		if(g_slist_find(s->publisher_streams, ps) != NULL) {
@@ -3870,6 +3853,17 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		session->participant = NULL;
 		janus_mutex_unlock(&session->mutex);
 		if(s && s->room) {
+			if(s->pvt_id > 0) {
+				janus_mutex_lock(&s->room->mutex);
+				janus_videoroom_publisher *owner = g_hash_table_lookup(s->room->private_ids, GUINT_TO_POINTER(s->pvt_id));
+				if(owner != NULL) {
+					janus_mutex_lock(&owner->subscribers_mutex);
+					/* Note: we should refcount these subscription-publisher mappings as well */
+					owner->subscriptions = g_slist_remove(owner->subscriptions, s);
+					janus_mutex_unlock(&owner->subscribers_mutex);
+				}
+				janus_mutex_unlock(&s->room->mutex);
+			}
 			janus_refcount_decrease(&s->room->ref);
 		}
 		janus_videoroom_subscriber_destroy(s);
