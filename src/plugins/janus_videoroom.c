@@ -2948,6 +2948,16 @@ static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscr
 		json_object_set_new(m, "send", stream->send ? json_true() : json_false());
 		if(ps && stream->type == JANUS_VIDEOROOM_MEDIA_DATA) {
 			json_object_set_new(m, "sources", json_integer(g_slist_length(stream->publisher_streams)));
+			json_t *ids = json_array();
+			GSList *temp = stream->publisher_streams;
+			janus_videoroom_publisher_stream *dps = NULL;
+			while(temp) {
+				dps = (janus_videoroom_publisher_stream *)temp->data;
+				if(dps && dps->publisher)
+					json_array_append_new(ids, string_ids ? json_string(dps->publisher->user_id_str) : json_integer(dps->publisher->user_id));
+				temp = temp->next;
+			}
+			json_object_set_new(m, "source_ids", ids);
 		} else if(ps && stream->type != JANUS_VIDEOROOM_MEDIA_DATA) {
 			if(ps->publisher) {
 				json_object_set_new(m, "feed_id", string_ids ? json_string(ps->publisher->user_id_str) : json_integer(ps->publisher->user_id));
