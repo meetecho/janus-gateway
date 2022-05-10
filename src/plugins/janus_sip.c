@@ -863,6 +863,8 @@ static uint16_t rtp_range_max = 60000;
 static int dscp_audio_rtp = 0;
 static int dscp_video_rtp = 0;
 static char *sips_certs_dir = NULL;
+#define JANUS_DEFAULT_SIP_TIMER_T1X64 32000
+static int sip_timer_t1x64 = JANUS_DEFAULT_SIP_TIMER_T1X64;
 
 static gboolean query_contact_header = FALSE;
 
@@ -1890,6 +1892,16 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			keepalive_interval = 120;
 		} else {
 			JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
+		}
+
+		item = janus_config_get(config, config_general, janus_config_type_item, "sip_timer_t1x64");
+		if(item && item->value)
+			sip_timer_t1x64 = atoi(item->value);
+		if(sip_timer_t1x64 < 1) {
+			JANUS_LOG(LOG_ERR, "Invalid SIP Timer T1X64 value: %d (falling back to default)\n", sip_timer_t1x64);
+			sip_timer_t1x64 = JANUS_DEFAULT_SIP_TIMER_T1X64;
+		} else {
+			JANUS_LOG(LOG_VERB, "SIP Timer T1X64 set to %d milliseconds\n", sip_timer_t1x64);
 		}
 
 		item = janus_config_get(config, config_general, janus_config_type_item, "register_ttl");
@@ -7172,6 +7184,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				SIPTAG_SUPPORTED_STR("replaces"),	/* Advertise that we support the Replaces header */
 				SIPTAG_SUPPORTED(NULL),
 				NTATAG_CANCEL_2543(session->account.rfc2543_cancel),
+				NTATAG_SIP_T1X64(sip_timer_t1x64),
 				TAG_NULL());
 	if(query_contact_header)
 		nua_get_params(session->stack->s_nua, SIPTAG_FROM_STR(""), TAG_END());
