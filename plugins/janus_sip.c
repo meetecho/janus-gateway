@@ -495,7 +495,8 @@
 	"event" : "<the event to subscribe to, e.g., 'message-summary'; mandatory>",
 	"accept" : "<what should be put in the Accept header; optional>",
 	"to" : "<who should be the SUBSCRIBE addressed to; optional, will use the user's identity if missing>",
-	"subscribe_ttl" : "<integer; number of seconds after which the subscription should expire; optional>"
+	"subscribe_ttl" : "<integer; number of seconds after which the subscription should expire; optional>",
+	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP SUBSCRIBE; optional>"
 }
 \endverbatim
  *
@@ -780,7 +781,8 @@ static struct janus_json_parameter subscribe_parameters[] = {
 	{"event", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"accept", JSON_STRING, 0},
 	{"subscribe_ttl", JANUS_JSON_INTEGER, 0},
-	{"call_id", JANUS_JSON_STRING, 0}
+	{"call_id", JANUS_JSON_STRING, 0},
+	{"headers", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
 	{"proxy", JSON_STRING, 0},
@@ -3333,6 +3335,8 @@ static void *janus_sip_handler(void *data) {
 				g_hash_table_insert(session->stack->subscriptions, g_strdup(event_type), nh);
 			}
 			janus_mutex_unlock(&session->stack->smutex);
+			char custom_headers[2048];
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 			/* Send the SUBSCRIBE */
 			nua_subscribe(nh,
 				SIPTAG_TO_STR(to),
@@ -3342,6 +3346,7 @@ static void *janus_sip_handler(void *data) {
 				SIPTAG_EXPIRES_STR(ttl_text),
 				NUTAG_PROXY(session->helper && session->master ?
 					session->master->account.outbound_proxy : session->account.outbound_proxy),
+				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				TAG_END());
 			result = json_object();
 			json_object_set_new(result, "event", json_string("subscribing"));
