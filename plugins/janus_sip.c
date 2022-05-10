@@ -126,7 +126,7 @@
 	"incoming_header_prefixes" : "<array of strings, to specify custom (non-standard) headers to read on incoming SIP events; optional>",
 	"refresh" : "<true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
 	"master_id" : "<ID of an already registered account, if this is an helper for multiple calls (more on that later); optional>",
- 	"register_ttl" : "<integer; number of seconds after which the registration should expire; optional>"
+	"register_ttl" : "<integer; number of seconds after which the registration should expire; optional>"
 }
 \endverbatim
  *
@@ -358,7 +358,7 @@
 {
 	"request" : "decline",
 	"code" : <SIP code to be sent, if not set, 486 is used; optional>",
- 	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP request; optional>"
+	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP request; optional>"
 }
 \endverbatim
  *
@@ -418,8 +418,8 @@
 	"call_id" : "<user-defined value of Call-ID SIP header used to send the message; optional>",
 	"content_type" : "<content type; optional>"
 	"content" : "<text to send>",
- 	"uri" : "<SIP URI of the peer; optional; if set, the message will be sent out of dialog>",
- 	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP MESSAGE; optional>"
+	"uri" : "<SIP URI of the peer; optional; if set, the message will be sent out of dialog>",
+	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP MESSAGE; optional>"
 }
 \endverbatim
  *
@@ -463,7 +463,7 @@
 	"request" : "info",
 	"type" : "<content type>"
 	"content" : "<message to send>",
-  	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP INFO; optional>"
+	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP INFO; optional>"
 }
 \endverbatim
  *
@@ -863,6 +863,8 @@ static uint16_t rtp_range_max = 60000;
 static int dscp_audio_rtp = 0;
 static int dscp_video_rtp = 0;
 static char *sips_certs_dir = NULL;
+#define JANUS_DEFAULT_SIP_TIMER_T1X64 32000
+static int sip_timer_t1x64 = JANUS_DEFAULT_SIP_TIMER_T1X64;
 
 static gboolean query_contact_header = FALSE;
 
@@ -1889,6 +1891,16 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			keepalive_interval = 120;
 		} else {
 			JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
+		}
+
+		item = janus_config_get(config, config_general, janus_config_type_item, "sip_timer_t1x64");
+		if(item && item->value)
+			sip_timer_t1x64 = atoi(item->value);
+		if(sip_timer_t1x64 < 1) {
+			JANUS_LOG(LOG_ERR, "Invalid SIP Timer T1X64 value: %d (falling back to default)\n", sip_timer_t1x64);
+			sip_timer_t1x64 = JANUS_DEFAULT_SIP_TIMER_T1X64;
+		} else {
+			JANUS_LOG(LOG_VERB, "SIP Timer T1X64 set to %d milliseconds\n", sip_timer_t1x64);
 		}
 
 		item = janus_config_get(config, config_general, janus_config_type_item, "register_ttl");
@@ -7162,6 +7174,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				SIPTAG_SUPPORTED_STR("replaces"),	/* Advertise that we support the Replaces header */
 				SIPTAG_SUPPORTED(NULL),
 				NTATAG_CANCEL_2543(session->account.rfc2543_cancel),
+				NTATAG_SIP_T1X64(sip_timer_t1x64),
 				TAG_NULL());
 	if(query_contact_header)
 		nua_get_params(session->stack->s_nua, SIPTAG_FROM_STR(""), TAG_END());
