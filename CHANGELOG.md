@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.0.1] - 2022-04-26
+
+- Removed gengetopt as a dependency, to use Glib's GOptionEntry instead [[PR-2898](https://github.com/meetecho/janus-gateway/pull/2898)]
+- Fixed occasional problem of duplicate mid attribute in Janus SDPs [[Issue-2917](https://github.com/meetecho/janus-gateway/issues/2917)]
+- Fixed receiving=false events not being sent right away for higher simulcast substreams [[Issue-2919](https://github.com/meetecho/janus-gateway/issues/2919)]
+- Fix highest sequence number not being properly initialized in the RTCP context [[Issues-2920](https://github.com/meetecho/janus-gateway/issues/2920)]
+- Reset rids when renegotiating SDPs [[PR-2931](https://github.com/meetecho/janus-gateway/pull/2931)]
+- Fixed missing PLI when restoring previously paused streams in VideoRoom (thanks @flaviogrossi!) [[PR-2922](https://github.com/meetecho/janus-gateway/pull/2922)]
+- Fixed deadlock when using the moderate API in the VideoRoom [[Issue-2956](https://github.com/meetecho/janus-gateway/issues/2956)]
+- Check if IPv6 is disabled to avoid failure when creating forwarder sockets in AudioBridge and VideoRoom [[PR-2916](https://github.com/meetecho/janus-gateway/pull/2916)]
+- Fixed invalid computation of Streaming mountpoint stream age (thanks @RouquinBlanc!) [[PR-2928](https://github.com/meetecho/janus-gateway/pull/2928)]
+- Also return reason header protocol and cause if present in BYE in the SIP plugin (thanks @ajsa-terko!) [[PR-2935](https://github.com/meetecho/janus-gateway/pull/2935)]
+- Fixed segfault in UNIX transport teardown caused by pathnames of different sizes
+- Added new demos on WebAudio and Virtual Backgrounds [[PR-2941](https://github.com/meetecho/janus-gateway/pull/2941)]
+- Fixed potential race conditions in multistream VideoRoom demo [[Issue-2929](https://github.com/meetecho/janus-gateway/issues/2929)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.0.0] - 2022-03-03
 
 - Refactored Janus to support multistream PeerConnections [[PR-2211](https://github.com/meetecho/janus-gateway/pull/2211)]

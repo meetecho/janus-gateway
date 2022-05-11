@@ -67,6 +67,9 @@ if(doSvc === "")
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
+var stereo = false;
+if(getQueryStringValue("stereo") !== "")
+	stereo = (getQueryStringValue("stereo") === "true");
 var doDtx = (getQueryStringValue("dtx") === "yes" || getQueryStringValue("dtx") === "true");
 var doOpusred = (getQueryStringValue("opusred") === "yes" || getQueryStringValue("opusred") === "true");
 var simulcastStarted = false;
@@ -147,6 +150,10 @@ $(document).ready(function() {
 												if(doDtx) {
 													jsep.sdp = jsep.sdp
 														.replace("useinbandfec=1", "useinbandfec=1;usedtx=1")
+												}
+												if(stereo && jsep.sdp.indexOf("stereo=1") == -1) {
+													// Make sure that our offer contains stereo too
+													jsep.sdp = jsep.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1");
 												}
 											},
 											success: function(jsep) {

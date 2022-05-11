@@ -116,6 +116,7 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 	rc->file = NULL;
 	rc->codec = g_strdup(codec);
 	rc->fmtp = fmtp ? g_strdup(fmtp) : NULL;
+	rc->description = NULL;
 	rc->created = janus_get_real_time();
 	const char *rec_dir = NULL;
 	const char *rec_file = NULL;
@@ -292,6 +293,21 @@ int janus_recorder_add_extmap(janus_recorder *recorder, int id, const char *extm
 	return 0;
 }
 
+int janus_recorder_description(janus_recorder *recorder, const char *description) {
+	if(!recorder || !description)
+		return -1;
+	janus_mutex_lock_nodebug(&recorder->mutex);
+	if(g_atomic_int_get(&recorder->header)) {
+		/* No use setting description once it's already written in the MJR file */
+		janus_mutex_unlock_nodebug(&recorder->mutex);
+		return 0;
+	}
+	g_free(recorder->description);
+	recorder->description = g_strdup(description);
+	janus_mutex_unlock_nodebug(&recorder->mutex);
+	return 0;
+}
+
 int janus_recorder_opusred(janus_recorder *recorder, int red_pt) {
 	if(!recorder)
 		return -1;
@@ -348,6 +364,8 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		json_object_set_new(info, "c", json_string(recorder->codec));					/* Media codec */
 		if(recorder->fmtp)
 			json_object_set_new(info, "f", json_string(recorder->fmtp));				/* Codec-specific info */
+		if(recorder->description)
+			json_object_set_new(info, "d", json_string(recorder->description));		/* Stream description */
 		if(recorder->extensions) {
 			/* Add the extmaps to the JSON object */
 			json_t *extmaps = NULL;

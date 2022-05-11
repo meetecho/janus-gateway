@@ -402,6 +402,11 @@ int main(int argc, char *argv[]) {
 		if(bytes != 8 || prebuffer[0] != 'M') {
 			JANUS_LOG(LOG_WARN, "Invalid header at offset %ld (%s), the processing will stop here...\n",
 				offset, bytes != 8 ? "not enough bytes" : "wrong prefix");
+			if(!parsed_header) {
+				/* Not an MJR file? */
+				janus_pprec_options_destroy();
+				exit(1);
+			}
 			break;
 		}
 		if(prebuffer[1] == 'E') {
