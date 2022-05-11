@@ -1527,7 +1527,7 @@ static void janus_streaming_rtcp_pli_send(janus_streaming_rtp_source *source) {
 	janus_rtcp_pli((char *)&rtcp_buf, rtcp_len);
 	janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1, 1, source->video_ssrc);
 	/* Prepare the recipient */
-	socklen_t addrlen = stream->rtcp_addr.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
+	socklen_t addrlen = source->video_rtcp_addr.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
 	/* Send the packet */
 	int sent = 0;
 	if((sent = sendto(source->video_rtcp_fd, rtcp_buf, rtcp_len, 0,
@@ -1554,7 +1554,7 @@ static void janus_streaming_rtcp_remb_send(janus_streaming_rtp_source *source) {
 	/* Reset the lowest bitrate */
 	source->lowest_bitrate = 0;
 	/* Prepare the recipient */
-	socklen_t addrlen = stream->rtcp_addr.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
+	socklen_t addrlen = source->video_rtcp_addr.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
 	/* Send the packet */
 	int sent = 0;
 	if((sent = sendto(source->video_rtcp_fd, rtcp_buf, rtcp_len, 0,
