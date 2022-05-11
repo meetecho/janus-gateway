@@ -464,7 +464,7 @@ multistream-test: {
 	"new_description" : "<new description for the mountpoint; optional>",
 	"new_metadata" : "<new metadata for the mountpoint; optional>",
 	"new_secret" : "<new secret for the mountpoint; optional>",
-	"new_pin" : "<new PIN for the mountpoint; optional>",
+	"new_pin" : "<new PIN for the mountpoint, PIN will be removed if set to an empty string; optional>",
 	"new_is_private" : <true|false, depending on whether the mountpoint should be now listable; optional>,
 	"permanent" : <true|false, whether the mountpoint should be saved to configuration file or not; false by default>
 }
@@ -547,6 +547,26 @@ multistream-test: {
 \verbatim
 {
 	"streaming" : "ok"
+}
+\endverbatim
+ *
+ * You can kick all viewers from a mountpoint using the \c kick_all request. Notice
+ * that this only removes all viewers, but does not prevent them from starting to watch
+ * the mountpoint again. The \c kick_all request has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "kick_all",
+	"id" : <unique ID of the mountpoint to disable; mandatory>,
+	"secret" : "<mountpoint secret; mandatory if configured>",
+}
+\endverbatim
+ *
+ * If successful, a generic \c ok is returned:
+ *
+\verbatim
+{
+	"streaming" : "ok",
 }
 \endverbatim
  *
@@ -4222,10 +4242,14 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			mp->secret = new_secret;
 			g_free(old_secret);
 		}
-		if(pin && strlen(json_string_value(pin)) > 0) {
+		if(pin) {
 			char *old_pin = mp->pin;
-			char *new_pin = g_strdup(json_string_value(pin));
-			mp->pin = new_pin;
+			if(strlen(json_string_value(pin)) > 0) {
+				char *new_pin = g_strdup(json_string_value(pin));
+				mp->pin = new_pin;
+			} else {
+				mp->pin = NULL;
+			}
 			g_free(old_pin);
 		}
 		if(save) {
@@ -4401,6 +4425,117 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		janus_refcount_decrease(&mp->ref);
 		/* Done */
 		JANUS_LOG(LOG_VERB, "Streaming mountpoint edited\n");
+		goto prepare_response;
+	} else if(!strcasecmp(request_text, "kick_all")) {
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, idstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		json_t *id = json_object_get(root, "id");
+		guint64 id_value = 0;
+		char id_num[30], *id_value_str = NULL;
+		if(!string_ids) {
+			id_value = json_integer_value(id);
+			g_snprintf(id_num, sizeof(id_num), "%"SCNu64, id_value);
+			id_value_str = id_num;
+		} else {
+			id_value_str = (char *)json_string_value(id);
+		}
+		janus_mutex_lock(&mountpoints_mutex);
+		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints,
+			string_ids ? (gpointer)id_value_str : (gpointer)&id_value);
+		if(mp == NULL) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %s\n", id_value_str);
+			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+			g_snprintf(error_cause, 512, "No such mountpoint/stream %s", id_value_str);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&mp->ref);
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(mp->secret, root, "secret", error_code, error_cause,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_refcount_decrease(&mp->ref);
+			janus_mutex_unlock(&mountpoints_mutex);
+			goto prepare_response;
+		}
+		JANUS_LOG(LOG_VERB, "Request to kick all viewers from mountpoint/stream %s\n", id_value_str);
+		janus_mutex_lock(&mp->mutex);
+		GList *viewer = g_list_first(mp->viewers);
+		/* Prepare JSON event */
+		json_t *event = json_object();
+		json_object_set_new(event, "streaming", json_string("event"));
+		json_t *result = json_object();
+		json_object_set_new(result, "status", json_string("kicked"));
+		json_object_set_new(event, "result", result);
+		while(viewer) {
+			janus_streaming_session *s = (janus_streaming_session *)viewer->data;
+			if(s == NULL) {
+				mp->viewers = g_list_remove_all(mp->viewers, s);
+				viewer = g_list_first(mp->viewers);
+				continue;
+			}
+            janus_mutex_lock(&s->mutex);
+			if(s->mountpoint != mp) {
+				mp->viewers = g_list_remove_all(mp->viewers, s);
+				viewer = g_list_first(mp->viewers);
+                janus_mutex_unlock(&s->mutex);
+				continue;
+			}
+			g_atomic_int_set(&s->stopping, 1);
+			g_atomic_int_set(&s->started, 0);
+			g_atomic_int_set(&s->paused, 0);
+			s->mountpoint = NULL;
+			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
+			gateway->push_event(s->handle, &janus_streaming_plugin, NULL, event, NULL);
+			gateway->close_pc(s->handle);
+			janus_refcount_decrease(&s->ref);
+			janus_refcount_decrease(&mp->ref);
+			if(mp->streaming_source == janus_streaming_source_rtp) {
+				/* Remove the viewer from the helper threads too, if any */
+				if(mp->helper_threads > 0) {
+					GList *l = mp->threads;
+					while(l) {
+						janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
+						janus_mutex_lock(&ht->mutex);
+						if(g_list_find(ht->viewers, s) != NULL) {
+							ht->num_viewers--;
+							ht->viewers = g_list_remove_all(ht->viewers, s);
+							janus_mutex_unlock(&ht->mutex);
+							JANUS_LOG(LOG_VERB, "Removing viewer from helper thread #%d (destroy)\n", ht->id);
+							break;
+						}
+						janus_mutex_unlock(&ht->mutex);
+						l = l->next;
+					}
+				}
+			}
+			mp->viewers = g_list_remove_all(mp->viewers, s);
+			viewer = g_list_first(mp->viewers);
+            janus_mutex_unlock(&s->mutex);
+		}
+		json_decref(event);
+		janus_mutex_unlock(&mp->mutex);
+		janus_refcount_decrease(&mp->ref);
+		/* Also notify event handlers */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("kicked_all"));
+			json_object_set_new(info, "id", string_ids ? json_string(id_value_str) : json_integer(id_value));
+			gateway->notify_event(&janus_streaming_plugin, session ? session->handle : NULL, info);
+		}
+		janus_mutex_unlock(&mountpoints_mutex);
+		/* Send info back */
+		response = json_object();
+		json_object_set_new(response, "streaming", json_string("ok"));
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
 		/* Get rid of an existing stream (notice this doesn't remove it from the config file, though) */
