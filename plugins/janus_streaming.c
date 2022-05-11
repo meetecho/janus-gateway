@@ -1548,10 +1548,12 @@ static void janus_streaming_rtcp_pli_send(janus_streaming_rtp_source *source) {
 	int rtcp_len = 12;
 	janus_rtcp_pli((char *)&rtcp_buf, rtcp_len);
 	janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1, 1, source->video_ssrc);
+	/* Prepare the recipient */
+	socklen_t addrlen = source->video_rtcp_addr.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
 	/* Send the packet */
 	int sent = 0;
 	if((sent = sendto(source->video_rtcp_fd, rtcp_buf, rtcp_len, 0,
-			(struct sockaddr *)&source->video_rtcp_addr, sizeof(source->video_rtcp_addr))) < 0) {
+			(struct sockaddr *)&source->video_rtcp_addr, addrlen)) < 0) {
 		JANUS_LOG(LOG_ERR, "Error in sendto... %d (%s)\n", errno, g_strerror(errno));
 	} else {
 		JANUS_LOG(LOG_HUGE, "Sent %d/%d bytes\n", sent, rtcp_len);
@@ -1573,10 +1575,12 @@ static void janus_streaming_rtcp_remb_send(janus_streaming_rtp_source *source) {
 	JANUS_LOG(LOG_HUGE, "Sending REMB: %"SCNu32"\n", source->lowest_bitrate);
 	/* Reset the lowest bitrate */
 	source->lowest_bitrate = 0;
+	/* Prepare the recipient */
+	socklen_t addrlen = source->video_rtcp_addr.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
 	/* Send the packet */
 	int sent = 0;
 	if((sent = sendto(source->video_rtcp_fd, rtcp_buf, rtcp_len, 0,
-			(struct sockaddr *)&source->video_rtcp_addr, sizeof(source->video_rtcp_addr))) < 0) {
+			(struct sockaddr *)&source->video_rtcp_addr, addrlen)) < 0) {
 		JANUS_LOG(LOG_ERR, "Error in sendto... %d (%s)\n", errno, g_strerror(errno));
 	} else {
 		JANUS_LOG(LOG_HUGE, "Sent %d/%d bytes\n", sent, rtcp_len);
