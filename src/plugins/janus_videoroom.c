@@ -8332,7 +8332,7 @@ static void *janus_videoroom_handler(void *data) {
 				janus_refcount_decrease(&participant->ref);
 				if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "joinandconfigure")) {
 					JANUS_LOG(LOG_ERR, "Not in a room (create a new handle)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_ALREADY_JOINED;
+					error_code = JANUS_VIDEOROOM_ERROR_JOIN_FIRST;
 					g_snprintf(error_cause, 512, "Not in a room (create a new handle)");
 				} else {
 					JANUS_LOG(LOG_ERR, "No such room\n");
