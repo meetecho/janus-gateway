@@ -1766,9 +1766,10 @@ static void janus_streaming_rtcp_pli_send(janus_streaming_rtp_source_stream *str
 	janus_rtcp_pli((char *)&rtcp_buf, rtcp_len);
 	janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1, 1, stream->ssrc);
 	/* Send the packet */
+	socklen_t addrlen = stream->rtcp_addr.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
 	int sent = 0;
 	if((sent = sendto(stream->rtcp_fd, rtcp_buf, rtcp_len, 0,
-			(struct sockaddr *)&stream->rtcp_addr, sizeof(stream->rtcp_addr))) < 0) {
+			(struct sockaddr *)&stream->rtcp_addr, addrlen)) < 0) {
 		JANUS_LOG(LOG_ERR, "Error in sendto... %d (%s)\n", errno, g_strerror(errno));
 	} else {
 		JANUS_LOG(LOG_HUGE, "Sent %d/%d bytes\n", sent, rtcp_len);
@@ -1791,9 +1792,10 @@ static void janus_streaming_rtcp_remb_send(janus_streaming_rtp_source *source, j
 	/* Reset the lowest bitrate */
 	source->lowest_bitrate = 0;
 	/* Send the packet */
+	socklen_t addrlen = stream->rtcp_addr.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
 	int sent = 0;
 	if((sent = sendto(stream->rtcp_fd, rtcp_buf, rtcp_len, 0,
-			(struct sockaddr *)&stream->rtcp_addr, sizeof(stream->rtcp_addr))) < 0) {
+			(struct sockaddr *)&stream->rtcp_addr, addrlen)) < 0) {
 		JANUS_LOG(LOG_ERR, "Error in sendto... %d (%s)\n", errno, g_strerror(errno));
 	} else {
 		JANUS_LOG(LOG_HUGE, "Sent %d/%d bytes\n", sent, rtcp_len);
