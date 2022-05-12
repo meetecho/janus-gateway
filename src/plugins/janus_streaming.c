@@ -4476,7 +4476,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		json_t *event = json_object();
 		json_object_set_new(event, "streaming", json_string("event"));
 		json_t *result = json_object();
-		json_object_set_new(result, "status", json_string("kicked"));
+		json_object_set_new(result, "status", json_string("kicked_all"));
 		json_object_set_new(event, "result", result);
 		while(viewer) {
 			janus_streaming_session *s = (janus_streaming_session *)viewer->data;
