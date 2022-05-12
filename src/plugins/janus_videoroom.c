@@ -8064,6 +8064,7 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_init(&subscriber->streams_mutex);
 				g_atomic_int_set(&subscriber->destroyed, 0);
 				janus_refcount_init(&subscriber->ref, janus_videoroom_subscriber_free);
+				janus_refcount_increase(&subscriber->ref);
 				/* FIXME backwards compatibility */
 				gboolean do_audio = offer_audio ? json_is_true(offer_audio) : TRUE;
 				gboolean do_video = offer_video ? json_is_true(offer_video) : TRUE;
@@ -8252,7 +8253,8 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Can't offer an SDP with no stream\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP;
 					g_snprintf(error_cause, 512, "Can't offer an SDP with no stream");
-					g_free(subscriber);
+					janus_refcount_decrease(&subscriber->ref);
+					janus_videoroom_subscriber_destroy(subscriber);
 					goto error;
 				}
 				session->participant = subscriber;
@@ -8309,6 +8311,7 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&publisher->ref);
 					publishers = g_list_remove(publishers, publisher);
 				}
+				janus_refcount_decrease(&subscriber->ref);
 				janus_videoroom_message_free(msg);
 				continue;
 			} else {
