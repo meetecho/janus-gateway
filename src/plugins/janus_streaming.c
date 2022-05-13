@@ -552,7 +552,8 @@ multistream-test: {
  *
  * You can kick all viewers from a mountpoint using the \c kick_all request. Notice
  * that this only removes all viewers, but does not prevent them from starting to watch
- * the mountpoint again. The \c kick_all request has to be formatted as follows:
+ * the mountpoint again. Please note this request works with all mountpoint types,
+ * except for on-demand streaming. The \c kick_all request has to be formatted as follows:
  *
 \verbatim
 {
@@ -4429,6 +4430,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		JANUS_LOG(LOG_VERB, "Streaming mountpoint edited\n");
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "kick_all")) {
+		/* Note the kick_all request works with all mountpoint types except for on-demand streaming,
+		 * because each on-demand viewer has their own thread and their own playback context. */
 		if(!string_ids) {
 			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
 				error_code, error_cause, TRUE,
