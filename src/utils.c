@@ -1251,6 +1251,8 @@ GList *janus_red_parse_blocks(char *buffer, int len) {
 			}
 			temp = temp->next;
 		}
+	}
+	if(plen > 0) {
 		/* The last block is the primary data, add it to the list */
 		gens++;
 		JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%d\n", gens, plen);
