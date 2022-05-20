@@ -495,7 +495,8 @@
 	"event" : "<the event to subscribe to, e.g., 'message-summary'; mandatory>",
 	"accept" : "<what should be put in the Accept header; optional>",
 	"to" : "<who should be the SUBSCRIBE addressed to; optional, will use the user's identity if missing>",
-	"subscribe_ttl" : "<integer; number of seconds after which the subscription should expire; optional>"
+	"subscribe_ttl" : "<integer; number of seconds after which the subscription should expire; optional>",
+	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP SUBSCRIBE; optional>"
 }
 \endverbatim
  *
@@ -780,7 +781,8 @@ static struct janus_json_parameter subscribe_parameters[] = {
 	{"event", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"accept", JSON_STRING, 0},
 	{"subscribe_ttl", JANUS_JSON_INTEGER, 0},
-	{"call_id", JANUS_JSON_STRING, 0}
+	{"call_id", JANUS_JSON_STRING, 0},
+	{"headers", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
 	{"proxy", JSON_STRING, 0},
@@ -861,6 +863,8 @@ static uint16_t rtp_range_max = 60000;
 static int dscp_audio_rtp = 0;
 static int dscp_video_rtp = 0;
 static char *sips_certs_dir = NULL;
+#define JANUS_DEFAULT_SIP_TIMER_T1X64 32000
+static int sip_timer_t1x64 = JANUS_DEFAULT_SIP_TIMER_T1X64;
 
 static gboolean query_contact_header = FALSE;
 
@@ -1888,6 +1892,16 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			keepalive_interval = 120;
 		} else {
 			JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
+		}
+
+		item = janus_config_get(config, config_general, janus_config_type_item, "sip_timer_t1x64");
+		if(item && item->value)
+			sip_timer_t1x64 = atoi(item->value);
+		if(sip_timer_t1x64 < 1) {
+			JANUS_LOG(LOG_ERR, "Invalid SIP Timer T1X64 value: %d (falling back to default)\n", sip_timer_t1x64);
+			sip_timer_t1x64 = JANUS_DEFAULT_SIP_TIMER_T1X64;
+		} else {
+			JANUS_LOG(LOG_VERB, "SIP Timer T1X64 set to %d milliseconds\n", sip_timer_t1x64);
 		}
 
 		item = janus_config_get(config, config_general, janus_config_type_item, "register_ttl");
@@ -3335,6 +3349,8 @@ static void *janus_sip_handler(void *data) {
 				g_hash_table_insert(session->stack->subscriptions, g_strdup(event_type), nh);
 			}
 			janus_mutex_unlock(&session->stack->smutex);
+			char custom_headers[2048];
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 			/* Send the SUBSCRIBE */
 			nua_subscribe(nh,
 				SIPTAG_TO_STR(to),
@@ -3344,6 +3360,7 @@ static void *janus_sip_handler(void *data) {
 				SIPTAG_EXPIRES_STR(ttl_text),
 				NUTAG_PROXY(session->helper && session->master ?
 					session->master->account.outbound_proxy : session->account.outbound_proxy),
+				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				TAG_END());
 			result = json_object();
 			json_object_set_new(result, "event", json_string("subscribing"));
@@ -7167,6 +7184,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				SIPTAG_SUPPORTED_STR("replaces"),	/* Advertise that we support the Replaces header */
 				SIPTAG_SUPPORTED(NULL),
 				NTATAG_CANCEL_2543(session->account.rfc2543_cancel),
+				NTATAG_SIP_T1X64(sip_timer_t1x64),
 				TAG_NULL());
 	if(query_contact_header)
 		nua_get_params(session->stack->s_nua, SIPTAG_FROM_STR(""), TAG_END());

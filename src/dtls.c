@@ -1097,7 +1097,14 @@ gboolean janus_dtls_retry(gpointer stack) {
 		/* Notify event handlers */
 		janus_dtls_notify_state_change(dtls);
 		/* Retransmit the packet */
-		DTLSv1_handle_timeout(dtls->ssl);
+		int res = DTLSv1_handle_timeout(dtls->ssl);
+		if(res == -1 && SSL_get_error(dtls->ssl, res) != SSL_ERROR_WANT_WRITE) {
+			/* DTLSv1_handle_timeout returned an unrecoverable error, fail right away
+			 * Ref.: https://webrtc-review.googlesource.com/c/src/+/260100 */
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] DTLSv1_handle_timeout failed...\n", handle->handle_id);
+			janus_ice_webrtc_hangup(handle, "DTLS error");
+			goto stoptimer;
+		}
 	}
 	return TRUE;
 

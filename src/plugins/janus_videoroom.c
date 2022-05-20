@@ -3100,23 +3100,6 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_
 
 static void janus_videoroom_subscriber_stream_remove(janus_videoroom_subscriber_stream *s,
 		janus_videoroom_publisher_stream *ps, gboolean lock_ps) {
-	janus_videoroom_subscriber *subscriber = s->subscriber;
-	if(subscriber && subscriber->pvt_id > 0 && subscriber->room != NULL) {
-		janus_mutex_lock(&subscriber->room->mutex);
-		janus_videoroom_publisher *owner = g_hash_table_lookup(subscriber->room->private_ids, GUINT_TO_POINTER(subscriber->pvt_id));
-		if(owner != NULL) {
-			janus_mutex_lock(&owner->subscribers_mutex);
-			/* Note: we should refcount these subscription-publisher mappings as well */
-			owner->subscriptions = g_slist_remove(owner->subscriptions, s);
-			janus_mutex_unlock(&owner->subscribers_mutex);
-		}
-		janus_mutex_unlock(&subscriber->room->mutex);
-		//~ if(subscriber->room)
-			//~ g_clear_pointer(&subscriber->room, janus_videoroom_room_dereference);
-		//~ /* If the subscriber itself has no more active active subscriptions, should we close it? */
-		//~ if(subscriber->streams == NULL && subscriber->session && subscriber->close_pc)
-			//~ gateway->close_pc(subscriber->session->handle);
-	}
 	if(ps != NULL) {
 		/* Unsubscribe from this stream in particular (datachannels can have multiple sources) */
 		if(g_slist_find(s->publisher_streams, ps) != NULL) {
@@ -3170,6 +3153,16 @@ static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscr
 		json_object_set_new(m, "send", stream->send ? json_true() : json_false());
 		if(ps && stream->type == JANUS_VIDEOROOM_MEDIA_DATA) {
 			json_object_set_new(m, "sources", json_integer(g_slist_length(stream->publisher_streams)));
+			json_t *ids = json_array();
+			GSList *temp = stream->publisher_streams;
+			janus_videoroom_publisher_stream *dps = NULL;
+			while(temp) {
+				dps = (janus_videoroom_publisher_stream *)temp->data;
+				if(dps && dps->publisher)
+					json_array_append_new(ids, string_ids ? json_string(dps->publisher->user_id_str) : json_integer(dps->publisher->user_id));
+				temp = temp->next;
+			}
+			json_object_set_new(m, "source_ids", ids);
 		} else if(ps && stream->type != JANUS_VIDEOROOM_MEDIA_DATA) {
 			if(ps->publisher) {
 				json_object_set_new(m, "feed_id", string_ids ? json_string(ps->publisher->user_id_str) : json_integer(ps->publisher->user_id));
@@ -4136,6 +4129,17 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		session->participant = NULL;
 		janus_mutex_unlock(&session->mutex);
 		if(s && s->room) {
+			if(s->pvt_id > 0) {
+				janus_mutex_lock(&s->room->mutex);
+				janus_videoroom_publisher *owner = g_hash_table_lookup(s->room->private_ids, GUINT_TO_POINTER(s->pvt_id));
+				if(owner != NULL) {
+					janus_mutex_lock(&owner->subscribers_mutex);
+					/* Note: we should refcount these subscription-publisher mappings as well */
+					owner->subscriptions = g_slist_remove(owner->subscriptions, s);
+					janus_mutex_unlock(&owner->subscribers_mutex);
+				}
+				janus_mutex_unlock(&s->room->mutex);
+			}
 			janus_refcount_decrease(&s->room->ref);
 		}
 		janus_videoroom_subscriber_destroy(s);
@@ -6401,6 +6405,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			}
 		}
 		ps->muted = muted;
+		janus_mutex_unlock(&participant->streams_mutex);
 		/* Prepare an event for this */
 		json_t *event = json_object();
 		json_object_set_new(event, "videoroom", json_string("event"));
@@ -8394,6 +8399,7 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_init(&subscriber->streams_mutex);
 				g_atomic_int_set(&subscriber->destroyed, 0);
 				janus_refcount_init(&subscriber->ref, janus_videoroom_subscriber_free);
+				janus_refcount_increase(&subscriber->ref);
 				/* FIXME backwards compatibility */
 				gboolean do_audio = offer_audio ? json_is_true(offer_audio) : TRUE;
 				gboolean do_video = offer_video ? json_is_true(offer_video) : TRUE;
@@ -8582,7 +8588,8 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Can't offer an SDP with no stream\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP;
 					g_snprintf(error_cause, 512, "Can't offer an SDP with no stream");
-					g_free(subscriber);
+					janus_refcount_decrease(&subscriber->ref);
+					janus_videoroom_subscriber_destroy(subscriber);
 					goto error;
 				}
 				session->participant = subscriber;
@@ -8639,6 +8646,7 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&publisher->ref);
 					publishers = g_list_remove(publishers, publisher);
 				}
+				janus_refcount_decrease(&subscriber->ref);
 				janus_videoroom_message_free(msg);
 				continue;
 			} else {
@@ -9507,6 +9515,13 @@ static void *janus_videoroom_handler(void *data) {
 					g_atomic_int_set(&subscriber->pending_offer, 1);
 					janus_mutex_unlock(&subscriber->streams_mutex);
 					JANUS_LOG(LOG_VERB, "Post-poning new offer, waiting for previous answer\n");
+					/* Send a temporary event */
+					event = json_object();
+					json_object_set_new(event, "videoroom", json_string("updating"));
+					json_object_set_new(event, "room", string_ids ?
+						json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
+					gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, NULL);
+					json_decref(event);
 					/* Decrease the references we took before, if any */
 					while(publishers) {
 						janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;

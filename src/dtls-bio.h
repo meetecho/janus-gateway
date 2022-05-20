@@ -35,7 +35,7 @@ void janus_dtls_bio_agent_set_mtu(int start_mtu);
 int janus_dtls_bio_agent_get_mtu(void);
 
 #if defined(LIBRESSL_VERSION_NUMBER)
-#define JANUS_USE_OPENSSL_PRE_1_1_API (1)
+#define JANUS_USE_OPENSSL_PRE_1_1_API (LIBRESSL_VERSION_NUMBER < 0x30500000L)
 #else
 #define JANUS_USE_OPENSSL_PRE_1_1_API (OPENSSL_VERSION_NUMBER < 0x10100000L)
 #endif
