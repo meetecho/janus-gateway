@@ -7,20 +7,20 @@ All notable changes to this project will be documented in this file.
 
 - Abort DTLS handshake if DTLSv1_handle_timeout returns an error
 - Fixed rtx not being offered on Janus originated PeerConnections
-- Added configurable property to put a cap to task threads [[Issue-2964](#2964)]
-- Fixed build issue with libressl >= 3.5.0 (thanks @ffontaine!) [[PR-2980](#2980)]
+- Added configurable property to put a cap to task threads [[Issue-2964](https://github.com/meetecho/janus-gateway/issues/2964)]
+- Fixed build issue with libressl >= 3.5.0 (thanks @ffontaine!) [[PR-2980](https://github.com/meetecho/janus-gateway/pull/2980)]
 - Link to -lresolv explicitly when building websockets transport
 - Fixed RED parsing not returning blocks when only primary data is available
 - Fixed typo in stereo support in EchoTest plugin
-- Added support for dummy publishers in VideoRoom [[PR-2958](#2958)]
-- Added new VideoRoom request to combine subscribe and unsubscribe operations [[PR-2962](#2962)]
-- Fixed incorrect removal of owner/subscriptions mapping in VideoRoom plugin [[Issue-2965](#2965)]
-- Explicitly return list of IDs VideoRoom users are subscribed to for data [[Issue-2967](#2967)]
+- Added support for dummy publishers in VideoRoom [[PR-2958](https://github.com/meetecho/janus-gateway/pull/2958)]
+- Added new VideoRoom request to combine subscribe and unsubscribe operations [[PR-2962](https://github.com/meetecho/janus-gateway/pull/2962)]
+- Fixed incorrect removal of owner/subscriptions mapping in VideoRoom plugin [[Issue-2965](https://github.com/meetecho/janus-gateway/issues/2965)]
+- Explicitly return list of IDs VideoRoom users are subscribed to for data [[Issue-2967](https://github.com/meetecho/janus-gateway/issues/2967)]
 - Fixed data port not being returned when creating Streaming mountpoints with the legacy API
-- Fix address size in Streaming plugin RTCP sendto call (thanks @sjkummer!) [[PR-2976](#2976)]
-- Added custom headers for SIP SUBSCRIBE requests (thanks @oriol-c!) [[PR-2971](#2971)]
-- Make SIP timer T1X64 configurable (thanks @oriol-c!) [[PR-2972](#2972)]
-- Disable IPv6 in WebSockets transport if binding to IPv4 address explicitly [[Issue-2969](#2969)]
+- Fix address size in Streaming plugin RTCP sendto call (thanks @sjkummer!) [[PR-2976](https://github.com/meetecho/janus-gateway/pull/2976)]
+- Added custom headers for SIP SUBSCRIBE requests (thanks @oriol-c!) [[PR-2971](https://github.com/meetecho/janus-gateway/pull/2971)]
+- Make SIP timer T1X64 configurable (thanks @oriol-c!) [[PR-2972](https://github.com/meetecho/janus-gateway/pull/2972)]
+- Disable IPv6 in WebSockets transport if binding to IPv4 address explicitly [[Issue-2969](https://github.com/meetecho/janus-gateway/issues/2969)]
 - Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
 
 ## [v1.0.1] - 2022-04-26
