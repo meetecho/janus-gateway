@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.12.2] - 2022-05-23
+
+- Abort DTLS handshake if DTLSv1_handle_timeout returns an error
+- Added configurable property to put a cap to task threads [[Issue-2964](#2964)]
+- Fixed build issue with libressl >= 3.5.0 (thanks @ffontaine!) [[PR-2980](#2980)]
+- Link to -lresolv explicitly when building websockets transport
+- Fixed RED parsing not returning blocks when only primary data is available
+- Fixed typo in stereo support in EchoTest plugin
+- Honor "audio", "data", "video" flag changes in subscriber updates (thanks @fancycode!) [[PR-2963](#2963)]
+- Added synchronous request to start/stop recording single participant in VideoRoom
+- Fixed error message being displayed incorrectly when creating a Streaming plugin mountpoint
+- Fix address size in Streaming plugin RTCP sendto call (thanks @sjkummer!) [[PR-2976](#2976)]
+- Added custom headers for SIP SUBSCRIBE requests (thanks @oriol-c!) [[PR-2971](#2971)]
+- Make SIP timer T1X64 configurable (thanks @oriol-c!) [[PR-2972](#2972)]
+- Disable IPv6 in WebSockets transport if binding to IPv4 address explicitly [[Issue-2969](#2969)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.12.1] - 2022-04-26
 
 - Fix highest sequence number not being properly initialized in the RTCP context [[Issues-2920](https://github.com/meetecho/janus-gateway/issues/2920)]
