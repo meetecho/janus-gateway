@@ -3055,7 +3055,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							memcpy(pkt->data, p->data, p->length);
 							pkt->length = p->length;
 							pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
-							memset(&pkt->extensions, 0, sizeof(pkt->extensions));
+							pkt->extensions = p->extensions;
 							pkt->control = FALSE;
 							pkt->retransmission = TRUE;
 							pkt->label = NULL;
@@ -4670,6 +4670,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					memcpy(p->data, pkt->data, hsize);
 					/* Copy the original sequence number */
 					memcpy(p->data+hsize, &original_seq, 2);
+					/* Copy the extensions struct */
+					p->extensions = pkt->extensions;
 					/* Copy the payload */
 					memcpy(p->data+hsize+2, payload, pkt->length - hsize);
 				}
@@ -4749,6 +4751,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							p->data = g_malloc(protected);
 							memcpy(p->data, pkt->data, protected);
 							p->length = protected;
+							janus_plugin_rtp_extensions_reset(&p->extensions);
 						}
 						p->created = janus_get_monotonic_time();
 						p->last_retransmit = 0;
