@@ -1829,6 +1829,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 										direction = "/recvonly";
 										break;
 									case JANUS_SDP_RECVONLY:
+										direction = "/sendonly";
+										break;
 									case JANUS_SDP_INACTIVE:
 										direction = "/inactive";
 										break;
