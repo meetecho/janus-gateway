@@ -27,6 +27,8 @@
 #include <glib.h>
 #include <jansson.h>
 
+#include "plugins/plugin.h"
+
 #define RTP_HEADER_SIZE	12
 
 /*! \brief RTP Header (http://tools.ietf.org/html/rfc3550#section-5.1) */
@@ -60,6 +62,7 @@ typedef struct janus_rtp_packet {
 	gint length;
 	gint64 created;
 	gint64 last_retransmit;
+	janus_plugin_rtp_extensions extensions;
 } janus_rtp_packet;
 
 /*! \brief RTP extension */

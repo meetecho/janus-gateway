@@ -3055,7 +3055,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							memcpy(pkt->data, p->data, p->length);
 							pkt->length = p->length;
 							pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
-							memset(&pkt->extensions, 0, sizeof(pkt->extensions));
+							pkt->extensions = p->extensions;
 							pkt->control = FALSE;
 							pkt->retransmission = TRUE;
 							pkt->label = NULL;
@@ -3768,7 +3768,7 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 			(video && handle->pc->transport_wide_cc_ext_id > 0) ||
 			(!video && packet->extensions.audio_level > -1 && handle->pc->audiolevel_ext_id > 0) ||
 			(video && packet->extensions.video_rotation > -1 && handle->pc->videoorientation_ext_id > 0) ||
-			(video && (packet->extensions.min_delay > -1 || packet->extensions.max_delay > -1) && handle->pc->playoutdelay_ext_id > 0) ||
+			(video && packet->extensions.min_delay > -1 && packet->extensions.max_delay > -1 && handle->pc->playoutdelay_ext_id > 0) ||
 			(video && packet->extensions.dd_len > 0 && handle->pc->dependencydesc_ext_id > 0)) {
 		/* Do we need 2-byte extemsions, or are 1-byte extensions fine? */
 		gboolean use_2byte = (video && packet->extensions.dd_len > 16 && handle->pc->dependencydesc_ext_id > 0);
@@ -3876,7 +3876,7 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 				extbufsize -= 3;
 			}
 		}
-		if(video && (packet->extensions.min_delay > -1 || packet->extensions.max_delay > -1) && handle->pc->playoutdelay_ext_id > 0) {
+		if(video && packet->extensions.min_delay > -1 && packet->extensions.max_delay > -1 && handle->pc->playoutdelay_ext_id > 0) {
 			/* Add playout-delay extension */
 			uint32_t min_delay = (uint32_t)packet->extensions.min_delay;
 			uint32_t max_delay = (uint32_t)packet->extensions.max_delay;
@@ -4670,6 +4670,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					memcpy(p->data, pkt->data, hsize);
 					/* Copy the original sequence number */
 					memcpy(p->data+hsize, &original_seq, 2);
+					/* Copy the extensions struct */
+					p->extensions = pkt->extensions;
 					/* Copy the payload */
 					memcpy(p->data+hsize+2, payload, pkt->length - hsize);
 				}
@@ -4749,6 +4751,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							p->data = g_malloc(protected);
 							memcpy(p->data, pkt->data, protected);
 							p->length = protected;
+							janus_plugin_rtp_extensions_reset(&p->extensions);
 						}
 						p->created = janus_get_monotonic_time();
 						p->last_retransmit = 0;
