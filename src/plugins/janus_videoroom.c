@@ -599,10 +599,9 @@ room-<unique room ID>: {
 	"bitrate" : <bitrate cap to return via REMB; optional, overrides the global room value if present>,
 	"record" : <true|false, whether this publisher should be recorded or not; optional>,
 	"filename" : "<if recording, the base path/file to use for the recording files; optional>",
-	"display" : "<new display name to use in the room; optional>",
+	"display" : "<display name to use in the room; optional>",
 	"audio_level_average" : "<if provided, overrided the room audio_level_average for this user; optional>",
 	"audio_active_packets" : "<if provided, overrided the room audio_active_packets for this user; optional>",
-	"display" : "<new display name to use in the room; optional>",
 	"descriptions" : [	// Optional
 		{
 			"mid" : "<unique mid of a stream being published>",
@@ -742,10 +741,16 @@ room-<unique room ID>: {
 	"display" : "<new display name to use in the room; optional>",
 	"audio_active_packets" : "<new audio_active_packets to overwrite in the room one; optional>",
 	"audio_level_average" : "<new audio_level_average to overwrite the room one; optional>",
-	"mid" : <mid of the m-line to refer to for this configure request; optional>,
-	"send" : <true|false, depending on whether the media addressed by the above mid should be relayed or not; optional>,
-	"min_delay" : <minimum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
-	"max_delay" : <maximum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
+	"streams" : [
+		{
+			"mid" : <mid of the m-line to tweak>,
+			"keyframe" : <true|false, whether we should send this stream a keyframe request; optional>,
+			"send" : <true|false, depending on whether the media addressed by the above mid should be relayed or not; optional>,
+			"min_delay" : <minimum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
+			"max_delay" : <maximum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>
+		},
+		// Other streams, if any
+	],
 	"descriptions" : [
 		// Updated descriptions for the published streams; see "publish" for syntax; optional
 	]
@@ -753,8 +758,11 @@ room-<unique room ID>: {
 \endverbatim
  *
  * As you can see, it's basically the same properties as those listed for
- * \c publish . This is why both requests can be used to start publishing,
- * as even in that case you configure some of the settings. If successful,
+ * \c publish , with the addition of a \c streams array that can be used
+ * to tweak individual streams (which is not available when publishing
+ * since in that case the stream doesn't exist yet). Notice that the
+ * \c configure request can also be used in renegotiations, to provide
+ * an updated SDP with changes to the published media. If successful,
  * a \c configured event will be sent back as before, formatted like this:
  *
 \verbatim
@@ -1348,17 +1356,22 @@ room-<unique room ID>: {
 \verbatim
 {
 	"request" : "configure",
-	"mid" : <mid of the m-line to refer to for this configure request; optional>,
-	"send" : <true|false, depending on whether the mindex media should be relayed or not; optional>,
-	"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
-	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
-	"fallback" : <How much time (in us, default 250000) without receiving packets will make us drop to the substream below>,
-	"spatial_layer" : <spatial layer to receive (0-2), in case VP9-SVC is enabled; optional>,
-	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>,
-	"audio_level_average" : "<if provided, overrides the room audio_level_average for this user; optional>",
-	"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>",
-	"min_delay" : <minimum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
-	"max_delay" : <maximum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
+	"streams" : [
+		{
+			"mid" : <mid of the m-line to refer to>,
+			"send" : <true|false, depending on whether the mindex media should be relayed or not; optional>,
+			"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
+			"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
+			"fallback" : <How much time (in us, default 250000) without receiving packets will make us drop to the substream below; optional>,
+			"spatial_layer" : <spatial layer to receive (0-2), in case VP9-SVC is enabled; optional>,
+			"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>,
+			"audio_level_average" : "<if provided, overrides the room audio_level_average for this user; optional>",
+			"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>",
+			"min_delay" : <minimum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
+			"max_delay" : <maximum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
+		},
+		// Other streams, if any
+	],
 	"restart" : <trigger an ICE restart; optional>
 }
 \endverbatim
@@ -1367,8 +1380,8 @@ room-<unique room ID>: {
  * pause/resume functionality ("only mute/unmute this mid"), whereas \c pause
  * and \c start simply pause and resume all streams at the same time.
  * The \c substream and \c temporal properties, instead, only make sense
- * when the mountpoint is configured with video simulcasting support, and
- * as such the viewer is interested in receiving a specific substream
+ * when the publisher is configured with video simulcasting support, and
+ * as such the subscriber is interested in receiving a specific substream
  * or temporal layer, rather than any other of the available ones: notice
  * that for them to work you'll have to specify the \c mid as well, as the same
  * subscription may be receiving simulcast stream from multiple publishers.
@@ -1706,12 +1719,6 @@ static struct janus_json_parameter publish_parameters[] = {
 	{"secret", JSON_STRING, 0},
 	{"audio_level_averge", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	/* Only needed when configuring, to make a stream active/inactive */
-	{"mid", JANUS_JSON_STRING, 0},
-	{"send", JANUS_JSON_BOOL, 0},
-	/* For the playout-delay RTP extension, if negotiated */
-	{"min_delay", JSON_INTEGER, 0},
-	{"max_delay", JSON_INTEGER, 0},
 	/* Deprecated, use mid+send instead */
 	{"audio", JANUS_JSON_BOOL, 0},	/* Deprecated! */
 	{"video", JANUS_JSON_BOOL, 0},	/* Deprecated! */
@@ -1719,6 +1726,13 @@ static struct janus_json_parameter publish_parameters[] = {
 	/* The following are just to force a renegotiation and/or an ICE restart */
 	{"update", JANUS_JSON_BOOL, 0},
 	{"restart", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter publish_stream_parameters[] = {
+	{"mid", JANUS_JSON_STRING, 0},
+	{"send", JANUS_JSON_BOOL, 0},
+	/* For the playout-delay RTP extension, if negotiated */
+	{"min_delay", JSON_INTEGER, 0},
+	{"max_delay", JSON_INTEGER, 0},
 };
 static struct janus_json_parameter publish_desc_parameters[] = {
 	{"mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -1774,7 +1788,7 @@ static struct janus_json_parameter stop_rtp_forward_parameters[] = {
 static struct janus_json_parameter publisher_parameters[] = {
 	{"display", JSON_STRING, 0}
 };
-static struct janus_json_parameter configure_parameters[] = {
+static struct janus_json_parameter configure_stream_parameters[] = {
 	{"mid", JANUS_JSON_STRING, 0},
 	{"send", JANUS_JSON_BOOL, 0},
 	/* For talk detection */
@@ -1790,8 +1804,13 @@ static struct janus_json_parameter configure_parameters[] = {
 	/* For the playout-delay RTP extension, if negotiated */
 	{"min_delay", JSON_INTEGER, 0},
 	{"max_delay", JSON_INTEGER, 0},
+};
+static struct janus_json_parameter configure_parameters[] = {
+	{"streams", JANUS_JSON_ARRAY, 0},
 	/* The following is to handle a renegotiation */
 	{"update", JANUS_JSON_BOOL, 0},
+	/* The following is to force a restart */
+	{"restart", JANUS_JSON_BOOL, 0},
 	/* Deprecated properties, use mid+send instead */
 	{"audio", JANUS_JSON_BOOL, 0},	/* Deprecated */
 	{"video", JANUS_JSON_BOOL, 0},	/* Deprecated */
@@ -8719,29 +8738,87 @@ static void *janus_videoroom_handler(void *data) {
 						if(error_code != 0) {
 							janus_refcount_decrease(&participant->ref);
 							goto error;
-
 						}
 					}
 				}
 				json_t *audiocodec = json_object_get(root, "audiocodec");
 				json_t *videocodec = json_object_get(root, "videocodec");
 				json_t *bitrate = json_object_get(root, "bitrate");
-				json_t *keyframe = json_object_get(root, "keyframe");
 				json_t *record = json_object_get(root, "record");
 				json_t *recfile = json_object_get(root, "filename");
 				json_t *display = json_object_get(root, "display");
 				json_t *update = json_object_get(root, "update");
 				json_t *user_audio_active_packets = json_object_get(root, "audio_active_packets");
 				json_t *user_audio_level_average = json_object_get(root, "audio_level_average");
-				json_t *min_delay = json_object_get(root, "min_delay");
-				json_t *max_delay = json_object_get(root, "max_delay");
 				/* Audio, video and data are deprecated properties */
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
 				json_t *data = json_object_get(root, "data");
-				/* Better to specify the 'send' property of a specific 'mid' */
-				const char *mid = json_string_value(json_object_get(root, "mid"));
-				json_t *send = json_object_get(root, "send");
+				/* We use an array of streams to state the changes we want to make,
+				 * were for each stream we specify the 'mid' to impact (e.g., send) */
+				json_t *streams = json_object_get(root, "streams");
+				if(streams == NULL) {
+					/* No streams object, check if the properties have been
+					 * provided globally, which is how we handled this
+					 * request before: if so, create a new fake streams
+					 * array, and move the parsed options there */
+					streams = json_array();
+					json_t *stream = json_object();
+					const char *mid = json_string_value(json_object_get(root, "mid"));
+					if(mid != NULL)
+						json_object_set(stream, "mid", json_string(mid));
+					json_t *send = json_object_get(root, "send");
+					if(send != NULL)
+						json_object_set(stream, "send", json_is_true(send) ? json_true() : json_false());
+					json_t *keyframe = json_object_get(root, "keyframe");
+					if(keyframe != NULL)
+						json_object_set(stream, "keyframe", json_is_true(keyframe) ? json_true() : json_false());
+					json_t *min_delay = json_object_get(root, "min_delay");
+					if(min_delay != NULL)
+						json_object_set(stream, "min_delay", json_integer(json_integer_value(min_delay)));
+					json_t *max_delay = json_object_get(root, "max_delay");
+					if(max_delay != NULL)
+						json_object_set(stream, "max_delay", json_integer(json_integer_value(max_delay)));
+					json_array_append_new(streams, stream);
+					json_object_set_new(root, "streams", streams);
+				}
+				/* Validate all the streams we need to configure */
+				janus_mutex_lock(&participant->streams_mutex);
+				size_t i = 0;
+				size_t streams_size = json_array_size(streams);
+				for(i=0; i<streams_size; i++) {
+					json_t *s = json_array_get(streams, i);
+					JANUS_VALIDATE_JSON_OBJECT(s, publish_stream_parameters,
+						error_code, error_cause, TRUE,
+						JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+					if(error_code != 0)
+						break;
+					const char *mid = json_string_value(json_object_get(s, "mid"));
+					if(mid == NULL && streams_size > 1) {
+						JANUS_LOG(LOG_ERR, "Invalid element (mid can't be null in a streams array)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid value (mid can't be null in a streams array)");
+						break;
+					} else if(mid != NULL && g_hash_table_lookup(participant->streams_bymid, mid) == NULL) {
+						JANUS_LOG(LOG_ERR, "No such mid '%s' published\n", mid);
+						error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+						g_snprintf(error_cause, 512, "No such mid '%s' published", mid);
+						break;
+					}
+					if(mid != NULL) {
+						json_object_del(root, "audio");
+						audio = NULL;
+						json_object_del(root, "video");
+						video = NULL;
+						json_object_del(root, "data");
+						data = NULL;
+					}
+				}
+				if(error_code != 0) {
+					janus_mutex_unlock(&participant->streams_mutex);
+					janus_refcount_decrease(&participant->ref);
+					goto error;
+				}
 				/* A renegotiation may be taking place */
 				gboolean do_update = update ? json_is_true(update) : FALSE;
 				if(do_update && !sdp_update) {
@@ -8761,6 +8838,7 @@ static void *janus_videoroom_handler(void *data) {
 								acodec != participant->room->acodec[4])) {
 							JANUS_LOG(LOG_ERR, "Participant asked for audio codec '%s', but it's not allowed (room %s, user %s)\n",
 								json_string_value(audiocodec), participant->room_id_str, participant->user_id_str);
+							janus_mutex_unlock(&participant->streams_mutex);
 							janus_refcount_decrease(&participant->ref);
 							error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 							g_snprintf(error_cause, 512, "Audio codec unavailable in this room");
@@ -8781,6 +8859,7 @@ static void *janus_videoroom_handler(void *data) {
 								vcodec != participant->room->vcodec[4])) {
 							JANUS_LOG(LOG_ERR, "Participant asked for video codec '%s', but it's not allowed (room %s, user %s)\n",
 								json_string_value(videocodec), participant->room_id_str, participant->user_id_str);
+							janus_mutex_unlock(&participant->streams_mutex);
 							janus_refcount_decrease(&participant->ref);
 							error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 							g_snprintf(error_cause, 512, "Video codec unavailable in this room");
@@ -8791,14 +8870,21 @@ static void *janus_videoroom_handler(void *data) {
 						participant->vcodec = vcodec;
 					}
 				}
-				/* Update the audio/video/data flags, if set (and just configuring) */
-				if(audio || video || data || (mid && send) || min_delay || max_delay) {
-					janus_mutex_lock(&participant->streams_mutex);
+				/* Enforce the requested changes (if configuring) */
+				for(i=0; i<json_array_size(streams); i++) {
+					/* Get the stream we need to tweak */
+					json_t *s = json_array_get(streams, i);
+					/* Check which properties we need to tweak */
+					const char *mid = json_string_value(json_object_get(s, "mid"));
+					json_t *send = json_object_get(s, "send");
+					json_t *keyframe = json_object_get(s, "keyframe");
+					json_t *min_delay = json_object_get(s, "min_delay");
+					json_t *max_delay = json_object_get(s, "max_delay");
 					GList *temp = participant->streams;
 					while(temp) {
 						janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
-						gboolean mid_found = (mid && send && !strcasecmp(ps->mid, mid));
-						if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO && (audio || mid_found)) {
+						gboolean mid_found = (mid && !strcasecmp(ps->mid, mid));
+						if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO && (audio || (send && mid_found))) {
 							gboolean audio_active = mid_found ? json_is_true(send) : json_is_true(audio);
 							if(!ps->active && !ps->muted && audio_active) {
 								/* Audio was just resumed, try resetting the RTP headers for viewers */
@@ -8815,7 +8901,7 @@ static void *janus_videoroom_handler(void *data) {
 							ps->active = audio_active;
 							JANUS_LOG(LOG_VERB, "Setting audio property (%s): %s (room %s, user %s)\n",
 								ps->mid, ps->active ? "true" : "false", participant->room_id_str, participant->user_id_str);
-						} else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO && (video || mid_found)) {
+						} else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO && (video || (send && mid_found))) {
 							gboolean video_active = mid_found ? json_is_true(send) : json_is_true(video);
 							if(!ps->active && !ps->muted && video_active) {
 								/* Video was just resumed, try resetting the RTP headers for viewers */
@@ -8832,7 +8918,7 @@ static void *janus_videoroom_handler(void *data) {
 							ps->active = video_active;
 							JANUS_LOG(LOG_VERB, "Setting video property (%s): %s (room %s, user %s)\n",
 								ps->mid, ps->active ? "true" : "false", participant->room_id_str, participant->user_id_str);
-						} else if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA && (data || mid_found)) {
+						} else if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA && (data || (send && mid_found))) {
 							gboolean data_active = mid_found ? json_is_true(send) : json_is_true(data);
 							ps->active = data_active;
 							JANUS_LOG(LOG_VERB, "Setting data property (%s): %s (room %s, user %s)\n",
@@ -8843,7 +8929,7 @@ static void *janus_videoroom_handler(void *data) {
 							/* Send a PLI */
 							janus_videoroom_reqpli(ps, "Keyframe request");
 						}
-						if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+						if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO && (mid_found || mid == NULL)) {
 							if(min_delay) {
 								int16_t md = json_integer_value(min_delay);
 								if(md < 0) {
@@ -8869,8 +8955,8 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						temp = temp->next;
 					}
-					janus_mutex_unlock(&participant->streams_mutex);
 				}
+				janus_mutex_unlock(&participant->streams_mutex);
 				if(bitrate) {
 					participant->bitrate = json_integer_value(bitrate);
 					JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu32" (room %s, user %s)\n",
@@ -9587,205 +9673,287 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
+				json_t *restart = json_object_get(root, "restart");
+				json_t *update = json_object_get(root, "update");
 				/* Audio, video and data are deprecated properties */
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
 				json_t *data = json_object_get(root, "data");
-				/* Better to specify the 'send' property of a specific 'mid' */
-				const char *mid = json_string_value(json_object_get(root, "mid"));
-				json_t *send = json_object_get(root, "send");
-				json_t *restart = json_object_get(root, "restart");
-				json_t *update = json_object_get(root, "update");
-				json_t *spatial = json_object_get(root, "spatial_layer");
-				json_t *sc_substream = json_object_get(root, "substream");
-				if(json_integer_value(spatial) < 0 || json_integer_value(spatial) > 2 ||
-						json_integer_value(sc_substream) < 0 || json_integer_value(sc_substream) > 2) {
-					JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");
-					janus_refcount_decrease(&subscriber->ref);
-					goto error;
+				/* We use an array of streams to state the changes we want to make,
+				 * were for each stream we specify the 'mid' to impact (e.g., send) */
+				json_t *streams = json_object_get(root, "streams");
+				if(streams == NULL) {
+					/* No streams object, check if the properties have been
+					 * provided globally, which is how we handled this
+					 * request before: if so, create a new fake streams
+					 * array, and move the parsed options there */
+					streams = json_array();
+					json_t *stream = json_object();
+					const char *mid = json_string_value(json_object_get(root, "mid"));
+					if(mid != NULL)
+						json_object_set(stream, "mid", json_string(mid));
+					json_t *send = json_object_get(root, "send");
+					if(send != NULL)
+						json_object_set(stream, "send", json_is_true(send) ? json_true() : json_false());
+					json_t *spatial = json_object_get(root, "spatial_layer");
+					if(spatial != NULL)
+						json_object_set(stream, "spatial_layer", json_integer(json_integer_value(spatial)));
+					json_t *sc_substream = json_object_get(root, "substream");
+					if(sc_substream != NULL)
+						json_object_set(stream, "substream", json_integer(json_integer_value(sc_substream)));
+					json_t *temporal = json_object_get(root, "temporal_layer");
+					if(temporal != NULL)
+						json_object_set(stream, "temporal_layer", json_integer(json_integer_value(temporal)));
+					json_t *sc_temporal = json_object_get(root, "temporal");
+					if(sc_temporal != NULL)
+						json_object_set(stream, "temporal", json_integer(json_integer_value(sc_temporal)));
+					json_t *sc_fallback = json_object_get(root, "fallback");
+					if(sc_fallback != NULL)
+						json_object_set(stream, "fallback", json_integer(json_integer_value(sc_fallback)));
+					json_t *min_delay = json_object_get(root, "min_delay");
+					if(min_delay != NULL)
+						json_object_set(stream, "min_delay", json_integer(json_integer_value(min_delay)));
+					json_t *max_delay = json_object_get(root, "max_delay");
+					if(max_delay != NULL)
+						json_object_set(stream, "max_delay", json_integer(json_integer_value(max_delay)));
+					json_array_append_new(streams, stream);
+					json_object_set_new(root, "streams", streams);
 				}
-				json_t *temporal = json_object_get(root, "temporal_layer");
-				json_t *sc_temporal = json_object_get(root, "temporal");
-				if(json_integer_value(temporal) < 0 || json_integer_value(temporal) > 2 ||
-						json_integer_value(sc_temporal) < 0 || json_integer_value(sc_temporal) > 2) {
-					JANUS_LOG(LOG_ERR, "Invalid element (temporal/temporal_layer should be 0, 1 or 2)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (temporal/temporal_layer should be 0, 1 or 2)");
-					janus_refcount_decrease(&subscriber->ref);
-					goto error;
-				}
-				json_t *sc_fallback = json_object_get(root, "fallback");
-				json_t *min_delay = json_object_get(root, "min_delay");
-				json_t *max_delay = json_object_get(root, "max_delay");
-				/* Update the audio/video/data flags, if set */
+				/* Validate all the streams we need to configure */
 				janus_mutex_lock(&subscriber->streams_mutex);
-				GList *temp = subscriber->streams;
-				while(temp) {
-					/* We need more fine grained mechanisms for changing streaming properties */
-					janus_videoroom_subscriber_stream *stream = (janus_videoroom_subscriber_stream *)temp->data;
-					janus_videoroom_publisher_stream *ps = stream->publisher_streams ? stream->publisher_streams->data : NULL;
-					if(audio && stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
-						gboolean oldaudio = stream->send;
-						gboolean newaudio = json_is_true(audio);
-						if(!oldaudio && newaudio) {
-							/* Audio just resumed, reset the RTP sequence numbers */
-							stream->context.seq_reset = TRUE;
-						}
-						stream->send = newaudio;
+				size_t i = 0;
+				size_t streams_size = json_array_size(streams);
+				for(i=0; i<streams_size; i++) {
+					json_t *s = json_array_get(streams, i);
+					JANUS_VALIDATE_JSON_OBJECT(s, configure_stream_parameters,
+						error_code, error_cause, TRUE,
+						JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+					if(error_code != 0)
+						break;
+					const char *mid = json_string_value(json_object_get(s, "mid"));
+					if(mid == NULL && streams_size > 1) {
+						JANUS_LOG(LOG_ERR, "Invalid element (mid can't be null in a streams array)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid value (mid can't be null in a streams array)");
+						break;
+					} else if(mid != NULL && g_hash_table_lookup(subscriber->streams_bymid, mid) == NULL) {
+						JANUS_LOG(LOG_ERR, "No such mid '%s' in subscription\n", mid);
+						error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+						g_snprintf(error_cause, 512, "No such mid '%s' in subscription", mid);
+						break;
 					}
-					if(video && stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
-						gboolean oldvideo = stream->send;
-						gboolean newvideo = json_is_true(video);
-						if(!oldvideo && newvideo) {
-							/* Video just resumed, reset the RTP sequence numbers */
-							stream->context.seq_reset = TRUE;
-						}
-						stream->send = newvideo;
-						if(newvideo) {
-							/* Send a PLI */
-							janus_videoroom_reqpli(ps, "Restoring video for subscriber");
-						}
+					if(mid != NULL) {
+						json_object_del(root, "audio");
+						audio = NULL;
+						json_object_del(root, "video");
+						video = NULL;
+						json_object_del(root, "data");
+						data = NULL;
 					}
-					if(data && stream->type == JANUS_VIDEOROOM_MEDIA_DATA)
-						stream->send = json_is_true(data);
-					/* Let's also see if this is the right mid */
-					if(mid && strcasecmp(stream->mid, mid)) {
-						temp = temp->next;
-						continue;
+					json_t *spatial = json_object_get(s, "spatial_layer");
+					json_t *sc_substream = json_object_get(s, "substream");
+					json_t *temporal = json_object_get(s, "temporal_layer");
+					json_t *sc_temporal = json_object_get(s, "temporal");
+					if(json_integer_value(spatial) < 0 || json_integer_value(spatial) > 2 ||
+							json_integer_value(sc_substream) < 0 || json_integer_value(sc_substream) > 2) {
+						JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");
+						break;
 					}
-					if(send) {
-						gboolean oldsend = stream->send;
-						gboolean newsend = json_is_true(send);
-						if(!oldsend && newsend) {
-							/* Medium just resumed, reset the RTP sequence numbers */
-							stream->context.seq_reset = TRUE;
+					if(json_integer_value(temporal) < 0 || json_integer_value(temporal) > 2 ||
+							json_integer_value(sc_temporal) < 0 || json_integer_value(sc_temporal) > 2) {
+						JANUS_LOG(LOG_ERR, "Invalid element (temporal/temporal_layer should be 0, 1 or 2)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid value (temporal/temporal_layer should be 0, 1 or 2)");
+						break;
+					}
+				}
+				if(error_code != 0) {
+					janus_mutex_unlock(&subscriber->streams_mutex);
+					janus_refcount_decrease(&subscriber->ref);
+					goto error;
+				}
+				/* Enforce the requested changes */
+				for(i=0; i<json_array_size(streams); i++) {
+					/* Get the stream we need to tweak */
+					json_t *s = json_array_get(streams, i);
+					/* Check which properties we need to tweak */
+					const char *mid = json_string_value(json_object_get(s, "mid"));
+					json_t *send = json_object_get(s, "send");
+					json_t *spatial = json_object_get(s, "spatial_layer");
+					json_t *sc_substream = json_object_get(s, "substream");
+					json_t *temporal = json_object_get(s, "temporal_layer");
+					json_t *sc_temporal = json_object_get(s, "temporal");
+					json_t *sc_fallback = json_object_get(s, "fallback");
+					json_t *min_delay = json_object_get(s, "min_delay");
+					json_t *max_delay = json_object_get(s, "max_delay");
+					GList *temp = subscriber->streams;
+					while(temp) {
+						/* We need more fine grained mechanisms for changing streaming properties */
+						janus_videoroom_subscriber_stream *stream = (janus_videoroom_subscriber_stream *)temp->data;
+						janus_videoroom_publisher_stream *ps = stream->publisher_streams ? stream->publisher_streams->data : NULL;
+						if(audio && stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
+							gboolean oldaudio = stream->send;
+							gboolean newaudio = json_is_true(audio);
+							if(!oldaudio && newaudio) {
+								/* Audio just resumed, reset the RTP sequence numbers */
+								stream->context.seq_reset = TRUE;
+							}
+							stream->send = newaudio;
 						}
-						stream->send = json_is_true(send);
-						if(newsend) {
-							/* Send a PLI */
-							janus_videoroom_reqpli(ps, "Restoring video for subscriber");
-						}
-					}
-					/* Next properties are for video only */
-					if(stream->type != JANUS_VIDEOROOM_MEDIA_VIDEO) {
-						temp = temp->next;
-						continue;
-					}
-					/* Check if a simulcasting-related request is involved */
-					if(ps && ps->simulcast) {
-						int substream_target = sc_substream ? json_integer_value(sc_substream) : -1;
-						if(sc_substream && substream_target >= 0 && substream_target <= 2) {
-							stream->sim_context.substream_target = substream_target;
-							JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
-								ps->vssrc[stream->sim_context.substream_target],
-								stream->sim_context.substream_target,
-								stream->sim_context.substream);
-							if(stream->sim_context.substream_target == stream->sim_context.substream) {
-								/* No need to do anything, we're already getting the right substream, so notify the user */
-								json_t *event = json_object();
-								json_object_set_new(event, "videoroom", json_string("event"));
-								json_object_set_new(event, "room", string_ids ?
-									json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-								json_object_set_new(event, "mid", json_string(stream->mid));
-								json_object_set_new(event, "substream", json_integer(stream->sim_context.substream));
-								gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
-								json_decref(event);
-							} else {
+						if(video && stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+							gboolean oldvideo = stream->send;
+							gboolean newvideo = json_is_true(video);
+							if(!oldvideo && newvideo) {
+								/* Video just resumed, reset the RTP sequence numbers */
+								stream->context.seq_reset = TRUE;
+							}
+							stream->send = newvideo;
+							if(newvideo) {
 								/* Send a PLI */
-								janus_videoroom_reqpli(ps, "Simulcasting substream change");
+								janus_videoroom_reqpli(ps, "Restoring video for subscriber");
 							}
 						}
-						if(ps->vcodec == JANUS_VIDEOCODEC_VP8 && ps->simulcast && sc_temporal) {
-							stream->sim_context.templayer_target = json_integer_value(sc_temporal);
-							JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
-								stream->sim_context.templayer_target, stream->sim_context.templayer);
-							if(stream->sim_context.templayer_target == stream->sim_context.templayer) {
-								/* No need to do anything, we're already getting the right temporal, so notify the user */
-								json_t *event = json_object();
-								json_object_set_new(event, "videoroom", json_string("event"));
-								json_object_set_new(event, "room", string_ids ?
-									json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-								json_object_set_new(event, "mid", json_string(stream->mid));
-								json_object_set_new(event, "temporal", json_integer(stream->sim_context.templayer));
-								gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
-								json_decref(event);
-							} else {
+						if(data && stream->type == JANUS_VIDEOROOM_MEDIA_DATA)
+							stream->send = json_is_true(data);
+						/* Let's also see if this is the right mid */
+						if(mid && strcasecmp(stream->mid, mid)) {
+							temp = temp->next;
+							continue;
+						}
+						if(send) {
+							gboolean oldsend = stream->send;
+							gboolean newsend = json_is_true(send);
+							if(!oldsend && newsend) {
+								/* Medium just resumed, reset the RTP sequence numbers */
+								stream->context.seq_reset = TRUE;
+							}
+							stream->send = json_is_true(send);
+							if(newsend) {
 								/* Send a PLI */
-								janus_videoroom_reqpli(ps, "Simulcasting temporal layer change");
+								janus_videoroom_reqpli(ps, "Restoring video for subscriber");
 							}
 						}
-						if(sc_fallback) {
-							stream->sim_context.drop_trigger = json_integer_value(sc_fallback);
+						/* Next properties are for video only */
+						if(stream->type != JANUS_VIDEOROOM_MEDIA_VIDEO) {
+							temp = temp->next;
+							continue;
 						}
-					} else if(ps && ps->svc) {
-						/* Also check if the viewer is trying to configure a layer change */
-						if(spatial) {
-							int spatial_layer = json_integer_value(spatial);
-							if(spatial_layer > 1) {
-								JANUS_LOG(LOG_WARN, "Spatial layer higher than 1, will probably be ignored\n");
+						/* Check if a simulcasting-related request is involved */
+						if(ps && ps->simulcast) {
+							int substream_target = sc_substream ? json_integer_value(sc_substream) : -1;
+							if(sc_substream && substream_target >= 0 && substream_target <= 2) {
+								stream->sim_context.substream_target = substream_target;
+								JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
+									ps->vssrc[stream->sim_context.substream_target],
+									stream->sim_context.substream_target,
+									stream->sim_context.substream);
+								if(stream->sim_context.substream_target == stream->sim_context.substream) {
+									/* No need to do anything, we're already getting the right substream, so notify the user */
+									json_t *event = json_object();
+									json_object_set_new(event, "videoroom", json_string("event"));
+									json_object_set_new(event, "room", string_ids ?
+										json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
+									json_object_set_new(event, "mid", json_string(stream->mid));
+									json_object_set_new(event, "substream", json_integer(stream->sim_context.substream));
+									gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
+									json_decref(event);
+								} else {
+									/* Send a PLI */
+									janus_videoroom_reqpli(ps, "Simulcasting substream change");
+								}
 							}
-							if(spatial_layer == stream->spatial_layer) {
-								/* No need to do anything, we're already getting the right spatial layer, so notify the user */
-								json_t *event = json_object();
-								json_object_set_new(event, "videoroom", json_string("event"));
-								json_object_set_new(event, "room", string_ids ?
-									json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-								json_object_set_new(event, "mid", json_string(stream->mid));
-								json_object_set_new(event, "spatial_layer", json_integer(stream->spatial_layer));
-								gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
-								json_decref(event);
-							} else if(spatial_layer != stream->target_spatial_layer) {
-								/* Send a PLI to the new RTP forward publisher */
-								janus_videoroom_reqpli(ps, "Need to downscale spatially");
+							if(ps->vcodec == JANUS_VIDEOCODEC_VP8 && ps->simulcast && sc_temporal) {
+								stream->sim_context.templayer_target = json_integer_value(sc_temporal);
+								JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
+									stream->sim_context.templayer_target, stream->sim_context.templayer);
+								if(stream->sim_context.templayer_target == stream->sim_context.templayer) {
+									/* No need to do anything, we're already getting the right temporal, so notify the user */
+									json_t *event = json_object();
+									json_object_set_new(event, "videoroom", json_string("event"));
+									json_object_set_new(event, "room", string_ids ?
+										json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
+									json_object_set_new(event, "mid", json_string(stream->mid));
+									json_object_set_new(event, "temporal", json_integer(stream->sim_context.templayer));
+									gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
+									json_decref(event);
+								} else {
+									/* Send a PLI */
+									janus_videoroom_reqpli(ps, "Simulcasting temporal layer change");
+								}
 							}
-							stream->target_spatial_layer = spatial_layer;
+							if(sc_fallback) {
+								stream->sim_context.drop_trigger = json_integer_value(sc_fallback);
+							}
+						} else if(ps && ps->svc) {
+							/* Also check if the viewer is trying to configure a layer change */
+							if(spatial) {
+								int spatial_layer = json_integer_value(spatial);
+								if(spatial_layer > 1) {
+									JANUS_LOG(LOG_WARN, "Spatial layer higher than 1, will probably be ignored\n");
+								}
+								if(spatial_layer == stream->spatial_layer) {
+									/* No need to do anything, we're already getting the right spatial layer, so notify the user */
+									json_t *event = json_object();
+									json_object_set_new(event, "videoroom", json_string("event"));
+									json_object_set_new(event, "room", string_ids ?
+										json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
+									json_object_set_new(event, "mid", json_string(stream->mid));
+									json_object_set_new(event, "spatial_layer", json_integer(stream->spatial_layer));
+									gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
+									json_decref(event);
+								} else if(spatial_layer != stream->target_spatial_layer) {
+									/* Send a PLI to the new RTP forward publisher */
+									janus_videoroom_reqpli(ps, "Need to downscale spatially");
+								}
+								stream->target_spatial_layer = spatial_layer;
+							}
+							if(temporal) {
+								int temporal_layer = json_integer_value(temporal);
+								if(temporal_layer > 2) {
+									JANUS_LOG(LOG_WARN, "Temporal layer higher than 2, will probably be ignored\n");
+								}
+								if(temporal_layer == stream->temporal_layer) {
+									/* No need to do anything, we're already getting the right temporal layer, so notify the user */
+									json_t *event = json_object();
+									json_object_set_new(event, "videoroom", json_string("event"));
+									json_object_set_new(event, "room", string_ids ?
+										json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
+									json_object_set_new(event, "mid", json_string(stream->mid));
+									json_object_set_new(event, "temporal_layer", json_integer(stream->temporal_layer));
+									gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
+									json_decref(event);
+								}
+								stream->target_temporal_layer = temporal_layer;
+							}
 						}
-						if(temporal) {
-							int temporal_layer = json_integer_value(temporal);
-							if(temporal_layer > 2) {
-								JANUS_LOG(LOG_WARN, "Temporal layer higher than 2, will probably be ignored\n");
+						if(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+							if(min_delay) {
+								int16_t md = json_integer_value(min_delay);
+								if(md < 0) {
+									stream->min_delay = -1;
+									stream->max_delay = -1;
+								} else {
+									stream->min_delay = md;
+									if(stream->min_delay > stream->max_delay)
+										stream->max_delay = stream->min_delay;
+								}
 							}
-							if(temporal_layer == stream->temporal_layer) {
-								/* No need to do anything, we're already getting the right temporal layer, so notify the user */
-								json_t *event = json_object();
-								json_object_set_new(event, "videoroom", json_string("event"));
-								json_object_set_new(event, "room", string_ids ?
-									json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-								json_object_set_new(event, "mid", json_string(stream->mid));
-								json_object_set_new(event, "temporal_layer", json_integer(stream->temporal_layer));
-								gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
-								json_decref(event);
+							if(max_delay) {
+								int16_t md = json_integer_value(max_delay);
+								if(md < 0) {
+									stream->min_delay = -1;
+									stream->max_delay = -1;
+								} else {
+									stream->max_delay = md;
+									if(stream->max_delay < stream->min_delay)
+										stream->min_delay = stream->max_delay;
+								}
 							}
-							stream->target_temporal_layer = temporal_layer;
 						}
+						temp = temp->next;
 					}
-					if(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
-						if(min_delay) {
-							int16_t md = json_integer_value(min_delay);
-							if(md < 0) {
-								stream->min_delay = -1;
-								stream->max_delay = -1;
-							} else {
-								stream->min_delay = md;
-								if(stream->min_delay > stream->max_delay)
-									stream->max_delay = stream->min_delay;
-							}
-						}
-						if(max_delay) {
-							int16_t md = json_integer_value(max_delay);
-							if(md < 0) {
-								stream->min_delay = -1;
-								stream->max_delay = -1;
-							} else {
-								stream->max_delay = md;
-								if(stream->max_delay < stream->min_delay)
-									stream->min_delay = stream->max_delay;
-							}
-						}
-					}
-					temp = temp->next;
 				}
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
