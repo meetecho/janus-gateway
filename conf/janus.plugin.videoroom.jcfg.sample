@@ -44,6 +44,14 @@
 #               for admin to manage listening only participants. default=false)
 # require_e2ee = true|false (whether all participants are required to publish and subscribe
 #             using end-to-end media encryption, e.g., via Insertable Streams; default=false)
+# dummy_publisher = true|false (whether a dummy publisher should be created in this room,
+#                 with one separate m-line for each codec supported in the room; this is
+#                 useful when there's a need to create subscriptions with placeholders
+#                 for some or all m-lines, even when they aren't used yet; default=false)
+# dummy_streams = in case dummy_publisher is set to true, array of codecs to offer,
+#				optionally with a fmtp attribute to match (codec/fmtp properties).
+#				If not provided, all codecs enabled in the room are offered, with no fmtp.
+#				Notice that the fmtp is parsed, and only a few codecs are supported.
 #}
 
 general: {
