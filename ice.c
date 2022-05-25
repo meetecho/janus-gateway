@@ -4000,7 +4000,7 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_q
 			(video && handle->stream->transport_wide_cc_ext_id > 0) ||
 			(!video && packet->extensions.audio_level > -1 && handle->stream->audiolevel_ext_id > 0) ||
 			(video && packet->extensions.video_rotation > -1 && handle->stream->videoorientation_ext_id > 0) ||
- 			(video && (packet->extensions.min_delay > -1 || packet->extensions.max_delay > -1) && handle->stream->playoutdelay_ext_id > 0) ||
+ 			(video && packet->extensions.min_delay > -1 && packet->extensions.max_delay > -1 && handle->stream->playoutdelay_ext_id > 0) ||
 			(video && packet->extensions.dd_len > 0 && handle->stream->dependencydesc_ext_id > 0)) {
 		/* Do we need 2-byte extemsions, or are 1-byte extensions fine? */
 		gboolean use_2byte = (video && packet->extensions.dd_len > 16 && handle->stream->dependencydesc_ext_id > 0);
@@ -4108,7 +4108,7 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_q
 				extbufsize -= 3;
 			}
 		}
-		if(video && (packet->extensions.min_delay > -1 || packet->extensions.max_delay > -1) && handle->stream->playoutdelay_ext_id > 0) {
+		if(video && packet->extensions.min_delay > -1 && packet->extensions.max_delay > -1 && handle->stream->playoutdelay_ext_id > 0) {
 			/* Add playout-delay extension */
 			uint32_t min_delay = (uint32_t)packet->extensions.min_delay;
 			uint32_t max_delay = (uint32_t)packet->extensions.max_delay;
