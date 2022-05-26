@@ -1039,7 +1039,6 @@ room-<unique room ID>: {
 	"request" : "join",
 	"ptype" : "subscriber",
 	"room" : <unique ID of the room to subscribe in>,
-	"feed" : <unique ID of the publisher to subscribe to; mandatory>,
 	"private_id" : <unique ID of the publisher that originated this request; optional, unless mandated by the room configuration>,
 	"streams" : [
 		{
