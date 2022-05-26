@@ -1026,6 +1026,7 @@ function doHangup(ev) {
 // works exactly as the default one: you can add more than one "helper", and
 // obviously the more you have, the more concurrent calls you can have.
 function addHelper(helperCreated) {
+	helperCreated = (typeof helperCreated == "function") ? helperCreated : Janus.noop;
 	helpersCount++;
 	var helperId = helpersCount;
 	helpers[helperId] = { id: helperId,
