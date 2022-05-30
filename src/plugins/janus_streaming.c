@@ -4479,11 +4479,11 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				viewer = g_list_first(mp->viewers);
 				continue;
 			}
-			janus_mutex_lock(&session->mutex);
+			janus_mutex_lock(&s->mutex);
 			if(s->mountpoint != mp) {
 				mp->viewers = g_list_remove_all(mp->viewers, s);
 				viewer = g_list_first(mp->viewers);
-				janus_mutex_unlock(&session->mutex);
+				janus_mutex_unlock(&s->mutex);
 				continue;
 			}
 			g_atomic_int_set(&s->stopping, 1);
@@ -4491,8 +4491,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			g_atomic_int_set(&s->paused, 0);
 			s->mountpoint = NULL;
 			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
-			gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
-			gateway->close_pc(session->handle);
+			gateway->push_event(s->handle, &janus_streaming_plugin, NULL, event, NULL);
+			gateway->close_pc(s->handle);
 			janus_refcount_decrease(&s->ref);
 			janus_refcount_decrease(&mp->ref);
 			if(mp->streaming_source == janus_streaming_source_rtp) {
@@ -4516,7 +4516,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			}
 			mp->viewers = g_list_remove_all(mp->viewers, s);
 			viewer = g_list_first(mp->viewers);
-			janus_mutex_unlock(&session->mutex);
+			janus_mutex_unlock(&s->mutex);
 		}
 		json_decref(event);
 		janus_mutex_unlock(&mp->mutex);
