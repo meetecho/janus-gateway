@@ -181,6 +181,7 @@ $(document).ready(function() {
 													var display = escapeXmlTags(list[f]["display"]);
 													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
+													var suspended = list[f]["suspended"];
 													var spatial = list[f]["spatial_position"];
 													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp' + id).length === 0) {
@@ -191,8 +192,9 @@ $(document).ready(function() {
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
 															slider +
 															display +
-															' <i class="absetup fa fa-chain-broken"></i>' +
-															' <i class="abmuted fa fa-microphone-slash"></i></li>');
+															' <i class="absetup fa fa-chain-broken" title="No PeerConnection"></i>' +
+															' <i class="absusp fa fa-eye-slash" title="Suspended"></i>' +
+															' <i class="abmuted fa fa-microphone-slash" title="Muted"></i></li>');
 														if(spatial !== null && spatial !== undefined) {
 															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
 															$('#position').removeClass('hide').show();
@@ -207,6 +209,10 @@ $(document).ready(function() {
 														$('#rp' + id + ' > i.absetup').hide();
 													else
 														$('#rp' + id + ' > i.absetup').removeClass('hide').show();
+													if(suspended === true)
+														$('#rp' + id + ' > i.absusp').removeClass('hide').show();
+													else
+														$('#rp' + id + ' > i.absusp').hide();
 													if(spatial !== null && spatial !== undefined)
 														$('#sp' + id).slider('setValue', spatial);
 												}
@@ -225,6 +231,7 @@ $(document).ready(function() {
 													var display = escapeXmlTags(list[f]["display"]);
 													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
+													var suspended = list[f]["suspended"];
 													var spatial = list[f]["spatial_position"];
 													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp' + id).length === 0) {
@@ -235,8 +242,9 @@ $(document).ready(function() {
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
 															slider +
 															display +
-															' <i class="absetup fa fa-chain-broken"></i>' +
-															' <i class="abmuted fa fa-microphone-slash"></i></li>');
+															' <i class="absetup fa fa-chain-broken" title="No PeerConnection"></i>' +
+															' <i class="absusp fa fa-eye-slash" title="Suspended"></i>' +
+															' <i class="abmuted fa fa-microphone-slash" title="Muted"></i></li>');
 														if(spatial !== null && spatial !== undefined) {
 															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
 															$('#position').removeClass('hide').show();
@@ -251,6 +259,10 @@ $(document).ready(function() {
 														$('#rp' + id + ' > i.absetup').hide();
 													else
 														$('#rp' + id + ' > i.absetup').removeClass('hide').show();
+													if(suspended === true)
+														$('#rp' + id + ' > i.absusp').removeClass('hide').show();
+													else
+														$('#rp' + id + ' > i.absusp').hide();
 													if(spatial !== null && spatial !== undefined)
 														$('#sp' + id).slider('setValue', spatial);
 												}
@@ -270,6 +282,7 @@ $(document).ready(function() {
 													var display = escapeXmlTags(list[f]["display"]);
 													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
+													var suspended = list[f]["suspended"];
 													var spatial = list[f]["spatial_position"];
 													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp' + id).length === 0) {
@@ -280,8 +293,9 @@ $(document).ready(function() {
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
 															slider +
 															display +
-															' <i class="absetup fa fa-chain-broken"></i>' +
-															' <i class="abmuted fa fa-microphone-slash"></i></li>');
+															' <i class="absetup fa fa-chain-broken" title="No PeerConnection"></i>' +
+															' <i class="absusp fa fa-eye-slash" title="Suspended"></i>' +
+															' <i class="abmuted fa fa-microphone-slash" title="Muted"></i></li>');
 														if(spatial !== null && spatial !== undefined) {
 															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
 															$('#position').removeClass('hide').show();
@@ -296,9 +310,19 @@ $(document).ready(function() {
 														$('#rp' + id + ' > i.absetup').hide();
 													else
 														$('#rp' + id + ' > i.absetup').removeClass('hide').show();
+													if(suspended === true)
+														$('#rp' + id + ' > i.absusp').removeClass('hide').show();
+													else
+														$('#rp' + id + ' > i.absusp').hide();
 													if(spatial !== null && spatial !== undefined)
 														$('#sp' + id).slider('setValue', spatial);
 												}
+											} else if(msg["suspended"]) {
+												var id = msg["suspended"];
+												$('#rp' + id + ' > i.absusp').removeClass('hide').show();
+											} else if(msg["resumed"]) {
+												var id = msg["resumed"];
+												$('#rp' + id + ' > i.absusp').hide();
 											} else if(msg["error"]) {
 												if(msg["error_code"] === 485) {
 													// This is a "no such room" error: give a more meaningful description
