@@ -937,10 +937,10 @@ int janus_vp8_parse_descriptor(char *buffer, int len,
 				memcpy(&partpicid, buffer, sizeof(uint16_t));
 				wholepicid = ntohs(partpicid);
 				partpicid = (wholepicid & 0x7FFF);
-				if(picid)
-					*picid = partpicid;
 				buffer++;
 			}
+			if(picid)
+				*picid = partpicid;
 		}
 		if(lbit) {
 			/* Read the TL0PICIDX octet */
