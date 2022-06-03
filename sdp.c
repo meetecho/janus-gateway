@@ -435,97 +435,102 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 			stream->rpass = g_strdup(rpass);
 		}
 		/* Is simulcasting enabled, using rid? (we need to check this before parsing SSRCs) */
-		tempA = m->attributes;
-		stream->rids_hml = rids_hml;
-		g_free(stream->rid[0]);
-		stream->rid[0] = NULL;
-		g_free(stream->rid[1]);
-		stream->rid[1] = NULL;
-		g_free(stream->rid[2]);
-		stream->rid[2] = NULL;
-		while(tempA) {
-			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
-			if(a->name && !strcasecmp(a->name, "rid") && a->value) {
-				/* This attribute is used for simulcasting */
-				char rid[16];
-				if(sscanf(a->value, "%15s send", rid) != 1) {
-					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse rid attribute...\n", handle->handle_id);
-				} else {
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsed rid: %s\n", handle->handle_id, rid);
-					stream->disabled_rid[rids_hml ? 2 : 0] = FALSE;
-					if(stream->rid[rids_hml ? 2 : 0] == NULL) {
-						stream->rid[rids_hml ? 2 : 0] = g_strdup(rid);
-					} else if(stream->rid[1] == NULL) {
-						stream->rid[1] = g_strdup(rid);
-					} else if(stream->rid[rids_hml ? 0 : 2] == NULL) {
-						stream->rid[rids_hml ? 0 : 2] = g_strdup(rid);
-					} else {
-						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Too many RTP Stream IDs, ignoring '%s'...\n", handle->handle_id, rid);
-					}
-				}
-			} else if(a->name && !strcasecmp(a->name, "simulcast") && a->value) {
-				/* Firefox and Chrome signal simulcast support differently */
-				stream->legacy_rid = strstr(a->value, "rid=") ? TRUE : FALSE;
-				/* If the attribute contains a tilde, some of the substreams
-				 * are currently disabled, so let's track it and use it later */
-				if(!stream->legacy_rid && strstr(a->value, "~") != NULL) {
-					char *index = strstr(a->value, "send ");
-					if(index != NULL) {
-						index += strlen("send ");
-						if(index != NULL && simulcast_rids == NULL)
-							simulcast_rids = g_strdup(index);
-					}
-				}
-			}
-			tempA = tempA->next;
-		}
-		/* If rid is involved, check how many of them we have (it may be less than 3) */
-		if(stream->rid[0] == NULL && stream->rid[2] != NULL) {
-			stream->rid[0] = stream->rid[1];
-			stream->rid[1] = stream->rid[2];
-			stream->rid[2] = NULL;
-		}
-		if(stream->rid[0] == NULL && stream->rid[1] != NULL) {
-			stream->rid[0] = stream->rid[1];
+		if(m->type == JANUS_SDP_VIDEO) {
+			tempA = m->attributes;
+			stream->rids_hml = rids_hml;
+			g_free(stream->rid[0]);
+			stream->rid[0] = NULL;
+			g_free(stream->rid[1]);
 			stream->rid[1] = NULL;
-		}
-		if(simulcast_rids != NULL) {
-			/* Some substreams are disabled, check which ones */
-			gchar **list = g_strsplit(simulcast_rids, ";", 3);
-			gchar *index = list[0];
-			char rid[50];
-			if(index != NULL) {
-				int i=0, j=0;
-				while(index != NULL) {
-					if(strlen(index) > 0 && strstr(index, "~") == index) {
-						for(j=0; j<3; j++) {
-							if(stream->rid[j] != NULL) {
-								g_snprintf(rid, sizeof(rid), "~%s", stream->rid[j]);
-								if(!strcasecmp(index, rid)) {
-									JANUS_LOG(LOG_VERB, "[%"SCNu64"] rid %s is currently disabled\n",
-										handle->handle_id, stream->rid[j]);
-									stream->disabled_rid[j] = TRUE;
-									break;
+			g_free(stream->rid[2]);
+			stream->rid[2] = NULL;
+			while(tempA) {
+				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
+				if(a->name && !strcasecmp(a->name, "rid") && a->value) {
+					/* This attribute is used for simulcasting */
+					char rid[16];
+					if(sscanf(a->value, "%15s send", rid) != 1) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse rid attribute...\n", handle->handle_id);
+					} else {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsed rid: %s\n", handle->handle_id, rid);
+						stream->disabled_rid[rids_hml ? 2 : 0] = FALSE;
+						if(stream->rid[rids_hml ? 2 : 0] == NULL) {
+							stream->rid[rids_hml ? 2 : 0] = g_strdup(rid);
+						} else if(stream->rid[1] == NULL) {
+							stream->rid[1] = g_strdup(rid);
+						} else if(stream->rid[rids_hml ? 0 : 2] == NULL) {
+							stream->rid[rids_hml ? 0 : 2] = g_strdup(rid);
+						} else {
+							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Too many RTP Stream IDs, ignoring '%s'...\n", handle->handle_id, rid);
+						}
+					}
+				} else if(a->name && !strcasecmp(a->name, "simulcast") && a->value) {
+					/* Firefox and Chrome signal simulcast support differently */
+					stream->legacy_rid = strstr(a->value, "rid=") ? TRUE : FALSE;
+					/* If the attribute contains a tilde, some of the substreams
+					 * are currently disabled, so let's track it and use it later */
+					if(!stream->legacy_rid && strstr(a->value, "~") != NULL) {
+						char *index = strstr(a->value, "send ");
+						if(index != NULL) {
+							index += strlen("send ");
+							if(index != NULL && simulcast_rids == NULL)
+								simulcast_rids = g_strdup(index);
+						}
+					}
+				}
+				tempA = tempA->next;
+			}
+			/* If rid is involved, check how many of them we have (it may be less than 3) */
+			if(stream->rid[0] == NULL && stream->rid[2] != NULL) {
+				stream->rid[0] = stream->rid[1];
+				stream->rid[1] = stream->rid[2];
+				stream->rid[2] = NULL;
+			}
+			if(stream->rid[0] == NULL && stream->rid[1] != NULL) {
+				stream->rid[0] = stream->rid[1];
+				stream->rid[1] = NULL;
+			}
+			if(simulcast_rids != NULL) {
+				/* Some substreams are disabled, check which ones */
+				gchar **list = g_strsplit(simulcast_rids, ";", 3);
+				gchar *index = list[0];
+				char rid[50];
+				if(index != NULL) {
+					int i=0, j=0;
+					while(index != NULL) {
+						if(strlen(index) > 0 && strstr(index, "~") == index) {
+							for(j=0; j<3; j++) {
+								if(stream->rid[j] != NULL) {
+									g_snprintf(rid, sizeof(rid), "~%s", stream->rid[j]);
+									if(!strcasecmp(index, rid)) {
+										JANUS_LOG(LOG_VERB, "[%"SCNu64"] rid %s is currently disabled\n",
+											handle->handle_id, stream->rid[j]);
+										stream->disabled_rid[j] = TRUE;
+										break;
+									}
 								}
 							}
 						}
+						i++;
+						index = list[i];
 					}
-					i++;
-					index = list[i];
 				}
+				g_clear_pointer(&list, g_strfreev);
+				g_free(simulcast_rids);
+				simulcast_rids = NULL;
 			}
-			g_clear_pointer(&list, g_strfreev);
-			g_free(simulcast_rids);
-			simulcast_rids = NULL;
 		}
 		/* Let's start figuring out the SSRCs, and any grouping that may be there */
-		stream->audio_ssrc_peer_new = 0;
-		stream->video_ssrc_peer_new[0] = 0;
-		stream->video_ssrc_peer_new[1] = 0;
-		stream->video_ssrc_peer_new[2] = 0;
-		stream->video_ssrc_peer_rtx_new[0] = 0;
-		stream->video_ssrc_peer_rtx_new[1] = 0;
-		stream->video_ssrc_peer_rtx_new[2] = 0;
+		if(m->type == JANUS_SDP_AUDIO) {
+			stream->audio_ssrc_peer_new = 0;
+		} else if(m->type == JANUS_SDP_VIDEO) {
+			stream->video_ssrc_peer_new[0] = 0;
+			stream->video_ssrc_peer_new[1] = 0;
+			stream->video_ssrc_peer_new[2] = 0;
+			stream->video_ssrc_peer_rtx_new[0] = 0;
+			stream->video_ssrc_peer_rtx_new[1] = 0;
+			stream->video_ssrc_peer_rtx_new[2] = 0;
+		}
 		/* Any SSRC SIM group? */
 		tempA = m->attributes;
 		while(tempA) {
