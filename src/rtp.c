@@ -1020,11 +1020,18 @@ void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *contex
 void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t *ssrcs, char **rids) {
 	if(simulcast == NULL)
 		return;
+
+	/* Clear existing RIDs in case this array was reused from a previous call */
+	size_t i = 0;
+	for(i=0; i<3; i++) {
+		g_free(rids[i]);
+		rids[i] = NULL;
+	}
+
 	json_t *r = json_object_get(simulcast, "rids");
 	json_t *s = json_object_get(simulcast, "ssrcs");
 	if(r && json_array_size(r) > 0) {
 		JANUS_LOG(LOG_VERB, "  -- Simulcasting is rid based\n");
-		size_t i = 0;
 		int count = json_array_size(r);
 		for(i=count; i > 0; i--) {
 			json_t *rid = json_array_get(r, i-1);
@@ -1036,7 +1043,6 @@ void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t
 			*rid_ext_id = json_integer_value(rid_ext);
 	} else if(s && json_array_size(s) > 0) {
 		JANUS_LOG(LOG_VERB, "  -- Simulcasting is SSRC based\n");
-		size_t i = 0;
 		for(i=0; i<json_array_size(s); i++) {
 			if(i == 3)
 				break;
