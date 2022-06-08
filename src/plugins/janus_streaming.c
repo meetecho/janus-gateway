@@ -4652,7 +4652,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			}
 			mp->viewers = g_list_remove_all(mp->viewers, s);
 			viewer = g_list_first(mp->viewers);
-			janus_mutex_unlock(&session->mutex);
+			janus_mutex_unlock(&s->mutex);
 			janus_refcount_decrease(&s->ref);
 			janus_refcount_decrease(&mp->ref);
 		}
