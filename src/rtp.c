@@ -1022,11 +1022,13 @@ void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t
 		return;
 	/* Clear existing RIDs in case this array was reused from a previous call */
 	size_t i = 0;
-	for(i=0; i<3; i++) {
-		g_free(rids[i]);
-		rids[i] = NULL;
+	if(rids) {
+		for(i=0; i<3; i++) {
+			g_free(rids[i]);
+			rids[i] = NULL;
+		}
 	}
-	if (rid_ext_id != NULL)
+	if(rid_ext_id != NULL)
 		*rid_ext_id = -1;
 	json_t *r = json_object_get(simulcast, "rids");
 	json_t *s = json_object_get(simulcast, "ssrcs");
