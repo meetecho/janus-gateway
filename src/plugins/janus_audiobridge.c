@@ -202,7 +202,7 @@ room-<unique room ID>: {
 	"secret" : "<room secret, mandatory if configured>",
 	"new_description" : "<new pretty name of the room, optional>",
 	"new_secret" : "<new password required to edit/destroy the room, optional>",
-	"new_pin" : "<new password required to join the room, optional>",
+	"new_pin" : "<new PIN required to join the room, PIN will be removed if set to an empty string, optional>",
 	"new_is_private" : <true|false, whether the room should appear in a list request>,
 	"new_record_dir" : "<new path where new recording files should be saved>",
 	"new_mjrs_dir" : "<new path where new MJR files should be saved>",
@@ -345,6 +345,29 @@ room-<unique room ID>: {
 	"secret" : "<room secret, mandatory if configured>",
 	"room" : <unique numeric ID of the room>,
 	"id" : <unique numeric ID of the participant to kick>
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"audiobridge" : "success",
+}
+\endverbatim
+ *
+ * If you're the administrator of a room (that is, you created it and have access
+ * to the secret) you can kick all participants using the \c kick_all request. Notice
+ * that this only kicks all users out of the room, but does not prevent them from
+ * re-joining: to ban them, you need to first remove them from the list of
+ * authorized users (see \c allowed request) and then perform \c kick_all.
+ * The \c kick_all request has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "kick_all",
+	"secret" : "<room secret, mandatory if configured>",
+	"room" : <unique numeric ID of the room>
 }
 \endverbatim
  *
@@ -3476,10 +3499,14 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			audiobridge->room_secret = new_secret;
 			g_free(old_secret);
 		}
-		if(pin && strlen(json_string_value(pin)) > 0) {
+		if(pin) {
 			char *old_pin = audiobridge->room_pin;
-			char *new_pin = g_strdup(json_string_value(pin));
-			audiobridge->room_pin = new_pin;
+			if(strlen(json_string_value(pin)) > 0) {
+				char *new_pin = g_strdup(json_string_value(pin));
+				audiobridge->room_pin = new_pin;
+			} else {
+				audiobridge->room_pin = NULL;
+			}
 			g_free(old_pin);
 		}
 		if(recdir) {
@@ -3820,7 +3847,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 					janus_mutex_unlock(&participant->rec_mutex);
 				}
 			}
-        }
+		}
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_refcount_decrease(&audiobridge->ref);
 		response = json_object();
@@ -4349,8 +4376,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			goto prepare_response;
 		}
 		janus_refcount_increase(&audiobridge->ref);
-		janus_mutex_lock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&audiobridge->mutex);
 		/* A secret may be required for this action */
 		JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
@@ -4405,6 +4432,100 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		if(participant && participant->session)
 			gateway->close_pc(participant->session->handle);
 		JANUS_LOG(LOG_VERB, "Kicked user %s from room %s\n", user_id_str, room_id_str);
+		/* Prepare response */
+		response = json_object();
+		json_object_set_new(response, "audiobridge", json_string("success"));
+		/* Done */
+		janus_mutex_unlock(&audiobridge->mutex);
+		janus_refcount_decrease(&audiobridge->ref);
+		goto prepare_response;
+	} else if(!strcasecmp(request_text, "kick_all")) {
+		JANUS_LOG(LOG_VERB, "Attempt to kick all participants from an existing AudioBridge room\n");
+		JANUS_VALIDATE_JSON_OBJECT(root, secret_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		json_t *room = json_object_get(root, "room");
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
+		janus_mutex_lock(&rooms_mutex);
+		janus_audiobridge_room *audiobridge = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
+		if(audiobridge == NULL) {
+			janus_mutex_unlock(&rooms_mutex);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&audiobridge->ref);
+		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&audiobridge->mutex);
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&audiobridge->mutex);
+			janus_refcount_decrease(&audiobridge->ref);
+			goto prepare_response;
+		}
+		GHashTableIter kick_iter;
+		gpointer kick_value;
+		g_hash_table_iter_init(&kick_iter, audiobridge->participants);
+		while(g_hash_table_iter_next(&kick_iter, NULL, &kick_value)) {
+			janus_audiobridge_participant *participant = kick_value;
+			JANUS_LOG(LOG_VERB, "Kicking participant %s (%s)\n",
+					participant->user_id_str, participant->display ? participant->display : "??");
+			guint64 user_id = 0;
+			char user_id_num[30], *user_id_str = NULL;
+			if(string_ids) {
+				user_id_str = participant->user_id_str;
+			} else {
+				user_id = participant->user_id;
+				g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, user_id);
+				user_id_str = user_id_num;
+			}
+			/* Notify all participants about the kick */
+			json_t *event = json_object();
+			json_object_set_new(event, "audiobridge", json_string("event"));
+			json_object_set_new(event, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
+			json_object_set_new(event, "kicked_all", string_ids ? json_string(user_id_str) : json_integer(user_id));
+			JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", participant->user_id_str, participant->display ? participant->display : "??");
+			int ret = gateway->push_event(participant->session->handle, &janus_audiobridge_plugin, NULL, event, NULL);
+			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+			json_decref(event);
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("kicked_all"));
+				json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
+				json_object_set_new(info, "id", string_ids ? json_string(user_id_str) : json_integer(user_id));
+				gateway->notify_event(&janus_audiobridge_plugin, session ? session->handle : NULL, info);
+			}
+			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
+			if(participant && participant->session)
+				gateway->close_pc(participant->session->handle);
+			JANUS_LOG(LOG_VERB, "Kicked user %s from room %s\n", user_id_str, room_id_str);
+		}
 		/* Prepare response */
 		response = json_object();
 		json_object_set_new(response, "audiobridge", json_string("success"));
