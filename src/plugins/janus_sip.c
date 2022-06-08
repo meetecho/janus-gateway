@@ -1129,11 +1129,6 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 	if(session->stack != NULL) {
 		su_home_deinit(session->stack->s_home);
 		su_home_unref(session->stack->s_home);
-		janus_mutex_lock(&session->stack->smutex);
-		if(session->stack->subscriptions != NULL)
-			g_hash_table_unref(session->stack->subscriptions);
-		session->stack->subscriptions = NULL;
-		janus_mutex_unlock(&session->stack->smutex);
 		g_free(session->stack->contact_header);
 		g_free(session->stack);
 		session->stack = NULL;
@@ -3351,11 +3346,19 @@ static void *janus_sip_handler(void *data) {
 			janus_mutex_unlock(&session->stack->smutex);
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
+			/* Check if we need to manually add the Contact header */
+			gboolean add_contact_header = FALSE;
+			if(session->helper && session->master)
+				add_contact_header = (session->master->stack->contact_header != NULL);
+			else
+				add_contact_header = (session->stack->contact_header != NULL);
 			/* Send the SUBSCRIBE */
 			nua_subscribe(nh,
 				SIPTAG_TO_STR(to),
 				SIPTAG_EVENT_STR(event_type),
 				SIPTAG_CALL_ID_STR(callid),
+				TAG_IF(add_contact_header, SIPTAG_CONTACT_STR((session->helper && session->master) ?
+					 session->master->stack->contact_header: session->stack->contact_header)),
 				SIPTAG_ACCEPT_STR(accept),
 				SIPTAG_EXPIRES_STR(ttl_text),
 				NUTAG_PROXY(session->helper && session->master ?
@@ -7218,6 +7221,11 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 		nua_handle_destroy(session->stack->s_nh_m);
 		session->stack->s_nh_m = NULL;
 	}
+	janus_mutex_lock(&session->stack->smutex);
+	if(session->stack->subscriptions != NULL)
+		g_hash_table_unref(session->stack->subscriptions);
+	session->stack->subscriptions = NULL;
+	janus_mutex_unlock(&session->stack->smutex);
 	nua_destroy(s_nua);
 	su_root_destroy(session->stack->s_root);
 	session->stack->s_root = NULL;

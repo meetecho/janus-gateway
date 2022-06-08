@@ -2142,6 +2142,8 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 										direction = "/recvonly";
 										break;
 									case JANUS_SDP_RECVONLY:
+										direction = "/sendonly";
+										break;
 									case JANUS_SDP_INACTIVE:
 										direction = "/inactive";
 										break;
