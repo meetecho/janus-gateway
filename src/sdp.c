@@ -246,7 +246,7 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 			temp = temp->next;
 			continue;
 		}
-		/* Look for mid, ICE credentials and fingerprint first: check media attributes */
+		/* Look for mid, msid, ICE credentials and fingerprint first: check media attributes */
 		GList *tempA = m->attributes;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
@@ -275,6 +275,26 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 					}
 					if(handle->pc_mid == NULL)
 						handle->pc_mid = g_strdup(a->value);
+				} else if(!strcasecmp(a->name, "msid")) {
+					/* Found msid attribute */
+					char msid[65], mstid[65];
+					msid[0] = '\0';
+					mstid[0] = '\0';
+					if(sscanf(a->value, "%64s %64s", msid, mstid) != 2) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid msid on m-line #%d\n",
+							handle->handle_id, m->index);
+						return -2;
+					}
+					if(medium->remote_msid == NULL || strcasecmp(medium->remote_msid, msid)) {
+						char *old_msid = medium->remote_msid;
+						medium->remote_msid = g_strdup(msid);
+						g_free(old_msid);
+					}
+					if(medium->remote_mstid == NULL || strcasecmp(medium->remote_mstid, mstid)) {
+						char *old_mstid = medium->remote_mstid;
+						medium->remote_mstid = g_strdup(mstid);
+						g_free(old_mstid);
+					}
 				} else if(!strcasecmp(a->name, "fingerprint")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Fingerprint (local) : %s\n", handle->handle_id, a->value);
 					if(strcasestr(a->value, "sha-256 ") == a->value) {
@@ -668,7 +688,7 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 			else
 				medium = janus_ice_peerconnection_medium_create(handle, JANUS_MEDIA_UNKNOWN);
 		}
-		/* Check if the offer contributed an mid */
+		/* Check if the offer contributed a mid and/or msid */
 		GList *tempA = m->attributes;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
@@ -694,6 +714,32 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 					tempA = tempA->next;
 					m->attributes = g_list_remove_link(m->attributes, mid_attr);
 					g_list_free_full(mid_attr, (GDestroyNotify)janus_sdp_attribute_destroy);
+					continue;
+				} else if(!strcasecmp(a->name, "msid")) {
+					/* Found msid attribute */
+					char msid[65], mstid[65];
+					msid[0] = '\0';
+					mstid[0] = '\0';
+					if(sscanf(a->value, "%64s %64s", msid, mstid) != 2) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid msid on m-line #%d\n",
+							handle->handle_id, m->index);
+						return -2;
+					}
+					if(medium->msid == NULL || strcasecmp(medium->msid, msid)) {
+						char *old_msid = medium->msid;
+						medium->msid = g_strdup(msid);
+						g_free(old_msid);
+					}
+					if(medium->mstid == NULL || strcasecmp(medium->mstid, mstid)) {
+						char *old_mstid = medium->mstid;
+						medium->mstid = g_strdup(mstid);
+						g_free(old_mstid);
+					}
+					/* Remove this msid attribute, the core will add it again later */
+					GList *msid_attr = tempA;
+					tempA = tempA->next;
+					m->attributes = g_list_remove_link(m->attributes, msid_attr);
+					g_list_free_full(msid_attr, (GDestroyNotify)janus_sdp_attribute_destroy);
 					continue;
 				}
 			}
@@ -1218,7 +1264,6 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 					|| !strcasecmp(a->name, "setup")
 					|| !strcasecmp(a->name, "connection")
 					|| !strcasecmp(a->name, "group")
-					|| !strcasecmp(a->name, "msid")
 					|| !strcasecmp(a->name, "msid-semantic")
 					|| !strcasecmp(a->name, "rid")
 					|| !strcasecmp(a->name, "simulcast")
@@ -1354,7 +1399,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 	a = janus_sdp_attribute_create("extmap-allow-mixed", NULL);
 	anon->attributes = g_list_insert_before(anon->attributes, first, a);
 	/* msid-semantic: add new global attribute */
-	a = janus_sdp_attribute_create("msid-semantic", " WMS janus");
+	a = janus_sdp_attribute_create("msid-semantic", " WMS *");
 	anon->attributes = g_list_insert_before(anon->attributes, first, a);
 	/* ICE Full or Lite? */
 	if(janus_ice_is_ice_lite_enabled()) {
@@ -1515,7 +1560,11 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			m->attributes = g_list_append(m->attributes, a);
 		}
 		if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
-			a = janus_sdp_attribute_create("msid", "janus janus%s", medium->mid);
+			if(medium->msid && medium->mstid) {
+				a = janus_sdp_attribute_create("msid", "%s %s", medium->msid, medium->mstid);
+			} else {
+				a = janus_sdp_attribute_create("msid", "janus janus%s", medium->mid);
+			}
 			m->attributes = g_list_append(m->attributes, a);
 			if(medium->ssrc > 0) {
 				a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", medium->ssrc);

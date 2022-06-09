@@ -261,8 +261,10 @@ JANUS_SDP_OA_MLINE = 1,
 JANUS_SDP_OA_ENABLED,
 /*! \brief When generating an offer or answer automatically, use this direction for media (depends on value that follows, sendrecv by default) */
 JANUS_SDP_OA_DIRECTION,
-/*! \brief When generating an offer automatically, use this mid media (depends on value that follows, needs to be a string) */
+/*! \brief When generating an offer automatically, use this mid (depends on value that follows, needs to be a string) */
 JANUS_SDP_OA_MID,
+/*! \brief When generating an offer or answer automatically, use this msid (depends on the two strings that follow, stream and track ID respectively) */
+JANUS_SDP_OA_MSID,
 /*! \brief When generating an offer or answer automatically, use this codec (depends on value that follows, opus/vp8 by default) */
 JANUS_SDP_OA_CODEC,
 /*! \brief When generating an offer (this is ignored for answers), negotiate this extension: needs two arguments, extmap value and extension ID (can be used multiple times) */

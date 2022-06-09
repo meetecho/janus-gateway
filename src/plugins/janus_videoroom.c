@@ -1047,6 +1047,7 @@ room-<unique room ID>: {
 	"request" : "join",
 	"ptype" : "subscriber",
 	"room" : <unique ID of the room to subscribe in>,
+	"use_msid" : <whether subscriptions should include an msid that references the publisher; false by default>,
 	"private_id" : <unique ID of the publisher that originated this request; optional, unless mandated by the room configuration>,
 	"streams" : [
 		{
@@ -2187,6 +2188,7 @@ typedef struct janus_videoroom_subscriber {
 	GHashTable *streams_byid;	/* As above, indexed by mindex */
 	GHashTable *streams_bymid;	/* As above, indexed by mid */
 	janus_mutex streams_mutex;
+	gboolean use_msid;		/* Whether we should add custom msid attributes to offers, to match publishers and streams */
 	gboolean close_pc;		/* Whether we should automatically close the PeerConnection when the publisher goes away */
 	guint32 pvt_id;			/* Private ID of the participant that is subscribing (if available/provided) */
 	gboolean paused;
@@ -2203,6 +2205,7 @@ typedef struct janus_videoroom_subscriber_stream {
 	GSList *publisher_streams;						/* Complete list of publisher streams (e.g., when this is data) */
 	int mindex;				/* The media index of this stream (may not be the same as the publisher stream) */
 	char *mid;				/* The mid of this stream (may not be the same as the publisher stream) */
+	char *msid, *mstid;		/* In case msid must be used, the values to use in the SDP */
 	gboolean send;			/* Whether this stream media must be sent to this subscriber */
 	/* The following properties are copied from the source, in case this stream becomes inactive */
 	janus_videoroom_media type;			/* Type of this stream (audio, video or data) */
@@ -2269,6 +2272,8 @@ static void janus_videoroom_subscriber_stream_free(const janus_refcount *s_ref) 
 	/* This subscriber stream can be destroyed, free all the resources */
 		/* TODO Anything else we should free? */
 	g_free(s->mid);
+	g_free(s->msid);
+	g_free(s->mstid);
 	g_free(s->h264_profile);
 	g_free(s->vp9_profile);
 	g_free(s);
@@ -3020,6 +3025,12 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(
 	char mid[5];
 	g_snprintf(mid, sizeof(mid), "%d", stream->mindex);
 	stream->mid = g_strdup(mid);
+	if(subscriber->use_msid && ps->publisher && ps->publisher->user_id_str) {
+		/* We set the stream ID to the publisher ID */
+		stream->msid = g_strdup(ps->publisher->user_id_str);
+		/* FIXME To keep things easier, we make the track ID the same as the mid */
+		stream->mstid = g_strdup(stream->mid);
+	}
 	subscriber->streams = g_list_append(subscriber->streams, stream);
 	g_hash_table_insert(subscriber->streams_byid, GINT_TO_POINTER(stream->mindex), stream);
 	g_hash_table_insert(subscriber->streams_bymid, g_strdup(stream->mid), stream);
@@ -3280,6 +3291,7 @@ static json_t *janus_videoroom_subscriber_offer(janus_videoroom_subscriber *subs
 		janus_sdp_generate_offer_mline(offer,
 			JANUS_SDP_OA_MLINE, janus_videoroom_media_sdptype(stream->type),
 			JANUS_SDP_OA_MID, stream->mid,
+			JANUS_SDP_OA_MSID, subscriber->use_msid ? stream->msid : NULL, subscriber->use_msid ? stream->mstid : NULL,
 			JANUS_SDP_OA_PT, pt,
 			JANUS_SDP_OA_CODEC, codec,
 			JANUS_SDP_OA_FMTP, (stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO && strlen(audio_fmtp) ? audio_fmtp : NULL),
@@ -8240,6 +8252,8 @@ static void *janus_videoroom_handler(void *data) {
 					legacy = TRUE;
 					JANUS_LOG(LOG_WARN, "Deprecated subscriber 'join' API: please start looking into the new one for the future\n");
 				}
+				json_t *msid = json_object_get(root, "use_msid");
+				gboolean use_msid  = json_is_true(msid);
 				json_t *cpc = json_object_get(root, "close_pc");
 				gboolean close_pc  = cpc ? json_is_true(cpc) : TRUE;
 				/* Make sure all the feeds we're subscribing to exist */
@@ -8408,6 +8422,7 @@ static void *janus_videoroom_handler(void *data) {
 				subscriber->room = videoroom;
 				videoroom = NULL;
 				subscriber->pvt_id = pvt_id;
+				subscriber->use_msid = use_msid;
 				subscriber->close_pc = close_pc;
 				subscriber->paused = TRUE;	/* We need an explicit start from the stream */
 				subscriber->streams_byid = g_hash_table_new_full(NULL, NULL,

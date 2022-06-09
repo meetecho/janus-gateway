@@ -512,6 +512,8 @@ struct janus_ice_peerconnection_medium {
 	int mindex;
 	/*! \brief Media ID */
 	char *mid;
+	/*! \brief Media Stream ID info */
+	char *msid, *mstid, *remote_msid, *remote_mstid;
 	/*! \brief SSRC of the server for this medium */
 	guint32 ssrc;
 	/*! \brief Retransmission SSRC of the server for this medium */
