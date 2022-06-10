@@ -480,6 +480,17 @@ multistream-test: {
 }
 \endverbatim
  *
+ * A successful \c edit will also result in an \c edited event sent to all viewers:
+ *
+\verbatim
+{
+	"streaming" : "edited",
+	"id" : <unique ID of the just edited mountpoint>,
+	"permanent" : <true|false, depending on whether the changes were saved to configuration file or not>
+	"metadata" : "<updated metadata for the mountpoint; optional>",
+}
+\endverbatim
+ *
  * Just as you can create and edit mountpoints, you can of course also destroy
  * them. Again, this applies to all mountpoints, whether created statically
  * via configuration file or dynamically via API, and the mountpoint destruction
@@ -4423,6 +4434,28 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_object_set_new(info, "id", string_ids ? json_string(mp->id_str) : json_integer(mp->id));
 			gateway->notify_event(&janus_streaming_plugin, session ? session->handle : NULL, info);
 		}
+
+		/* Also notify viewers */
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("edited"));
+		json_object_set_new(info, "id", string_ids ? json_string(mp->id_str) : json_integer(mp->id));
+		if(mp->metadata)
+			json_object_set_new(info, "metadata", json_string(mp->metadata));
+		GList *viewer = g_list_first(mp->viewers);
+		while(viewer) {
+			janus_streaming_session *session = (janus_streaming_session *)viewer->data;
+			if(session == NULL) {
+				viewer = g_list_next(viewer);
+				continue;
+			}
+			janus_mutex_lock(&session->mutex);
+			JANUS_LOG(LOG_WARN, "Notifying mountpoint %s (%s) viewer\n", mp->id_str, mp->name);
+			gateway->push_event(session->handle, &janus_streaming_plugin, NULL, info, NULL);
+			janus_mutex_unlock(&session->mutex);
+			viewer = g_list_next(viewer);
+		}
+		json_decref(info);
+
 		janus_mutex_unlock(&mp->mutex);
 		janus_mutex_unlock(&mountpoints_mutex);
 		janus_refcount_decrease(&mp->ref);
