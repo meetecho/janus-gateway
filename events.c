@@ -266,9 +266,6 @@ void janus_events_notify_handlers(int type, int subtype, guint64 session_id, ...
 	json_object_set_new(event, "event", body);
 	va_end(args);
 
-	/* BB - log all the events */
-	// log_event(event);
-
 	if(!eventsenabled) {
 		json_decref(event);
 		return;
@@ -276,8 +273,6 @@ void janus_events_notify_handlers(int type, int subtype, guint64 session_id, ...
 	/* Enqueue the event */
 	g_async_queue_push(events, event);
 }
-
-
 
 void *janus_events_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining Events handler thread\n");
@@ -392,4 +387,3 @@ const char *janus_events_type_to_name(int type) {
 	}
 	return (char *)NULL;
 }
-

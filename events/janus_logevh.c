@@ -291,7 +291,7 @@ plugin_response:
 
 /* Thread to handle incoming events */
 static void *janus_logevh_handler(void *data) {
-	JANUS_LOG(LOG_VERB, "Joining SampleEventHandler handler thread\n");
+	JANUS_LOG(LOG_VERB, "Joining LogEventHandler handler thread\n");
 	json_t *event = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		event = g_async_queue_pop(events);

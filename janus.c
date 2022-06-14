@@ -485,14 +485,6 @@ static json_t *janus_info(const char *transaction) {
 	return info;
 }
 
-/* Status */
-static json_t *janus_load(int session_count) {
-	/* Create a load report message */
-	json_t *load = json_object();
-	json_object_set_new(load, "session_count", json_integer(session_count));
-	return load;
-}
-
 
 /* Logging */
 int janus_log_level = LOG_INFO;
@@ -669,14 +661,6 @@ static void janus_request_unref(janus_request *request) {
 
 static gboolean janus_check_sessions(gpointer user_data) {
 	janus_mutex_lock(&sessions_mutex);
-
-	if(sessions) {
-		if(janus_events_is_enabled()) {
-			json_t *load = json_object();
-			json_object_set_new(load, "load", janus_load(g_hash_table_size(sessions)));
-			janus_events_notify_handlers(JANUS_EVENT_TYPE_CORE, JANUS_EVENT_SUBTYPE_CORE_LOAD, 0, load);
-		}
-	}
 
 	if(sessions && g_hash_table_size(sessions) > 0) {
 		GHashTableIter iter;
