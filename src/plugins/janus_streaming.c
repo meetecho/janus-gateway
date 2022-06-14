@@ -466,7 +466,8 @@ multistream-test: {
 	"new_secret" : "<new secret for the mountpoint; optional>",
 	"new_pin" : "<new PIN for the mountpoint, PIN will be removed if set to an empty string; optional>",
 	"new_is_private" : <true|false, depending on whether the mountpoint should be now listable; optional>,
-	"permanent" : <true|false, whether the mountpoint should be saved to configuration file or not; false by default>
+	"permanent" : <true|false, whether the mountpoint should be saved to configuration file or not; false by default>,
+	"edited_event" : <true|false, wheter janus will send an edited event to all viewers when metadata is updated; false by default>
 }
 \endverbatim
  *
@@ -480,14 +481,13 @@ multistream-test: {
 }
 \endverbatim
  *
- * A successful \c edit will also result in an \c edited event sent to all viewers:
+ * A successful \c edit will also result in an \c edited event sent to all viewers when the metadata has changed:
  *
 \verbatim
 {
 	"streaming" : "edited",
 	"id" : <unique ID of the just edited mountpoint>,
-	"permanent" : <true|false, depending on whether the changes were saved to configuration file or not>
-	"metadata" : "<updated metadata for the mountpoint; optional>",
+	"metadata" : "<updated metadata for the mountpoint>",
 }
 \endverbatim
  *
@@ -4189,6 +4189,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		json_t *pin = json_object_get(root, "new_pin");
 		json_t *is_private = json_object_get(root, "new_is_private");
 		json_t *permanent = json_object_get(root, "permanent");
+		json_t *edited_event = json_object_get(root, "edited_event");
+		gboolean send_edited_event = edited_event ? json_is_true(edited_event) : FALSE;
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
 		if(save && config == NULL) {
 			JANUS_LOG(LOG_ERR, "No configuration file, can't edit mountpoint permanently\n");
@@ -4237,6 +4239,14 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			char *old_metadata = mp->metadata;
 			char *new_metadata = g_strdup(json_string_value(md));
 			mp->metadata = new_metadata;
+			if (send_edited_event == TRUE) {
+				if (old_metadata == NULL && new_metadata == NULL) {
+					send_edited_event = FALSE;
+				}
+				if (old_metadata != NULL && new_metadata != NULL && !strcmp(old_metadata, new_metadata)) {
+					send_edited_event = FALSE;
+				}
+			}
 			g_free(old_metadata);
 		}
 		if(is_private)
@@ -4436,25 +4446,27 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		}
 
 		/* Also notify viewers */
-		json_t *info = json_object();
-		json_object_set_new(info, "event", json_string("edited"));
-		json_object_set_new(info, "id", string_ids ? json_string(mp->id_str) : json_integer(mp->id));
-		if(mp->metadata)
-			json_object_set_new(info, "metadata", json_string(mp->metadata));
-		GList *viewer = g_list_first(mp->viewers);
-		while(viewer) {
-			janus_streaming_session *session = (janus_streaming_session *)viewer->data;
-			if(session == NULL) {
+		if (send_edited_event) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("edited"));
+			json_object_set_new(info, "id", string_ids ? json_string(mp->id_str) : json_integer(mp->id));
+			if(mp->metadata)
+				json_object_set_new(info, "metadata", json_string(mp->metadata));
+			GList *viewer = g_list_first(mp->viewers);
+			while(viewer) {
+				janus_streaming_session *session = (janus_streaming_session *)viewer->data;
+				if(session == NULL) {
+					viewer = g_list_next(viewer);
+					continue;
+				}
+				janus_mutex_lock(&session->mutex);
+				JANUS_LOG(LOG_VERB, "Notifying mountpoint %s (%s) viewer\n", mp->id_str, mp->name);
+				gateway->push_event(session->handle, &janus_streaming_plugin, NULL, info, NULL);
+				janus_mutex_unlock(&session->mutex);
 				viewer = g_list_next(viewer);
-				continue;
 			}
-			janus_mutex_lock(&session->mutex);
-			JANUS_LOG(LOG_WARN, "Notifying mountpoint %s (%s) viewer\n", mp->id_str, mp->name);
-			gateway->push_event(session->handle, &janus_streaming_plugin, NULL, info, NULL);
-			janus_mutex_unlock(&session->mutex);
-			viewer = g_list_next(viewer);
+			json_decref(info);
 		}
-		json_decref(info);
 
 		janus_mutex_unlock(&mp->mutex);
 		janus_mutex_unlock(&mountpoints_mutex);
