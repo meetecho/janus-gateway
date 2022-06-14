@@ -8765,19 +8765,19 @@ static void *janus_videoroom_handler(void *data) {
 					json_t *stream = json_object();
 					const char *mid = json_string_value(json_object_get(root, "mid"));
 					if(mid != NULL)
-						json_object_set(stream, "mid", json_string(mid));
+						json_object_set_new(stream, "mid", json_string(mid));
 					json_t *send = json_object_get(root, "send");
 					if(send != NULL)
-						json_object_set(stream, "send", json_is_true(send) ? json_true() : json_false());
+						json_object_set_new(stream, "send", json_is_true(send) ? json_true() : json_false());
 					json_t *keyframe = json_object_get(root, "keyframe");
 					if(keyframe != NULL)
-						json_object_set(stream, "keyframe", json_is_true(keyframe) ? json_true() : json_false());
+						json_object_set_new(stream, "keyframe", json_is_true(keyframe) ? json_true() : json_false());
 					json_t *min_delay = json_object_get(root, "min_delay");
 					if(min_delay != NULL)
-						json_object_set(stream, "min_delay", json_integer(json_integer_value(min_delay)));
+						json_object_set_new(stream, "min_delay", json_integer(json_integer_value(min_delay)));
 					json_t *max_delay = json_object_get(root, "max_delay");
 					if(max_delay != NULL)
-						json_object_set(stream, "max_delay", json_integer(json_integer_value(max_delay)));
+						json_object_set_new(stream, "max_delay", json_integer(json_integer_value(max_delay)));
 					json_array_append_new(streams, stream);
 					json_object_set_new(root, "streams", streams);
 				}
@@ -9690,31 +9690,31 @@ static void *janus_videoroom_handler(void *data) {
 					json_t *stream = json_object();
 					const char *mid = json_string_value(json_object_get(root, "mid"));
 					if(mid != NULL)
-						json_object_set(stream, "mid", json_string(mid));
+						json_object_set_new(stream, "mid", json_string(mid));
 					json_t *send = json_object_get(root, "send");
 					if(send != NULL)
-						json_object_set(stream, "send", json_is_true(send) ? json_true() : json_false());
+						json_object_set_new(stream, "send", json_is_true(send) ? json_true() : json_false());
 					json_t *spatial = json_object_get(root, "spatial_layer");
 					if(spatial != NULL)
-						json_object_set(stream, "spatial_layer", json_integer(json_integer_value(spatial)));
+						json_object_set_new(stream, "spatial_layer", json_integer(json_integer_value(spatial)));
 					json_t *sc_substream = json_object_get(root, "substream");
 					if(sc_substream != NULL)
-						json_object_set(stream, "substream", json_integer(json_integer_value(sc_substream)));
+						json_object_set_new(stream, "substream", json_integer(json_integer_value(sc_substream)));
 					json_t *temporal = json_object_get(root, "temporal_layer");
 					if(temporal != NULL)
-						json_object_set(stream, "temporal_layer", json_integer(json_integer_value(temporal)));
+						json_object_set_new(stream, "temporal_layer", json_integer(json_integer_value(temporal)));
 					json_t *sc_temporal = json_object_get(root, "temporal");
 					if(sc_temporal != NULL)
-						json_object_set(stream, "temporal", json_integer(json_integer_value(sc_temporal)));
+						json_object_set_new(stream, "temporal", json_integer(json_integer_value(sc_temporal)));
 					json_t *sc_fallback = json_object_get(root, "fallback");
 					if(sc_fallback != NULL)
-						json_object_set(stream, "fallback", json_integer(json_integer_value(sc_fallback)));
+						json_object_set_new(stream, "fallback", json_integer(json_integer_value(sc_fallback)));
 					json_t *min_delay = json_object_get(root, "min_delay");
 					if(min_delay != NULL)
-						json_object_set(stream, "min_delay", json_integer(json_integer_value(min_delay)));
+						json_object_set_new(stream, "min_delay", json_integer(json_integer_value(min_delay)));
 					json_t *max_delay = json_object_get(root, "max_delay");
 					if(max_delay != NULL)
-						json_object_set(stream, "max_delay", json_integer(json_integer_value(max_delay)));
+						json_object_set_new(stream, "max_delay", json_integer(json_integer_value(max_delay)));
 					json_array_append_new(streams, stream);
 					json_object_set_new(root, "streams", streams);
 				}
