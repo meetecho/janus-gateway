@@ -8765,19 +8765,19 @@ static void *janus_videoroom_handler(void *data) {
 					json_t *stream = json_object();
 					const char *mid = json_string_value(json_object_get(root, "mid"));
 					if(mid != NULL)
-						json_object_set(stream, "mid", json_string(mid));
+						json_object_set_new(stream, "mid", json_string(mid));
 					json_t *send = json_object_get(root, "send");
 					if(send != NULL)
-						json_object_set(stream, "send", json_is_true(send) ? json_true() : json_false());
+						json_object_set_new(stream, "send", json_is_true(send) ? json_true() : json_false());
 					json_t *keyframe = json_object_get(root, "keyframe");
 					if(keyframe != NULL)
-						json_object_set(stream, "keyframe", json_is_true(keyframe) ? json_true() : json_false());
+						json_object_set_new(stream, "keyframe", json_is_true(keyframe) ? json_true() : json_false());
 					json_t *min_delay = json_object_get(root, "min_delay");
 					if(min_delay != NULL)
-						json_object_set(stream, "min_delay", json_integer(json_integer_value(min_delay)));
+						json_object_set_new(stream, "min_delay", json_integer(json_integer_value(min_delay)));
 					json_t *max_delay = json_object_get(root, "max_delay");
 					if(max_delay != NULL)
-						json_object_set(stream, "max_delay", json_integer(json_integer_value(max_delay)));
+						json_object_set_new(stream, "max_delay", json_integer(json_integer_value(max_delay)));
 					json_array_append_new(streams, stream);
 					json_object_set_new(root, "streams", streams);
 				}
