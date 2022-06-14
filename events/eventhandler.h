@@ -171,8 +171,6 @@ static janus_eventhandler janus_fake_eventhandler_plugin =
 #define JANUS_EVENT_SUBTYPE_CORE_STARTUP	1
 /*! \brief Core event subtypes: shutdown */
 #define JANUS_EVENT_SUBTYPE_CORE_SHUTDOWN	2
-/*! \brief Core event subtypes: load */
-#define JANUS_EVENT_SUBTYPE_CORE_LOAD		3
 /*! \brief WebRTC event subtypes: ICE state */
 #define JANUS_EVENT_SUBTYPE_WEBRTC_ICE		1
 /*! \brief WebRTC event subtypes: local candidate */

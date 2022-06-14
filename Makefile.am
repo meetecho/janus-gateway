@@ -318,7 +318,7 @@ events_libadd = \
 	$(EVENTS_LIBS) \
 	$(NULL)
 
-if ENABLE_LOGEVH
+if ENABLE_SAMPLEEVH
 event_LTLIBRARIES += events/libjanus_sampleevh.la
 events_libjanus_sampleevh_la_SOURCES = events/janus_sampleevh.c
 events_libjanus_sampleevh_la_CFLAGS = $(events_cflags) $(LIBCURL_CFLAGS)
