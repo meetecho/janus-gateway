@@ -1839,7 +1839,6 @@ function Janus(gatewayCallbacks) {
 		if(!pluginHandle || !pluginHandle.webrtcStuff) {
 			Janus.warn("Invalid handle");
 			throw "Invalid handle";
-			return;
 		}
 		let config = pluginHandle.webrtcStuff;
 		if(config.pc) {
@@ -2311,13 +2310,11 @@ function Janus(gatewayCallbacks) {
 		if(!pluginHandle || !pluginHandle.webrtcStuff) {
 			Janus.warn('Invalid handle, not sending anything');
 			throw 'Invalid handle';
-			return;
 		}
 		let config = pluginHandle.webrtcStuff;
 		if(!config.pc) {
 			Janus.warn('Invalid PeerConnection');
 			throw 'Invalid PeerConnection';
-			return;
 		}
 		let tracks = callbacks.tracks;
 		if(!tracks || !Array.isArray(tracks) || tracks.length === 0) {
@@ -2474,7 +2471,7 @@ function Janus(gatewayCallbacks) {
 							direction: 'sendrecv',
 							streams: [config.myStream],
 							sendEncodings: [
-								{ scalabilityMode: svc }
+								{ scalabilityMode: track.svc }
 							]
 						});
 					}
@@ -3017,306 +3014,6 @@ function Janus(gatewayCallbacks) {
 			config.insertableStreams = false;
 		}
 		pluginHandle.oncleanup();
-	}
-
-	// Helper method to munge an SDP to enable simulcasting (Chrome only)
-	function mungeSdpForSimulcasting(sdp) {
-		// Let's munge the SDP to add the attributes for enabling simulcasting
-		// (based on https://gist.github.com/ggarber/a19b4c33510028b9c657)
-		let lines = sdp.split("\r\n");
-		let video = false;
-		let ssrc = [ -1 ], ssrc_fid = [ -1 ];
-		let cname = null, msid = null, mslabel = null, label = null;
-		let insertAt = -1;
-		for(let i=0; i<lines.length; i++) {
-			const mline = lines[i].match(/m=(\w+) */);
-			if(mline) {
-				const medium = mline[1];
-				if(medium === "video") {
-					// New video m-line: make sure it's the first one
-					if(ssrc[0] < 0) {
-						video = true;
-					} else {
-						// We're done, let's add the new attributes here
-						insertAt = i;
-						break;
-					}
-				} else {
-					// New non-video m-line: do we have what we were looking for?
-					if(ssrc[0] > -1) {
-						// We're done, let's add the new attributes here
-						insertAt = i;
-						break;
-					}
-				}
-				continue;
-			}
-			if(!video)
-				continue;
-			let sim = lines[i].match(/a=ssrc-group:SIM (\d+) (\d+) (\d+)/);
-			if(sim) {
-				Janus.warn("The SDP already contains a SIM attribute, munging will be skipped");
-				return sdp;
-			}
-			let fid = lines[i].match(/a=ssrc-group:FID (\d+) (\d+)/);
-			if(fid) {
-				ssrc[0] = fid[1];
-				ssrc_fid[0] = fid[2];
-				lines.splice(i, 1); i--;
-				continue;
-			}
-			if(ssrc[0]) {
-				let match = lines[i].match('a=ssrc:' + ssrc[0] + ' cname:(.+)')
-				if(match) {
-					cname = match[1];
-				}
-				match = lines[i].match('a=ssrc:' + ssrc[0] + ' msid:(.+)')
-				if(match) {
-					msid = match[1];
-				}
-				match = lines[i].match('a=ssrc:' + ssrc[0] + ' mslabel:(.+)')
-				if(match) {
-					mslabel = match[1];
-				}
-				match = lines[i].match('a=ssrc:' + ssrc[0] + ' label:(.+)')
-				if(match) {
-					label = match[1];
-				}
-				if(lines[i].indexOf('a=ssrc:' + ssrc_fid[0]) === 0) {
-					lines.splice(i, 1); i--;
-					continue;
-				}
-				if(lines[i].indexOf('a=ssrc:' + ssrc[0]) === 0) {
-					lines.splice(i, 1); i--;
-					continue;
-				}
-			}
-			if(lines[i].length == 0) {
-				lines.splice(i, 1); i--;
-				continue;
-			}
-		}
-		if(ssrc[0] < 0) {
-			// Couldn't find a FID attribute, let's just take the first video SSRC we find
-			insertAt = -1;
-			video = false;
-			for(let i=0; i<lines.length; i++) {
-				const mline = lines[i].match(/m=(\w+) */);
-				if(mline) {
-					const medium = mline[1];
-					if(medium === "video") {
-						// New video m-line: make sure it's the first one
-						if(ssrc[0] < 0) {
-							video = true;
-						} else {
-							// We're done, let's add the new attributes here
-							insertAt = i;
-							break;
-						}
-					} else {
-						// New non-video m-line: do we have what we were looking for?
-						if(ssrc[0] > -1) {
-							// We're done, let's add the new attributes here
-							insertAt = i;
-							break;
-						}
-					}
-					continue;
-				}
-				if(!video)
-					continue;
-				if(ssrc[0] < 0) {
-					let value = lines[i].match(/a=ssrc:(\d+)/);
-					if(value) {
-						ssrc[0] = value[1];
-						lines.splice(i, 1); i--;
-						continue;
-					}
-				} else {
-					let match = lines[i].match('a=ssrc:' + ssrc[0] + ' cname:(.+)')
-					if(match) {
-						cname = match[1];
-					}
-					match = lines[i].match('a=ssrc:' + ssrc[0] + ' msid:(.+)')
-					if(match) {
-						msid = match[1];
-					}
-					match = lines[i].match('a=ssrc:' + ssrc[0] + ' mslabel:(.+)')
-					if(match) {
-						mslabel = match[1];
-					}
-					match = lines[i].match('a=ssrc:' + ssrc[0] + ' label:(.+)')
-					if(match) {
-						label = match[1];
-					}
-					if(lines[i].indexOf('a=ssrc:' + ssrc_fid[0]) === 0) {
-						lines.splice(i, 1); i--;
-						continue;
-					}
-					if(lines[i].indexOf('a=ssrc:' + ssrc[0]) === 0) {
-						lines.splice(i, 1); i--;
-						continue;
-					}
-				}
-				if(lines[i].length === 0) {
-					lines.splice(i, 1); i--;
-					continue;
-				}
-			}
-		}
-		if(ssrc[0] < 0) {
-			// Still nothing, let's just return the SDP we were asked to munge
-			Janus.warn("Couldn't find the video SSRC, simulcasting NOT enabled");
-			return sdp;
-		}
-		if(insertAt < 0) {
-			// Append at the end
-			insertAt = lines.length;
-		}
-		// Generate a couple of SSRCs (for retransmissions too)
-		// Note: should we check if there are conflicts, here?
-		ssrc[1] = Math.floor(Math.random()*0xFFFFFFFF);
-		ssrc[2] = Math.floor(Math.random()*0xFFFFFFFF);
-		ssrc_fid[1] = Math.floor(Math.random()*0xFFFFFFFF);
-		ssrc_fid[2] = Math.floor(Math.random()*0xFFFFFFFF);
-		// Add attributes to the SDP
-		for(let i=0; i<ssrc.length; i++) {
-			if(cname) {
-				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' cname:' + cname);
-				insertAt++;
-			}
-			if(msid) {
-				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' msid:' + msid);
-				insertAt++;
-			}
-			if(mslabel) {
-				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' mslabel:' + mslabel);
-				insertAt++;
-			}
-			if(label) {
-				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' label:' + label);
-				insertAt++;
-			}
-			// Add the same info for the retransmission SSRC
-			if(cname) {
-				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc_fid[i] + ' cname:' + cname);
-				insertAt++;
-			}
-			if(msid) {
-				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc_fid[i] + ' msid:' + msid);
-				insertAt++;
-			}
-			if(mslabel) {
-				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc_fid[i] + ' mslabel:' + mslabel);
-				insertAt++;
-			}
-			if(label) {
-				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc_fid[i] + ' label:' + label);
-				insertAt++;
-			}
-		}
-		lines.splice(insertAt, 0, 'a=ssrc-group:FID ' + ssrc[2] + ' ' + ssrc_fid[2]);
-		lines.splice(insertAt, 0, 'a=ssrc-group:FID ' + ssrc[1] + ' ' + ssrc_fid[1]);
-		lines.splice(insertAt, 0, 'a=ssrc-group:FID ' + ssrc[0] + ' ' + ssrc_fid[0]);
-		lines.splice(insertAt, 0, 'a=ssrc-group:SIM ' + ssrc[0] + ' ' + ssrc[1] + ' ' + ssrc[2]);
-		sdp = lines.join("\r\n");
-		if(!sdp.endsWith("\r\n"))
-			sdp += "\r\n";
-		return sdp;
-	}
-
-	// Helper methods to parse a media object
-	function isAudioSendEnabled(media) {
-		Janus.debug("isAudioSendEnabled:", media);
-		if(!media)
-			return true;	// Default
-		if(media.audio === false)
-			return false;	// Generic audio has precedence
-		if(media.audioSend === undefined || media.audioSend === null)
-			return true;	// Default
-		return (media.audioSend === true);
-	}
-
-	function isAudioSendRequired(media) {
-		Janus.debug("isAudioSendRequired:", media);
-		if(!media)
-			return false;	// Default
-		if(media.audio === false || media.audioSend === false)
-			return false;	// If we're not asking to capture audio, it's not required
-		if(media.failIfNoAudio === undefined || media.failIfNoAudio === null)
-			return false;	// Default
-		return (media.failIfNoAudio === true);
-	}
-
-	function isAudioRecvEnabled(media) {
-		Janus.debug("isAudioRecvEnabled:", media);
-		if(!media)
-			return true;	// Default
-		if(media.audio === false)
-			return false;	// Generic audio has precedence
-		if(media.audioRecv === undefined || media.audioRecv === null)
-			return true;	// Default
-		return (media.audioRecv === true);
-	}
-
-	function isVideoSendEnabled(media) {
-		Janus.debug("isVideoSendEnabled:", media);
-		if(!media)
-			return true;	// Default
-		if(media.video === false)
-			return false;	// Generic video has precedence
-		if(media.videoSend === undefined || media.videoSend === null)
-			return true;	// Default
-		return (media.videoSend === true);
-	}
-
-	function isVideoSendRequired(media) {
-		Janus.debug("isVideoSendRequired:", media);
-		if(!media)
-			return false;	// Default
-		if(media.video === false || media.videoSend === false)
-			return false;	// If we're not asking to capture video, it's not required
-		if(media.failIfNoVideo === undefined || media.failIfNoVideo === null)
-			return false;	// Default
-		return (media.failIfNoVideo === true);
-	}
-
-	function isVideoRecvEnabled(media) {
-		Janus.debug("isVideoRecvEnabled:", media);
-		if(!media)
-			return true;	// Default
-		if(media.video === false)
-			return false;	// Generic video has precedence
-		if(media.videoRecv === undefined || media.videoRecv === null)
-			return true;	// Default
-		return (media.videoRecv === true);
-	}
-
-	function isScreenSendEnabled(media) {
-		Janus.debug("isScreenSendEnabled:", media);
-		if(!media)
-			return false;
-		if(typeof media.video !== 'object' || typeof media.video.mandatory !== 'object')
-			return false;
-		let constraints = media.video.mandatory;
-		if(constraints.chromeMediaSource)
-			return constraints.chromeMediaSource === 'desktop' || constraints.chromeMediaSource === 'screen';
-		else if(constraints.mozMediaSource)
-			return constraints.mozMediaSource === 'window' || constraints.mozMediaSource === 'screen';
-		else if(constraints.mediaSource)
-			return constraints.mediaSource === 'window' || constraints.mediaSource === 'screen';
-		return false;
-	}
-
-	function isDataEnabled(media) {
-		Janus.debug("isDataEnabled:", media);
-		if(Janus.webRTCAdapter.browserDetails.browser === "edge") {
-			Janus.warn("Edge doesn't support data channels yet");
-			return false;
-		}
-		if(media === undefined || media === null)
-			return false;	// Default
-		return (media.data === true);
 	}
 
 	function isTrickleEnabled(trickle) {
