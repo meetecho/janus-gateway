@@ -167,7 +167,10 @@ function startRecording() {
 	// Negotiate WebRTC now
 	vmailtest.createOffer(
 		{
-			media: { audioRecv: false, video: false},	// We're going to only send, and not receive, audio
+			// We want sendonly audio
+			tracks: [
+				{ type: 'audio', capture: true, recv: false }
+			],
 			success: function(jsep) {
 				Janus.debug("Got SDP!", jsep);
 				var publish = { request: "record" };

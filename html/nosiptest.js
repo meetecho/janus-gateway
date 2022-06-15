@@ -54,9 +54,13 @@ $(document).ready(function() {
 									// Negotiate WebRTC in a second (just to make sure both caller and callee handles exist)
 									setTimeout(function() {
 										Janus.debug("[caller] Trying a createOffer too (audio/video sendrecv)");
+										// We want bidirectional audio for sure, and maybe video too
+										let tracks = [{ type: 'audio', capture: true, recv: true }];
+										if(videoenabled)
+											tracks.push({ type: 'video', capture: true, recv: true });
 										caller.createOffer(
 											{
-												media: {audio: true, video: videoenabled},
+												tracks: tracks,
 												success: function(jsep) {
 													Janus.debug("[caller] Got SDP!", jsep);
 													// We now have a WebRTC SDP: to get a barebone SDP legacy
@@ -394,7 +398,11 @@ $(document).ready(function() {
 												{
 													// This is the WebRTC enriched offer the plugin gave us
 													jsep: jsep,
-													// No media provided: by default, it's sendrecv for audio and video
+													// We want bidirectional audio and video, if offered
+													tracks: [
+														{ type: 'audio', capture: true, recv: true },
+														{ type: 'video', capture: true, recv: true }
+													],
 													success: function(jsep) {
 														Janus.debug("[callee] Got SDP!", jsep);
 														// We now have a WebRTC SDP: to get a barebone SDP legacy

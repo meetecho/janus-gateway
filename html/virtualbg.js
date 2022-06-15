@@ -16,9 +16,6 @@ var audioenabled = false;
 var videoenabled = false;
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
-var doSvc = getQueryStringValue("svc");
-if(doSvc === "")
-	doSvc = null;
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
@@ -481,14 +478,16 @@ function createCanvas() {
 				Janus.debug("Sending message:", body);
 				echotest.send({ message: body });
 				Janus.debug("Trying a createOffer too (audio/video sendrecv)");
+				// We need to pass the canvas MediaStream tracks we
+				// captured here, so we tell janus.js to use those
+				let canvasTracks = [];
+				if(canvasStream.getAudioTracks().length > 0)
+					canvasTracks.push({ type: 'audio', capture: canvasStream.getAudioTracks()[0], recv: true });
+				if(canvasStream.getVideoTracks().length > 0)
+					canvasTracks.push({ type: 'video', capture: canvasStream.getVideoTracks()[0], recv: true });
 				echotest.createOffer(
 					{
-						stream: canvasStream,	// Let's pass the canvas MediaStream
-						// If you want to test simulcasting (Chrome and Firefox only), then
-						// pass a ?simulcast=true when opening this demo page: it will turn
-						// the following 'simulcast' property to pass to janus.js to true
-						simulcast: doSimulcast,
-						svc: (vcodec === 'av1' && doSvc) ? doSvc : null,
+						tracks: canvasTracks,
 						success: function(jsep) {
 							Janus.debug("Got SDP!", jsep);
 							echotest.send({ message: body, jsep: jsep });

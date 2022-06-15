@@ -240,10 +240,16 @@ $(document).ready(function() {
 															// Notice that we can only answer if we got an offer: if this was
 															// an offerless call, we'll need to create an offer ourselves
 															var sipcallAction = (offerlessInvite ? sipcall.createOffer : sipcall.createAnswer);
+															// We want bidirectional audio and/or video
+															let tracks = [];
+															if(doAudio)
+																tracks.push({ type: 'audio', capture: true, recv: true });
+															if(doVideo)
+																tracks.push({ type: 'video', capture: true, recv: true });
 															sipcallAction(
 																{
 																	jsep: jsep,
-																	media: { audio: doAudio, video: doVideo },
+																	tracks: tracks,
 																	success: function(jsep) {
 																		Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo + ":", jsep);
 																		var body = { request: "accept" };
@@ -315,10 +321,16 @@ $(document).ready(function() {
 											Janus.log("Got re-INVITE");
 											var doAudio = (jsep.sdp.indexOf("m=audio ") > -1),
 												doVideo = (jsep.sdp.indexOf("m=video ") > -1);
+											// We want bidirectional audio and/or video
+											let tracks = [];
+											if(doAudio)
+												tracks.push({ type: 'audio', capture: true, recv: true });
+											if(doVideo)
+												tracks.push({ type: 'video', capture: true, recv: true });
 											sipcall.createAnswer(
 												{
 													jsep: jsep,
-													media: { audio: doAudio, video: doVideo },
+													tracks: tracks,
 													success: function(jsep) {
 														Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo + ":", jsep);
 														var body = { request: "update" };
@@ -902,12 +914,13 @@ function doCall(ev) {
 	actuallyDoCall(handle, $('#peer' + suffix).val(), doVideo);
 }
 function actuallyDoCall(handle, uri, doVideo, referId) {
+	// We want bidirectional audio for sure, and maybe video
+	let tracks = [{ type: 'audio', capture: true, recv: true }];
+	if(doVideo)
+		tracks.push({ type: 'video', capture: true, recv: true });
 	handle.createOffer(
 		{
-			media: {
-				audioSend: true, audioRecv: true,		// We DO want audio
-				videoSend: doVideo, videoRecv: doVideo	// We MAY want video
-			},
+			tracks: tracks,
 			success: function(jsep) {
 				Janus.debug("Got SDP!", jsep);
 				// By default, you only pass the SIP URI to call as an
@@ -1181,10 +1194,16 @@ function addHelper(helperCreated) {
 										// Notice that we can only answer if we got an offer: if this was
 										// an offerless call, we'll need to create an offer ourselves
 										var sipcallAction = (offerlessInvite ? helpers[helperId].sipcall.createOffer : helpers[helperId].sipcall.createAnswer);
+										// We want bidirectional audio and/or video
+										let tracks = [];
+										if(doAudio)
+											tracks.push({ type: 'audio', capture: true, recv: true });
+										if(doVideo)
+											tracks.push({ type: 'video', capture: true, recv: true });
 										sipcallAction(
 											{
 												jsep: jsep,
-												media: { audio: doAudio, video: doVideo },
+												tracks: tracks,
 												success: function(jsep) {
 													Janus.debug("[Helper #" + helperId + "] Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo + ":", jsep);
 													var body = { request: "accept" };
@@ -1262,10 +1281,16 @@ function addHelper(helperCreated) {
 						Janus.log("[Helper #" + helperId + "] Got re-INVITE");
 						var doAudio = (jsep.sdp.indexOf("m=audio ") > -1),
 							doVideo = (jsep.sdp.indexOf("m=video ") > -1);
+						// We want bidirectional audio and/or video
+						let tracks = [];
+						if(doAudio)
+							tracks.push({ type: 'audio', capture: true, recv: true });
+						if(doVideo)
+							tracks.push({ type: 'video', capture: true, recv: true });
 						helpers[helperId].sipcall.createAnswer(
 							{
 								jsep: jsep,
-								media: { audio: doAudio, video: doVideo },
+								tracks: tracks,
 								success: function(jsep) {
 									Janus.debug("[Helper #" + helperId + "] Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo + ":", jsep);
 									var body = { request: "update" };

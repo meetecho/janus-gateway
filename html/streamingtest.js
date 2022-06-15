@@ -126,8 +126,13 @@ $(document).ready(function() {
 										streaming.createAnswer(
 											{
 												jsep: jsep,
-												// We want recvonly audio/video and, if negotiated, datachannels
-												media: { audioSend: false, videoSend: false, data: true },
+												// We only specify data channels here, as this way in
+												// case they were offered we'll enable them. Since we
+												// don't mention audio or video tracks, we autoaccept them
+												// as recvonly (since we won't capture anything ourselves)
+												tracks: [
+													{ type: 'data' }
+												],
 												customizeSdp: function(jsep) {
 													if(stereo && jsep.sdp.indexOf("stereo=1") == -1) {
 														// Make sure that our offer contains stereo too

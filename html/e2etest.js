@@ -587,16 +587,16 @@ function promptCryptoKey() {
 		Janus.debug("Trying a createOffer too (audio/video sendrecv)");
 		echotest.createOffer(
 			{
-				// No media provided: by default, it's sendrecv for audio and video
-				media: { data: true },	// Let's negotiate data channels as well
-				// If you want to test simulcasting (Chrome and Firefox only), then
-				// pass a ?simulcast=true when opening this demo page: it will turn
-				// the following 'simulcast' property to pass to janus.js to true.
-				simulcast: doSimulcast,
-				// Since we want to use Insertable Streams,
-				// we specify the transform functions to use
-				senderTransforms: senderTransforms,
-				receiverTransforms: receiverTransforms,
+				// We want bidirectional audio and video, plus data channels,
+				// and since we want to use Insertable Streams as well, we
+				// specify the transform functions to use for audio and video
+				tracks: [
+					{ type: 'audio', capture: true, recv: true,
+						transforms: { sender: senderTransforms['audio'], receiver: receiverTransforms['audio']} },
+					{ type: 'video', capture: true, recv: true, simulcast: doSimulcast,
+						transforms: { sender: senderTransforms['video'], receiver: receiverTransforms['video']} },
+					{ type: 'data' },
+				],
 				success: function(jsep) {
 					Janus.debug("Got SDP!", jsep);
 					var body = { audio: true, video: true, data: true };
