@@ -112,7 +112,7 @@ function restartCapture() {
 		if(replaceVideo) {
 			tracks.push({
 				type: 'video',
-				mid: '1',	// We assume mid 0 is video
+				mid: '1',	// We assume mid 1 is video
 				capture: { deviceId: { exact: videoDeviceId } }
 			});
 		}
