@@ -2085,7 +2085,7 @@ function Janus(gatewayCallbacks) {
 			}
 		} catch(err) {
 			Janus.error(err);
-			callbacks.error(err.message);
+			callbacks.error(err);
 		}
 	}
 
@@ -2287,7 +2287,7 @@ function Janus(gatewayCallbacks) {
 			callbacks.success();
 		} catch(err) {
 			Janus.error(err);
-			callbacks.error(err.message);
+			callbacks.error(err);
 		}
 	}
 
