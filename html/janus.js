@@ -351,7 +351,7 @@ Janus.stopAllTracks = function(stream) {
 		let tracks = stream.getTracks();
 		for(let mst of tracks) {
 			Janus.log(mst);
-			if(mst) {
+			if(mst && mst.dontStop !== true) {
 				mst.stop();
 			}
 		}
@@ -2516,6 +2516,8 @@ function Janus(gatewayCallbacks) {
 							}
 						}
 					}
+					if(nt && track.dontStop === true)
+						nt.dontStop = true;
 				}
 			}
 			// Get rid of the old track
@@ -2547,16 +2549,19 @@ function Janus(gatewayCallbacks) {
 					}
 				}
 				if(rt) {
-					// FIXME
+					// Remove the track and notify the application
 					try {
 						config.myStream.removeTrack(rt);
 						pluginHandle.onlocaltrack(rt, false);
 					} catch(e) {
 						Janus.error(e);
 					}
-					try {
-						rt.stop();
-					} catch(e) {}
+					// Close the old track (unless we've been asked not to)
+					if(rt.dontStop !== true) {
+						try {
+							rt.stop();
+						} catch(e) {}
+					}
 				}
 			}
 			if(nt) {
