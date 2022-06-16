@@ -81,13 +81,11 @@ $(document).ready(function() {
 									Janus.debug("Trying a createOffer too (audio/video sendrecv)");
 									echotest.createOffer(
 										{
-											// Use our stream, don't do a getUserMedia
-											stream: localStream,
-											// We want bidirectional audio and video, plus data channels
+											// We provide our own stream, plus data channels
 											tracks: [
-												{ type: 'audio', capture: true, recv: true },
-												{ type: 'video', capture: true, recv: true, simulcast: doSimulcast },
-												{ type: 'data' },
+												{ type: 'audio', capture: localStream.getAudioTracks()[0], recv: true },
+												{ type: 'video', capture: localStream.getVideoTracks()[0], recv: true },
+												{ type: 'data' }
 											],
 											customizeSdp(jsep) {
 												// Offer multiopus
