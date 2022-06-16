@@ -2516,9 +2516,9 @@ function Janus(gatewayCallbacks) {
 							}
 						}
 					}
-					if(nt && track.dontStop === true)
-						nt.dontStop = true;
 				}
+				if(nt && track.dontStop === true)
+					nt.dontStop = true;
 			}
 			// Get rid of the old track
 			// FIXME We should probably do this *before* capturing the new
