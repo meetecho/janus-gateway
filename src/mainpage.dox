@@ -272,29 +272,29 @@ Janus.init({
  *
  \verbatim
 var janus = new Janus(
-	{
-		server: 'http://yourserver:8088/janus',
-		success: function() {
-			// Done! attach to plugin XYZ
-		},
-		error: function(cause) {
-			// Error, can't go on...
-		},
-		destroyed: function() {
-			// I should get rid of this
-		}
-	});
+    {
+        server: 'http://yourserver:8088/janus',
+        success: function() {
+            // Done! attach to plugin XYZ
+        },
+        error: function(cause) {
+            // Error, can't go on...
+        },
+        destroyed: function() {
+            // I should get rid of this
+        }
+    });
  \endverbatim
  *
  * As anticipated, the server may be a specific address, e.g.:
  *
  \verbatim
 var janus = new Janus(
-	{
-		server: 'http://yourserver:8088/janus',
-				// or
-		server: 'ws://yourserver:8188/',
-		[..]
+    {
+        server: 'http://yourserver:8088/janus',
+                // or
+        server: 'ws://yourserver:8188/',
+        [..]
  \endverbatim
  *
  * or an array of addresses. Such an array can be especially useful if
@@ -305,9 +305,9 @@ var janus = new Janus(
  *
  \verbatim
 var janus = new Janus(
-	{
-		server: ['ws://yourserver:8188/','http://yourserver:8088/janus'],
-		[..]
+    {
+        server: ['ws://yourserver:8188/','http://yourserver:8088/janus'],
+        [..]
  \endverbatim
  *
  * Once created, this object represents your session with the server.
@@ -351,8 +351,9 @@ var janus = new Janus(
  * PeerConnection associated to the handle changes: the argument of the callback
  * is the new state as a string (e.g., "connected" or "failed");
  * 		- \c mediaState: this callback is triggered when Janus starts or stops
- * receiving your media: for instance, a \c mediaState with type=<b>audio</b> and
- * on=<b>true</b> means Janus started receiving your audio stream (or started
+ * receiving your media: for instance, a \c mediaState with mid=<b>0</b>, type=<b>audio</b>
+ * and on=<b>true</b> means Janus started receiving the audio stream identified
+ * by mid \c b in the offer/answer exchange and transceivers (or started
  * getting them again after a pause of more than a second); a \c mediaState with
  * type=<b>video</b> and on=<b>false</b> means Janus hasn't received any video
  * from you in the last second, after a start was detected before; useful to
@@ -381,36 +382,36 @@ var janus = new Janus(
  \verbatim
 // Attach to echo test plugin, using the previously created janus instance
 janus.attach(
-	{
-		plugin: "janus.plugin.echotest",
-		success: function(pluginHandle) {
-			// Plugin attached! 'pluginHandle' is our handle
-		},
-		error: function(cause) {
-			// Couldn't attach to the plugin
-		},
-		consentDialog: function(on) {
-			// e.g., Darken the screen if on=true (getUserMedia incoming), restore it otherwise
-		},
-		onmessage: function(msg, jsep) {
-			// We got a message/event (msg) from the plugin
-			// If jsep is not null, this involves a WebRTC negotiation
-		},
-		onlocaltrack: function(track, added) {
-			// A local track to display has just been added (getUserMedia worked!) or removed
-		},
-		onremotetrack: function(track, mid, added) {
-			// A remote track (working PeerConnection!) with a specific mid has just been added or removed
-		},
-		oncleanup: function() {
-			// PeerConnection with the plugin closed, clean the UI
-			// The plugin handle is still valid so we can create a new one
-		},
-		detached: function() {
-			// Connection with the plugin closed, get rid of its features
-			// The plugin handle is not valid anymore
-		}
-	});
+    {
+        plugin: "janus.plugin.echotest",
+        success: function(pluginHandle) {
+            // Plugin attached! 'pluginHandle' is our handle
+        },
+        error: function(cause) {
+            // Couldn't attach to the plugin
+        },
+        consentDialog: function(on) {
+            // e.g., Darken the screen if on=true (getUserMedia incoming), restore it otherwise
+        },
+        onmessage: function(msg, jsep) {
+            // We got a message/event (msg) from the plugin
+            // If jsep is not null, this involves a WebRTC negotiation
+        },
+        onlocaltrack: function(track, added) {
+            // A local track to display has just been added (getUserMedia worked!) or removed
+        },
+        onremotetrack: function(track, mid, added) {
+            // A remote track (working PeerConnection!) with a specific mid has just been added or removed
+        },
+        oncleanup: function() {
+            // PeerConnection with the plugin closed, clean the UI
+            // The plugin handle is still valid so we can create a new one
+        },
+        detached: function() {
+            // Connection with the plugin closed, get rid of its features
+            // The plugin handle is not valid anymore
+        }
+    });
  \endverbatim
  *
  * So the \c attach() method allows you to attach to a plugin, and specify
@@ -428,10 +429,21 @@ janus.attach(
  * - \c createOffer(callbacks): asks the library to create a WebRTC compliant OFFER;
  * - \c createAnswer(callbacks): asks the library to create a WebRTC compliant ANSWER;
  * - \c handleRemoteJsep(callbacks): asks the library to handle an incoming WebRTC compliant session description;
+ * - \c replaceTracks(tracks, callbacks): asks the library to replace local tracks without renegotiating (no other offer/answer);
  * - \c dtmf(parameters): sends a DTMF tone on the PeerConnection;
  * - \c data(parameters): sends data through the Data Channel, if available;
  * - \c getBitrate(mid): gets a verbose description of the currently received
  * video stream bitrate (optional mid to specify the stream, first video stream if missing);
+ * - \c getLocalTracks(): returns an array of the tracks that are currently being sent
+ * on this PeerConnection, as basic objects including, e.g., type, \c mid and \c label of the track;
+ * - \c getRemoteTracks(): returns an array of the tracks that are currently being received
+ * on this PeerConnection, as basic objects including, e.g., type, \c mid and \c label of the track;
+ * - \c muteAudio , \c unmuteAudio , \c isAudioMuted , \c muteVideo , \c unmuteVideo , \c isVideoMuted: a
+ set of helper functions to mute, unmute or check the muted status of a specific audio or video track
+ * that is currently being sent (optional mid to specify the stream, first audio/video stream if missing);
+ * - \c getLocalVolume , \c getRemoteVolume: a couple of helper functions to get the current volume of
+ * the local or remote track; notice that this isn't supported on Firefox at the moment
+ * (optional mid to specify the stream, first audio stream if missing);
  * - \c hangup(sendRequest): tells the library to close the PeerConnection; if the optional \c sendRequest argument is
  * set to \c true, then a \c hangup Janus API request is sent to Janus as well (disabled by default, Janus can usually
  * figure this out via DTLS alerts and the like but it may be useful to enable it sometimes);
@@ -479,36 +491,45 @@ janus.attach(
  *
  * - \c createOffer takes a single parameter, that can contain any of the
  * following properties and callbacks:
- *   - \c media: you can use this property to tell the library which media (audio/video/data)
+ *   - \c tracks: you can use this property to tell the library which media (audio/video/data)
  * you're interested in, and whether you're going to send and/or receive any of them; by default
- * audio and video are enabled in both directions, while the Data Channels are disabled;
- * this option is an object that can take any of the following properties:
- *     - \c audioSend: \c true/false (do or do not send audio);
- *     - \c audioRecv: \c true/false (do or do not receive audio);
- *     - \c audio: \c true/false (do or do not send \b and receive audio, takes precedence on the above);
- *     - \c audio: object with \c deviceId property (specify ID of audio device to capture, takes precedence on the above;
- * devices list can be accessed with \c Janus.listDevices(callback) );
- *     - \c videoSend: \c true/false (do or do not send video);
- *     - \c videoRecv: \c true/false (do or do not receive video);
- *     - \c video: \c true/false (do or do not send \b and receive video, takes precedence on the above);
- *     - \c video: \c "lowres"/"lowres-16:9"/"stdres"/"stdres-16:9"/"hires"/"hires-16:9"
- * (send a 320x240/320x180/640x480/640x360/1280x720 video, takes precedence on the above; default is \c "stdres" )
- * this property will affect the resulting getUserMedia that the library will issue; please
- * notice that Firefox doesn't support the \c "16:9" variants, which will fallback
- * to the ones; besides, \c "hires" and \c "hires-16:9" are currently synonymous, as
- * there's no 4:3 high resolution constraint as of now;
- *     - \c video: \c "screen" (use screensharing for video, disables audio, takes precedence on both audio and video);
- *     - \c video: object with \c deviceId , \c width and/or \c height properties (specify ID of video device to capture
- * and optionally resolution to use, takes precedence on the above; devices list can be accessed with \c Janus.listDevices(callback) );
- *     - \c data: \c true/false (do or do not use Data Channels, default is false)
- *     - \c failIfNoAudio: \c true/false (whether a getUserMedia should fail if audio send is asked, but no audio device is available, default is false)
- *     - \c failIfNoVideo: \c true/false (whether a getUserMedia should fail if video send is asked, but no video device is available, default is false)
- *     - \c screenshareFrameRate: in case you're sharing a screen/application, allows you to specify the framerate (default=3);
+ * no device is captured, and Data Channels are disabled as well; incoming audio and video
+ * is instead autoaccepted unless you tell the library otherwose; the same property can also
+ * be used to update sessions (e.g., to add/remove/replace tracks); this option is an array of
+ * objects, where each object can take any of the following properties:
+ *     - \c type: mandatory, must be one of "audio", "video", "screen" and "data";
+ *     - \c mid: to address existing tracks (e.g., when answering or updating sessions),
+ * the \c mid property specifies that the info in the related track object
+ * are specific to that target; notice that this is ignored in a first \c createOffer ,
+ * as mid values are created by the browser automatically and cannot be forced;
+ *     - \c capture: in case something must be captured (e.g., a microphone for
+ * "audio" or a "webcam" for video), the \c capture property can be used to
+ * dictate what and how; passing \c true asks for the default device, but
+ * \c getUserMedia (for audio/video) or \c getDisplayMedia (for screen sharing)
+ * constraints can be passed as well as objects, and in case those will be
+ * used instead; passing a \c MediaStreamTrack instance will tell the library
+ * not to capture anything, but use the provided track as a source instead;
+ *     - \c simulcast: \c true/false, for video, whether simulcast should be used for this track;
+ *     - \c svc: for video, the scalability mode to enable, in case SVC needs to be
+ * used for this track; notice that SVC support is experimental in Janus, and not
+ * fully supported in all browsers either;
+ *     - \c recv: \c true/false , whether audio or video should be received
+ * as well; in case \c capture is set but \c recv is false, then this means
+ * you're asking for a "sendonly" track;
+ *     - \c add: \c true/false , whether a new track should be added (default is true for offers);
+ *     - \c replace: \c true/false , whether a provided \c capture should replace what
+ * is being captured for the specified track;
+ *     - \c remove: \c true/false , whether the local track that's currently captured
+ * should be removed, meaning nothing will be sent for that specific stream;
+ *     - \c dontStop: \c true/false , whether a track that is being added right
+ * now should \b NOT be stopped when the track is removed; this is helpful whenever,
+ * for instance, an external track is being provided to \c capture , and the application
+ * wants to keep control on the life cycle of the \c MediaStreamTrack instance;
+ *     - \c transforms: in case Insertable Streams need to be used (e.g., for end-to-end
+ * encryption), the \c sender and/or \c receiver transform functions for this track can
+ * be provided in the \c transforms property;
  *   - \c trickle: \c true/false, to tell the library whether you want
  * Trickle ICE to be used (true, the default) or not (false);
- *   - \c stream: optional, only to be passed in case you obtained a MediaStream object yourself with a \c getUserMedia
- * request, and that you want the library to use instead of having it get one by itself (makes
- * the \c media property useless, as it won't be read for accessing any device);
  *   - a set of callbacks to be notified about the result, namely:
  *     - \c success: the session description was created (attached as a parameter) and is ready to be sent to the plugin;
  *     - \c error: the session description was NOT successfully created;
@@ -529,49 +550,51 @@ janus.attach(
  \verbatim
 // Attach to echo test plugin
 janus.attach(
-	{
-		plugin: "janus.plugin.echotest",
-		success: function(pluginHandle) {
-			// Negotiate WebRTC
-			echotest = pluginHandle;
-			var body = { "audio": true, "video": true };
-			echotest.send({"message": body});
-			echotest.createOffer(
-				{
-					// No media property provided: by default,
-						// it's sendrecv for audio and video
-					success: function(jsep) {
-						// Got our SDP! Send our OFFER to the plugin
-						echotest.send({"message": body, "jsep": jsep});
-					},
-					error: function(error) {
-						// An error occurred...
-					},
-					customizeSdp: function(jsep) {
-						// if you want to modify the original sdp, do as the following
-						// oldSdp = jsep.sdp;
-						// jsep.sdp = yourNewSdp;
-					}
-				});
-		},
-		[..]
-		onmessage: function(msg, jsep) {
-			// Handle msg, if needed, and check jsep
-			if(jsep !== undefined && jsep !== null) {
-				// We have the ANSWER from the plugin
-				echotest.handleRemoteJsep({jsep: jsep});
-			}
-		},
-		[..]
-		onlocaltrack: function(track, added) {
-			// Invoked after createOffer
-			// This is info on a local track: when added, we can choose to render
-		},
-		onremotetrack: function(track, mid, added) {
-			// Invoked after handleRemoteJsep has got us a PeerConnection
-			// This is info on a remote track: when added, we can choose to render
-		},
-		[..]
+    {
+        plugin: "janus.plugin.echotest",
+        success: function(pluginHandle) {
+            // Negotiate WebRTC
+            echotest = pluginHandle;
+            echotest.createOffer(
+                {
+                    // We want bidirectional audio and video, plus data channels
+                    tracks: [
+                        { type: 'audio', capture: true, recv: true },
+                        { type: 'video', capture: true, recv: true },
+                        { type: 'data' },
+                    ],
+                    success: function(jsep) {
+                        // Got our SDP! Send our OFFER to the plugin
+                        echotest.send({ message: body, jsep: jsep });
+                    },
+                    error: function(error) {
+                        // An error occurred...
+                    },
+                    customizeSdp: function(jsep) {
+                        // if you want to modify the original sdp, do as the following
+                        // oldSdp = jsep.sdp;
+                        // jsep.sdp = yourNewSdp;
+                    }
+                });
+        },
+        [..]
+        onmessage: function(msg, jsep) {
+            // Handle msg, if needed, and check jsep
+            if(jsep) {
+                // We have the ANSWER from the plugin
+                echotest.handleRemoteJsep({jsep: jsep});
+            }
+        },
+        [..]
+        onlocaltrack: function(track, added) {
+            // Invoked after createOffer
+            // This is info on a local track: when added, we can choose to render
+        },
+        onremotetrack: function(track, mid, added) {
+            // Invoked after handleRemoteJsep has got us a PeerConnection
+            // This is info on a remote track: when added, we can choose to render
+        },
+        [..]
   \endverbatim
  *
  * This, instead, is an example of how to use \c createAnswer, taken from the Streaming demo page:
@@ -579,98 +602,126 @@ janus.attach(
  \verbatim
 // Attach to the Streaming plugin
 janus.attach(
-	{
-		plugin: "janus.plugin.streaming",
-		success: function(pluginHandle) {
-			// Handle created
-			streaming = pluginHandle;
-			[..]
-		},
-		[..]
-		onmessage: function(msg, jsep) {
-			// Handle msg, if needed, and check jsep
-			if(jsep !== undefined && jsep !== null) {
-				// We have an OFFER from the plugin
-				streaming.createAnswer(
-					{
-						// We attach the remote OFFER
-						jsep: jsep,
-						// We want recvonly audio/video
-						media: { audioSend: false, videoSend: false },
-						success: function(ourjsep) {
-							// Got our SDP! Send our ANSWER to the plugin
-							var body = { "request": "start" };
-							streaming.send({"message": body, "jsep": ourjsep});
-						},
-						error: function(error) {
-							// An error occurred...
-						}
-					});
-			}
-		},
-		[..]
-		onlocaltrack: function(track, added) {
-			// This will NOT be invoked, we chose recvonly
-		},
-		onremotetrack: function(track, mid, added) {
-			// Invoked after send has got us a PeerConnection
-			// This is info on a remote track: when added, we can choose to render
-		},
-		[..]
+    {
+        plugin: "janus.plugin.streaming",
+        success: function(pluginHandle) {
+            // Handle created
+            streaming = pluginHandle;
+            [..]
+        },
+        [..]
+        onmessage: function(msg, jsep) {
+            // Handle msg, if needed, and check jsep
+            if(jsep) {
+                // We have an OFFER from the plugin
+                streaming.createAnswer(
+                    {
+                        // We attach the remote OFFER
+                        jsep: jsep,
+                        // We only specify data channels here, as this way in
+                        // case they were offered we'll enable them. Since we
+                        // don't mention audio or video tracks, we autoaccept them
+                        // as recvonly (since we won't capture anything ourselves)
+                        tracks: [
+                            { type: 'data' }
+                        ],
+                        success: function(ourjsep) {
+                            // Got our SDP! Send our ANSWER to the plugin
+                            var body = { request: "start" };
+                            streaming.send({ message: body, jsep: ourjsep });
+                        },
+                        error: function(error) {
+                            // An error occurred...
+                        }
+                    });
+            }
+        },
+        [..]
+        onlocaltrack: function(track, added) {
+            // This will NOT be invoked, we chose recvonly
+        },
+        onremotetrack: function(track, mid, added) {
+            // Invoked after send has got us a PeerConnection
+            // This is info on a remote track: when added, we can choose to render
+        },
+        [..]
   \endverbatim
  *
  * Of course, these are just a couple of examples where the scenarios
  * assumed that one plugin would only receive (Echo Test) or generate
- * (Streaming) offers. A more complex example (e.g., a Video Call plugin)
+ * (Streaming) offers. A more complex example (e.g., a call using the
+ * Video Call, SIP or NoSIP plugin, or a videoconfecence using the Video Room)
  * would involve both, allowing you to either send offers to a plugin,
  * or receive some from them. Handling this is just a matter of checking
  * the \c type of the \c jsep object and reacting accordingly.
  *
- * \section renegotiation Updating an existing PeerConnection (renegotiations)
+ * \section renegotiation Updating an existing PeerConnection (with or without renegotiations)
  * While the JavaScript APIs described above will suffice for most of the
  * common scenarios, there are cases when updates on a PeerConnection may
  * be needed. This can happen whenever, for instance, you want to add a
  * new media source (e.g., add video to an audio only call), replace an
  * existing one (e.g., switch from capturing the camera to sharing your
- * screen), or trigger an ICE restart because of a network change. All
- * these actions require a renegotiation to occur, which means a new SDP
- * offer/answer round to update the existing PeerConnection.
+ * screen), or trigger an ICE restart because of a network change. While
+ * adding or removing tracks requires a renegotiation, which means a new SDP
+ * offer/answer round to update the existing PeerConnection, just replacing
+ * a track can be done without any further SDP exchange. In both cases,
+ * the \c tracks property introduced before can be used to update a session.
  *
- * Since version \c 0.2.6, renegotiations are indeed supported by Janus,
- * and the \c janus.js library exposes ways to easily handle the process
- * of updating a media session. More specifically, there are additional
- * properties you can pass to \c createOffer and \c createAnswer for the
- * purpose: most of the properties introduced in the previous section will
- * still be usable, as it will be clearer in the next paragraphs.
+ * To just replace an existing track (e.g., changing the camera used to
+ * capture the video we're sending) the \c replaceTracks handle method can
+ * be used. Using it is quite trivial, since you simply need to provide a
+ * list of tracks you want to update, identify them somehow (e.g., via
+ * their \c mid ), and provide the new \c capture property. A simple
+ * example that shows how to replace a video track with a specific camera
+ * identified by its \c deviceId is the following:
  *
- * The new properties you can pass to \c media in \c createOffer and
- * \c createAnswer are the following:
+ \verbatim
+echotest.replaceTracks([
+    {
+        type: 'video',
+        mid: '1',    // We assume mid 1 is video
+        capture: { deviceId: { exact: videoDeviceId } }
+    }
+]);
+ \endverbatim
  *
- * - \c addAudio: if set, start capturing audio if you weren't (will fail
- * if you're sending audio already);
- * - \c addVideo: if set, start capturing video if you weren't (will fail
- * if you're sending video already);
- * - \c addData: if set, negotiate a datachannel if it didn't exist (is
- * actually just a synonym for \c data:true );
- * - \c removeAudio: if set, stop capturing audio and remove the local audio track;
- * - \c removeVideo: if set, stop capturing video and remove the local video track;
- * - \c replaceAudio: if set, stop capturing the current audio (remove the
- * local audio track), and capture a new audio source;
- * - \c replaceVideo: if set, stop capturing the current video (remove the
- * local video track), and capture a new video source.
+ * In case a new track needs to be added to a session, or an existing
+ * track be removed, instead, a renegotiation is indeed needed, because
+ * it requires changes to be signalled to the other party. In that case,
+ * a renegotiation happens exactly as new sessions do, meaning that you
+ * either perform a new \c createOffer followed by a \c handleRemoteJsep
+ * with the updated answer, or you handle an incoming updated offer and
+ * provide an updated answer via \c createAnswer : the library will
+ * automatically understand from context if you're creating a new session
+ * or updating an existing one.
+ *
+ * When updating a session to add or remove tracks, you need to provide
+ * an updated \c tracks property as well. It's important to only include
+ * in this \c tracks property a list of tracks you want to change: omitting
+ * existing tracks will result in the library not making any change to
+ * them. This means that a \c createOffer without a \c tracks property,
+ * for instance, will simply generate a new offer without applying any
+ * change (which, as we'll see later, can be useful in some cases, e.g.,
+ * ICE restarts).
+ *
+ * Depending on what you want to update, you'll need to set one of the
+ * following properties to \c true in the related track object:
+ *
+ * - \c add: adds a new track to the session;
+ * - \c replace: replaces an existing track in the session (similar to
+ * what \c replaceTracks does, but within the context of a renegotiation);
+ * - \c remove: removes an existing track from a session (the direction of
+ * the related m-line will be changed to either "recvonly" or "inactive",
+ * depending on whether there's incoming media as well or not).
  *
  * Notice that these properties are only processed when you're trying a
  * renegotiation, and will be ignored when creating a new PeerConnection.
- *
- * These properties don't replace the existing \c media properties, but go
+ * These properties don't replace the existing \c track properties, but go
  * along with them. For instance, when adding a new video stream, or
  * replacing an existing one, you can still use the video related properties
  * as before, e.g., to pass a specific device ID or asking for a screenshare
- * instead of a camera. Besides, notice that you'll currently have to pass
- * info on the streams you want to keep as well, or they might be removed:
- * this means that, if for instance you want to replace the video source,
- * but want to keep the audio as it is, passing \c audio:false to the new
- * createOffer will potentially disable audio.
+ * instead of a camera. As anticipated, omitting info on existing tracks
+ * will leave them untouched.
  *
  * It's important to point out that, as for negotiations that result in
  * the creation of a new PeerConnection in the first place, how to perform
@@ -684,62 +735,36 @@ janus.attach(
  * plugin for more information about how to perform renegotiations in
  * specific use cases.
  *
- * Here's a simple example of how you can use \c removeVideo to remove
- * the local video capture in a session, e.g., in the EchoTest demo:
+ * Here's a simple example of how you can remove the local video capture
+ * in a session, e.g., in the EchoTest demo:
  *
  \verbatim
 // Remove local video
 echotest.createOffer(
     {
-        media: { removeVideo: true },
+        tracks: [{ type: 'video', mid: '1', remove: true }],
         success: function(jsep) {
-            Janus.debug(jsep);
-            echotest.send({message: {audio: true, video: true}, "jsep": jsep});
-        },
+            echotest.send({ message: { video: true }, jsep: jsep })
+        }
         error: function(error) {
-            bootbox.alert("WebRTC error... " + JSON.stringify(error));
+            bootbox.alert('WebRTC error... ' + error.message);
         }
     });
  \endverbatim
  *
- * This other example shows how you can add a new video stream to an-audio
- * only PeerConnection instead:
+ * This other example shows how you can add a new video stream, e.g.,
+ * a screen share, to an existing PeerConnection instead:
  *
  \verbatim
 // Add local video
 echotest.createOffer(
     {
-        media: { addVideo: true },
+        tracks: [{ type: 'screen', add: true, capture: true }],
         success: function(jsep) {
-            Janus.debug(jsep);
-            echotest.send({message: {audio: true, video: true}, "jsep": jsep});
-        },
-        error: function(error) {
-            bootbox.alert("WebRTC error... " + JSON.stringify(error));
+            echotest.send({ message: { video: true }, jsep: jsep })
         }
-    });
- \endverbatim
- *
- * Finally, this example shows how you can replace the video track, by
- * also showing how you can combine this with one of the properties we
- * already met in the previous section:
- *
- \verbatim
-// Replace local video
-echotest.createOffer(
-    {
-        media: {
-            video: {
-                deviceId: "44f4740bee234ce6ddcfea8e59e8ed7505054f75edf27e3a12294686b37ff6a7"
-            },
-            replaceVideo: true
-        },
-        success: function(jsep) {
-            Janus.debug(jsep);
-            echotest.send({message: {audio: true, video: true}, "jsep": jsep});
-        },
         error: function(error) {
-            bootbox.alert("WebRTC error... " + JSON.stringify(error));
+            bootbox.alert('WebRTC error... ' + error.message);
         }
     });
  \endverbatim
@@ -759,24 +784,26 @@ echotest.createOffer(
  * must be restarted in order to find the new optimal path.
  *
  * With \c janus.js, you can only force an ICE restart when sending a new
- * offer. In order to do so, all you need to do is add `iceRestart:true`
+ * offer. In order to do so, all you need to do is add `iceRestart :true`
  * to your `createOffer` call, and an ICE restart will be requested. The
  * following example shows how this can be done with the EchoTest:
  *
  \verbatim
-echotest.createOffer({
-    iceRestart: true,
-    media: { data: true },
-    success: function(jsep) {
-        echotest.send({message: {audio: true, video: true}, jsep: jsep});
-	}
-});
+echotest.createOffer(
+    {
+        iceRestart: true,
+        success: function(jsep) {
+            echotest.send({ message: { audio: true, video: true }, jsep: jsep});
+        }
+    });
  \endverbatim
  *
- * In this particular example, we're not asking for any change on the
- * media streams, but just an ICE restart. If successful, as soon as the
- * answer is received, the client and Janus will restart the ICE process
- * and find a new path for the media packets.
+ * Notice how, in this particular example, we're not asking for any change
+ * on the media streams, but just an ICE restart, which is why we don't
+ * provide a \c tracks property at all: as a consequence, the library won't
+ * make any changes to the existing streams, but only generate a new offer.
+ * If successful, as soon as the answer is received, the client and Janus
+ * will restart the ICE process and find a new path for the media packets.
  *
  * Notice that, with Janus and its plugins, you won't always be able to
  * force an ICE restart by sending a new SDP offer yourself: some plugins,
