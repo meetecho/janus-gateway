@@ -1323,7 +1323,6 @@ function Janus(gatewayCallbacks) {
 							started : false,
 							myStream : null,
 							streamExternal : false,
-							remoteStream : null,
 							mySdp : null,
 							mediaConstraints : null,
 							pc : null,
@@ -1401,7 +1400,6 @@ function Janus(gatewayCallbacks) {
 							started : false,
 							myStream : null,
 							streamExternal : false,
-							remoteStream : null,
 							mySdp : null,
 							mediaConstraints : null,
 							pc : null,
@@ -1923,7 +1921,6 @@ function Janus(gatewayCallbacks) {
 			Janus.log('Handling Remote Track', event);
 			if(!event.streams)
 				return;
-			config.remoteStream = event.streams[0];
 			if(!event.track)
 				return;
 			// Notify about the new track event
@@ -1939,36 +1936,30 @@ function Janus(gatewayCallbacks) {
 			Janus.log('Adding onended callback to track:', event.track);
 			event.track.onended = function(ev) {
 				Janus.log('Remote track removed:', ev);
-				if(config.remoteStream) {
-					clearTimeout(trackMutedTimeoutId);
-					config.remoteStream.removeTrack(ev.target);
-					// Notify the application
-					let transceiver = config.pc.getTransceivers().find(
-						t => t.receiver.track === ev.target);
-					let mid = transceiver ? transceiver.mid : ev.target.id;
-					try {
-						pluginHandle.onremotetrack(ev.target, mid, false);
-					} catch(e) {
-						Janus.error(e);
-					}
+				clearTimeout(trackMutedTimeoutId);
+				// Notify the application
+				let transceiver = config.pc.getTransceivers().find(
+					t => t.receiver.track === ev.target);
+				let mid = transceiver ? transceiver.mid : ev.target.id;
+				try {
+					pluginHandle.onremotetrack(ev.target, mid, false);
+				} catch(e) {
+					Janus.error(e);
 				}
 			};
 			event.track.onmute = function(ev) {
 				Janus.log('Remote track muted:', ev);
-				if(config.remoteStream && trackMutedTimeoutId == null) {
+				if(!trackMutedTimeoutId) {
 					trackMutedTimeoutId = setTimeout(function() {
 						Janus.log('Removing remote track');
-						if(config.remoteStream) {
-							config.remoteStream.removeTrack(ev.target);
-							// Notify the application the track is gone
-							let transceiver = config.pc.getTransceivers().find(
-								t => t.receiver.track === ev.target);
-							let mid = transceiver ? transceiver.mid : ev.target.id;
-							try {
-								pluginHandle.onremotetrack(ev.target, mid, false);
-							} catch(e) {
-								Janus.error(e);
-							}
+						// Notify the application the track is gone
+						let transceiver = config.pc.getTransceivers().find(
+							t => t.receiver.track === ev.target);
+						let mid = transceiver ? transceiver.mid : ev.target.id;
+						try {
+							pluginHandle.onremotetrack(ev.target, mid, false);
+						} catch(e) {
+							Janus.error(e);
 						}
 						trackMutedTimeoutId = null;
 					// Chrome seems to raise mute events only at multiples of 834ms;
@@ -1983,7 +1974,6 @@ function Janus(gatewayCallbacks) {
 					trackMutedTimeoutId = null;
 				} else {
 					try {
-						config.remoteStream.addTrack(ev.target);
 						// Notify the application the track is back
 						let transceiver = config.pc.getTransceivers().find(
 							t => t.receiver.track === ev.target);
@@ -2676,15 +2666,6 @@ function Janus(gatewayCallbacks) {
 		// they're only available in Chrome/Safari right now: https://webrtc-stats.callstats.io/)
 		if(config.pc.getStats && (Janus.webRTCAdapter.browserDetails.browser === "chrome" ||
 				Janus.webRTCAdapter.browserDetails.browser === "safari")) {
-			if(remote && !config.remoteStream) {
-				Janus.warn("Remote stream unavailable");
-				result(0);
-				return;
-			} else if(!remote && !config.myStream) {
-				Janus.warn("Local stream unavailable");
-				result(0);
-				return;
-			}
 			// Are we interested in a mid in particular?
 			let query = config.pc;
 			if(mid) {
@@ -2971,7 +2952,6 @@ function Janus(gatewayCallbacks) {
 				}
 			}
 			// Cleanup stack
-			config.remoteStream = null;
 			if(config.volume) {
 				if(config.volume["local"] && config.volume["local"].timer)
 					clearInterval(config.volume["local"].timer);
