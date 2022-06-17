@@ -2297,6 +2297,33 @@ function Janus(gatewayCallbacks) {
 			// Nothing to do
 			return;
 		}
+		// Check if we can/should group getUserMedia calls
+		let groups = {};
+		for(let track of tracks) {
+			delete track.gumGroup;
+			if(!track.type || !['audio', 'video'].includes(track.type))
+				continue;
+			if(!track.capture || track.capture instanceof MediaStreamTrack)
+				continue;
+			let group = track.group ? track.group : 'default';
+			if(!groups[group])
+				groups[group] = {};
+			if(groups[group][track.type])
+				continue;
+			track.gumGroup = group;
+			groups[group][track.type] = track;
+		}
+		let keys = Object.keys(groups);
+		for(let key of keys) {
+			let group = groups[key];
+			if(!group.audio || !group.video) {
+				if(group.audio)
+					delete group.audio.gumGroup;
+				if(group.video)
+					delete group.video.gumGroup;
+				delete groups[key];
+			}
+		}
 		let answer = (callbacks.jsep ? true : false);
 		for(let track of tracks) {
 			if(!track.type) {
@@ -2367,25 +2394,46 @@ function Janus(gatewayCallbacks) {
 				}
 			}
 			// Capture the new track, if we need to
-			let stream = null, nt = null, trackId = null;
+			let nt = null, trackId = null;
 			if(track.remove) {
 				Janus.log('Removing track from PeerConnection', track);
 				trackId = sender.track ? sender.track.id : null;
 				await sender.replaceTrack(null);
 			} else if(track.capture) {
-				if(track.capture instanceof MediaStreamTrack) {
+				if(track.gumGroup && groups[track.gumGroup] && groups[track.gumGroup].stream) {
+					// We did a getUserMedia before already
+					let stream = groups[track.gumGroup].stream;
+					nt = (track.type === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]);
+					delete groups[track.gumGroup].stream;
+					delete groups[track.gumGroup];
+					delete track.gumGroup;
+				} else if(track.capture instanceof MediaStreamTrack) {
 					// An external track was provided, use that
 					nt = track.capture;
 				} else {
-					let constraints = Janus.trackConstraints(track);
+					let constraints = Janus.trackConstraints(track), stream = null;
 					if(track.type === 'audio' || track.type === 'video') {
-						// Use getUserMedia
+						// Use getUserMedia: check if we need to group audio and video together
+						if(track.gumGroup) {
+							let otherType = (track.type === 'audio' ? 'video' : 'audio');
+							if(groups[track.gumGroup] && groups[track.gumGroup][otherType]) {
+								let otherTrack = groups[track.gumGroup][otherType];
+								let otherConstraints = Janus.trackConstraints(otherTrack);
+								constraints[otherType] = otherConstraints[otherType];
+							}
+						}
 						stream = await navigator.mediaDevices.getUserMedia(constraints);
+						if(track.gumGroup && constraints.audio && constraints.video) {
+							// We just performed a grouped getUserMedia, keep track of the
+							// stream so that we can immediately assign the track later
+							groups[track.gumGroup].stream = stream;
+							delete track.gumGroup;
+						}
 					} else {
 						// Use getDisplayMedia
 						stream = await navigator.mediaDevices.getDisplayMedia(constraints);
 					}
-					nt = stream.getTracks()[0];
+					nt = (track.type === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]);
 				}
 				if(track.replace) {
 					// Replace the track
