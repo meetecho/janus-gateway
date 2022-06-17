@@ -10887,10 +10887,20 @@ static void *janus_videoroom_handler(void *data) {
 							json_object_set_new(info, "description", json_string(ps->description));
 						if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
 							json_object_set_new(info, "codec", json_string(janus_audiocodec_name(ps->acodec)));
-							if(ps->opusfec)
-								json_object_set_new(info, "opus-fec", json_true());
+							if(ps->acodec == JANUS_AUDIOCODEC_OPUS) {
+								if(ps->opusstereo)
+									json_object_set_new(info, "stereo", json_true());
+								if(ps->opusfec)
+									json_object_set_new(info, "fec", json_true());
+								if(ps->opusdtx)
+									json_object_set_new(info, "dtx", json_true());
+							}
 						} else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 							json_object_set_new(info, "codec", json_string(janus_videocodec_name(ps->vcodec)));
+							if(ps->vcodec == JANUS_VIDEOCODEC_H264 && ps->h264_profile != NULL)
+								json_object_set_new(info, "h264_profile", json_string(ps->h264_profile));
+							else if(ps->vcodec == JANUS_VIDEOCODEC_VP9 && ps->vp9_profile != NULL)
+								json_object_set_new(info, "vp9_profile", json_string(ps->vp9_profile));
 							if(ps->simulcast)
 								json_object_set_new(info, "simulcast", json_true());
 							if(ps->svc)
