@@ -690,6 +690,7 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 		}
 		/* Check if the offer contributed a mid and/or msid */
 		GList *tempA = m->attributes;
+		gboolean have_msid = FALSE;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 			if(a->name) {
@@ -717,6 +718,7 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 					continue;
 				} else if(!strcasecmp(a->name, "msid")) {
 					/* Found msid attribute */
+					have_msid = TRUE;
 					char msid[65], mstid[65];
 					msid[0] = '\0';
 					mstid[0] = '\0';
@@ -755,6 +757,12 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 				g_hash_table_insert(pc->media_bymid, g_strdup(medium->mid), medium);
 				janus_refcount_increase(&medium->ref);
 			}
+		}
+		if(!have_msid) {
+			g_free(medium->msid);
+			medium->msid = NULL;
+			g_free(medium->mstid);
+			medium->mstid = NULL;
 		}
 		if(m->direction == JANUS_SDP_INACTIVE) {
 			/* FIXME Reset the local SSRCs and RTCP context */
@@ -1560,12 +1568,14 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			m->attributes = g_list_append(m->attributes, a);
 		}
 		if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
-			if(medium->msid && medium->mstid) {
-				a = janus_sdp_attribute_create("msid", "%s %s", medium->msid, medium->mstid);
-			} else {
-				a = janus_sdp_attribute_create("msid", "janus janus%s", medium->mid);
+			if(m->direction != JANUS_SDP_INACTIVE) {
+				if(medium->msid && medium->mstid) {
+					a = janus_sdp_attribute_create("msid", "%s %s", medium->msid, medium->mstid);
+				} else {
+					a = janus_sdp_attribute_create("msid", "janus janus%s", medium->mid);
+				}
+				m->attributes = g_list_append(m->attributes, a);
 			}
-			m->attributes = g_list_append(m->attributes, a);
 			if(medium->ssrc > 0) {
 				a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", medium->ssrc);
 				m->attributes = g_list_append(m->attributes, a);

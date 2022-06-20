@@ -3805,13 +3805,14 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			janus_ice_peerconnection_medium *medium = ice_handle->pc ?
 				g_hash_table_lookup(ice_handle->pc->media, GUINT_TO_POINTER(mindex)) : NULL;
 			gboolean have_mid = FALSE, have_rid = FALSE, have_repaired_rid = FALSE,
-				have_twcc = FALSE, have_dd = FALSE, have_abs_send_time = FALSE;
+				have_twcc = FALSE, have_dd = FALSE, have_abs_send_time = FALSE, have_msid = FALSE;
 			int opusred_pt = -1;
 			GList *tempA = m->attributes;
 			while(tempA) {
 				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 				if(a->name && a->value && !strcasecmp(a->name, "msid")) {
 					/* Found msid attribute */
+					have_msid = TRUE;
 					char msid[65], mstid[65];
 					msid[0] = '\0';
 					mstid[0] = '\0';
@@ -3821,6 +3822,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						janus_sdp_destroy(parsed_sdp);
 						return NULL;
 					}
+					janus_mutex_lock(&ice_handle->mutex);
 					if(medium->msid == NULL || strcasecmp(medium->msid, msid)) {
 						char *old_msid = medium->msid;
 						medium->msid = g_strdup(msid);
@@ -3831,6 +3833,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						medium->mstid = g_strdup(mstid);
 						g_free(old_mstid);
 					}
+					janus_mutex_unlock(&ice_handle->mutex);
 					/* Remove this msid attribute, the core will add it again later */
 					GList *msid_attr = tempA;
 					tempA = tempA->next;
@@ -3859,8 +3862,14 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			/* If the user offered RED but the plugin rejected it, disable it */
 			if(opusred_pt < 0 && medium != NULL && medium->opusred_pt > 0)
 				medium->opusred_pt = 0;
-			/* Check if rid-based simulcasting is available */
 			janus_mutex_lock(&ice_handle->mutex);
+			if(!have_msid) {
+				g_free(medium->msid);
+				medium->msid = NULL;
+				g_free(medium->mstid);
+				medium->mstid = NULL;
+			}
+			/* Check if rid-based simulcasting is available */
 			if(!have_rid && medium != NULL) {
 				g_free(medium->rid[0]);
 				medium->rid[0] = NULL;

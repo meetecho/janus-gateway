@@ -3092,6 +3092,12 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_
 				found = TRUE;
 				JANUS_LOG(LOG_VERB, "Reusing m-line %d for this subscription\n", stream->mindex);
 				stream->opusfec = ps->opusfec;
+				if(subscriber->use_msid && ps->publisher && ps->publisher->user_id_str) {
+					/* Update the stream ID to the publisher ID */
+					char *msid = stream->msid;
+					stream->msid = g_strdup(ps->publisher->user_id_str);
+					g_free(msid);
+				}
 				janus_rtp_simulcasting_context_reset(&stream->sim_context);
 				if(ps->simulcast) {
 					stream->sim_context.rid_ext_id = ps->rid_extmap_id;
@@ -3288,10 +3294,11 @@ static json_t *janus_videoroom_subscriber_offer(janus_videoroom_subscriber *subs
 			codec = (stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO ?
 				janus_audiocodec_name(stream->acodec) : janus_videocodec_name(stream->vcodec));
 		}
+		gboolean add_msid = (subscriber->use_msid && ps && !ps->disabled);
 		janus_sdp_generate_offer_mline(offer,
 			JANUS_SDP_OA_MLINE, janus_videoroom_media_sdptype(stream->type),
 			JANUS_SDP_OA_MID, stream->mid,
-			JANUS_SDP_OA_MSID, subscriber->use_msid ? stream->msid : NULL, subscriber->use_msid ? stream->mstid : NULL,
+			JANUS_SDP_OA_MSID, add_msid ? stream->msid : NULL, add_msid ? stream->mstid : NULL,
 			JANUS_SDP_OA_PT, pt,
 			JANUS_SDP_OA_CODEC, codec,
 			JANUS_SDP_OA_FMTP, (stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO && strlen(audio_fmtp) ? audio_fmtp : NULL),
