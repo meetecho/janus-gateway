@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.12.3] - 2022-06-20
+
+- Keep track of RTP extensions when storing packets for retransmission [[PR-2981](https://github.com/meetecho/janus-gateway/pull/2981)]
+- Fixed negotiation of RTP extensions when direction is involved
+- Fixed broken simulcast when data channels are negotiated [[Issue-2992](https://github.com/meetecho/janus-gateway/issues/2992)]
+- Fixed broken VP8 payload descriptor parsing when 7-bit PictureID are used
+- Fixed missing checks on auth challenges in SIP plugin
+- Fixed missing Contact header in SUBSCRIBE requests in SIP plugin [[PR-2973](https://github.com/meetecho/janus-gateway/pull/2973)]
+- Fixed segfault in SIP plugin when freeing a session with a subscription still active [[PR-2974](https://github.com/meetecho/janus-gateway/pull/2974)]
+- Add new shared JavaScript file for settings in demos [[PR-2991](https://github.com/meetecho/janus-gateway/pull/2991)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.12.2] - 2022-05-23
 
 - Abort DTLS handshake if DTLSv1_handle_timeout returns an error
