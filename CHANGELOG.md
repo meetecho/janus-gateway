@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.0.3] - 2022-06-20
+
+- Keep track of RTP extensions when storing packets for retransmission [[PR-2981](https://github.com/meetecho/janus-gateway/pull/2981)]
+- Fixed negotiation of RTP extensions when direction is involved
+- Fixed broken VP8 payload descriptor parsing when 7-bit PictureID are used
+- Support for batched configure requests in VideoRoom [[PR-2986](https://github.com/meetecho/janus-gateway/pull/2986)]
+- Added missing info to VideoRoom publisher's info own event [[Issue-2988](https://github.com/meetecho/janus-gateway/issues/2988)]
+- Fixed memory leaks in when upgrading old-style Videoroom requests (thanks @OxleyS!) [[PR-3002](https://github.com/meetecho/janus-gateway/pull/3002)]
+- Fixed memory leak in VideoRoom when updating subscriptions with no changes
+- Added 'kick_all' requests and possibility to remove PIN code to both Audiobridge and Streaming plugins (thanks @mikaelnousiainen!) [[PR-2978](https://github.com/meetecho/janus-gateway/pull/2978)]
+- Added support for notifications in the Streaming plugin when metadata for a mountpoint is changed (thanks @amoizard!) [[PR-3000](https://github.com/meetecho/janus-gateway/pull/3000)]
+- Fixed missing checks on auth challenges in SIP plugin
+- Fixed missing Contact header in SUBSCRIBE requests in SIP plugin [[PR-2973](https://github.com/meetecho/janus-gateway/pull/2973)]
+- Fixed segfault in SIP plugin when freeing a session with a subscription still active [[PR-2974](https://github.com/meetecho/janus-gateway/pull/2974)]
+- Add new shared JavaScript file for settings in demos [[PR-2991](https://github.com/meetecho/janus-gateway/pull/2991)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.0.2] - 2022-05-23
 
 - Abort DTLS handshake if DTLSv1_handle_timeout returns an error
