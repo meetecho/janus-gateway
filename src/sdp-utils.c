@@ -927,6 +927,43 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int index, int pt) {
 	return NULL;
 }
 
+const char *janus_sdp_get_rtpmap_codec(const char *rtpmap) {
+	if(rtpmap == NULL)
+		return NULL;
+	const char *codec = NULL;
+	char *rtpmap_val = g_ascii_strdown(rtpmap, -1);
+	if(strstr(rtpmap_val, "opus/") == rtpmap_val)
+		codec = "opus";
+	else if(strstr(rtpmap_val, "multiopus/") == rtpmap_val)
+		codec = "multiopus";
+	else if(strstr(rtpmap_val, "pcmu/") == rtpmap_val)
+		codec = "pcmu";
+	else if(strstr(rtpmap_val, "pcma/") == rtpmap_val)
+		codec = "pcma";
+	else if(strstr(rtpmap_val, "g722/") == rtpmap_val)
+		codec = "g722";
+	else if(strstr(rtpmap_val, "isac/16") == rtpmap_val)
+		codec = "isac16";
+	else if(strstr(rtpmap_val, "isac/32") == rtpmap_val)
+		codec = "isac32";
+	else if(strstr(rtpmap_val, "telephone-event/") == rtpmap_val)
+		codec = "dtmf";
+	else if(strstr(rtpmap_val, "vp8/") == rtpmap_val)
+		codec = "vp8";
+	else if(strstr(rtpmap_val, "vp9/") == rtpmap_val)
+		codec = "vp9";
+	else if(strstr(rtpmap_val, "h264/") == rtpmap_val)
+		codec = "h264";
+	else if(strstr(rtpmap_val, "av1/") == rtpmap_val)
+		codec = "av1";
+	else if(strstr(rtpmap_val, "h265/") == rtpmap_val)
+		codec = "h265";
+	if(codec == NULL)
+		JANUS_LOG(LOG_ERR, "Unsupported rtpmap '%s'\n", rtpmap);
+	g_free(rtpmap_val);
+	return codec;
+}
+
 const char *janus_sdp_get_codec_rtpmap(const char *codec) {
 	if(codec == NULL)
 		return NULL;

@@ -403,6 +403,11 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, int index, const char *codec, co
  * @returns The codec name, if found, or NULL otherwise */
 const char *janus_sdp_get_codec_name(janus_sdp *sdp, int index, int pt);
 
+/*! \brief Helper to get the codec name associated to a specific rtpmap
+ * @param codec The rtpmap, as a string (e.g., "VP8/90000")
+ * @returns The codec name, if found (e.g., "vp8"), or NULL otherwise */
+const char *janus_sdp_get_rtpmap_codec(const char *rtpmap);
+
 /*! \brief Helper to get the rtpmap associated to a specific codec
  * @param codec The codec name, as a string (e.g., "opus")
  * @returns The rtpmap value, if found (e.g., "opus/48000/2"), or NULL otherwise */
