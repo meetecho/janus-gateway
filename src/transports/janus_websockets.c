@@ -412,7 +412,7 @@ static struct lws_vhost* janus_websockets_create_ws_server(
 	if(item && item->value) {
 		ip = (char *)item->value;
 		struct in_addr addr;
-		if(inet_net_pton(AF_INET, ip, &addr, sizeof(addr)) > 0)
+		if(inet_pton(AF_INET, ip, &addr) == 1)
 			ipv4_only = 1;
 		char *iface = janus_websockets_get_interface_name(ip);
 		if(iface == NULL) {

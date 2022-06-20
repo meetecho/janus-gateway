@@ -559,7 +559,7 @@ AC_CHECK_LIB([websockets],
 			   AS_IF([test "x$enable_websockets" != "xno"],
 			   [
 				  AC_DEFINE(HAVE_WEBSOCKETS)
-				  WS_MANUAL_LIBS="-lwebsockets -lresolv"
+				  WS_MANUAL_LIBS="-lwebsockets"
 				  enable_websockets=yes
 				  AC_CHECK_LIB([websockets],
 							   [lws_get_peer_simple],
@@ -569,7 +569,7 @@ AC_CHECK_LIB([websockets],
                AS_IF([test "x$enable_websockets_event_handler" != "xno"],
                [
                  AC_DEFINE(HAVE_WSEVH)
-                 WS_MANUAL_LIBS="-lwebsockets -lresolv"
+                 WS_MANUAL_LIBS="-lwebsockets"
                  enable_websockets_event_handler=yes
                ])
 			 ],
