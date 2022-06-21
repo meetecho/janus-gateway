@@ -139,7 +139,7 @@ $(document).ready(function() {
 																// We want to capture the screen and audio, but sendonly
 																tracks: [
 																	{ type: 'audio', capture: true, recv: false },
-																	{ type: 'video', capture: 'screen', recv: false }
+																	{ type: 'screen', capture: true, recv: false }
 																],
 																success: function(jsep) {
 																	Janus.debug("Got publisher SDP!", jsep);
@@ -159,7 +159,7 @@ $(document).ready(function() {
 															// We want sendonly audio and screensharing
 															tracks: [
 																{ type: 'audio', capture: true, recv: false },
-																{ type: 'video', capture: 'screen', recv: false }
+																{ type: 'screen', capture: true, recv: false }
 															],
 															success: function(jsep) {
 																Janus.debug("Got publisher SDP!", jsep);
