@@ -3946,6 +3946,28 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				g_list_free(ptypes);
 				g_list_free(rtx_ptypes);
 			}
+		} else if(medium && medium->type == JANUS_MEDIA_VIDEO &&
+				janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX) &&
+				medium->rtx_payload_types != NULL) {
+			/* Check if there are new payload types that conflict with our rtx additions */
+			janus_sdp_mline *m = janus_sdp_mline_find_by_index(parsed_sdp, medium->mindex);
+			if(m && m->ptypes) {
+				GList *ptypes = g_list_copy(m->ptypes), *tempP = ptypes;
+				GList *rtx_ptypes = g_hash_table_get_values(medium->rtx_payload_types);
+				while(tempP) {
+					int ptype = GPOINTER_TO_INT(tempP->data);
+					if(g_hash_table_lookup(medium->clock_rates, GINT_TO_POINTER(ptype)) &&
+							g_list_find(rtx_ptypes, GINT_TO_POINTER(ptype))) {
+						/* We have a payload type that is both a codec and rtx, get rid of it */
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Removing duplicate payload type %d\n", ice_handle->handle_id, ptype);
+						janus_sdp_remove_payload_type(parsed_sdp, medium->mindex, ptype);
+						g_hash_table_remove(medium->clock_rates, GINT_TO_POINTER(ptype));
+					}
+					tempP = tempP->next;
+				}
+				g_list_free(ptypes);
+				g_list_free(rtx_ptypes);
+			}
 		}
 	}
 	/* Enrich the SDP the plugin gave us with all the WebRTC related stuff */
