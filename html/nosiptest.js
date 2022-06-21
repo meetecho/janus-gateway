@@ -13,7 +13,7 @@ var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
 var spinner = null;
 
-var videoenabled = true;
+var callstarted = false, videoenabled = true;
 var srtp = undefined ; // use "sdes_mandatory" to test SRTP-SDES
 
 $(document).ready(function() {
@@ -54,13 +54,13 @@ $(document).ready(function() {
 									// Negotiate WebRTC in a second (just to make sure both caller and callee handles exist)
 									setTimeout(function() {
 										Janus.debug("[caller] Trying a createOffer too (audio/video sendrecv)");
-										// We want bidirectional audio for sure, and maybe video too
-										let tracks = [{ type: 'audio', capture: true, recv: true }];
-										if(videoenabled)
-											tracks.push({ type: 'video', capture: true, recv: true });
+										// We want bidirectional audio and video by default
 										caller.createOffer(
 											{
-												tracks: tracks,
+												tracks: [
+													{ type: 'audio', capture: true, recv: true },
+													{ type: 'video', capture: true, recv: true }
+												],
 												success: function(jsep) {
 													Janus.debug("[caller] Got SDP!", jsep);
 													// We now have a WebRTC SDP: to get a barebone SDP legacy
@@ -114,6 +114,10 @@ $(document).ready(function() {
 								webrtcState: function(on) {
 									Janus.log("[caller] Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videoleft").parent().unblock();
+									if(on) {
+										callstarted = true;
+										$('#togglevideo').removeAttr('disabled').click(renegotiateVideo);
+									}
 								},
 								slowLink: function(uplink, lost, mid) {
 									Janus.warn("[caller] Janus reports problems " + (uplink ? "sending" : "receiving") +
@@ -153,6 +157,12 @@ $(document).ready(function() {
 											if(jsep) {
 												Janus.debug("[caller] Handling SDP as well...", jsep);
 												caller.handleRemoteJsep({ jsep: jsep });
+												// If this was a renegotiation, update the button
+												if(callstarted) {
+													$('#togglevideo')
+														.text(videoenabled ? 'Disable video' : 'Enable video')
+														.removeAttr('disabled');
+												}
 											}
 										}
 									}
@@ -465,3 +475,39 @@ $(document).ready(function() {
 		});
 	}});
 });
+
+// We use this helper function to remove/add video to the call
+function renegotiateVideo() {
+	$('#togglevideo').attr('disabled', true);
+	let modifiedTrack = null;
+	if(videoenabled) {
+		// Renegotiate the call removing local video
+		videoenabled = false;
+		// We only want to modify the video track, removing our own
+		modifiedTrack = [{ type: 'video', mid: '1', remove: true }]
+	} else {
+		// Renegotiate the call removing local video
+		videoenabled = true;
+		// We only want to modify the video track, adding our own
+		modifiedTrack = [{ type: 'video', mid: '1', replace: true, capture: true }]
+	}
+	// Create an updated offer
+	caller.createOffer(
+		{
+			tracks: modifiedTrack,
+			success: function(jsep) {
+				Janus.debug("[caller] Got SDP!", jsep);
+				// As before, we ask the NoSIP plugin to generate a
+				// plain SDP we can then pass to the callee handle
+				var body = {
+					request: "generate",
+					srtp: srtp
+				};
+				caller.send({ message: body, jsep: jsep });
+			},
+			error: function(error) {
+				Janus.error("WebRTC error:", error);
+				bootbox.alert("WebRTC error... " + error.message);
+			}
+		});
+}
