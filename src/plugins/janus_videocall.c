@@ -773,7 +773,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle
 			 * The caveat is that the targets in OUR simulcast context are the PEER's targets */
 			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&peer->sim_context,
-				buf, len, session->ssrc, session->rid, session->vcodec, &peer->context);
+				buf, len, session->ssrc, session->rid, session->vcodec, &peer->context, NULL);
 			/* Do we need to drop this? */
 			if(!relay)
 				return;

@@ -2456,7 +2456,7 @@ void janus_duktape_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *
 	} else {
 		/* We're simulcasting, save the best video quality */
 		gboolean save = janus_rtp_simulcasting_context_process_rtp(&session->rec_simctx,
-			buf, len, session->ssrc, session->rid, session->vcodec, &session->rec_ctx);
+			buf, len, session->ssrc, session->rid, session->vcodec, &session->rec_ctx, NULL);
 		if(save) {
 			uint32_t seq_number = ntohs(rtp->seq_number);
 			uint32_t timestamp = ntohl(rtp->timestamp);
@@ -2782,7 +2782,7 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 			return;
 		/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 		gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
-			(char *)packet->data, packet->length, packet->ssrc, NULL, sender->vcodec, &session->vrtpctx);
+			(char *)packet->data, packet->length, packet->ssrc, NULL, sender->vcodec, &session->vrtpctx, NULL);
 		if(session->sim_context.need_pli && sender->handle) {
 			/* Send a PLI */
 			JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");

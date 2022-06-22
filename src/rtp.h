@@ -341,10 +341,11 @@ void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t
  * @param[in] rids The simulcast rids to refer to, if any
  * @param[in] vcodec Video codec of the RTP payload
  * @param[in] sc RTP switching context to refer to, if any (only needed for VP8 and dropping temporal layers)
+ * @param[in] rid_mutex A mutex that must be acquired before reading the rids array, if any
  * @returns TRUE if the packet should be relayed, FALSE if it should be dropped instead */
 gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
 	char *buf, int len, uint32_t *ssrcs, char **rids,
-	janus_videocodec vcodec, janus_rtp_switching_context *sc);
+	janus_videocodec vcodec, janus_rtp_switching_context *sc, janus_mutex* rid_mutex);
 ///@}
 
 /** @name Janus AV1-SVC processing methods

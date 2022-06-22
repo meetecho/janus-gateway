@@ -598,7 +598,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 			uint32_t ssrc = ntohl(header->ssrc);
 			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
-				buf, len, session->ssrc, session->rid, session->vcodec, &session->context);
+				buf, len, session->ssrc, session->rid, session->vcodec, &session->context, NULL);
 			if(session->sim_context.need_pli) {
 				/* Send a PLI */
 				gateway->send_pli(handle);
