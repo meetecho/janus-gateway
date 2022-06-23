@@ -2481,6 +2481,27 @@ function Janus(gatewayCallbacks) {
 					if(!sender)
 						sender = transceiver ? transceiver.sender : null;
 					// Check if we need to override some settings
+					if(track.codec) {
+						if(Janus.webRTCAdapter.browserDetails.browser === 'firefox') {
+							Janus.warn('setCodecPreferences not supported in Firefox, ignoring codec for track:', track);
+						} else if(typeof track.codec !== 'string') {
+							Janus.warn('Invalid codec value, ignoring for track:', track);
+						} else {
+							let mimeType = kind + '/' + track.codec.toLowerCase();
+							let codecs = RTCRtpReceiver.getCapabilities(kind).codecs.filter(function(codec) {
+								return codec.mimeType.toLowerCase() === mimeType;
+							});
+							if(!codecs || codecs.length === 0) {
+								Janus.warn('Codec not supported in this browser for this track, ignoring:', track);
+							} else if(transceiver) {
+								try {
+									transceiver.setCodecPreferences(codecs);
+								} catch(err) {
+									Janus.warn('Failed enforcing codec for this ' + kind + ' track:', err);
+								}
+							}
+						}
+					}
 					if(track.bitrate) {
 						// Override maximum bitrate
 						if(track.simulcast || track.svc) {
