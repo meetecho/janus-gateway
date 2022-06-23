@@ -2143,29 +2143,6 @@ function Janus(gatewayCallbacks) {
 		if(iceRestart)
 			mediaConstraints.iceRestart = true;
 		Janus.debug(mediaConstraints);
-		// Check if this is Firefox and we've been asked to do simulcasting
-		if(callbacks.tracks && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
-			for(let track of callbacks.tracks) {
-				if(!track.simulcast)
-					continue;
-				// FIXME Based on https://gist.github.com/voluntas/088bc3cc62094730647b
-				Janus.log("Enabling Simulcasting for Firefox (RID)");
-				let sender = config.pc.getSenders().find(function(s) {return s.track.id === track.id && s.track.kind === "video"});
-				if(sender) {
-					let parameters = sender.getParameters();
-					if(!parameters) {
-						parameters = {};
-					}
-					let maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
-					parameters.encodings = callbacks.sendEncodings || [
-						{ rid: "h", active: true, maxBitrate: maxBitrates.high },
-						{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
-						{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
-					];
-					sender.setParameters(parameters);
-				}
-			}
-		}
 		let offer = await config.pc.createOffer(mediaConstraints);
 		Janus.debug(offer);
 		// JSON.stringify doesn't work on some WebRTC objects anymore
@@ -2458,11 +2435,11 @@ function Janus(gatewayCallbacks) {
 						if(Janus.webRTCAdapter.browserDetails.browser !== 'firefox') {
 							// Standard RID
 							Janus.log('Enabling rid-based simulcasting:', nt);
-							let maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
+							let maxBitrates = getMaxBitrates(track.simulcastMaxBitrates);
 							transceiver = config.pc.addTransceiver(nt, {
 								direction: 'sendrecv',
 								streams: [config.myStream],
-								sendEncodings: callbacks.sendEncodings || [
+								sendEncodings: track.sendEncodings || [
 									{ rid: 'h', active: true, maxBitrate: maxBitrates.high },
 									{ rid: 'm', active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
 									{ rid: 'l', active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
@@ -2480,8 +2457,8 @@ function Janus(gatewayCallbacks) {
 								let parameters = sender.getParameters();
 								if(!parameters)
 									parameters = {};
-								let maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
-								parameters.encodings = callbacks.sendEncodings || [
+								let maxBitrates = getMaxBitrates(track.simulcastMaxBitrates);
+								parameters.encodings = track.sendEncodings || [
 									{ rid: 'h', active: true, maxBitrate: maxBitrates.high },
 									{ rid: 'm', active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
 									{ rid: 'l', active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
