@@ -252,6 +252,8 @@ $(document).ready(function() {
 																	tracks: tracks,
 																	success: function(jsep) {
 																		Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo + ":", jsep);
+																		sipcall.doAudio = doAudio;
+																		sipcall.doVideo = doVideo;
 																		var body = { request: "accept" };
 																		// Note: as with "call", you can add a "srtp" attribute to
 																		// negotiate/mandate SDES support for this incoming call.
@@ -268,9 +270,9 @@ $(document).ready(function() {
 																		// Note 2: by default, the SIP plugin auto-answers incoming
 																		// re-INVITEs, without involving the browser/client: this is
 																		// for backwards compatibility with older Janus clients that
-																		// may not be able to handle them. If you want to receive
-																		// re-INVITES to handle them yourself, specify it here, e.g.:
-																		//		body["autoaccept_reinvites"] = false;
+																		// may not be able to handle them. Since we want to receive
+																		// re-INVITES to handle them ourselves, we specify it here:
+																		body["autoaccept_reinvites"] = false;
 																		sipcall.send({ message: body, jsep: jsep });
 																		$('#call').removeAttr('disabled').html('Hangup')
 																			.removeClass("btn-success").addClass("btn-danger")
@@ -321,12 +323,17 @@ $(document).ready(function() {
 											Janus.log("Got re-INVITE");
 											var doAudio = (jsep.sdp.indexOf("m=audio ") > -1),
 												doVideo = (jsep.sdp.indexOf("m=video ") > -1);
-											// We want bidirectional audio and/or video
+											// We want bidirectional audio and/or video, but only
+											// populate tracks if we weren't sending something before
 											let tracks = [];
-											if(doAudio)
+											if(doAudio && !sipcall.doAudio) {
+												sipcall.doAudio = true;
 												tracks.push({ type: 'audio', capture: true, recv: true });
-											if(doVideo)
+											}
+											if(doVideo && !sipcall.doVideo) {
+												sipcall.doVideo = true;
 												tracks.push({ type: 'video', capture: true, recv: true });
+											}
 											sipcall.createAnswer(
 												{
 													jsep: jsep,
@@ -681,8 +688,11 @@ $(document).ready(function() {
 									$('#videoright').empty();
 									$('#videos').hide();
 									$('#dtmf').parent().html("Remote UA");
-									if(sipcall)
-										sipcall.callId = null;
+									if(sipcall) {
+										delete sipcall.callId;
+										delete sipcall.doAudio;
+										delete sipcall.doVideo;
+									}
 									localTracks = {};
 									localVideos = 0;
 									remoteTracks = {};
@@ -915,6 +925,8 @@ function doCall(ev) {
 }
 function actuallyDoCall(handle, uri, doVideo, referId) {
 	// We want bidirectional audio for sure, and maybe video
+	handle.doAudio = true;
+	handle.doVideo = doVideo;
 	let tracks = [{ type: 'audio', capture: true, recv: true }];
 	if(doVideo)
 		tracks.push({ type: 'video', capture: true, recv: true });
@@ -947,9 +959,9 @@ function actuallyDoCall(handle, uri, doVideo, referId) {
 				// Note 2: by default, the SIP plugin auto-answers incoming
 				// re-INVITEs, without involving the browser/client: this is
 				// for backwards compatibility with older Janus clients that
-				// may not be able to handle them. If you want to receive
-				// re-INVITES to handle them yourself, specify it here, e.g.:
-				//		body["autoaccept_reinvites"] = false;
+				// may not be able to handle them. Since we want to receive
+				// re-INVITES to handle them ourselves, we specify it here:
+				body["autoaccept_reinvites"] = false;
 				if(referId) {
 					// In case we're originating this call because of a call
 					// transfer, we need to provide the internal reference ID
@@ -1206,6 +1218,8 @@ function addHelper(helperCreated) {
 												tracks: tracks,
 												success: function(jsep) {
 													Janus.debug("[Helper #" + helperId + "] Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo + ":", jsep);
+													helpers[helperId].sipcall.doAudio = doAudio;
+													helpers[helperId].sipcall.doVideo = doVideo;
 													var body = { request: "accept" };
 													// Note: as with "call", you can add a "srtp" attribute to
 													// negotiate/mandate SDES support for this incoming call.
@@ -1222,9 +1236,9 @@ function addHelper(helperCreated) {
 													// Note 2: by default, the SIP plugin auto-answers incoming
 													// re-INVITEs, without involving the browser/client: this is
 													// for backwards compatibility with older Janus clients that
-													// may not be able to handle them. If you want to receive
-													// re-INVITES to handle them yourself, specify it here, e.g.:
-													//		body["autoaccept_reinvites"] = false;
+													// may not be able to handle them. Since we want to receive
+													// re-INVITES to handle them ourselves, we specify it here:
+													body["autoaccept_reinvites"] = false;
 													helpers[helperId].sipcall.send({ message: body, jsep: jsep });
 													$('#call' + helperId).removeAttr('disabled').html('Hangup')
 														.removeClass("btn-success").addClass("btn-danger")
@@ -1281,12 +1295,17 @@ function addHelper(helperCreated) {
 						Janus.log("[Helper #" + helperId + "] Got re-INVITE");
 						var doAudio = (jsep.sdp.indexOf("m=audio ") > -1),
 							doVideo = (jsep.sdp.indexOf("m=video ") > -1);
-						// We want bidirectional audio and/or video
+						// We want bidirectional audio and/or video, but only
+						// populate tracks if we weren't sending something before
 						let tracks = [];
-						if(doAudio)
+						if(doAudio && !sipcall.doAudio) {
+							helpers[helperId].sipcall.doAudio = true;
 							tracks.push({ type: 'audio', capture: true, recv: true });
-						if(doVideo)
+						}
+						if(doVideo && !sipcall.doVideo) {
+							helpers[helperId].sipcall.doVideo = true;
 							tracks.push({ type: 'video', capture: true, recv: true });
+						}
 						helpers[helperId].sipcall.createAnswer(
 							{
 								jsep: jsep,
@@ -1652,8 +1671,11 @@ function addHelper(helperCreated) {
 				$('#videoleft' + helperId).empty();
 				$('#videos' + helperId).hide();
 				$('#dtmf' + helperId).parent().html("Remote UA");
-				if(helpers[helperId] && helpers[helperId].sipcall)
-					helpers[helperId].sipcall.callId = null;
+				if(helpers[helperId] && helpers[helperId].sipcall) {
+					delete helpers[helperId].sipcall.callId;
+					delete helpers[helperId].sipcall.doAudio;
+					delete helpers[helperId].sipcall.doVideo;
+				}
 				if(helpers[helperId]) {
 					helpers[helperId].localTracks = {};
 					helpers[helperId].localVideos = 0;
