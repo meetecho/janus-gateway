@@ -2510,8 +2510,12 @@ function Janus(gatewayCallbacks) {
 							Janus.warn('Ignoring invalid bitrate for track:', track);
 						} else if(sender) {
 							let params = sender.getParameters();
-							params.encodings[0].maxBitrate = track.bitrate;
-							await sender.setParameters(params);
+							if(!params || !params.encodings || params.encodings.length === 0) {
+								Janus.warn('No encodings in the sender parameters, ignoring bitrate for track:', track);
+							} else {
+								params.encodings[0].maxBitrate = track.bitrate;
+								await sender.setParameters(params);
+							}
 						}
 					}
 					if(kind === 'video' && track.framerate) {
@@ -2522,8 +2526,12 @@ function Janus(gatewayCallbacks) {
 							Janus.warn('Ignoring invalid framerate for track:', track);
 						} else if(sender) {
 							let params = sender.getParameters();
-							params.encodings[0].maxFramerate = track.framerate;
-							await sender.setParameters(params);
+							if(!params || !params.encodings || params.encodings.length === 0) {
+								Janus.warn('No encodings in the sender parameters, ignoring framerate for track:', track);
+							} else {
+								params.encodings[0].maxFramerate = track.framerate;
+								await sender.setParameters(params);
+							}
 						}
 					}
 					// FIXME Check if insertable streams are involved
