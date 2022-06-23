@@ -1345,6 +1345,7 @@ function Janus(gatewayCallbacks) {
 						muteVideo : function(mid) { return mute(handleId, mid, true, true); },
 						unmuteVideo : function(mid) { return mute(handleId, mid, true, false); },
 						getBitrate : function(mid) { return getBitrate(handleId, mid); },
+						setMaxBitrate : function(mid, bitrate) { return setBitrate(handleId, mid, bitrate); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
@@ -1422,6 +1423,7 @@ function Janus(gatewayCallbacks) {
 						muteVideo : function(mid) { return mute(handleId, mid, true, true); },
 						unmuteVideo : function(mid) { return mute(handleId, mid, true, false); },
 						getBitrate : function(mid) { return getBitrate(handleId, mid); },
+						setMaxBitrate : function(mid, bitrate) { return setBitrate(handleId, mid, bitrate); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
@@ -2478,6 +2480,31 @@ function Janus(gatewayCallbacks) {
 					}
 					if(!sender)
 						sender = transceiver ? transceiver.sender : null;
+					// Check if we need to override some settings
+					if(track.bitrate) {
+						// Override maximum bitrate
+						if(track.simulcast || track.svc) {
+							Janus.warn('Ignoring bitrate for simulcast/SVC track, use sendEncodings for that');
+						} else if(isNaN(track.bitrate) || track.bitrate < 0) {
+							Janus.warn('Ignoring invalid bitrate for track:', track);
+						} else if(sender) {
+							let params = sender.getParameters();
+							params.encodings[0].maxBitrate = track.bitrate;
+							await sender.setParameters(params);
+						}
+					}
+					if(kind === 'video' && track.framerate) {
+						// Override maximum framerate
+						if(track.simulcast || track.svc) {
+							Janus.warn('Ignoring framerate for simulcast/SVC track, use sendEncodings for that');
+						} else if(isNaN(track.framerate) || track.framerate < 0) {
+							Janus.warn('Ignoring invalid framerate for track:', track);
+						} else if(sender) {
+							let params = sender.getParameters();
+							params.encodings[0].maxFramerate = track.framerate;
+							await sender.setParameters(params);
+						}
+					}
 					// FIXME Check if insertable streams are involved
 					if(track.transforms) {
 						if(sender && track.transforms.sender) {
@@ -2939,6 +2966,39 @@ function Janus(gatewayCallbacks) {
 		} else {
 			Janus.warn("Getting the video bitrate unsupported by browser");
 			return "Feature unsupported by browser";
+		}
+	}
+
+	function setBitrate(handleId, mid, bitrate) {
+		let pluginHandle = pluginHandles[handleId];
+		if(!pluginHandle || !pluginHandle.webrtcStuff) {
+			Janus.warn('Invalid handle');
+			return;
+		}
+		let config = pluginHandle.webrtcStuff;
+		if(!config.pc) {
+			Janus.warn('Invalid PeerConnection');
+			return;
+		}
+		let transceiver = config.pc.getTransceivers().find(t => (t.mid === mid));
+		if(!transceiver) {
+			Janus.warn('No transceiver with mid', mid);
+			return;
+		}
+		if(!transceiver.sender) {
+			Janus.warn('No sender for transceiver with mid', mid);
+			return;
+		}
+		let params = transceiver.sender.getParameters();
+		if(!params || !params.encodings || params.encodings.length === 0) {
+			Janus.warn('No parameters encodings');
+		} else if(params.encodings.length > 1) {
+			Janus.warn('Ignoring bitrate for simulcast track, use sendEncodings for that');
+		} else if(isNaN(bitrate) || bitrate < 0) {
+			Janus.warn('Invalid bitrate (must be a positive integer)');
+		} else {
+			params.encodings[0].maxBitrate = bitrate;
+			transceiver.sender.setParameters(params);
 		}
 	}
 
