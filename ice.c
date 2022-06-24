@@ -4520,6 +4520,8 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 			if(stream && stream->audio_rtcp_ctx) {
 				json_t *info = json_object();
 				json_object_set_new(info, "media", json_string("audio"));
+				if(stream->audio_codec)
+					json_object_set_new(info, "audio-codec", json_string(stream->audio_codec));
 				json_object_set_new(info, "base", json_integer(stream->audio_rtcp_ctx->tb));
 				json_object_set_new(info, "rtt", json_integer(janus_rtcp_context_get_rtt(stream->audio_rtcp_ctx)));
 				json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, FALSE)));
@@ -4562,6 +4564,8 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 						json_object_set_new(info, "media", json_string("video-sim1"));
 					else
 						json_object_set_new(info, "media", json_string("video-sim2"));
+					if(stream->video_codec)
+						json_object_set_new(info, "video-codec", json_string(stream->video_codec));
 					json_object_set_new(info, "base", json_integer(stream->video_rtcp_ctx[vindex]->tb));
 					if(vindex == 0)
 						json_object_set_new(info, "rtt", json_integer(janus_rtcp_context_get_rtt(stream->video_rtcp_ctx[vindex])));
