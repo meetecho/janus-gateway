@@ -318,7 +318,7 @@ Janus.init = function(options) {
 				try {
 					element.src = URL.createObjectURL(stream);
 				} catch (e) {
-					Janus.error("Error attaching stream to element");
+					Janus.error("Error attaching stream to element", e);
 				}
 			}
 		};
@@ -329,7 +329,7 @@ Janus.init = function(options) {
 				try {
 					to.src = from.src;
 				} catch (e) {
-					Janus.error("Error reattaching stream to element");
+					Janus.error("Error reattaching stream to element", e);
 				}
 			}
 		};
