@@ -331,6 +331,14 @@ void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *contex
  * @param[in] rids The list of rids to update, if any (items will be allocated) */
 void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t *ssrcs, char **rids);
 
+/*! \brief Helper method to cleanup some or all of the simulcasting info
+ * (rids and/or SSRCs) we may have prepared before via janus_rtp_simulcasting_prepare
+ * @param[in] rid_ext_id The rid RTP extension ID to cleanup, if any
+ * @param[in] ssrcs The list of simulcast SSRCs to cleanup, if any
+ * @param[in] rids The list of rids to cleanup, if any (items will be freed and NULL-ed)
+ * @param[in] rid_mutex A mutex that must be acquired before cleaning up, if any */
+void janus_rtp_simulcasting_cleanup(int *rid_ext_id, uint32_t *ssrcs, char **rids, janus_mutex *rid_mutex);
+
 /*! \brief Process an RTP packet, and decide whether this should be relayed or not, updating the context accordingly
  * \note Calling this method resets the \c changed_substream , \c changed_temporal and \c need_pli
  * properties, and updates them according to the decisions made after processing the packet

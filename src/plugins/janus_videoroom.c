@@ -2329,11 +2329,7 @@ static void janus_videoroom_publisher_stream_free(const janus_refcount *ps_ref) 
 	g_slist_free(ps->subscribers);
 	janus_mutex_destroy(&ps->subscribers_mutex);
 	janus_mutex_destroy(&ps->rid_mutex);
-	int i=0;
-	for(i=0; i<3; i++) {
-		g_free(ps->rid[i]);
-		ps->rid[i] = NULL;
-	}
+	janus_rtp_simulcasting_cleanup(NULL, NULL, ps->rid, NULL);
 	g_free(ps);
 }
 
@@ -7552,15 +7548,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 			}
 			g_slist_free(ps->subscribers);
 			ps->subscribers = NULL;
-			janus_mutex_lock(&ps->rid_mutex);
-			int i=0;
-			for(i=0; i<3; i++) {
-				ps->vssrc[i] = 0;
-				g_free(ps->rid[i]);
-				ps->rid[i] = NULL;
-			}
-			ps->rid_extmap_id = 0;
-			janus_mutex_unlock(&ps->rid_mutex);
+			janus_rtp_simulcasting_cleanup(&ps->rid_extmap_id, ps->vssrc, ps->rid, &ps->rid_mutex);
 			g_free(ps->fmtp);
 			ps->fmtp = NULL;
 			janus_mutex_unlock(&ps->subscribers_mutex);
@@ -10765,12 +10753,7 @@ static void *janus_videoroom_handler(void *data) {
 									ps->simulcast = TRUE;
 									janus_mutex_lock(&ps->rid_mutex);
 									/* Clear existing RIDs in case this is a renegotiation */
-									int rid_index = 0;
-									for (rid_index=0; rid_index<3; rid_index++) {
-										g_free(ps->rid[rid_index]);
-										ps->rid[rid_index] = NULL;
-									}
-									ps->rid_extmap_id = 0;
+									janus_rtp_simulcasting_cleanup(&ps->rid_extmap_id, NULL, ps->rid, NULL);
 									janus_rtp_simulcasting_prepare(s,
 										&ps->rid_extmap_id,
 										ps->vssrc, ps->rid);

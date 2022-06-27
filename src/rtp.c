@@ -1047,6 +1047,26 @@ void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t
 	}
 }
 
+void janus_rtp_simulcasting_cleanup(int *rid_ext_id, uint32_t *ssrcs, char **rids, janus_mutex *rid_mutex) {
+	if(rid_mutex != NULL)
+		janus_mutex_lock(rid_mutex);
+	if(rid_ext_id)
+		*rid_ext_id = -1;
+	if(ssrcs || rids) {
+		int i = 0;
+		for(i=0; i<3; i++) {
+			if(ssrcs)
+				*(ssrcs+i) = 0;
+			if(rids) {
+				g_free(rids[i]);
+				rids[i] = NULL;
+			}
+		}
+	}
+	if(rid_mutex != NULL)
+		janus_mutex_unlock(rid_mutex);
+}
+
 gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
 		char *buf, int len, uint32_t *ssrcs, char **rids,
 		janus_videocodec vcodec, janus_rtp_switching_context *sc, janus_mutex *rid_mutex) {
