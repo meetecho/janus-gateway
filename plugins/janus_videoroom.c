@@ -1711,6 +1711,7 @@ typedef struct janus_videoroom_publisher {
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	GSList *subscribers;	/* Subscriptions to this publisher (who's watching this publisher)  */
 	GSList *subscriptions;	/* Subscriptions this publisher has created (who this publisher is watching) */
+	int subscribers_count;	/* Count of subscribers, to avoid having to perform a g_list_length every time */
 	janus_mutex subscribers_mutex;
 	janus_mutex own_subscriptions_mutex;
 	GHashTable *rtp_forwarders;
@@ -2954,7 +2955,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				if(participant->display)
 					json_object_set_new(info, "display", json_string(participant->display));
 				if(participant->subscribers)
-					json_object_set_new(info, "viewers", json_integer(g_slist_length(participant->subscribers)));
+					json_object_set_new(info, "viewers", json_integer(participant->subscribers_count));
 				json_t *media = json_object();
 				json_object_set_new(media, "audio", participant->audio ? json_true() : json_false());
 				if(participant->audio)
@@ -4926,9 +4927,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(p->sdp && g_atomic_int_get(&p->session->started)) {
 				if(p->audio_level_extmap_id > 0)
 					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
-				janus_mutex_lock_nodebug(&p->subscribers_mutex);
-				json_object_set_new(pl, "subscribers", json_integer(g_slist_length(p->subscribers)));
-				janus_mutex_unlock_nodebug(&p->subscribers_mutex);
+				json_object_set_new(pl, "subscribers", json_integer(p->subscribers_count));
 			}
 			json_array_append_new(list, pl);
 		}
@@ -6183,6 +6182,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 				janus_videoroom_hangup_subscriber(s);
 			}
 		}
+		participant->subscribers_count = 0;
 		participant->e2ee = FALSE;
 		janus_mutex_unlock(&participant->subscribers_mutex);
 		janus_videoroom_leave_or_unpublish(participant, FALSE, FALSE);
@@ -6212,6 +6212,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 				}
 				janus_mutex_lock(&publisher->subscribers_mutex);
 				publisher->subscribers = g_slist_remove(publisher->subscribers, subscriber);
+				publisher->subscribers_count = g_slist_length(publisher->subscribers);
 				janus_videoroom_hangup_subscriber(subscriber);
 				janus_mutex_unlock(&publisher->subscribers_mutex);
 				janus_refcount_decrease(&publisher->ref);
@@ -6909,6 +6910,7 @@ static void *janus_videoroom_handler(void *data) {
 					session->participant = subscriber;
 					janus_mutex_lock(&publisher->subscribers_mutex);
 					publisher->subscribers = g_slist_append(publisher->subscribers, subscriber);
+					publisher->subscribers_count = g_slist_length(publisher->subscribers);
 					janus_mutex_unlock(&publisher->subscribers_mutex);
 					if(owner != NULL) {
 						/* Note: we should refcount these subscription-publisher mappings as well */
@@ -7724,6 +7726,7 @@ static void *janus_videoroom_handler(void *data) {
 					/* Go on */
 					janus_mutex_lock(&prev_feed->subscribers_mutex);
 					prev_feed->subscribers = g_slist_remove(prev_feed->subscribers, subscriber);
+					prev_feed->subscribers_count = g_slist_length(prev_feed->subscribers);
 					janus_mutex_unlock(&prev_feed->subscribers_mutex);
 					janus_refcount_decrease(&prev_feed->session->ref);
 					janus_mutex_lock(&session->mutex);
@@ -7784,6 +7787,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				janus_mutex_lock(&publisher->subscribers_mutex);
 				publisher->subscribers = g_slist_append(publisher->subscribers, subscriber);
+				publisher->subscribers_count = g_slist_length(publisher->subscribers);
 				janus_mutex_unlock(&publisher->subscribers_mutex);
 				janus_mutex_lock(&session->mutex);
 				subscriber->feed = publisher;
