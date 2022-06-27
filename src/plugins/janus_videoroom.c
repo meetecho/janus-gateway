@@ -1765,6 +1765,7 @@ static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"data_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 };
 static struct janus_json_parameter rtp_forward_stream_parameters[] = {
+	{"mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"host", JSON_STRING, 0},
 	{"host_family", JSON_STRING, 0},
 	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -2142,9 +2143,9 @@ typedef struct janus_videoroom_publisher_stream {
 	gboolean opusstereo;					/* Whether this publisher is doing stereo Opus */
 	gboolean simulcast, svc;				/* Whether this stream uses simulcast or VP9 SVC */
 	uint32_t vssrc[3];						/* Only needed in case VP8 (or H.264) simulcasting is involved */
-	janus_mutex rid_mutex;		/* Protects access to the rid array and the extmap ID  */
 	char *rid[3];							/* Only needed if simulcasting is rid-based */
 	int rid_extmap_id;						/* rid extmap ID */
+	janus_mutex rid_mutex;					/* Mutex to protect access to the rid array and the extmap ID */
 	/* RTP extensions, if negotiated */
 	guint8 audio_level_extmap_id;			/* Audio level extmap ID */
 	guint8 video_orient_extmap_id;			/* Video orientation extmap ID */
