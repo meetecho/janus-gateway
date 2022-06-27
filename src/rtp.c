@@ -1049,7 +1049,7 @@ void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t
 
 gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
 		char *buf, int len, uint32_t *ssrcs, char **rids,
-		janus_videocodec vcodec, janus_rtp_switching_context *sc, janus_mutex* rid_mutex) {
+		janus_videocodec vcodec, janus_rtp_switching_context *sc, janus_mutex *rid_mutex) {
 	if(!context || !buf || len < 1)
 		return FALSE;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
