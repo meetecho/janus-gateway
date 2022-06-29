@@ -6865,11 +6865,9 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 			janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
 			/* Notify all other participants that there's a new boy in town */
 			janus_videoroom_notify_about_publisher(participant, FALSE);
-			janus_refcount_decrease(&participant->ref);
-
 			/* Check if we need to start recording */
 			janus_mutex_lock(&participant->rec_mutex);
-			if(participant->room->record) {
+			if(participant->room && participant->room->record) {
 				GList *temp = participant->streams;
 				while(temp) {
 					janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
@@ -6879,6 +6877,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 				participant->recording_active = TRUE;
 			}
 			janus_mutex_unlock(&participant->rec_mutex);
+			janus_refcount_decrease(&participant->ref);
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			janus_videoroom_subscriber *s = janus_videoroom_session_get_subscriber(session);
 			if(s && s->streams) {
