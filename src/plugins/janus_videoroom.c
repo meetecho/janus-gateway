@@ -3742,7 +3742,6 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	}
 	if(fd > 0)
 		close(fd);
-	ipv6_disabled = TRUE;
 	if(ipv6_disabled) {
 		JANUS_LOG(LOG_WARN, "IPv6 disabled, will only create VideoRoom forwarders to IPv4 addresses\n");
 	}
