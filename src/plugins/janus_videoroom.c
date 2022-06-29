@@ -6873,7 +6873,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 				GList *temp = participant->streams;
 				while(temp) {
 					janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
-					janus_videoroom_recorder_create(participant, ps);
+					janus_videoroom_recorder_create(ps);
 					temp = temp->next;
 				}
 				participant->recording_active = TRUE;
