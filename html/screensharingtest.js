@@ -269,8 +269,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										localVideos++;
 										$('#screencapture .no-video-container').remove();
-										stream = new MediaStream();
-										stream.addTrack(track.clone());
+										stream = new MediaStream([track]);
 										localTracks[trackId] = stream;
 										Janus.log("Created local stream:", stream);
 										$('#screencapture').append('<video class="rounded centered" id="screenvideo' + trackId + '" width=100% autoplay playsinline muted="muted"/>');
@@ -565,8 +564,7 @@ function newRemoteFeed(id, display) {
 				}
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
-					stream = new MediaStream();
-					stream.addTrack(track.clone());
+					stream = new MediaStream([track]);
 					remoteTracks[mid] = stream;
 					Janus.log("Created remote audio stream:", stream);
 					$('#screencapture').append('<audio class="hide" id="screenvideo' + mid + '" playsinline/>');
@@ -588,8 +586,7 @@ function newRemoteFeed(id, display) {
 					// New video track: create a stream out of it
 					remoteVideos++;
 					$('#screencapture .no-video-container').remove();
-					stream = new MediaStream();
-					stream.addTrack(track.clone());
+					stream = new MediaStream([track]);
 					remoteFeed.remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
 					$('#screencapture').append('<video class="rounded centered" id="screenvideo' + mid + '" width=100% playsinline/>');

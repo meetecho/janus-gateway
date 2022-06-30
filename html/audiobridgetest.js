@@ -315,8 +315,7 @@ $(document).ready(function() {
 										$('#roomaudio').remove();
 										return;
 									}
-									remoteStream = new MediaStream();
-									remoteStream.addTrack(track.clone());
+									remoteStream = new MediaStream([track]);
 									$('#room').removeClass('hide').show();
 									if($('#roomaudio').length === 0) {
 										$('#mixedaudio').append('<audio class="rounded centered" id="roomaudio" width="100%" height="100%" autoplay/>');
