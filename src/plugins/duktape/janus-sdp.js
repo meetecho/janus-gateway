@@ -381,15 +381,22 @@ JANUSSDP.generateAnswer = function(offer, options) {
 						answer.push(a);
 					}
 				} else if (a.name === "extmap") {
-					// We do negotiate some RTP extensions
+					// We do negotiate some RTP extensions: check if there's a direction first
+					var value = a.value;
+					if(a.value.indexOf("/sendonly") > 0) {
+						value = a.value.replace("/sendonly", "/recvonly");
+					} else if(a.value.indexOf("/recvonly") > 0) {
+						value = a.value.replace("/recvonly", "/sendonly");
+					}
+					// Now check if we have to negotiate the extension
 					if(a.value.indexOf("urn:ietf:params:rtp-hdrext:sdes:mid") !== -1) {
-						answer.push(a);
+						answer.push({ type: "a", name: a.name, value: value });
 					} else if(a.value.indexOf("urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id") !== -1) {
-						answer.push(a);
+						answer.push({ type: "a", name: a.name, value: value });
 					} else if(a.value.indexOf("urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id") !== -1) {
-						answer.push(a);
+						answer.push({ type: "a", name: a.name, value: value });
 					} else if(options.disableTwcc !== true && a.value.indexOf("draft-holmer-rmcat-transport-wide-cc-extensions-01") !== -1) {
-						answer.push(a);
+						answer.push({ type: "a", name: a.name, value: value });
 					}
 				}
 			} else {

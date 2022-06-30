@@ -64,6 +64,7 @@ typedef struct janus_duktape_session {
 	uint32_t ssrc[3];					/* Only needed in case VP8 (or H.264) simulcasting is involved */
 	char *rid[3];						/* Only needed if simulcasting is rid-based */
 	int rid_extmap_id;					/* rid extmap ID */
+	janus_mutex rid_mutex;				/* Mutex to protect access to the rid array and the extmap ID */
 	janus_rtp_simulcasting_context sim_context;
 	janus_vp8_simulcast_context vp8_context;
 	uint32_t bitrate;					/* Bitrate limit */

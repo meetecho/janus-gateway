@@ -262,8 +262,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										localVideos++;
 										$('#videoleft .no-video-container').remove();
-										stream = new MediaStream();
-										stream.addTrack(track.clone());
+										stream = new MediaStream([track]);
 										localTracks[trackId] = stream;
 										Janus.log("Created local stream:", stream);
 										$('#videoleft').append('<video class="rounded centered" id="myvideo' + trackId + '" width="100%" height="100%" autoplay playsinline muted="muted"/>');
@@ -321,8 +320,7 @@ $(document).ready(function() {
 									}
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
-										stream = new MediaStream();
-										stream.addTrack(track.clone());
+										stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote audio stream:", stream);
 										if($('#peervideo'+mid).length === 0)
@@ -342,8 +340,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										remoteVideos++;
 										$('#videoright .no-video-container').remove();
-										stream = new MediaStream();
-										stream.addTrack(track.clone());
+										stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote video stream:", stream);
 										if($('#peervideo'+mid).length === 0)

@@ -532,7 +532,7 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 						}
 					}
 				} else if(!strcasecmp(a->name, "rtpmap")) {
-					if(a->value) {
+					if(a->value && strstr(a->value, "rtx") == NULL) {
 						int ptype = atoi(a->value);
 						if(ptype > -1) {
 							char *cr = strchr(a->value, '/');
@@ -617,6 +617,24 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 					medium->rtcp_ctx[2]->tb = 90000;
 				}
 			}
+			if(m->type == JANUS_SDP_VIDEO && medium->rtx_payload_types && m->ptypes) {
+				/* Check if there are new payload types that conflict with our rtx additions */
+				GList *ptypes = g_list_copy(m->ptypes), *tempP = ptypes;
+				GList *rtx_ptypes = g_hash_table_get_values(medium->rtx_payload_types);
+				while(tempP) {
+					int ptype = GPOINTER_TO_INT(tempP->data);
+					if(g_hash_table_lookup(medium->clock_rates, GINT_TO_POINTER(ptype)) &&
+							g_list_find(rtx_ptypes, GINT_TO_POINTER(ptype))) {
+						/* We have a payload type that is both a codec and rtx, get rid of it */
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Removing duplicate payload type %d\n", handle->handle_id, ptype);
+						janus_sdp_remove_payload_type(remote_sdp, medium->mindex, ptype);
+						g_hash_table_remove(medium->clock_rates, GINT_TO_POINTER(ptype));
+					}
+					tempP = tempP->next;
+				}
+				g_list_free(ptypes);
+				g_list_free(rtx_ptypes);
+			}
 		}
 		temp = temp->next;
 	}
@@ -672,7 +690,7 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 		GList *tempA = m->attributes;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
-			if(a->name) {
+			if(a->name && a->value) {
 				if(!strcasecmp(a->name, "mid")) {
 					/* Found mid attribute */
 					if(strlen(a->value) > 16) {
@@ -695,6 +713,22 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 					m->attributes = g_list_remove_link(m->attributes, mid_attr);
 					g_list_free_full(mid_attr, (GDestroyNotify)janus_sdp_attribute_destroy);
 					continue;
+				} else if(!strcasecmp(a->name, "rtpmap")) {
+					if(a->value && strstr(a->value, "rtx") == NULL) {
+						int ptype = atoi(a->value);
+						if(ptype > -1) {
+							char *cr = strchr(a->value, '/');
+							if(cr != NULL) {
+								cr++;
+								uint32_t clock_rate = 0;
+								if(janus_string_to_uint32(cr, &clock_rate) == 0) {
+									if(medium->clock_rates == NULL)
+										medium->clock_rates = g_hash_table_new(NULL, NULL);
+									g_hash_table_insert(medium->clock_rates, GINT_TO_POINTER(ptype), GUINT_TO_POINTER(clock_rate));
+								}
+							}
+						}
+					}
 				}
 			}
 			tempA = tempA->next;

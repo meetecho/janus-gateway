@@ -1768,6 +1768,7 @@ static struct janus_json_parameter rtp_forward_parameters[] = {
 };
 static struct janus_json_parameter rtp_forward_stream_parameters[] = {
 	{"secret", JSON_STRING, 0},
+	{"mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"host", JSON_STRING, 0},
 	{"host_family", JSON_STRING, 0},
 	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -2208,6 +2209,7 @@ typedef struct janus_videoroom_publisher_stream {
 	uint32_t vssrc[3];						/* Only needed in case VP8 (or H.264) simulcasting is involved */
 	char *rid[3];							/* Only needed if simulcasting is rid-based */
 	int rid_extmap_id;						/* rid extmap ID */
+	janus_mutex rid_mutex;					/* Mutex to protect access to the rid array and the extmap ID */
 	/* RTP extensions, if negotiated */
 	guint8 audio_level_extmap_id;			/* Audio level extmap ID */
 	guint8 video_orient_extmap_id;			/* Video orientation extmap ID */
@@ -2428,11 +2430,8 @@ static void janus_videoroom_publisher_stream_free(const janus_refcount *ps_ref) 
 	janus_mutex_destroy(&ps->rtp_forwarders_mutex);
 	g_slist_free(ps->subscribers);
 	janus_mutex_destroy(&ps->subscribers_mutex);
-	int i=0;
-	for(i=0; i<3; i++) {
-		g_free(ps->rid[i]);
-		ps->rid[i] = NULL;
-	}
+	janus_mutex_destroy(&ps->rid_mutex);
+	janus_rtp_simulcasting_cleanup(NULL, NULL, ps->rid, NULL);
 	g_free(ps);
 }
 
@@ -3086,6 +3085,7 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 		janus_refcount_increase(&ps->ref);	/* This is for the mid-indexed hashtable */
 		janus_mutex_init(&ps->subscribers_mutex);
 		janus_mutex_init(&ps->rtp_forwarders_mutex);
+		janus_mutex_init(&ps->rid_mutex);
 		ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_rtp_forwarder_destroy);
 		publisher->streams = g_list_append(publisher->streams, ps);
 		g_hash_table_insert(publisher->streams_byid, GINT_TO_POINTER(ps->mindex), ps);
@@ -3132,6 +3132,7 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 		janus_refcount_increase(&ps->ref);	/* This is for the mid-indexed hashtable */
 		janus_mutex_init(&ps->subscribers_mutex);
 		janus_mutex_init(&ps->rtp_forwarders_mutex);
+		janus_mutex_init(&ps->rid_mutex);
 		ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_rtp_forwarder_destroy);
 		publisher->streams = g_list_append(publisher->streams, ps);
 		g_hash_table_insert(publisher->streams_byid, GINT_TO_POINTER(ps->mindex), ps);
@@ -3899,7 +3900,6 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	}
 	if(fd > 0)
 		close(fd);
-	ipv6_disabled = TRUE;
 	if(ipv6_disabled) {
 		JANUS_LOG(LOG_WARN, "IPv6 disabled, will only create VideoRoom forwarders to IPv4 addresses\n");
 	}
@@ -8259,6 +8259,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 			else if(ps->rid_extmap_id > 0) {
 				/* We may not know the SSRC yet, try the rid RTP extension */
 				char sdes_item[16];
+				janus_mutex_lock(&ps->rid_mutex);
 				if(janus_rtp_header_extension_parse_rid(buf, len, ps->rid_extmap_id, sdes_item, sizeof(sdes_item)) == 0) {
 					if(ps->rid[0] != NULL && !strcmp(ps->rid[0], sdes_item)) {
 						ps->vssrc[0] = ssrc;
@@ -8271,6 +8272,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 						sc = 2;
 					}
 				}
+				janus_mutex_unlock(&ps->rid_mutex);
 			}
 		}
 		/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
@@ -8302,7 +8304,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 			} else if(video && rtp_forward->simulcast) {
 				/* This is video and we're simulcasting, check if we need to forward this frame */
 				if(!janus_rtp_simulcasting_context_process_rtp(&rtp_forward->sim_context,
-						buf, len, ps->vssrc, ps->rid, ps->vcodec, &rtp_forward->context))
+						buf, len, ps->vssrc, ps->rid, ps->vcodec, &rtp_forward->context, &ps->rid_mutex))
 					continue;
 				janus_rtp_header_update(rtp, &rtp_forward->context, TRUE, 0);
 				/* By default we use a fixed SSRC (it may be overwritten later) */
@@ -8364,7 +8366,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 		} else {
 			/* We're simulcasting, save the best video quality */
 			gboolean save = janus_rtp_simulcasting_context_process_rtp(&ps->rec_simctx,
-				buf, len, ps->vssrc, ps->rid, ps->vcodec, &ps->rec_ctx);
+				buf, len, ps->vssrc, ps->rid, ps->vcodec, &ps->rec_ctx, &ps->rid_mutex);
 			if(save) {
 				uint32_t seq_number = ntohs(rtp->seq_number);
 				uint32_t timestamp = ntohl(rtp->timestamp);
@@ -8814,13 +8816,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 			}
 			g_slist_free(ps->subscribers);
 			ps->subscribers = NULL;
-			int i=0;
-			for(i=0; i<3; i++) {
-				ps->vssrc[i] = 0;
-				g_free(ps->rid[i]);
-				ps->rid[i] = NULL;
-			}
-			ps->rid_extmap_id = 0;
+			janus_rtp_simulcasting_cleanup(&ps->rid_extmap_id, ps->vssrc, ps->rid, &ps->rid_mutex);
 			g_free(ps->fmtp);
 			ps->fmtp = NULL;
 			janus_mutex_unlock(&ps->subscribers_mutex);
@@ -11554,7 +11550,9 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_increase(&stream->ref);
 					/* Reset simulcast and SVC properties too */
 					janus_rtp_simulcasting_context_reset(&stream->sim_context);
+					janus_mutex_lock(&ps->rid_mutex);
 					stream->sim_context.rid_ext_id = ps->rid_extmap_id;
+					janus_mutex_unlock(&ps->rid_mutex);
 					stream->sim_context.substream_target = 2;
 					stream->sim_context.templayer_target = 2;
 					janus_vp8_simulcast_context_reset(&stream->vp8_context);
@@ -11869,6 +11867,7 @@ static void *janus_videoroom_handler(void *data) {
 						janus_refcount_increase(&ps->ref);	/* This is for the mid-indexed hashtable */
 						janus_mutex_init(&ps->subscribers_mutex);
 						janus_mutex_init(&ps->rtp_forwarders_mutex);
+						janus_mutex_init(&ps->rid_mutex);
 						ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_rtp_forwarder_destroy);
 					}
 					if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
@@ -12023,9 +12022,13 @@ static void *janus_videoroom_handler(void *data) {
 										continue;
 									JANUS_LOG(LOG_VERB, "Publisher stream is going to do simulcasting (#%d, %s)\n", ps->mindex, ps->mid);
 									ps->simulcast = TRUE;
+									janus_mutex_lock(&ps->rid_mutex);
+									/* Clear existing RIDs in case this is a renegotiation */
+									janus_rtp_simulcasting_cleanup(&ps->rid_extmap_id, NULL, ps->rid, NULL);
 									janus_rtp_simulcasting_prepare(s,
 										&ps->rid_extmap_id,
 										ps->vssrc, ps->rid);
+									janus_mutex_unlock(&ps->rid_mutex);
 								}
 							}
 							mdir = (ps->vcodec != JANUS_VIDEOCODEC_NONE ? JANUS_SDP_RECVONLY : JANUS_SDP_INACTIVE);
@@ -12503,7 +12506,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				return;
 			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&stream->sim_context,
-				(char *)packet->data, packet->length, packet->ssrc, NULL, ps->vcodec, &stream->context);
+				(char *)packet->data, packet->length, packet->ssrc, NULL, ps->vcodec, &stream->context, &ps->rid_mutex);
 			if(!relay) {
 				/* Did a lot of time pass before we could relay a packet? */
 				gint64 now = janus_get_monotonic_time();

@@ -327,8 +327,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										localVideos++;
 										$('#videolocal .no-video-container').remove();
-										stream = new MediaStream();
-										stream.addTrack(track.clone());
+										stream = new MediaStream([track]);
 										localTracks[trackId] = stream;
 										Janus.log("Created local stream:", stream);
 										Janus.log(stream.getTracks());
@@ -634,8 +633,7 @@ function newRemoteFeed(id, display, streams) {
 					return;
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
-					stream = new MediaStream();
-					stream.addTrack(track.clone());
+					stream = new MediaStream([track]);
 					remoteFeed.remoteTracks[mid] = stream;
 					Janus.log("Created remote audio stream:", stream);
 					$('#videoremote'+remoteFeed.rfindex).append('<audio class="hide" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" autoplay playsinline/>');
@@ -654,8 +652,7 @@ function newRemoteFeed(id, display, streams) {
 					// New video track: create a stream out of it
 					remoteFeed.remoteVideos++;
 					$('#videoremote'+remoteFeed.rfindex + ' .no-video-container').remove();
-					stream = new MediaStream();
-					stream.addTrack(track.clone());
+					stream = new MediaStream([track]);
 					remoteFeed.remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
 					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" width=100% autoplay playsinline/>');
