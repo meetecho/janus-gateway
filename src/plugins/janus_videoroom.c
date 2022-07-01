@@ -6867,7 +6867,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 			janus_videoroom_notify_about_publisher(participant, FALSE);
 			/* Check if we need to start recording */
 			janus_mutex_lock(&participant->rec_mutex);
-			if(participant->room && participant->room->record) {
+			if((participant->room && participant->room->record) || participant->recording_active) {
 				GList *temp = participant->streams;
 				while(temp) {
 					janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
