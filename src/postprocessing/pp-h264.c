@@ -134,6 +134,14 @@ static uint32_t janus_pp_h264_eg_getbit(uint8_t *base, uint32_t offset) {
 	return ((*(base + (offset >> 0x3))) >> (0x7 - (offset & 0x7))) & 0x1;
 }
 
+static void janus_pp_h264_eg_skip(uint8_t *base, uint32_t *offset) {
+	uint32_t zeros = 0;
+	while(janus_pp_h264_eg_getbit(base, (*offset)++) == 0)
+		zeros++;
+
+	(*offset) += zeros;
+}
+
 static uint32_t janus_pp_h264_eg_decode(uint8_t *base, uint32_t *offset) {
 	uint32_t zeros = 0;
 	while(janus_pp_h264_eg_getbit(base, (*offset)++) == 0)
@@ -159,51 +167,51 @@ static void janus_pp_h264_parse_sps(char *buffer, int *width, int *height) {
 	uint32_t offset = 0;
 	uint8_t *base = (uint8_t *)(buffer+index);
 	/* Skip seq_parameter_set_id */
-	janus_pp_h264_eg_decode(base, &offset);
+	janus_pp_h264_eg_skip(base, &offset);
 	if(profile_idc >= 100) {
 		/* Skip chroma_format_idc */
-		janus_pp_h264_eg_decode(base, &offset);
+		janus_pp_h264_eg_skip(base, &offset);
 		/* Skip bit_depth_luma_minus8 */
-		janus_pp_h264_eg_decode(base, &offset);
+		janus_pp_h264_eg_skip(base, &offset);
 		/* Skip bit_depth_chroma_minus8 */
-		janus_pp_h264_eg_decode(base, &offset);
+		janus_pp_h264_eg_skip(base, &offset);
 		/* Skip qpprime_y_zero_transform_bypass_flag */
-		janus_pp_h264_eg_getbit(base, offset++);
+		offset++;
 		/* Skip seq_scaling_matrix_present_flag */
-		janus_pp_h264_eg_getbit(base, offset++);
+		offset++;
 	}
 	/* Skip log2_max_frame_num_minus4 */
-	janus_pp_h264_eg_decode(base, &offset);
+	janus_pp_h264_eg_skip(base, &offset);
 	/* Evaluate pic_order_cnt_type */
 	int pic_order_cnt_type = janus_pp_h264_eg_decode(base, &offset);
 	if(pic_order_cnt_type == 0) {
 		/* Skip log2_max_pic_order_cnt_lsb_minus4 */
-		janus_pp_h264_eg_decode(base, &offset);
+		janus_pp_h264_eg_skip(base, &offset);
 	} else if(pic_order_cnt_type == 1) {
 		/* Skip delta_pic_order_always_zero_flag, offset_for_non_ref_pic,
 		 * offset_for_top_to_bottom_field and num_ref_frames_in_pic_order_cnt_cycle */
-		janus_pp_h264_eg_getbit(base, offset++);
-		janus_pp_h264_eg_decode(base, &offset);
-		janus_pp_h264_eg_decode(base, &offset);
+		offset++;
+		janus_pp_h264_eg_skip(base, &offset);
+		janus_pp_h264_eg_skip(base, &offset);
 		int num_ref_frames_in_pic_order_cnt_cycle = janus_pp_h264_eg_decode(base, &offset);
 		int i = 0;
 		for(i=0; i<num_ref_frames_in_pic_order_cnt_cycle; i++) {
-			janus_pp_h264_eg_decode(base, &offset);
+			janus_pp_h264_eg_skip(base, &offset);
 		}
 	}
 	/* Skip max_num_ref_frames and gaps_in_frame_num_value_allowed_flag */
-	janus_pp_h264_eg_decode(base, &offset);
-	janus_pp_h264_eg_getbit(base, offset++);
+	janus_pp_h264_eg_skip(base, &offset);
+	offset++;
 	/* We need the following three values */
 	int pic_width_in_mbs_minus1 = janus_pp_h264_eg_decode(base, &offset);
 	int pic_height_in_map_units_minus1 = janus_pp_h264_eg_decode(base, &offset);
 	int frame_mbs_only_flag = janus_pp_h264_eg_getbit(base, offset++);
 	if(!frame_mbs_only_flag) {
 		/* Skip mb_adaptive_frame_field_flag */
-		janus_pp_h264_eg_getbit(base, offset++);
+		offset++;
 	}
 	/* Skip direct_8x8_inference_flag */
-	janus_pp_h264_eg_getbit(base, offset++);
+	offset++;
 	/* We need the following value to evaluate offsets, if any */
 	int frame_cropping_flag = janus_pp_h264_eg_getbit(base, offset++);
 	int frame_crop_left_offset = 0, frame_crop_right_offset = 0,
@@ -215,7 +223,7 @@ static void janus_pp_h264_parse_sps(char *buffer, int *width, int *height) {
 		frame_crop_bottom_offset = janus_pp_h264_eg_decode(base, &offset);
 	}
 	/* Skip vui_parameters_present_flag */
-	janus_pp_h264_eg_getbit(base, offset++);
+	offset++;
 
 	/* We skipped what we didn't care about and got what we wanted, compute width/height */
 	if(width)
