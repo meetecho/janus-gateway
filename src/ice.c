@@ -3427,7 +3427,7 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 	pc->process_started = TRUE;
 }
 
-int janus_ice_setup_local(janus_ice_handle *handle, gboolean offer, gboolean trickle) {
+int janus_ice_setup_local(janus_ice_handle *handle, gboolean offer, gboolean trickle, janus_dtls_role dtls_role) {
 	if(!handle || g_atomic_int_get(&handle->destroyed))
 		return -1;
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT)) {
@@ -3610,8 +3610,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, gboolean offer, gboolean tri
 	janus_refcount_increase(&handle->ref);
 	pc->stream_id = handle->stream_id;
 	pc->handle = handle;
-	/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
-	pc->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
+	pc->dtls_role = dtls_role;
 	janus_mutex_init(&pc->mutex);
 	if(!have_turnrest_credentials) {
 		/* No TURN REST API server and credentials, any static ones? */
