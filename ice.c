@@ -3598,7 +3598,7 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 	component->process_started = TRUE;
 }
 
-int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int trickle) {
+int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int trickle, janus_dtls_role dtls_role) {
 	if(!handle || g_atomic_int_get(&handle->destroyed))
 		return -1;
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT)) {
@@ -3823,8 +3823,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	stream->video_payload_type = -1;
 	stream->video_rtx_payload_type = -1;
 	stream->nack_queue_ms = min_nack_queue;
-	/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
-	stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
+	stream->dtls_role = dtls_role;
 	if(audio) {
 		stream->audio_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 		stream->audio_rtcp_ctx = g_malloc0(sizeof(janus_rtcp_context));

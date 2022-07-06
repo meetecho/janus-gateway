@@ -1427,8 +1427,10 @@ int janus_process_incoming_request(janus_request *request) {
 			/* Is this valid SDP? */
 			char error_str[512];
 			error_str[0] = '\0';
+			janus_dtls_role peer_dtls_role = JANUS_DTLS_ROLE_ACTPASS;
 			int audio = 0, video = 0, data = 0;
-			janus_sdp *parsed_sdp = janus_sdp_preparse(handle, jsep_sdp, error_str, sizeof(error_str), &audio, &video, &data);
+			janus_sdp *parsed_sdp = janus_sdp_preparse(handle, jsep_sdp, error_str, sizeof(error_str),
+				(offer && !renegotiation ? &peer_dtls_role : NULL), &audio, &video, &data);
 			if(parsed_sdp == NULL) {
 				/* Invalid SDP */
 				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, error_str);
@@ -1466,8 +1468,12 @@ int janus_process_incoming_request(janus_request *request) {
 			if(!renegotiation) {
 				/* New session */
 				if(offer) {
+					/* Check which DTLS role we should take */
+					janus_dtls_role dtls_role = JANUS_DTLS_ROLE_CLIENT;
+					if(peer_dtls_role == JANUS_DTLS_ROLE_CLIENT)
+						dtls_role = JANUS_DTLS_ROLE_SERVER;
 					/* Setup ICE locally (we received an offer) */
-					if(janus_ice_setup_local(handle, offer, audio, video, data, do_trickle) < 0) {
+					if(janus_ice_setup_local(handle, offer, audio, video, data, do_trickle, dtls_role) < 0) {
 						JANUS_LOG(LOG_ERR, "Error setting ICE locally\n");
 						janus_sdp_destroy(parsed_sdp);
 						g_free(jsep_type);
@@ -3653,7 +3659,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	char error_str[512];
 	error_str[0] = '\0';
 	int audio = 0, video = 0, data = 0;
-	janus_sdp *parsed_sdp = janus_sdp_preparse(ice_handle, sdp, error_str, sizeof(error_str), &audio, &video, &data);
+	janus_sdp *parsed_sdp = janus_sdp_preparse(ice_handle, sdp, error_str, sizeof(error_str), NULL, &audio, &video, &data);
 	if(parsed_sdp == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't parse SDP... %s\n", ice_handle->handle_id, error_str);
 		return NULL;
@@ -3699,7 +3705,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
 			/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
 			janus_mutex_lock(&ice_handle->mutex);
-			if(janus_ice_setup_local(ice_handle, 0, audio, video, data, 1) < 0) {
+			if(janus_ice_setup_local(ice_handle, 0, audio, video, data, 1, JANUS_DTLS_ROLE_ACTPASS) < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting ICE locally\n", ice_handle->handle_id);
 				janus_sdp_destroy(parsed_sdp);
 				janus_mutex_unlock(&ice_handle->mutex);

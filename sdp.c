@@ -31,7 +31,7 @@
 
 /* Pre-parse SDP: is this SDP valid? how many audio/video lines? any features to take into account? */
 janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *error_str, size_t errlen,
-		int *audio, int *video, int *data) {
+		janus_dtls_role *dtls_role, int *audio, int *video, int *data) {
 	if(!ice_handle || !jsep_sdp || !audio || !video || !data) {
 		JANUS_LOG(LOG_ERR, "  Can't preparse, invalid arguments\n");
 		return NULL;
@@ -42,6 +42,34 @@ janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *erro
 		JANUS_LOG(LOG_ERR, "  Error parsing SDP? %s\n", error_str ? error_str : "(unknown reason)");
 		/* Invalid SDP */
 		return NULL;
+	}
+	gboolean dtls_role_found = FALSE;
+	if(dtls_role) {
+		/* We're interested in checking which role was advertised, traverse global attributes too */
+		GList *tempA = parsed_sdp->attributes;
+		while(tempA) {
+			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
+			if(a->name && !strcasecmp(a->name, "setup")) {
+				if(a->value == NULL) {
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid setup attribute (no value)\n", handle->handle_id);
+					janus_sdp_destroy(parsed_sdp);
+					return NULL;
+				}
+				if(!strcasecmp(a->value, "actpass")) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer advertised 'actpass' DTLS role, we'll be a DTLS client\n", handle->handle_id);
+					*dtls_role = JANUS_DTLS_ROLE_ACTPASS;
+				} else if(!strcasecmp(a->value, "passive")) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer advertised 'passive' DTLS role, we'll be a DTLS client\n", handle->handle_id);
+					*dtls_role = JANUS_DTLS_ROLE_SERVER;
+				} else if(!strcasecmp(a->value, "active")) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer advertised 'active' DTLS role, we'll be a DTLS server\n", handle->handle_id);
+					*dtls_role = JANUS_DTLS_ROLE_CLIENT;
+				}
+				dtls_role_found = TRUE;
+				break;
+			}
+			tempA = tempA->next;
+		}
 	}
 	/* Look for m-lines */
 	GList *temp = parsed_sdp->m_lines;
@@ -90,6 +118,23 @@ janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *erro
 						if(handle->stream_mid == NULL)
 							handle->stream_mid = handle->video_mid;
 					}
+				} else if(dtls_role && !dtls_role_found && !strcasecmp(a->name, "setup")) {
+					if(a->value == NULL) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid setup attribute (no value)\n", handle->handle_id);
+						janus_sdp_destroy(parsed_sdp);
+						return NULL;
+					}
+					if(!strcasecmp(a->value, "actpass")) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer advertised 'actpass' DTLS role, we'll be a DTLS client\n", handle->handle_id);
+						*dtls_role = JANUS_DTLS_ROLE_ACTPASS;
+					} else if(!strcasecmp(a->value, "passive")) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer advertised 'passive' DTLS role, we'll be a DTLS client\n", handle->handle_id);
+						*dtls_role = JANUS_DTLS_ROLE_SERVER;
+					} else if(!strcasecmp(a->value, "active")) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer advertised 'active' DTLS role, we'll be a DTLS server\n", handle->handle_id);
+						*dtls_role = JANUS_DTLS_ROLE_CLIENT;
+					}
+					dtls_role_found = TRUE;
 				}
 			}
 			/* If the m-line is disabled don't actually increase the count */
