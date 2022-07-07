@@ -3691,11 +3691,11 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				}
 			}
 		}
+		janus_mutex_lock(&ice_handle->mutex);
 		if(ice_handle->agent == NULL) {
 			/* We still need to configure the WebRTC stuff: negotiate RFC4588 by default */
 			janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
 			/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
-			janus_mutex_lock(&ice_handle->mutex);
 			if(janus_ice_setup_local(ice_handle, FALSE, TRUE, JANUS_DTLS_ROLE_ACTPASS) < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting ICE locally\n", ice_handle->handle_id);
 				janus_sdp_destroy(parsed_sdp);
@@ -3709,7 +3709,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				janus_mutex_unlock(&ice_handle->mutex);
 				return NULL;
 			}
-			janus_mutex_unlock(&ice_handle->mutex);
 		} else {
 			updating = TRUE;
 			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Updating existing session\n", ice_handle->handle_id);
@@ -3718,6 +3717,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				if(janus_sdp_process_local(ice_handle, parsed_sdp, TRUE) < 0) {
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error processing SDP\n", ice_handle->handle_id);
 					janus_sdp_destroy(parsed_sdp);
+					janus_mutex_unlock(&ice_handle->mutex);
 					return NULL;
 				}
 			}
@@ -3786,12 +3786,14 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->pc->playoutdelay_ext_id = playoutdelay_ext_id;
 		if(ice_handle->pc && ice_handle->pc->dependencydesc_ext_id != dependencydesc_ext_id)
 			ice_handle->pc->dependencydesc_ext_id = dependencydesc_ext_id;
+		janus_mutex_unlock(&ice_handle->mutex);
 	} else {
 		/* Check if the answer does contain the mid/rid/repaired-rid/abs-send-time/twcc extmaps */
 		int mindex = 0;
 		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE,
 			do_dd = FALSE, do_twcc = FALSE, do_abs_send_time = FALSE;
 		GList *temp = parsed_sdp->m_lines;
+		janus_mutex_lock(&ice_handle->mutex);
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 			janus_ice_peerconnection_medium *medium = ice_handle->pc ?
@@ -3825,7 +3827,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			if(opusred_pt < 0 && medium != NULL && medium->opusred_pt > 0)
 				medium->opusred_pt = 0;
 			/* Check if rid-based simulcasting is available */
-			janus_mutex_lock(&ice_handle->mutex);
 			if(!have_rid && medium != NULL) {
 				g_free(medium->rid[0]);
 				medium->rid[0] = NULL;
@@ -3838,7 +3839,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					medium->ssrc_peer_temp = 0;
 				}
 			}
-			janus_mutex_unlock(&ice_handle->mutex);
 			do_mid = do_mid || have_mid;
 			do_rid = do_rid || have_rid;
 			do_repaired_rid = do_repaired_rid || have_repaired_rid;
@@ -3864,6 +3864,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->pc->dependencydesc_ext_id = 0;
 		if(!do_abs_send_time && ice_handle->pc)
 			ice_handle->pc->abs_send_time_ext_id = 0;
+		janus_mutex_unlock(&ice_handle->mutex);
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
 		/* Wait for candidates-done callback */
