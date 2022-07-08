@@ -1516,6 +1516,7 @@ room-<unique room ID>: {
 #include "../sdp-utils.h"
 #include "../utils.h"
 #include "../ip-utils.h"
+#include "../auth.h"
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <poll.h>
@@ -1595,6 +1596,7 @@ static struct janus_json_parameter adminkey_parameters[] = {
 	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter create_parameters[] = {
+	{"create_checksum", JSON_STRING, 0},
 	{"description", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
 	{"allowed", JSON_ARRAY, 0},
@@ -1701,6 +1703,7 @@ static struct janus_json_parameter moderate_parameters[] = {
 	{"mute", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter join_parameters[] = {
+	{"join_checksum", JSON_STRING, 0},
 	{"ptype", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
@@ -3895,7 +3898,8 @@ static void janus_videoroom_participant_joining(janus_videoroom_publisher *p) {
 	}
 }
 
-static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *participant, gboolean is_leaving, gboolean kicked) {
+/* BB - Added the janus_videoroom_session pointer parameter */
+static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *participant, janus_videoroom_session *session, gboolean is_leaving, gboolean kicked) {
 	/* we need to check if the room still exists, may have been destroyed already */
 	if(participant->room == NULL)
 		return;
@@ -3930,12 +3934,24 @@ static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *partic
 		json_object_set_new(info, "event", json_string(is_leaving ? (kicked ? "kicked" : "leaving") : "unpublished"));
 		json_object_set_new(info, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
 		json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
-		gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+		/* BB - Replaced hardcoded NULL with session varialbe */
+		gateway->notify_event(&janus_videoroom_plugin, session ? session->handle : NULL, info);
 	}
 	if(is_leaving) {
 		g_hash_table_remove(participant->room->participants,
 			string_ids ? (gpointer)participant->user_id_str : (gpointer)&participant->user_id);
 		g_hash_table_remove(participant->room->private_ids, GUINT_TO_POINTER(participant->pvt_id));
+
+		//EWEBRTC-431
+		if(g_hash_table_size(participant->room->participants) == 0){
+			if(string_ids){
+				JANUS_LOG(LOG_INFO, "Removing room: %s\n", participant->room_id_str);
+			}
+			else{
+				JANUS_LOG(LOG_INFO, "Removing room: %ld\n", participant->room_id);
+			}
+			g_hash_table_remove(rooms, string_ids ? (gpointer)(participant->room_id_str) : (gpointer)&(participant->room_id));
+		}
 		g_clear_pointer(&participant->room, janus_videoroom_room_dereference);
 	}
 	janus_mutex_unlock(&room->mutex);
@@ -3976,7 +3992,8 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		session->participant = NULL;
 		janus_mutex_unlock(&session->mutex);
 		if(p && p->room) {
-			janus_videoroom_leave_or_unpublish(p, TRUE, FALSE);
+			/* BB - updated call */
+			janus_videoroom_leave_or_unpublish(p, session, TRUE, FALSE);
 		}
 		janus_videoroom_publisher_destroy(p);
 		if(p)
@@ -4160,27 +4177,80 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 		}
 	}
 	if(check_join) {
+		//TODO fix that?
 		char error_cause2[100];
 		/* Signed tokens are enforced, so they precede any pin validation */
-		if(gateway->auth_is_signed() && (*videoroom)->signed_tokens) {
-			json_t *token = json_object_get(root, "token");
-			char room_descriptor[100];
-			g_snprintf(room_descriptor, sizeof(room_descriptor), "room=%s", room_id_str);
-			if(!gateway->auth_signature_contains(&janus_videoroom_plugin, json_string_value(token), room_descriptor)) {
+		//if(gateway->auth_is_signed() && (*videoroom)->signed_tokens) {
+			//json_t *token = json_object_get(root, "token");
+			// char room_descriptor[100];
+			// g_snprintf(room_descriptor, sizeof(room_descriptor), "room=%s", room_id_str);
+			// if(!gateway->auth_signature_contains(&janus_videoroom_plugin, json_string_value(token), room_descriptor)) {
+			// 	error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			// 	if(error_cause)
+			// 		g_snprintf(error_cause, error_cause_size, "Unauthorized (wrong token)");
+			// 	return error_code;
+			// }
+		//}
+		// JANUS_CHECK_SECRET((*videoroom)->room_pin, root, "pin", error_code, error_cause2,
+		// 	JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+
+		const char* pin_str = json_string_value(json_object_get(root, "pin"));
+		if(!pin_str) {
+			JANUS_LOG(LOG_ERR, "Missing or wrong pin in request\n");
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+		}
+		else {
+			if(strcmp((*videoroom)->room_pin, pin_str)) {
+				JANUS_LOG(LOG_ERR, "Pin mismatch room pin: '%s', request value '%s'\n", (*videoroom)->room_pin, pin_str);
 				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-				if(error_cause)
-					g_snprintf(error_cause, error_cause_size, "Unauthorized (wrong token)");
-				return error_code;
+			}
+			else {
+				JANUS_LOG(LOG_INFO, "Pin ok: '%s'\n", pin_str);
 			}
 		}
-		JANUS_CHECK_SECRET((*videoroom)->room_pin, root, "pin", error_code, error_cause2,
-			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
 			g_strlcpy(error_cause, error_cause2, error_cause_size);
 			return error_code;
 		}
 	}
 	return 0;
+}
+
+/*
+ * BB - Added function to verify if the token name contains the 'RESTRICTED' keyword.
+ * If it contains the RESTRICTED key word return TRUE and in any other case we return FALSE.
+ */
+static gboolean isRestricted(char* token) {
+
+	gboolean result = FALSE;
+
+	if(token) {
+		/* Split the token into two parts, the token and the signature */
+		gchar **parts = g_strsplit(token, ":", 2);
+		gchar **data = NULL;
+
+		/* Verify if the token is present */
+		if(parts[0]) {
+
+			/* Split the token content */
+			data = g_strsplit(parts[0], ",", 0);
+
+			for(int i = 0; data[i]; i++) {
+				/* Let's check if we have the package name */
+				if (strstr(data[i], JANUS_VIDEOROOM_PACKAGE)) {
+					/* Let's verify if it contains the 'RESTRICTED' keyword */
+					if(strstr(data[i], "RESTRICTED")) {
+						result = TRUE;
+					}
+					break;
+				}
+			}
+		}
+		g_strfreev(data);
+		g_strfreev(parts);
+	}
+
+	return result;
 }
 
 /* Helper method to process synchronous requests */
@@ -4194,9 +4264,19 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 	json_t *root = message;
 	json_t *response = NULL;
 
+	/* BB - If tokens are enabled, verify if this is a restricted user */
+	int restricted = isRestricted(session->handle->token);
+
 	if(!strcasecmp(request_text, "create")) {
 		/* Create a new VideoRoom */
 		JANUS_LOG(LOG_VERB, "Creating a new VideoRoom room\n");
+
+		/* BB - Restricted users cannot create rooms */
+		if(restricted) {
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
+
 		JANUS_VALIDATE_JSON_OBJECT(root, create_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -4225,6 +4305,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(error_code != 0)
 				goto prepare_response;
 		}
+		//BB -- Added hook to validate the join_checksum parameter
+		if(!janus_check_param_checksum(root, "create")) {
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
+
 		json_t *desc = json_object_get(root, "description");
 		json_t *is_private = json_object_get(root, "is_private");
 		json_t *req_pvtid = json_object_get(root, "require_pvtid");
@@ -4339,7 +4425,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			room_id_str = (char *)json_string_value(room);
 		}
 		if(room_id == 0 && room_id_str == NULL) {
-			JANUS_LOG(LOG_WARN, "Desired room ID is empty, which is not allowed... picking random ID instead\n");
+			//JANUS_LOG(LOG_WARN, "Desired room ID is empty, which is not allowed... picking random ID instead\n");
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
+		else {
+			JANUS_LOG(LOG_INFO, "Room name set to %s\n", room_id_str);
 		}
 		janus_mutex_lock(&rooms_mutex);
 		if(room_id > 0 || room_id_str != NULL) {
@@ -4402,8 +4493,20 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		videoroom->require_e2ee = req_e2ee ? json_is_true(req_e2ee) : FALSE;
 		if(secret)
 			videoroom->room_secret = g_strdup(json_string_value(secret));
-		if(pin)
+		if(pin) {
 			videoroom->room_pin = g_strdup(json_string_value(pin));
+		}
+		else {
+			videoroom->room_pin = NULL;
+		}
+		if(!videoroom->room_pin) {
+			JANUS_LOG(LOG_ERR, "Room %s is missing pin\n", videoroom->room_name);
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
+		else {
+			JANUS_LOG(LOG_INFO, "Room %s pin set to %s\n", videoroom->room_name, videoroom->room_pin);
+		}
 		videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
 		if(publishers)
 			videoroom->max_publishers = json_integer_value(publishers);
@@ -4531,11 +4634,30 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		/* By default, the VideoRoom plugin does not notify about participants simply joining the room.
 		   It only notifies when the participant actually starts publishing media. */
 		videoroom->notify_joining = notify_joining ? json_is_true(notify_joining) : FALSE;
+		// BB - Modified to ignore the record boolean parameter, recording is set to true if the valid non-empty folder value is received or to
+		// false if valid empty folder value is received
 		if(record) {
 			videoroom->record = json_is_true(record);
 		}
 		if(rec_dir) {
 			videoroom->rec_dir = g_strdup(json_string_value(rec_dir));
+		}
+		else {
+			videoroom->rec_dir = NULL;
+		}
+
+		if(!videoroom->rec_dir) {
+			JANUS_LOG(LOG_ERR, "Room %s, recording information is missing\n", videoroom->room_id_str);
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
+		if(!strlen(videoroom->rec_dir)) {
+			JANUS_LOG(LOG_INFO, "Room %s, setting recording to FALSE\n", videoroom->room_id_str);
+			videoroom->record = FALSE;
+		}
+		else {
+			JANUS_LOG(LOG_INFO, "Room %s, setting recording to TRUE, folder: %s\n", videoroom->room_id_str, videoroom->rec_dir);
+			videoroom->record = TRUE;
 		}
 		if(lock_record) {
 			videoroom->lock_record = json_is_true(lock_record);
@@ -4720,6 +4842,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 	} else if(!strcasecmp(request_text, "edit")) {
 		/* Edit the properties for an existing VideoRoom */
 		JANUS_LOG(LOG_VERB, "Attempt to edit the properties of an existing VideoRoom room\n");
+
+		/* BB - Restricted users cannot edit rooms */
+		if(restricted) {
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
 		if(!string_ids) {
 			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
 				error_code, error_cause, TRUE,
@@ -4899,6 +5027,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
 		JANUS_LOG(LOG_VERB, "Attempt to destroy an existing VideoRoom room\n");
+
+		/* BB - Restricted users cannot destroy rooms */
+		if(restricted) {
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
 		if(!string_ids) {
 			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
 				error_code, error_cause, TRUE,
@@ -4942,7 +5076,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		/* Remove room, but add a reference until we're done */
 		janus_refcount_increase(&videoroom->ref);
-		g_hash_table_remove(rooms, string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
+		//EWEBRTC-431
+		//g_hash_table_remove(rooms, string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		/* Notify all participants that the fun is over, and that they'll be kicked */
 		JANUS_LOG(LOG_VERB, "Notifying all participants\n");
 		json_t *destroyed = json_object();
@@ -4951,16 +5086,30 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		GHashTableIter iter;
 		gpointer value;
 		janus_mutex_lock(&videoroom->mutex);
-		g_hash_table_iter_init(&iter, videoroom->participants);
-		while (g_hash_table_iter_next(&iter, NULL, &value)) {
-			janus_videoroom_publisher *p = value;
-			if(p && !g_atomic_int_get(&p->destroyed) && p->session && p->room) {
-				g_clear_pointer(&p->room, janus_videoroom_room_dereference);
-				/* Notify the user we're going to destroy the room... */
-				int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, destroyed, NULL);
-				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-				/* ... and then ask the core to close the PeerConnection */
-				gateway->close_pc(p->session->handle);
+		if(g_hash_table_size(videoroom->participants) == 0){
+			if(string_ids){
+				JANUS_LOG(LOG_INFO, "Removing room: %s\n", room_id_str);
+			}
+			else{
+				JANUS_LOG(LOG_INFO, "Removing room: %ld\n", room_id);
+			}
+			g_hash_table_remove(rooms, string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
+		}
+		else{
+			g_hash_table_iter_init(&iter, videoroom->participants);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_videoroom_publisher *p = value;
+				if(p && !g_atomic_int_get(&p->destroyed) && p->session && p->room) {
+
+					//EWEBRTC-431
+
+					//g_clear_pointer(&p->room, janus_videoroom_room_dereference);
+					/* Notify the user we're going to destroy the room... */
+					int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, destroyed, NULL);
+					JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+					/* ... and then ask the core to close the PeerConnection */
+					gateway->close_pc(p->session->handle);
+				}
 			}
 		}
 		json_decref(destroyed);
@@ -4997,6 +5146,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 	} else if(!strcasecmp(request_text, "list")) {
 		/* List all rooms (but private ones) and their details (except for the secret, of course...) */
 		JANUS_LOG(LOG_VERB, "Getting the list of VideoRoom rooms\n");
+
+		/* BB - Restricted users cannot list rooms */
+		if(restricted) {
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
 		gboolean lock_room_list = TRUE;
 		if(admin_key != NULL) {
 			json_t *admin_key_json = json_object_get(root, "admin_key");
@@ -5903,6 +6058,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "allowed")) {
 		JANUS_LOG(LOG_VERB, "Attempt to edit the list of allowed participants in an existing VideoRoom room\n");
+
+		/* BB - Restricted users cannot edit the list of allowed participants */
+		if(restricted) {
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
 		if(!string_ids) {
 			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
 				error_code, error_cause, TRUE,
@@ -6014,6 +6175,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "kick")) {
 		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing VideoRoom room\n");
+
+		/* BB - Restricted users cannot kick participants */
+		if(restricted) {
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
 		if(!string_ids) {
 			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
 				error_code, error_cause, TRUE,
@@ -6119,7 +6286,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_mutex_unlock(&participant->own_subscriptions_mutex);
 		}
 		/* This publisher is leaving, tell everybody */
-		janus_videoroom_leave_or_unpublish(participant, TRUE, TRUE);
+	
+		/* BB - Updated invocation */
+		janus_videoroom_leave_or_unpublish(participant, session, TRUE, TRUE);
 		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 		if(participant && !g_atomic_int_get(&participant->destroyed) && participant->session)
 			gateway->close_pc(participant->session->handle);
@@ -6262,6 +6431,13 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room, specifying whether they're publishers or just attendees */
+
+		/* BB - Restricted users cannot list participants */
+		if(restricted) {
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
+
 		if(!string_ids) {
 			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
 				error_code, error_cause, TRUE,
@@ -6422,6 +6598,13 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_object_set_new(response, "publishers", list);
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "enable_recording")) {
+
+		/* BB - Restricted users cannot enable or disable recording */
+		if(restricted) {
+			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+			goto prepare_response;
+		}
+
 		JANUS_VALIDATE_JSON_OBJECT(root, record_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -8547,7 +8730,8 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 		g_hash_table_remove_all(participant->streams_byid);
 		g_hash_table_remove_all(participant->streams_bymid);
 		janus_mutex_unlock(&participant->streams_mutex);
-		janus_videoroom_leave_or_unpublish(participant, FALSE, FALSE);
+		/* BB - updated invocation */
+		janus_videoroom_leave_or_unpublish(participant, session, FALSE, FALSE);
 		janus_refcount_decrease(&participant->ref);
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 		/* Get rid of subscriber */
@@ -8715,6 +8899,17 @@ static void *janus_videoroom_handler(void *data) {
 			janus_mutex_lock(&videoroom->mutex);
 			json_t *ptype = json_object_get(root, "ptype");
 			const char *ptype_text = json_string_value(ptype);
+			//BB -- Added hook to validate the join_checksum parameter
+			JANUS_LOG(LOG_INFO, "Request type '%s', ptype '%s'\n", request_text, ptype_text);
+			if(!strcasecmp(ptype_text, "publisher")) {
+				// Verify the checksum only on a publisher join
+				if(!janus_check_param_checksum(root, "join")) {
+					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+					janus_mutex_unlock(&videoroom->mutex);
+					janus_refcount_decrease(&videoroom->ref);
+					goto error;
+				}
+			}
 			if(!strcasecmp(ptype_text, "publisher")) {
 				JANUS_LOG(LOG_VERB, "Configuring new publisher\n");
 				JANUS_VALIDATE_JSON_OBJECT(root, publisher_parameters,
@@ -8770,6 +8965,13 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				json_t *display = json_object_get(root, "display");
 				const char *display_text = display ? json_string_value(display) : NULL;
+				if(!display_text) {
+					JANUS_LOG(LOG_ERR, "Missing or invalid participant name (display parameter)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+					janus_mutex_unlock(&videoroom->mutex);
+					janus_refcount_decrease(&videoroom->ref);
+					goto error;
+				}
 				guint64 user_id = 0;
 				char user_id_num[30], *user_id_str = NULL;
 				gboolean user_id_allocated = FALSE;
@@ -8779,8 +8981,17 @@ static void *janus_videoroom_handler(void *data) {
 						user_id = json_integer_value(id);
 						g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, user_id);
 						user_id_str = user_id_num;
-					} else {
-						user_id_str = (char *)json_string_value(id);
+					}
+					else {
+						// BB
+						user_id_str = (char*)json_string_value(id);
+						if(!user_id_str) {
+							JANUS_LOG(LOG_ERR, "Missing or invalid stream id\n");
+							error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+							janus_mutex_unlock(&videoroom->mutex);
+							janus_refcount_decrease(&videoroom->ref);
+							goto error;
+						}
 					}
 					if(g_hash_table_lookup(videoroom->participants,
 							string_ids ? (gpointer)user_id_str : (gpointer)&user_id) != NULL) {
@@ -8808,18 +9019,27 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					JANUS_LOG(LOG_VERB, "  -- Participant ID: %"SCNu64"\n", user_id);
 				} else {
+					if(!user_id_str) {
+						janus_mutex_unlock(&videoroom->mutex);
+						janus_refcount_decrease(&videoroom->ref);
+						JANUS_LOG(LOG_ERR, "Missing or invalid stream id\n");
+						error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+						goto error;
+					}
+					/* BB - Removed the possibility to generate the id locally (the id parameter is not optional anymore)
 					if(user_id_str == NULL) {
-						/* Generate a random ID */
+						// Generate a random ID
 						while(user_id_str == NULL) {
 							user_id_str = janus_random_uuid();
 							if(g_hash_table_lookup(videoroom->participants, user_id_str) != NULL) {
-								/* User ID already taken, try another one */
+								// User ID already taken, try another one 
 								g_clear_pointer(&user_id_str, g_free);
 							}
 						}
 						user_id_allocated = TRUE;
 					}
 					JANUS_LOG(LOG_VERB, "  -- Participant ID: %s\n", user_id_str);
+					*/
 				}
 				/* Process the request */
 				json_t *bitrate = NULL, *record = NULL, *recfile = NULL,
@@ -10043,7 +10263,8 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
 				json_object_set_new(event, "leaving", json_string("ok"));
 				/* This publisher is leaving, tell everybody */
-				janus_videoroom_leave_or_unpublish(participant, TRUE, FALSE);
+				/* BB - Updated invocation */
+				janus_videoroom_leave_or_unpublish(participant, session, TRUE, FALSE);
 				/* Done */
 				g_atomic_int_set(&session->started, 0);
 				//~ session->destroy = TRUE;

@@ -246,6 +246,9 @@ struct janus_plugin_session {
 	volatile gint stopped;
 	/*! \brief Reference counter for this instance */
 	janus_refcount ref;
+	// BB added
+	/*! \brief Reference to the token used while creating the handle */
+	char* token;
 };
 
 /*! \brief The plugin session and callbacks interface */

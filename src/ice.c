@@ -1372,6 +1372,10 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 	janus_plugin_session *session_handle = g_malloc(sizeof(janus_plugin_session));
 	session_handle->gateway_handle = handle;
 	session_handle->plugin_handle = NULL;
+
+    //BB - point to the token
+	session_handle->token = handle->token;
+    
 	g_atomic_int_set(&session_handle->stopped, 0);
 	plugin->create_session(session_handle, &error);
 	if(error) {

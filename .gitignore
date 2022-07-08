@@ -65,3 +65,6 @@ p2m-cmdline.h
 
 .vscode
 node_modules
+
+v2.4.2*
+libsrtp-2.4.2/*

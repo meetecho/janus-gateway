@@ -4,7 +4,7 @@ CLEANFILES = $(NULL)
 bin_PROGRAMS = janus
 
 headerdir = $(includedir)/janus
-header_HEADERS = apierror.h config.h log.h debug.h mutex.h record.h \
+header_HEADERS = apierror.h config.h log.h alarm-client.h debug.h mutex.h record.h \
 	rtcp.h rtp.h rtpsrtp.h sdp-utils.h ip-utils.h utils.h refcount.h text2pcap.h
 
 pluginsheaderdir = $(includedir)/janus/plugins
@@ -87,6 +87,8 @@ janus_SOURCES = \
 	janus.h \
 	log.c \
 	log.h \
+	alarm-client.c \
+	alarm-client.h \
 	mutex.h \
 	options.c \
 	options.h \
@@ -153,6 +155,7 @@ janus_cfgconv_SOURCES = \
 	janus-cfgconv.c \
 	config.c \
 	log.c \
+	alarm-client.c \
 	utils.c \
 	version.c \
 	$(NULL)
@@ -160,11 +163,13 @@ janus_cfgconv_SOURCES = \
 janus_cfgconv_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(JANUS_CFLAGS) \
+	$(LIBCURL_CFLAGS) \
 	$(NULL)
 
 janus_cfgconv_LDADD = \
 	$(JANUS_LIBS) \
 	$(JANUS_MANUAL_LIBS) \
+	$(LIBCURL_LIBS) \
 	$(NULL)
 
 dist_man1_MANS += janus-cfgconv.1
@@ -298,6 +303,16 @@ events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) $(LIBCURL_LDFLAGS) $(LI
 events_libjanus_sampleevh_la_LIBADD = $(events_libadd) $(LIBCURL_LIBADD)
 conf_DATA += ../conf/janus.eventhandler.sampleevh.jcfg.sample
 EXTRA_DIST += ../conf/janus.eventhandler.sampleevh.jcfg.sample
+endif
+
+if ENABLE_LOGEVH
+event_LTLIBRARIES += events/libjanus_logevh.la
+events_libjanus_logevh_la_SOURCES = events/janus_logevh.c
+events_libjanus_logevh_la_CFLAGS = $(events_cflags)
+events_libjanus_logevh_la_LDFLAGS = $(events_ldflags) -lm
+events_libjanus_logevh_la_LIBADD = $(events_libadd) $(LIBCURL_LIBADD)
+conf_DATA += ../conf/janus.eventhandler.logevh.jcfg.sample
+EXTRA_DIST += ../conf/janus.eventhandler.logevh.jcfg.sample
 endif
 
 if ENABLE_WSEVH
@@ -573,6 +588,7 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-webm.h \
 	postprocessing/janus-pp-rec.c \
 	log.c \
+	alarm-client.c \
 	utils.c \
 	version.c \
 	$(NULL)
@@ -595,6 +611,7 @@ mjr2pcap_SOURCES = \
 	postprocessing/pp-rtp.h \
 	postprocessing/mjr2pcap.c \
 	log.c \
+	alarm-client.c \
 	utils.c \
 	version.c \
 	$(NULL)
@@ -603,12 +620,14 @@ mjr2pcap_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(POST_PROCESSING_CFLAGS) \
 	$(BORINGSSL_CFLAGS) \
+	$(LIBCURL_CFLAGS) \
 	$(NULL)
 
 mjr2pcap_LDADD = \
 	$(BORINGSSL_LIBS) \
 	$(POST_PROCESSING_LIBS) \
 	$(POST_PROCESSING_MANUAL_LIBS) \
+	$(LIBCURL_LIBS) \
 	$(NULL)
 
 if ENABLE_PCAP2MJR
@@ -616,6 +635,7 @@ pcap2mjr_SOURCES = \
 	postprocessing/pp-rtp.h \
 	postprocessing/pcap2mjr.c \
 	log.c \
+	alarm-client.c \
 	utils.c \
 	version.c \
 	$(NULL)
@@ -626,6 +646,7 @@ pcap2mjr_CFLAGS = \
 	$(POST_PROCESSING_CFLAGS) \
 	$(PCAP_CFLAGS) \
 	$(BORINGSSL_CFLAGS) \
+	$(LIBCURL_CFLAGS) \
 	$(NULL)
 
 pcap2mjr_LDADD = \
@@ -633,6 +654,7 @@ pcap2mjr_LDADD = \
 	$(POST_PROCESSING_LIBS) \
 	$(POST_PROCESSING_MANUAL_LIBS) \
 	$(PCAP_LIBS) \
+	$(LIBCURL_LIBS) \
 	$(NULL)
 endif
 

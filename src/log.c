@@ -97,6 +97,14 @@ static janus_log_buffer *janus_log_getbuf(void) {
 	return b;
 }
 
+static void remove_newlines(char* str){
+	for(int i = 0; str[i] != '\0'; i++){
+		if(str[i] == '\n'){
+			str[i] = ' ';
+		}
+	}
+}
+
 static void *janus_log_thread(void *ctx) {
 	janus_log_buffer *head, *b, *tofree = NULL;
 
@@ -111,8 +119,11 @@ static void *janus_log_thread(void *ctx) {
 
 		if (head) {
 			for (b = head; b; b = b->next) {
-				if(janus_log_console)
-					fputs(b->str, stdout);
+				if(janus_log_console){
+					//Make sure that logs are always printed on one line
+					remove_newlines(b->str);
+					puts(b->str);
+				}
 				if(janus_log_file)
 					fputs(b->str, janus_log_file);
 				if(external_loggers != NULL) {
@@ -150,8 +161,11 @@ static void *janus_log_thread(void *ctx) {
 	}
 	/* print any remaining messages, stdout flushed on exit */
 	for (b = printhead; b; b = b->next) {
-		if(janus_log_console)
-			fputs(b->str, stdout);
+		if(janus_log_console){
+			//Make sure that logs are always printed on one line
+			remove_newlines(b->str);
+			puts(b->str);
+		}
 		if(janus_log_file)
 			fputs(b->str, janus_log_file);
 		if(external_loggers != NULL) {

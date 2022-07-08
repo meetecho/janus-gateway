@@ -14,10 +14,12 @@
 #include <glib.h>
 #include <glib/gprintf.h>
 #include "log.h"
+#include "alarm-client.h"
 
 extern int janus_log_level;
 extern gboolean janus_log_timestamps;
 extern gboolean janus_log_colors;
+extern gboolean janus_log_json;
 extern char *janus_log_global_prefix;
 
 /** @name Janus log colors
@@ -77,6 +79,17 @@ static const char *janus_log_prefix[] = {
 	"",
 	""
 };
+
+static const char *log_level_to_str[] = {
+	"NONE",
+	"FATAL",
+	"ERR",
+	"WARN",
+	"INFO",
+	"VERB",
+	"HUGE",
+	"DBG"
+};
 ///@}
 #pragma GCC diagnostic pop
 
@@ -91,25 +104,46 @@ static const char *janus_log_prefix[] = {
 #define JANUS_LOG(level, format, ...) \
 do { \
 	if (level > LOG_NONE && level <= LOG_MAX && level <= janus_log_level) { \
-		char janus_log_ts[64] = ""; \
-		char janus_log_src[128] = ""; \
-		if (janus_log_timestamps) { \
-			struct tm janustmresult; \
-			time_t janusltime = time(NULL); \
-			localtime_r(&janusltime, &janustmresult); \
-			strftime(janus_log_ts, sizeof(janus_log_ts), \
-			         "[%a %b %e %T %Y] ", &janustmresult); \
+		if(level == LOG_FATAL || level == LOG_ERR){ \
+			if(strcmp(__FILE__,"alarm-client.c") != 0){ \
+				char janus_alarm_msg[2048]; \
+				snprintf(janus_alarm_msg, sizeof(janus_alarm_msg), format, ##__VA_ARGS__); \
+				send_alarm(ALARM_SEVERITY_ERROR, janus_alarm_msg); \
+			} \
 		} \
-		if (level == LOG_FATAL || level == LOG_ERR || level == LOG_DBG) { \
+		if(janus_log_json && !strstr(format, "[WEBRTC_EVENT]")){ \
+			char janus_log_ts[128]; \
+			struct timeval tv; \
+			gettimeofday(&tv, NULL); \
+			snprintf(janus_log_ts, sizeof(janus_log_ts), "%ld.%03ld", tv.tv_sec, tv.tv_usec/1000); \
+			char janus_log_src[128]; \
 			snprintf(janus_log_src, sizeof(janus_log_src), \
-			         "[%s:%s:%d] ", __FILE__, __FUNCTION__, __LINE__); \
+					 "%s:%s:%d", __FILE__, __FUNCTION__, __LINE__); \
+			JANUS_PRINT("{\"timestamp\":\"%s\",\"level\":\"%s\",\"source\":\"%s\",\"message\":\""format"\"}\n", \
+				janus_log_ts, \
+				log_level_to_str[level], \
+				janus_log_src, \
+				##__VA_ARGS__); \
 		} \
-		JANUS_PRINT("%s%s%s%s" format, \
-			janus_log_global_prefix ? janus_log_global_prefix : "", \
-			janus_log_ts, \
-			janus_log_prefix[level | ((int)janus_log_colors << 3)], \
-			janus_log_src, \
-			##__VA_ARGS__); \
+		else{ \
+			char janus_log_ts[64] = ""; \
+			char janus_log_src[128] = ""; \
+			if (janus_log_timestamps) { \
+				struct tm janustmresult; \
+				time_t janusltime = time(NULL); \
+				localtime_r(&janusltime, &janustmresult); \
+				strftime(janus_log_ts, sizeof(janus_log_ts), \
+                         "[%a %b %e %T %Y] ", &janustmresult); \
+			} \
+			snprintf(janus_log_src, sizeof(janus_log_src), \
+					 "[%s:%s:%d] ", __FILE__, __FUNCTION__, __LINE__); \
+			JANUS_PRINT("%s%s%s%s" format, \
+				janus_log_global_prefix ? janus_log_global_prefix : "", \
+				janus_log_ts, \
+				janus_log_prefix[level | ((int)janus_log_colors << 3)], \
+				janus_log_src, \
+				##__VA_ARGS__); \
+		} \
 	} \
 } while (0)
 ///@}
