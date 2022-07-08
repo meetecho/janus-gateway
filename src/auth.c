@@ -255,7 +255,7 @@ gboolean janus_check_param_checksum(json_t *root, const char* request) {
 	else{
 		JANUS_LOG(LOG_ERR, "%s: Calculated checksum hash '%s' -> '%s' %s\n", param_name, field_content, base64, "DOES NOT MATCH\n");
 	}
-	
+
 	g_free(base64);
 
 fail:

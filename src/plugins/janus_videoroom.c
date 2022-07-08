@@ -6286,7 +6286,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_mutex_unlock(&participant->own_subscriptions_mutex);
 		}
 		/* This publisher is leaving, tell everybody */
-	
+
 		/* BB - Updated invocation */
 		janus_videoroom_leave_or_unpublish(participant, session, TRUE, TRUE);
 		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
@@ -9032,7 +9032,7 @@ static void *janus_videoroom_handler(void *data) {
 						while(user_id_str == NULL) {
 							user_id_str = janus_random_uuid();
 							if(g_hash_table_lookup(videoroom->participants, user_id_str) != NULL) {
-								// User ID already taken, try another one 
+								// User ID already taken, try another one
 								g_clear_pointer(&user_id_str, g_free);
 							}
 						}
