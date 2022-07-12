@@ -98,7 +98,8 @@ static janus_log_buffer *janus_log_getbuf(void) {
 }
 
 static void remove_newlines(char* str){
-	for(int i = 0; str[i] != '\0'; i++){
+	int i;
+	for(i = 0; str[i] != '\0'; i++){
 		if(str[i] == '\n'){
 			str[i] = ' ';
 		}

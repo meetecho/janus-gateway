@@ -4234,8 +4234,8 @@ static gboolean isRestricted(char* token) {
 
 			/* Split the token content */
 			data = g_strsplit(parts[0], ",", 0);
-
-			for(int i = 0; data[i]; i++) {
+			int i;
+			for(i = 0; data[i]; i++) {
 				/* Let's check if we have the package name */
 				if (strstr(data[i], JANUS_VIDEOROOM_PACKAGE)) {
 					/* Let's verify if it contains the 'RESTRICTED' keyword */
