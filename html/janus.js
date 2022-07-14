@@ -1800,9 +1800,7 @@ function Janus(gatewayCallbacks) {
 				// For Chrome versions before 72, we force a plan-b semantic, and unified-plan otherwise
 				pc_config["sdpSemantics"] = (Janus.webRTCAdapter.browserDetails.version < 72) ? "plan-b" : "unified-plan";
 			}
-			var pc_constraints = {
-				"optional": [{"DtlsSrtpKeyAgreement": true}]
-			};
+			var pc_constraints = {};
 			if(ipv6Support) {
 				pc_constraints.optional.push({"googIPv6":true});
 			}
