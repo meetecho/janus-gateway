@@ -1822,19 +1822,7 @@ function Janus(gatewayCallbacks) {
 				// For Chrome versions before 72, we force a plan-b semantic, and unified-plan otherwise
 				pc_config["sdpSemantics"] = (Janus.webRTCAdapter.browserDetails.version < 72) ? "plan-b" : "unified-plan";
 			}
-			var pc_constraints = {
-				"optional": [{"DtlsSrtpKeyAgreement": true}]
-			};
-			if(ipv6Support) {
-				pc_constraints.optional.push({"googIPv6":true});
-			}
-			// Any custom constraint to add?
-			if(callbacks.rtcConstraints && typeof callbacks.rtcConstraints === 'object') {
-				Janus.debug("Adding custom PeerConnection constraints:", callbacks.rtcConstraints);
-				for(var i in callbacks.rtcConstraints) {
-					pc_constraints.optional.push(callbacks.rtcConstraints[i]);
-				}
-			}
+			var pc_constraints = {};
 			if(Janus.webRTCAdapter.browserDetails.browser === "edge") {
 				// This is Edge, enable BUNDLE explicitly
 				pc_config.bundlePolicy = "max-bundle";
