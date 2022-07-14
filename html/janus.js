@@ -1799,13 +1799,6 @@ function Janus(gatewayCallbacks) {
 				pc_config["sdpSemantics"] = (Janus.webRTCAdapter.browserDetails.version < 72) ? "plan-b" : "unified-plan";
 			}
 			var pc_constraints = {};
-			// Any custom constraint to add?
-			if(callbacks.rtcConstraints && typeof callbacks.rtcConstraints === 'object') {
-				Janus.debug("Adding custom PeerConnection constraints:", callbacks.rtcConstraints);
-				for(var i in callbacks.rtcConstraints) {
-					pc_constraints.optional.push(callbacks.rtcConstraints[i]);
-				}
-			}
 			if(Janus.webRTCAdapter.browserDetails.browser === "edge") {
 				// This is Edge, enable BUNDLE explicitly
 				pc_config.bundlePolicy = "max-bundle";
