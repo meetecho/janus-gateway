@@ -1433,8 +1433,10 @@ int janus_process_incoming_request(janus_request *request) {
 			/* Is this valid SDP? */
 			char error_str[512];
 			error_str[0] = '\0';
+			janus_dtls_role peer_dtls_role = JANUS_DTLS_ROLE_ACTPASS;
 			int audio = 0, video = 0, data = 0;
-			janus_sdp *parsed_sdp = janus_sdp_preparse(handle, jsep_sdp, error_str, sizeof(error_str), &audio, &video, &data);
+			janus_sdp *parsed_sdp = janus_sdp_preparse(handle, jsep_sdp, error_str, sizeof(error_str),
+				(offer && !renegotiation ? &peer_dtls_role : NULL), &audio, &video, &data);
 			if(parsed_sdp == NULL) {
 				/* Invalid SDP */
 				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, error_str);
@@ -1454,8 +1456,12 @@ int janus_process_incoming_request(janus_request *request) {
 			if(!renegotiation) {
 				/* New session */
 				if(offer) {
+					/* Check which DTLS role we should take */
+					janus_dtls_role dtls_role = JANUS_DTLS_ROLE_CLIENT;
+					if(peer_dtls_role == JANUS_DTLS_ROLE_CLIENT)
+						dtls_role = JANUS_DTLS_ROLE_SERVER;
 					/* Setup ICE locally (we received an offer) */
-					if(janus_ice_setup_local(handle, offer, do_trickle) < 0) {
+					if(janus_ice_setup_local(handle, offer, do_trickle, dtls_role) < 0) {
 						JANUS_LOG(LOG_ERR, "Error setting ICE locally\n");
 						janus_sdp_destroy(parsed_sdp);
 						g_free(jsep_type);
@@ -3660,7 +3666,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	char error_str[512];
 	error_str[0] = '\0';
 	int audio = 0, video = 0, data = 0;
-	janus_sdp *parsed_sdp = janus_sdp_preparse(ice_handle, sdp, error_str, sizeof(error_str), &audio, &video, &data);
+	janus_sdp *parsed_sdp = janus_sdp_preparse(ice_handle, sdp, error_str, sizeof(error_str), NULL, &audio, &video, &data);
 	if(parsed_sdp == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't parse SDP... %s\n", ice_handle->handle_id, error_str);
 		return NULL;
@@ -3685,12 +3691,12 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				}
 			}
 		}
+		janus_mutex_lock(&ice_handle->mutex);
 		if(ice_handle->agent == NULL) {
 			/* We still need to configure the WebRTC stuff: negotiate RFC4588 by default */
 			janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
 			/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
-			janus_mutex_lock(&ice_handle->mutex);
-			if(janus_ice_setup_local(ice_handle, FALSE, TRUE) < 0) {
+			if(janus_ice_setup_local(ice_handle, FALSE, TRUE, JANUS_DTLS_ROLE_ACTPASS) < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting ICE locally\n", ice_handle->handle_id);
 				janus_sdp_destroy(parsed_sdp);
 				janus_mutex_unlock(&ice_handle->mutex);
@@ -3703,7 +3709,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				janus_mutex_unlock(&ice_handle->mutex);
 				return NULL;
 			}
-			janus_mutex_unlock(&ice_handle->mutex);
 		} else {
 			updating = TRUE;
 			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Updating existing session\n", ice_handle->handle_id);
@@ -3712,6 +3717,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				if(janus_sdp_process_local(ice_handle, parsed_sdp, TRUE) < 0) {
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error processing SDP\n", ice_handle->handle_id);
 					janus_sdp_destroy(parsed_sdp);
+					janus_mutex_unlock(&ice_handle->mutex);
 					return NULL;
 				}
 			}
@@ -3780,12 +3786,14 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->pc->playoutdelay_ext_id = playoutdelay_ext_id;
 		if(ice_handle->pc && ice_handle->pc->dependencydesc_ext_id != dependencydesc_ext_id)
 			ice_handle->pc->dependencydesc_ext_id = dependencydesc_ext_id;
+		janus_mutex_unlock(&ice_handle->mutex);
 	} else {
 		/* Check if the answer does contain the mid/rid/repaired-rid/abs-send-time/twcc extmaps */
 		int mindex = 0;
 		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE,
 			do_dd = FALSE, do_twcc = FALSE, do_abs_send_time = FALSE;
 		GList *temp = parsed_sdp->m_lines;
+		janus_mutex_lock(&ice_handle->mutex);
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 			janus_ice_peerconnection_medium *medium = ice_handle->pc ?
@@ -3819,7 +3827,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			if(opusred_pt < 0 && medium != NULL && medium->opusred_pt > 0)
 				medium->opusred_pt = 0;
 			/* Check if rid-based simulcasting is available */
-			janus_mutex_lock(&ice_handle->mutex);
 			if(!have_rid && medium != NULL) {
 				g_free(medium->rid[0]);
 				medium->rid[0] = NULL;
@@ -3832,7 +3839,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					medium->ssrc_peer_temp = 0;
 				}
 			}
-			janus_mutex_unlock(&ice_handle->mutex);
 			do_mid = do_mid || have_mid;
 			do_rid = do_rid || have_rid;
 			do_repaired_rid = do_repaired_rid || have_repaired_rid;
@@ -3858,6 +3864,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->pc->dependencydesc_ext_id = 0;
 		if(!do_abs_send_time && ice_handle->pc)
 			ice_handle->pc->abs_send_time_ext_id = 0;
+		janus_mutex_unlock(&ice_handle->mutex);
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
 		/* Wait for candidates-done callback */
@@ -3941,6 +3948,28 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					g_list_free(rtx_ptypes);
 					rtx_ptypes = g_hash_table_get_values(medium->rtx_payload_types);
 					medium->do_nacks = TRUE;
+					tempP = tempP->next;
+				}
+				g_list_free(ptypes);
+				g_list_free(rtx_ptypes);
+			}
+		} else if(medium && medium->type == JANUS_MEDIA_VIDEO &&
+				janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX) &&
+				medium->rtx_payload_types != NULL) {
+			/* Check if there are new payload types that conflict with our rtx additions */
+			janus_sdp_mline *m = janus_sdp_mline_find_by_index(parsed_sdp, medium->mindex);
+			if(m && m->ptypes) {
+				GList *ptypes = g_list_copy(m->ptypes), *tempP = ptypes;
+				GList *rtx_ptypes = g_hash_table_get_values(medium->rtx_payload_types);
+				while(tempP) {
+					int ptype = GPOINTER_TO_INT(tempP->data);
+					if(g_hash_table_lookup(medium->clock_rates, GINT_TO_POINTER(ptype)) &&
+							g_list_find(rtx_ptypes, GINT_TO_POINTER(ptype))) {
+						/* We have a payload type that is both a codec and rtx, get rid of it */
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Removing duplicate payload type %d\n", ice_handle->handle_id, ptype);
+						janus_sdp_remove_payload_type(parsed_sdp, medium->mindex, ptype);
+						g_hash_table_remove(medium->clock_rates, GINT_TO_POINTER(ptype));
+					}
 					tempP = tempP->next;
 				}
 				g_list_free(ptypes);

@@ -720,8 +720,9 @@ void janus_ice_notify_media_stopped(janus_ice_handle *handle);
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] offer Whether this is for an OFFER or an ANSWER
  * @param[in] trickle Whether ICE trickling is supported or not
+ * @param[in] dtls_role The DTLS role that should be taken for this PeerConnection
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_ice_setup_local(janus_ice_handle *handle, gboolean offer, gboolean trickle);
+int janus_ice_setup_local(janus_ice_handle *handle, gboolean offer, gboolean trickle, janus_dtls_role dtls_role);
 /*! \brief Method to add local candidates to a janus_sdp SDP object representation
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] mline The Janus SDP m-line object to add candidates to

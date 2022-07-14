@@ -455,7 +455,7 @@ Janus.init = function(options) {
 				try {
 					element.src = URL.createObjectURL(stream);
 				} catch (e) {
-					Janus.error("Error attaching stream to element");
+					Janus.error("Error attaching stream to element", e);
 				}
 			}
 		};
@@ -466,7 +466,7 @@ Janus.init = function(options) {
 				try {
 					to.src = from.src;
 				} catch (e) {
-					Janus.error("Error reattaching stream to element");
+					Janus.error("Error reattaching stream to element", e);
 				}
 			}
 		};
@@ -591,8 +591,6 @@ function Janus(gatewayCallbacks) {
 	let iceServers = gatewayCallbacks.iceServers || [{urls: "stun:stun.l.google.com:19302"}];
 	let iceTransportPolicy = gatewayCallbacks.iceTransportPolicy;
 	let bundlePolicy = gatewayCallbacks.bundlePolicy;
-	// Whether IPv6 candidates should be gathered
-	let ipv6Support = (gatewayCallbacks.ipv6 === true);
 	// Whether we should enable the withCredentials flag for XHR requests
 	let withCredentials = false;
 	if(typeof gatewayCallbacks.withCredentials !== 'undefined' && gatewayCallbacks.withCredentials !== null)
@@ -1851,18 +1849,6 @@ function Janus(gatewayCallbacks) {
 			bundlePolicy: bundlePolicy
 		};
 		pc_config.sdpSemantics = 'unified-plan';
-		let pc_constraints = {
-			optional: [{ DtlsSrtpKeyAgreement: true }]
-		};
-		if(ipv6Support)
-			pc_constraints.optional.push({ googIPv6: true });
-		// Any custom constraint to add?
-		if(callbacks.rtcConstraints && typeof callbacks.rtcConstraints === 'object') {
-			Janus.debug('Adding custom PeerConnection constraints:', callbacks.rtcConstraints);
-			for(let i in callbacks.rtcConstraints) {
-				pc_constraints.optional.push(callbacks.rtcConstraints[i]);
-			}
-		}
 		// Check if a sender or receiver transform has been provided
 		let insertableStreams = false;
 		if(callbacks.tracks) {
@@ -1882,8 +1868,7 @@ function Janus(gatewayCallbacks) {
 			pc_config.encodedInsertableStreams = true;
 		}
 		Janus.log('Creating PeerConnection');
-		Janus.debug(pc_constraints);
-		config.pc = new RTCPeerConnection(pc_config, pc_constraints);
+		config.pc = new RTCPeerConnection(pc_config);
 		Janus.debug(config.pc);
 		if(config.pc.getStats) {	// FIXME
 			config.volume = {};

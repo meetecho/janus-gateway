@@ -1047,9 +1047,29 @@ void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t
 	}
 }
 
+void janus_rtp_simulcasting_cleanup(int *rid_ext_id, uint32_t *ssrcs, char **rids, janus_mutex *rid_mutex) {
+	if(rid_mutex != NULL)
+		janus_mutex_lock(rid_mutex);
+	if(rid_ext_id)
+		*rid_ext_id = -1;
+	if(ssrcs || rids) {
+		int i = 0;
+		for(i=0; i<3; i++) {
+			if(ssrcs)
+				*(ssrcs+i) = 0;
+			if(rids) {
+				g_free(rids[i]);
+				rids[i] = NULL;
+			}
+		}
+	}
+	if(rid_mutex != NULL)
+		janus_mutex_unlock(rid_mutex);
+}
+
 gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
 		char *buf, int len, uint32_t *ssrcs, char **rids,
-		janus_videocodec vcodec, janus_rtp_switching_context *sc) {
+		janus_videocodec vcodec, janus_rtp_switching_context *sc, janus_mutex *rid_mutex) {
 	if(!context || !buf || len < 1)
 		return FALSE;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
@@ -1068,6 +1088,8 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		char sdes_item[16];
 		if(janus_rtp_header_extension_parse_rid(buf, len, context->rid_ext_id, sdes_item, sizeof(sdes_item)) != 0)
 			return FALSE;
+		if(rid_mutex != NULL)
+			janus_mutex_lock(rid_mutex);
 		if(rids[0] != NULL && !strcmp(rids[0], sdes_item)) {
 			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
 			*(ssrcs) = ssrc;
@@ -1080,7 +1102,10 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
 			*(ssrcs+2) = ssrc;
 			substream = 2;
-		} else {
+		}
+		if(rid_mutex != NULL)
+			janus_mutex_unlock(rid_mutex);
+		if(substream == -1) {
 			JANUS_LOG(LOG_WARN, "Simulcasting: unknown rid '%s'...\n", sdes_item);
 			return FALSE;
 		}

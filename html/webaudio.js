@@ -167,8 +167,7 @@ $(document).ready(function() {
 									// If we're here, a new track was added
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
-										stream = new MediaStream();
-										stream.addTrack(track.clone());
+										stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote audio stream:", stream);
 										if($('#peeraudio'+mid).length === 0)

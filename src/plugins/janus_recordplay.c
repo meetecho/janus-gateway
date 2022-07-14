@@ -457,6 +457,7 @@ typedef struct janus_recordplay_session {
 	janus_rtp_switching_context context;
 	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
 	char *rid[3];			/* Only needed if simulcasting is rid-based */
+	janus_mutex rid_mutex;	/* Mutex to protect access to the rid array */
 	uint32_t rec_vssrc;		/* SSRC we'll put in the recording for video, in case simulcasting is involved) */
 	janus_rtp_simulcasting_context sim_context;
 	janus_vp8_simulcast_context vp8_context;
@@ -478,6 +479,9 @@ static void janus_recordplay_session_free(const janus_refcount *session_ref) {
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_free(session->video_profile);
+	janus_mutex_destroy(&session->rid_mutex);
+	janus_mutex_destroy(&session->rec_mutex);
+	janus_rtp_simulcasting_cleanup(NULL, NULL, session->rid, NULL);
 	g_free(session);
 }
 
@@ -940,6 +944,7 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
+	janus_mutex_init(&session->rid_mutex);
 	janus_refcount_init(&session->ref, janus_recordplay_session_free);
 	handle->plugin_handle = session;
 
@@ -1299,7 +1304,7 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, janus_plugin_rt
 		uint32_t ssrc = ntohl(header->ssrc);
 		/* Process this packet: don't save if it's not the SSRC/layer we wanted to handle */
 		gboolean save = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
-			buf, len, session->ssrc, session->rid, session->recording->vcodec, &session->context);
+			buf, len, session->ssrc, session->rid, session->recording->vcodec, &session->context, &session->rid_mutex);
 		if(session->sim_context.need_pli) {
 			/* Send a PLI */
 			JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
@@ -1485,12 +1490,7 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 		janus_refcount_decrease(&session->recording->ref);
 		session->recording = NULL;
 	}
-	int i=0;
-	for(i=0; i<3; i++) {
-		session->ssrc[i] = 0;
-		g_free(session->rid[i]);
-		session->rid[i] = NULL;
-	}
+	janus_rtp_simulcasting_cleanup(NULL, session->ssrc, session->rid, &session->rid_mutex);
 	g_free(session->video_profile);
 	session->video_profile = NULL;
 	session->opusred = FALSE;
@@ -1871,38 +1871,20 @@ recdone:
 					int mindex = json_integer_value(json_object_get(s, "mindex"));
 					JANUS_LOG(LOG_VERB, "Recording client is going to do simulcasting (#%d)\n", mindex);
 					int rid_ext_id = -1;
+					janus_mutex_lock(&session->rid_mutex);
+					/* Clear existing RIDs in case this is a renegotiation */
+					janus_rtp_simulcasting_cleanup(NULL, NULL, session->rid, NULL);
 					janus_rtp_simulcasting_prepare(s, &rid_ext_id, session->ssrc, session->rid);
 					session->sim_context.rid_ext_id = rid_ext_id;
+					janus_mutex_unlock(&session->rid_mutex);
 					session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
 					session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
 					if(rec->vcodec != JANUS_VIDEOCODEC_VP8 && rec->vcodec != JANUS_VIDEOCODEC_H264) {
 						/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-						int i=0;
-						for(i=0; i<3; i++) {
-							session->ssrc[i] = 0;
-							g_free(session->rid[i]);
-							session->rid[i] = NULL;
-						}
+						janus_rtp_simulcasting_cleanup(NULL, session->ssrc, session->rid, &session->rid_mutex);
 					}
 					/* FIXME We're stopping at the first item, there may be more */
 					break;
-				}
-			}
-			if(msg_simulcast) {
-				JANUS_LOG(LOG_VERB, "Recording client negotiated simulcasting\n");
-				int rid_ext_id = -1;
-				janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, session->ssrc, session->rid);
-				session->sim_context.rid_ext_id = rid_ext_id;
-				session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
-				session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
-				if(rec->vcodec != JANUS_VIDEOCODEC_VP8 && rec->vcodec != JANUS_VIDEOCODEC_H264) {
-					/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-					int i=0;
-					for(i=0; i<3; i++) {
-						session->ssrc[i] = 0;
-						g_free(session->rid[i]);
-						session->rid[i] = NULL;
-					}
 				}
 			}
 			/* Done! */

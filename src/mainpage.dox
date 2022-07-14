@@ -246,7 +246,6 @@ Janus.init({
  * automatic for fallback/failover during setup;
  * - \c iceServers: a list of STUN/TURN servers to use (a default STUN server
  * will be used if you skip this property);
- * - \c ipv6: whether IPv6 candidates should be gathered or not;
  * - \c withCredentials: whether the \c withCredentials property of XHR requests
  * should be enabled or not (false by default, and only valid when using HTTP
  * as a transport, ignored for WebSockets);

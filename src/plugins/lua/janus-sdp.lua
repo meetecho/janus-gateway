@@ -428,15 +428,22 @@ function JANUSSDP.generateAnswer(offer, options)
 						answer[#answer+1] = a
 					end
 				elseif a.name == "extmap" then
-					-- We do negotiate some RTP extensions
+					-- We do negotiate some RTP extensions: check if there's a direction first
+					local value = a.value
+					if a.value:find("/sendonly", 1, true) then
+						value = a.value:gsub("/sendonly", "/recvonly")
+					elseif a.value:find("/recvonly", 1, true) then
+						value = a.value:gsub("/recvonly", "/sendonly")
+					end
+					-- Now check if we have to negotiate the extension
 					if a.value:find("urn:ietf:params:rtp-hdrext:sdes:mid", 1, true) then
-						answer[#answer+1] = a
+						answer[#answer+1] = { type = "a", name = a.name, value = value }
 					elseif a.value:find("urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id", 1, true) then
-						answer[#answer+1] = a
+						answer[#answer+1] = { type = "a", name = a.name, value = value }
 					elseif a.value:find("urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id", 1, true) then
-						answer[#answer+1] = a
+						answer[#answer+1] = { type = "a", name = a.name, value = value }
 					elseif options.disableTwcc ~= true and a.value:find("draft-holmer-rmcat-transport-wide-cc-extensions-01", 1, true) then
-						answer[#answer+1] = a
+						answer[#answer+1] = { type = "a", name = a.name, value = value }
 					end
 				end
 			else
