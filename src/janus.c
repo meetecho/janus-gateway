@@ -1180,10 +1180,11 @@ int janus_process_incoming_request(janus_request *request) {
 		goto jsondone;
 	}
 
+	JANUS_LOG(LOG_INFO, "Processing incoming request [%s] on session [%"SCNu64"]\n", message_text, session_id);
 	/* If we got here, make sure we have a session (and/or a handle) */
 	session = janus_session_find(session_id);
 	if(!session) {
-		JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
+		JANUS_LOG(LOG_INFO, "Couldn't find any session [%"SCNu64"] for request [%s].\n", session_id, message_text);
 		ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_SESSION_NOT_FOUND, "No such session %"SCNu64"", session_id);
 		goto jsondone;
 	}
@@ -1193,7 +1194,7 @@ int janus_process_incoming_request(janus_request *request) {
 	if(handle_id > 0) {
 		handle = janus_session_handles_find(session, handle_id);
 		if(!handle) {
-			JANUS_LOG(LOG_ERR, "Couldn't find any handle %"SCNu64" in session %"SCNu64"...\n", handle_id, session_id);
+			JANUS_LOG(LOG_INFO, "Couldn't find any handle %"SCNu64" in session %"SCNu64" for request [%s]\n", handle_id, session_id, message_text);
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_HANDLE_NOT_FOUND, "No such handle %"SCNu64" in session %"SCNu64"", handle_id, session_id);
 			goto jsondone;
 		}
@@ -3130,7 +3131,7 @@ static int janus_process_error_string(janus_request *request, uint64_t session_i
 	if(!request)
 		return -1;
 	/* Done preparing error */
-	JANUS_LOG(LOG_ERR, "[%s] Returning %s API error %d (%s)\n", transaction, request->admin ? "admin" : "Janus", error, error_string);
+	JANUS_LOG(LOG_INFO, "[%s] Returning %s API error %d (%s)\n", transaction, request->admin ? "admin" : "Janus", error, error_string);
 	/* Prepare JSON error */
 	json_t *reply = janus_create_message("error", session_id, transaction);
 	json_t *error_data = json_object();

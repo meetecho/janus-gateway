@@ -3905,7 +3905,7 @@ static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *partic
 		return;
 	janus_mutex_lock(&rooms_mutex);
 	if(!g_hash_table_lookup(rooms, string_ids ? (gpointer)participant->room_id_str : (gpointer)&participant->room_id)) {
-		JANUS_LOG(LOG_ERR, "No such room (%s)\n", participant->room_id_str);
+		JANUS_LOG(LOG_INFO, "No such room (%s)\n", participant->room_id_str);
 		janus_mutex_unlock(&rooms_mutex);
 		return;
 	}
@@ -4154,7 +4154,7 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 	*videoroom = g_hash_table_lookup(rooms,
 		string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 	if(*videoroom == NULL) {
-		JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
+		JANUS_LOG(LOG_INFO, "No such room (%s)\n", room_id_str);
 		error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 		if(error_cause)
 			g_snprintf(error_cause, error_cause_size, "No such room (%s)", room_id_str);
@@ -7879,6 +7879,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	json_t *request = json_object_get(root, "request");
 	/* Some requests ('create', 'destroy', 'exists', 'list') can be handled synchronously */
 	const char *request_text = json_string_value(request);
+	JANUS_LOG(LOG_INFO, "[%s] is processing a [%s] request", JANUS_VIDEOROOM_NAME, request_text);
 	/* We have a separate method to process synchronous requests, as those may
 	 * arrive from the Admin API as well, and so we handle them the same way */
 	response = janus_videoroom_process_synchronous_request(session, root);
@@ -9853,7 +9854,7 @@ static void *janus_videoroom_handler(void *data) {
 					error_code = JANUS_VIDEOROOM_ERROR_ALREADY_JOINED;
 					g_snprintf(error_cause, 512, "Not in a room (create a new handle)");
 				} else {
-					JANUS_LOG(LOG_ERR, "No such room\n");
+					JANUS_LOG(LOG_INFO, "No such room, request:[%s]\n", request_text);
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 					g_snprintf(error_cause, 512, "No such room");
 				}

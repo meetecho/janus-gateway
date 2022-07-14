@@ -1612,7 +1612,7 @@ static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connectio
 		janus_http_session *session = g_hash_table_lookup(sessions, &session_id);
 		if(!session || g_atomic_int_get(&session->destroyed)) {
 			janus_mutex_unlock(&sessions_mutex);
-			JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
+			JANUS_LOG(LOG_INFO, "Couldn't find any session %"SCNu64"...\n", session_id);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			janus_http_add_cors_headers(msg, response);
 			ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
