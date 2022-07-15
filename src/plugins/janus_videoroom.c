@@ -7879,7 +7879,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	json_t *request = json_object_get(root, "request");
 	/* Some requests ('create', 'destroy', 'exists', 'list') can be handled synchronously */
 	const char *request_text = json_string_value(request);
-	JANUS_LOG(LOG_INFO, "[%s] is processing a [%s] request", JANUS_VIDEOROOM_NAME, request_text);
+	JANUS_LOG(LOG_DBG, "[%s] is processing a [%s] request", JANUS_VIDEOROOM_NAME, request_text);
 	/* We have a separate method to process synchronous requests, as those may
 	 * arrive from the Admin API as well, and so we handle them the same way */
 	response = janus_videoroom_process_synchronous_request(session, root);

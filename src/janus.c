@@ -1180,7 +1180,7 @@ int janus_process_incoming_request(janus_request *request) {
 		goto jsondone;
 	}
 
-	JANUS_LOG(LOG_INFO, "Processing incoming request [%s] on session [%"SCNu64"]\n", message_text, session_id);
+	JANUS_LOG(LOG_DBG, "Processing incoming request [%s] on session [%"SCNu64"]\n", message_text, session_id);
 	/* If we got here, make sure we have a session (and/or a handle) */
 	session = janus_session_find(session_id);
 	if(!session) {
