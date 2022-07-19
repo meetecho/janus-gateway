@@ -527,7 +527,8 @@ GList *janus_config_get_arrays(janus_config *config, janus_config_container *par
 
 /* Printing utilities */
 void janus_config_print(janus_config *config) {
-	janus_config_print_as(config, LOG_VERB);
+	//Do not print config
+	//janus_config_print_as(config, LOG_VERB);
 }
 
 #define JANUS_CONFIG_INDENT 4
