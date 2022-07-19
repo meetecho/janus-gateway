@@ -3004,10 +3004,19 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				}
 				json_t *media = json_object();
 				json_object_set_new(media, "audio", participant->audio ? json_true() : json_false());
+				json_object_set_new(media, "audio-configured", participant->audio_configured ? json_true() : json_false());
+				if(participant->audio_configured)
+					json_object_set_new(media, "audio-configured-enabled", participant->audio_enabled ? json_true() : json_false());
 				json_object_set_new(media, "audio-offered", participant->audio_offered ? json_true() : json_false());
 				json_object_set_new(media, "video", participant->video ? json_true() : json_false());
+				json_object_set_new(media, "video-configured", participant->video_configured ? json_true() : json_false());
+				if(participant->video_configured)
+					json_object_set_new(media, "video-configured-enabled", participant->video_enabled ? json_true() : json_false());
 				json_object_set_new(media, "video-offered", participant->video_offered ? json_true() : json_false());
 				json_object_set_new(media, "data", participant->data ? json_true() : json_false());
+				json_object_set_new(media, "data-configured", participant->data_configured ? json_true() : json_false());
+				if(participant->data_configured)
+					json_object_set_new(media, "data-configured-enabled", participant->data_enabled ? json_true() : json_false());
 				json_object_set_new(media, "data-offered", participant->data_offered ? json_true() : json_false());
 				json_object_set_new(info, "media", media);
 				if(feed && (feed->ssrc[0] != 0 || feed->rid[0] != NULL)) {
