@@ -1175,6 +1175,7 @@ room-<unique room ID>: {
 		{
 			"feed" : <unique ID of publisher owning the new stream to subscribe to>,
 			"mid" : "<unique mid of the publisher stream to subscribe to; optional>"
+			"crossrefid" : "<id to map this subscription with entries in streams list; optional>"
 			// Optionally, simulcast or SVC targets (defaults if missing)
 		},
 		// Other new streams to subscribe to
@@ -1278,6 +1279,7 @@ room-<unique room ID>: {
 		{
 			"feed" : <unique ID of publisher owning the new stream to subscribe to>,
 			"mid" : "<unique mid of the publisher stream to subscribe to; optional>"
+			"crossrefid" : "<id to map this subscription with entries in streams list; optional>"
 			// Optionally, simulcast or SVC targets (defaults if missing)
 		},
 		// Other new streams to subscribe to
@@ -1837,7 +1839,7 @@ static struct janus_json_parameter subscriber_parameters[] = {
 };
 static struct janus_json_parameter subscriber_stream_parameters[] = {
 	{"mid", JANUS_JSON_STRING, 0},
-	{"opaque_id", JANUS_JSON_STRING, 0},
+	{"crossrefid", JANUS_JSON_STRING, 0},
 	/* For VP8 (or H.264) simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -2206,7 +2208,7 @@ typedef struct janus_videoroom_subscriber_stream {
 	GSList *publisher_streams;						/* Complete list of publisher streams (e.g., when this is data) */
 	int mindex;				/* The media index of this stream (may not be the same as the publisher stream) */
 	char *mid;				/* The mid of this stream (may not be the same as the publisher stream) */
-	char* opaqueid;			/* An id provided while subscribing to uniquely identify the subscription in the updated events */
+	char *crossrefid;		/* An id provided while subscribing to uniquely identify the subscription in the list of subscriptions */
 	gboolean send;			/* Whether this stream media must be sent to this subscriber */
 	/* The following properties are copied from the source, in case this stream becomes inactive */
 	janus_videoroom_media type;			/* Type of this stream (audio, video or data) */
@@ -2273,7 +2275,7 @@ static void janus_videoroom_subscriber_stream_free(const janus_refcount *s_ref) 
 	/* This subscriber stream can be destroyed, free all the resources */
 		/* TODO Anything else we should free? */
 	g_free(s->mid);
-	g_free(s->opaqueid);
+	g_free(s->crossrefid);
 	g_free(s->h264_profile);
 	g_free(s->vp9_profile);
 	g_free(s);
@@ -2994,7 +2996,7 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 /* Helpers for subscription streams */
 static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(janus_videoroom_subscriber *subscriber,
 		janus_videoroom_publisher_stream *ps,
-		const char* opaqueid,
+		const char *crossrefid,
 		gboolean legacy, gboolean do_audio, gboolean do_video, gboolean do_data) {
 	/* If this is a legacy subscription ("feed"), use the deprecated properties */
 	if(legacy && ((ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO && !do_audio) ||
@@ -3007,7 +3009,7 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(
 	/* Allocate a new subscriber stream instance */
 	janus_videoroom_subscriber_stream *stream = g_malloc0(sizeof(janus_videoroom_subscriber_stream));
 	stream->mindex = g_list_length(subscriber->streams);
-	stream->opaqueid = g_strdup(opaqueid);
+	stream->crossrefid = g_strdup(crossrefid);
 	stream->subscriber = subscriber;
 	stream->publisher_streams = g_slist_append(stream->publisher_streams, ps);
 	/* Copy properties from the source */
@@ -3057,7 +3059,7 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(
 
 static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_or_replace(janus_videoroom_subscriber *subscriber,
 		janus_videoroom_publisher_stream *ps,
-		const char* opaqueid) {
+		const char *crossrefid) {
 	if(subscriber == NULL || ps == NULL)
 		return NULL;
 	/* First of all, let's check if there's an m-line we can reuse */
@@ -3118,11 +3120,13 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_
 		temp = temp->next;
 	}
 	if(found)  {
-		stream->opaqueid = g_strdup(opaqueid);
+		if(stream->crossrefid)
+			g_free(stream->crossrefid);
+		stream->crossrefid = g_strdup(crossrefid);
 		return stream;
 	}
 	/* We couldn't find any, add a new one */
-	return janus_videoroom_subscriber_stream_add(subscriber, ps, opaqueid, FALSE, FALSE, FALSE, FALSE);
+	return janus_videoroom_subscriber_stream_add(subscriber, ps, crossrefid, FALSE, FALSE, FALSE, FALSE);
 }
 
 static void janus_videoroom_subscriber_stream_remove(janus_videoroom_subscriber_stream *s,
@@ -3176,8 +3180,8 @@ static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscr
 		json_object_set_new(m, "active", (ps || stream->type == JANUS_VIDEOROOM_MEDIA_DATA) ? json_true() : json_false());
 		json_object_set_new(m, "mindex", json_integer(stream->mindex));
 		json_object_set_new(m, "mid", json_string(stream->mid));
-		if(stream->opaqueid)
-			json_object_set_new(m, "opaque_id", json_string(stream->opaqueid));
+		if(stream->crossrefid)
+			json_object_set_new(m, "crossrefid", json_string(stream->crossrefid));
 		json_object_set_new(m, "ready", g_atomic_int_get(&stream->ready) ? json_true() : json_false());
 		json_object_set_new(m, "send", stream->send ? json_true() : json_false());
 		if(ps && stream->type == JANUS_VIDEOROOM_MEDIA_DATA) {
@@ -8468,7 +8472,7 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					janus_mutex_lock(&publisher->streams_mutex);
 					const char *mid = json_string_value(json_object_get(s, "mid"));
-					const char *opaqueid = json_string_value(json_object_get(s, "opaque_id"));
+					const char *crossrefid = json_string_value(json_object_get(s, "crossrefid"));
 					json_t *spatial = json_object_get(s, "spatial_layer");
 					json_t *sc_substream = json_object_get(s, "substream");
 					json_t *temporal = json_object_get(s, "temporal_layer");
@@ -8500,7 +8504,7 @@ static void *janus_videoroom_handler(void *data) {
 							continue;
 						}
 						janus_videoroom_subscriber_stream *stream = janus_videoroom_subscriber_stream_add(subscriber,
-							ps, opaqueid, legacy, do_audio, do_video, do_data);
+							ps, crossrefid, legacy, do_audio, do_video, do_data);
 						if(stream && ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO &&
 								(spatial || sc_substream || temporal || sc_temporal || sc_fallback)) {
 							/* Override the default spatial/substream/temporal targets */
@@ -8565,7 +8569,7 @@ static void *janus_videoroom_handler(void *data) {
 								continue;
 							}
 							janus_videoroom_subscriber_stream *stream = janus_videoroom_subscriber_stream_add(subscriber,
-								ps, opaqueid, legacy, do_audio, do_video, do_data);
+								ps, crossrefid, legacy, do_audio, do_video, do_data);
 							if(stream && ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO &&
 									(spatial || sc_substream || temporal || sc_temporal)) {
 								/* Override the default spatial/substream/temporal targets */
@@ -9470,7 +9474,7 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						/* Are we subscribing to this publisher as a whole or only to a single stream? */
 						const char *mid = json_string_value(json_object_get(s, "mid"));
-						const char *opaqueid = json_string_value(json_object_get(s, "opaque_id"));
+						const char *crossrefid = json_string_value(json_object_get(s, "crossrefid"));
 						json_t *spatial = json_object_get(s, "spatial_layer");
 						json_t *sc_substream = json_object_get(s, "substream");
 						json_t *temporal = json_object_get(s, "temporal_layer");
@@ -9490,7 +9494,7 @@ static void *janus_videoroom_handler(void *data) {
 								JANUS_LOG(LOG_WARN, "Skipping disabled m-line...\n");
 								continue;
 							}
-							janus_videoroom_subscriber_stream *stream = janus_videoroom_subscriber_stream_add_or_replace(subscriber, ps, opaqueid);
+							janus_videoroom_subscriber_stream *stream = janus_videoroom_subscriber_stream_add_or_replace(subscriber, ps, crossrefid);
 							if(stream) {
 								changes++;
 								if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO &&
@@ -9544,7 +9548,7 @@ static void *janus_videoroom_handler(void *data) {
 									temp = temp->next;
 									continue;
 								}
-								janus_videoroom_subscriber_stream *stream = janus_videoroom_subscriber_stream_add_or_replace(subscriber, ps, opaqueid);
+								janus_videoroom_subscriber_stream *stream = janus_videoroom_subscriber_stream_add_or_replace(subscriber, ps, crossrefid);
 								if(stream) {
 									changes++;
 									if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO &&
