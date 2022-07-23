@@ -1914,6 +1914,9 @@ static struct janus_json_parameter remote_publisher_stream_parameters[] = {
 	{"vp9_profile", JANUS_JSON_BOOL, 0},
 	{"simulcast", JANUS_JSON_BOOL, 0},
 	{"svc", JANUS_JSON_BOOL, 0},
+	{"audiolevel_ext_id", JANUS_JSON_INTEGER, 0},
+	{"videoorient_ext_id", JANUS_JSON_INTEGER, 0},
+	{"playoutdelay_ext_id", JANUS_JSON_INTEGER, 0},
 };
 
 /* Static configuration instance */
@@ -7533,6 +7536,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					ps->opusfec = json_is_true(json_object_get(s, "fec"));
 					ps->opusdtx = json_is_true(json_object_get(s, "dtx"));
 				}
+				int audio_level_extmap_id = json_integer_value(json_object_get(s, "audiolevel_ext_id"));
+				if(audio_level_extmap_id > 0)
+					ps->audio_level_extmap_id = audio_level_extmap_id;
 			} else if(mtype == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 				ps->vcodec = janus_videocodec_from_name(codec);
 				ps->pt = janus_videocodec_pt(ps->vcodec);
@@ -7569,6 +7575,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 						ps->vssrc[2] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 2;
 					}
 				}
+				int video_orient_extmap_id = json_integer_value(json_object_get(s, "videoorient_ext_id"));
+				if(video_orient_extmap_id > 0)
+					ps->video_orient_extmap_id = video_orient_extmap_id;
+				int playout_delay_extmap_id = json_integer_value(json_object_get(s, "playoutdelay_ext_id"));
+				if(playout_delay_extmap_id > 0)
+					ps->playout_delay_extmap_id = playout_delay_extmap_id;
 			} else if(mtype == JANUS_VIDEOROOM_MEDIA_DATA) {
 				if(publisher->data_mindex == -1) {
 					publisher->data_mindex = ps->mindex;
@@ -7800,6 +7812,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					ps->opusfec = json_is_true(json_object_get(s, "fec"));
 					ps->opusdtx = json_is_true(json_object_get(s, "dtx"));
 				}
+				int audio_level_extmap_id = json_integer_value(json_object_get(s, "audiolevel_ext_id"));
+				if(audio_level_extmap_id > 0)
+					ps->audio_level_extmap_id = audio_level_extmap_id;
 			} else if(mtype == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 				ps->vcodec = janus_videocodec_from_name(codec);
 				ps->pt = janus_videocodec_pt(ps->vcodec);
@@ -7836,6 +7851,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 						ps->vssrc[2] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 2;
 					}
 				}
+				int video_orient_extmap_id = json_integer_value(json_object_get(s, "videoorient_ext_id"));
+				if(video_orient_extmap_id > 0)
+					ps->video_orient_extmap_id = video_orient_extmap_id;
+				int playout_delay_extmap_id = json_integer_value(json_object_get(s, "playoutdelay_ext_id"));
+				if(playout_delay_extmap_id > 0)
+					ps->playout_delay_extmap_id = playout_delay_extmap_id;
 			} else if(mtype == JANUS_VIDEOROOM_MEDIA_DATA) {
 				if(publisher->data_mindex == -1) {
 					publisher->data_mindex = ps->mindex;
@@ -13005,7 +13026,41 @@ static void *janus_videoroom_remote_publisher_thread(void *data) {
 				pkt.buffer = buffer;
 				pkt.length = bytes;
 				janus_plugin_rtp_extensions_reset(&pkt.extensions);
+				janus_refcount_increase_nodebug(&publisher->ref);
 				janus_mutex_unlock(&publisher->streams_mutex);
+				/* Parse RTP extensions before relaying the packet */
+				if(!pkt.video && ps->audio_level_extmap_id > 0) {
+					gboolean vad = FALSE;
+					int level = -1;
+					if(janus_rtp_header_extension_parse_audio_level(buffer, bytes,
+							ps->audio_level_extmap_id, &vad, &level) == 0) {
+						pkt.extensions.audio_level = level;
+						pkt.extensions.audio_level_vad = vad;
+					}
+				}
+				if(pkt.video && ps->video_orient_extmap_id > 0) {
+					gboolean c = FALSE, f = FALSE, r1 = FALSE, r0 = FALSE;
+					if(janus_rtp_header_extension_parse_video_orientation(buffer, bytes,
+							ps->video_orient_extmap_id, &c, &f, &r1, &r0) == 0) {
+						pkt.extensions.video_rotation = 0;
+						if(r1 && r0)
+							pkt.extensions.video_rotation = 270;
+						else if(r1)
+							pkt.extensions.video_rotation = 180;
+						else if(r0)
+							pkt.extensions.video_rotation = 90;
+						pkt.extensions.video_back_camera = c;
+						pkt.extensions.video_flipped = f;
+					}
+				}
+				if(pkt.video && ps->playout_delay_extmap_id > 0) {
+					uint16_t min = 0, max = 0;
+					if(janus_rtp_header_extension_parse_playout_delay(buffer, bytes,
+							ps->playout_delay_extmap_id, &min, &max) == 0) {
+						pkt.extensions.min_delay = min;
+						pkt.extensions.max_delay = max;
+					}
+				}
 				/* Now handle the packet as if coming from a regular publisher */
 				janus_refcount_increase_nodebug(&publisher->ref);
 				janus_videoroom_incoming_rtp_internal(publisher->session, publisher, &pkt);
