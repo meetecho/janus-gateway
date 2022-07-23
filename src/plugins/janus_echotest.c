@@ -240,6 +240,7 @@ typedef struct janus_echotest_session {
 	janus_rtp_switching_context context;
 	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
 	char *rid[3];			/* Only needed if simulcasting is rid-based */
+	janus_mutex rid_mutex;	/* Mutex to protect access to the rid array */
 	janus_rtp_simulcasting_context sim_context;
 	janus_vp8_simulcast_context vp8_context;
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
@@ -267,6 +268,9 @@ static void janus_echotest_session_free(const janus_refcount *session_ref) {
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_free(session->vfmtp);
+	janus_mutex_destroy(&session->rid_mutex);
+	janus_mutex_destroy(&session->rec_mutex);
+	janus_rtp_simulcasting_cleanup(NULL, NULL, session->rid, NULL);
 	g_free(session);
 }
 
@@ -433,6 +437,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
+	janus_mutex_init(&session->rid_mutex);
 	session->min_delay = -1;
 	session->max_delay = -1;
 	session->destroyed = 0;
@@ -598,7 +603,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 			uint32_t ssrc = ntohl(header->ssrc);
 			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
-				buf, len, session->ssrc, session->rid, session->vcodec, &session->context);
+				buf, len, session->ssrc, session->rid, session->vcodec, &session->context, &session->rid_mutex);
 			if(session->sim_context.need_pli) {
 				/* Send a PLI */
 				gateway->send_pli(handle);
@@ -849,12 +854,7 @@ static void janus_echotest_hangup_media_internal(janus_plugin_session *handle) {
 	session->e2ee = FALSE;
 	session->bitrate = 0;
 	session->peer_bitrate = 0;
-	int i=0;
-	for(i=0; i<3; i++) {
-		session->ssrc[i] = 0;
-		g_free(session->rid[i]);
-		session->rid[i] = NULL;
-	}
+	janus_rtp_simulcasting_cleanup(NULL, session->ssrc, session->rid, &session->rid_mutex);
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
@@ -923,8 +923,12 @@ static void *janus_echotest_handler(void *data) {
 				int mindex = json_integer_value(json_object_get(s, "mindex"));
 				JANUS_LOG(LOG_VERB, "EchoTest client is going to do simulcasting (#%d)\n", mindex);
 				int rid_ext_id = -1;
+				janus_mutex_lock(&session->rid_mutex);
+				/* Clear existing RIDs in case this is a renegotiation */
+				janus_rtp_simulcasting_cleanup(NULL, NULL, session->rid, NULL);
 				janus_rtp_simulcasting_prepare(s, &rid_ext_id, session->ssrc, session->rid);
 				session->sim_context.rid_ext_id = rid_ext_id;
+				janus_mutex_unlock(&session->rid_mutex);
 				session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
 				session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
 				/* FIXME We're stopping at the first item, there may be more */
@@ -1170,12 +1174,7 @@ static void *janus_echotest_handler(void *data) {
 			session->has_video = session->vcodec != JANUS_VIDEOCODEC_NONE;
 			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
 				/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-				int i=0;
-				for(i=0; i<3; i++) {
-					session->ssrc[i] = 0;
-					g_free(session->rid[0]);
-					session->rid[0] = NULL;
-				}
+				janus_rtp_simulcasting_cleanup(NULL, session->ssrc, session->rid, &session->rid_mutex);
 			}
 			g_free(session->vfmtp);
 			session->vfmtp = NULL;

@@ -186,8 +186,7 @@ $(document).ready(function() {
 									var stream = null;
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
-										stream = new MediaStream();
-										stream.addTrack(track.clone());
+										stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote audio stream:", stream);
 										$('#'+mstreamId).append('<audio class="hide" id="remotevideo' + mid + '" playsinline/>');
@@ -206,8 +205,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										remoteVideos++;
 										$('.no-video-container').remove();
-										stream = new MediaStream();
-										stream.addTrack(track.clone());
+										stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote video stream:", stream);
 										$('#'+mstreamId).append('<video class="rounded centered hide" id="remotevideo' + mid + '" width="100%" height="100%" playsinline/>');
@@ -360,6 +358,7 @@ function updateStreamsList() {
 			$('#streamslist a').unbind('click').click(function() {
 				selectedStream = $(this).attr("id");
 				$('#streamset').html($(this).html()).parent().removeClass('open');
+				$('#list .dropdown-backdrop').remove();
 				return false;
 
 			});

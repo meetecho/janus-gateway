@@ -28,6 +28,7 @@
 #include <inttypes.h>
 
 #include "sdp-utils.h"
+#include "dtls.h"
 
 
 /** @name Janus SDP helper methods
@@ -39,11 +40,13 @@
  * @param[in] jsep_sdp The SDP that the browser peer originated
  * @param[in,out] error_str Buffer to receive a reason for an error, if any
  * @param[in] errlen The length of the error buffer
+ * @param[out] dtls_role The advertised DTLS role
  * @param[out] audio The number of audio m-lines
  * @param[out] video The number of video m-lines
  * @param[out] data The number of SCTP m-lines
  * @returns The Janus SDP object in case of success, NULL in case the SDP is invalid */
-janus_sdp *janus_sdp_preparse(void *handle, const char *jsep_sdp, char *error_str, size_t errlen, int *audio, int *video, int *data);
+janus_sdp *janus_sdp_preparse(void *handle, const char *jsep_sdp, char *error_str, size_t errlen,
+	janus_dtls_role *dtls_role, int *audio, int *video, int *data);
 
 /*! \brief Method to process a remote parsed session description
  * \details This method will process a session description coming from a peer, and set up the ICE candidates accordingly

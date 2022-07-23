@@ -318,7 +318,7 @@ Janus.init = function(options) {
 				try {
 					element.src = URL.createObjectURL(stream);
 				} catch (e) {
-					Janus.error("Error attaching stream to element");
+					Janus.error("Error attaching stream to element", e);
 				}
 			}
 		};
@@ -329,7 +329,7 @@ Janus.init = function(options) {
 				try {
 					to.src = from.src;
 				} catch (e) {
-					Janus.error("Error reattaching stream to element");
+					Janus.error("Error reattaching stream to element", e);
 				}
 			}
 		};
@@ -478,8 +478,6 @@ function Janus(gatewayCallbacks) {
 	var iceServers = gatewayCallbacks.iceServers || [{urls: "stun:stun.l.google.com:19302"}];
 	var iceTransportPolicy = gatewayCallbacks.iceTransportPolicy;
 	var bundlePolicy = gatewayCallbacks.bundlePolicy;
-	// Whether IPv6 candidates should be gathered
-	var ipv6Support = (gatewayCallbacks.ipv6 === true);
 	// Whether we should enable the withCredentials flag for XHR requests
 	var withCredentials = false;
 	if(gatewayCallbacks.withCredentials !== undefined && gatewayCallbacks.withCredentials !== null)
@@ -1800,19 +1798,7 @@ function Janus(gatewayCallbacks) {
 				// For Chrome versions before 72, we force a plan-b semantic, and unified-plan otherwise
 				pc_config["sdpSemantics"] = (Janus.webRTCAdapter.browserDetails.version < 72) ? "plan-b" : "unified-plan";
 			}
-			var pc_constraints = {
-				"optional": [{"DtlsSrtpKeyAgreement": true}]
-			};
-			if(ipv6Support) {
-				pc_constraints.optional.push({"googIPv6":true});
-			}
-			// Any custom constraint to add?
-			if(callbacks.rtcConstraints && typeof callbacks.rtcConstraints === 'object') {
-				Janus.debug("Adding custom PeerConnection constraints:", callbacks.rtcConstraints);
-				for(var i in callbacks.rtcConstraints) {
-					pc_constraints.optional.push(callbacks.rtcConstraints[i]);
-				}
-			}
+			var pc_constraints = {};
 			if(Janus.webRTCAdapter.browserDetails.browser === "edge") {
 				// This is Edge, enable BUNDLE explicitly
 				pc_config.bundlePolicy = "max-bundle";

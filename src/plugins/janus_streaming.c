@@ -7617,8 +7617,10 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			if(audio_fds.fd != -1) close(audio_fds.fd);
 			if(audio_fds.rtcp_fd != -1) close(audio_fds.rtcp_fd);
 			return -5;
-		} else if(code != 200) {
-			JANUS_LOG(LOG_ERR, "Couldn't get SETUP code: %ld\n", code);
+		}
+		res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+		if(code != 200) {
+			JANUS_LOG(LOG_ERR, "Couldn't SETUP, got error code: %ld\n", code);
 			g_strfreev(parts);
 			curl_easy_cleanup(curl);
 			g_free(curldata->buffer);
@@ -7792,8 +7794,10 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			if(audio_fds.fd != -1) close(audio_fds.fd);
 			if(audio_fds.rtcp_fd != -1) close(audio_fds.rtcp_fd);
 			return -6;
-		} else if(code != 200) {
-			JANUS_LOG(LOG_ERR, "Couldn't get SETUP code: %ld\n", code);
+		}
+		res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+		if(code != 200) {
+			JANUS_LOG(LOG_ERR, "Couldn't SETUP, got error code: %ld\n", code);
 			g_strfreev(parts);
 			curl_easy_cleanup(curl);
 			g_free(curldata->buffer);
@@ -8097,6 +8101,13 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 	int res = curl_easy_perform(source->curl);
 	if(res != CURLE_OK) {
 		JANUS_LOG(LOG_ERR, "Couldn't send PLAY request: %s\n", curl_easy_strerror(res));
+		janus_mutex_unlock(&source->rtsp_mutex);
+		return -1;
+	}
+	long code = 0;
+	res = curl_easy_getinfo(source->curl, CURLINFO_RESPONSE_CODE, &code);
+	if(code != 200) {
+		JANUS_LOG(LOG_ERR, "Couldn't PLAY, got error code: %ld\n", code);
 		janus_mutex_unlock(&source->rtsp_mutex);
 		return -1;
 	}
@@ -9531,7 +9542,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 					return;
 				/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 				gboolean relay = janus_rtp_simulcasting_context_process_rtp(&s->sim_context,
-					(char *)packet->data, packet->length, packet->ssrc, NULL, packet->codec, &s->context);
+					(char *)packet->data, packet->length, packet->ssrc, NULL, packet->codec, &s->context, NULL);
 				if(!relay) {
 					/* Did a lot of time pass before we could relay a packet? */
 					gint64 now = janus_get_monotonic_time();

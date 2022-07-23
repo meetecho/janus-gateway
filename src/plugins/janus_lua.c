@@ -360,6 +360,10 @@ static void janus_lua_session_free(const janus_refcount *session_ref) {
 	janus_recorder_destroy(session->arc);
 	janus_recorder_destroy(session->vrc);
 	janus_recorder_destroy(session->drc);
+	janus_mutex_destroy(&session->rid_mutex);
+	janus_mutex_destroy(&session->recipients_mutex);
+	janus_mutex_destroy(&session->rec_mutex);
+	janus_rtp_simulcasting_cleanup(NULL, NULL, session->rid, NULL);
 	g_free(session);
 }
 
@@ -544,12 +548,7 @@ static int janus_lua_method_pushevent(lua_State *s) {
 				session->vcodec = janus_videocodec_from_name(vcodec);
 			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
 				/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-				int i=0;
-				for(i=0; i<3; i++) {
-					session->ssrc[i] = 0;
-					g_free(session->rid[0]);
-					session->rid[0] = NULL;
-				}
+				janus_rtp_simulcasting_cleanup(&session->rid_extmap_id, session->ssrc, session->rid, &session->rid_mutex);
 			}
 		}
 		janus_sdp_destroy(parsed_sdp);
@@ -1779,6 +1778,8 @@ void janus_lua_create_session(janus_plugin_session *handle, int *error) {
 	session->sim_context.substream_target = 2;
 	session->sim_context.templayer_target = 2;
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
+	session->rid_extmap_id = -1;
+	janus_mutex_init(&session->rid_mutex);
 	session->vcodec = JANUS_VIDEOCODEC_NONE;
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
@@ -1913,9 +1914,13 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 			size_t i = 0;
 			for(i=0; i<json_array_size(simulcast); i++) {
 				json_t *s = json_array_get(simulcast, i);
+				/* Clear existing RIDs in case this is a renegotiation */
+				janus_mutex_lock(&session->rid_mutex);
+				janus_rtp_simulcasting_cleanup(&session->rid_extmap_id, NULL, session->rid, NULL);
 				janus_rtp_simulcasting_prepare(s,
 					&session->rid_extmap_id,
 					session->ssrc, session->rid);
+				janus_mutex_unlock(&session->rid_mutex);
 				/* FIXME We're stopping at the first item, there may be more */
 				break;
 			}
@@ -1932,12 +1937,7 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 				session->vcodec = janus_videocodec_from_name(vcodec);
 			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
 				/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-				int i=0;
-				for(i=0; i<3; i++) {
-					session->ssrc[i] = 0;
-					g_free(session->rid[0]);
-					session->rid[0] = NULL;
-				}
+				janus_rtp_simulcasting_cleanup(&session->rid_extmap_id, session->ssrc, session->rid, &session->rid_mutex);
 			}
 			janus_sdp_destroy(parsed_sdp);
 		}
@@ -2102,6 +2102,7 @@ void janus_lua_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *rtp_
 		else if(ssrc == session->ssrc[2])
 			sc = 2;
 		else if(session->rid_extmap_id > 0) {
+			janus_mutex_lock(&session->rid_mutex);
 			/* We may not know the SSRC yet, try the rid RTP extension */
 			char sdes_item[16];
 			if(janus_rtp_header_extension_parse_rid(buf, len, session->rid_extmap_id, sdes_item, sizeof(sdes_item)) == 0) {
@@ -2116,6 +2117,7 @@ void janus_lua_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *rtp_
 					sc = 2;
 				}
 			}
+			janus_mutex_unlock(&session->rid_mutex);
 		}
 	}
 	/* Are we recording? */
@@ -2124,7 +2126,7 @@ void janus_lua_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *rtp_
 	} else {
 		/* We're simulcasting, save the best video quality */
 		gboolean save = janus_rtp_simulcasting_context_process_rtp(&session->rec_simctx,
-			buf, len, session->ssrc, session->rid, session->vcodec, &session->rec_ctx);
+			buf, len, session->ssrc, session->rid, session->vcodec, &session->rec_ctx, &session->rid_mutex);
 		if(save) {
 			uint32_t seq_number = ntohs(rtp->seq_number);
 			uint32_t timestamp = ntohl(rtp->timestamp);
@@ -2367,12 +2369,7 @@ void janus_lua_hangup_media(janus_plugin_session *handle) {
 	session->sim_context.templayer_target = 2;
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
 	session->vcodec = JANUS_VIDEOCODEC_NONE;
-	int i=0;
-	for(i=0; i<3; i++) {
-		session->ssrc[i] = 0;
-		g_free(session->rid[i]);
-		session->rid[i] = NULL;
-	}
+	janus_rtp_simulcasting_cleanup(&session->rid_extmap_id, session->ssrc, session->rid, &session->rid_mutex);
 
 	/* Get rid of the recipients */
 	janus_mutex_lock(&session->recipients_mutex);
@@ -2422,7 +2419,7 @@ static void janus_lua_relay_rtp_packet(gpointer data, gpointer user_data) {
 			return;
 		/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 		gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
-			(char *)packet->data, packet->length, packet->ssrc, NULL, sender->vcodec, &session->vrtpctx);
+			(char *)packet->data, packet->length, packet->ssrc, NULL, sender->vcodec, &session->vrtpctx, NULL);
 		if(session->sim_context.need_pli && sender->handle) {
 			/* Send a PLI */
 			JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
