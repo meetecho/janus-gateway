@@ -8126,6 +8126,18 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 			janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
 			/* Notify all other participants that there's a new boy in town */
 			janus_videoroom_notify_about_publisher(participant, FALSE);
+			/* Check if we need to start recording */
+			janus_mutex_lock(&participant->rec_mutex);
+			if((participant->room && participant->room->record) || participant->recording_active) {
+				GList *temp = participant->streams;
+				while(temp) {
+					janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+					janus_videoroom_recorder_create(ps);
+					temp = temp->next;
+				}
+				participant->recording_active = TRUE;
+			}
+			janus_mutex_unlock(&participant->rec_mutex);
 			janus_refcount_decrease(&participant->ref);
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			janus_videoroom_subscriber *s = janus_videoroom_session_get_subscriber(session);
@@ -8510,17 +8522,20 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 		/* Find the stream this packet belongs to */
 		janus_mutex_lock(&s->streams_mutex);
 		janus_videoroom_subscriber_stream *ss = g_hash_table_lookup(s->streams_byid, GINT_TO_POINTER(packet->mindex));
-		janus_mutex_unlock(&s->streams_mutex);
 		if(ss == NULL || ss->publisher_streams == NULL) {
 			/* No stream..? */
+			janus_mutex_unlock(&s->streams_mutex);
 			janus_refcount_decrease_nodebug(&s->ref);
 			return;
 		}
 		janus_videoroom_publisher_stream *ps = ss->publisher_streams ? ss->publisher_streams->data : NULL;
-		if(ps->type != JANUS_VIDEOROOM_MEDIA_VIDEO) {
+		if(ps == NULL || ps->type != JANUS_VIDEOROOM_MEDIA_VIDEO) {
+			janus_mutex_unlock(&s->streams_mutex);
 			janus_refcount_decrease_nodebug(&s->ref);
 			return;		/* The only feedback we handle is video related anyway... */
 		}
+		janus_refcount_increase_nodebug(&ps->ref);
+		janus_mutex_unlock(&s->streams_mutex);
 		if(janus_rtcp_has_fir(buf, len) || janus_rtcp_has_pli(buf, len)) {
 			/* We got a FIR or PLI, forward a PLI to the publisher */
 			janus_videoroom_publisher *p = ps->publisher;
@@ -8531,6 +8546,7 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 		if(bitrate > 0) {
 			/* FIXME We got a REMB from this subscriber, should we do something about it? */
 		}
+		janus_refcount_decrease_nodebug(&ps->ref);
 		janus_refcount_decrease_nodebug(&s->ref);
 	}
 }

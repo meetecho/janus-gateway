@@ -602,14 +602,14 @@ int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, c
 	switch (pr_policy) {
 		case SCTP_PR_SCTP_NONE:
 			/* XXX: What about DATA_CHANNEL_RELIABLE_STREAM */
-			req->channel_type = DATA_CHANNEL_RELIABLE;
+			req->channel_type = unordered ? DATA_CHANNEL_RELIABLE_UNORDERED : DATA_CHANNEL_RELIABLE;
 			break;
 		case SCTP_PR_SCTP_TTL:
 			/* XXX: What about DATA_CHANNEL_UNRELIABLE */
-			req->channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_TIMED;
+			req->channel_type = unordered ? DATA_CHANNEL_PARTIAL_RELIABLE_TIMED_UNORDERED : DATA_CHANNEL_PARTIAL_RELIABLE_TIMED;
 			break;
 		case SCTP_PR_SCTP_RTX:
-			req->channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT;
+			req->channel_type = unordered ? DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT_UNORDERED : DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT;
 			break;
 		default:
 			g_free(req);
