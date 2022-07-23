@@ -7045,7 +7045,11 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			} else {
 				/* Data stream */
 				f = janus_videoroom_rtp_forwarder_add_helper(publisher, ps,
-					host, port, 0, 0, 0, FALSE, 0, NULL, 0, FALSE, TRUE);
+					host, port, -1, 0,
+					(REMOTE_PUBLISHER_BASE_SSRC + ps->mindex*REMOTE_PUBLISHER_SSRC_STEP),
+					FALSE, 0, NULL, 0, FALSE, TRUE);
+				if(f != NULL)
+					f->remote_id = g_strdup(remote_id);
 			}
 			temp = temp->next;
 		}
@@ -8572,10 +8576,9 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 	}
 }
 
+static void janus_videoroom_incoming_data_internal(janus_videoroom_session *session, janus_videoroom_publisher *participant, janus_plugin_data *packet);
 void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
-		return;
-	if(packet->buffer == NULL || packet->length == 0)
 		return;
 	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
 	if(!session || g_atomic_int_get(&session->destroyed) || session->participant_type != janus_videoroom_p_type_publisher)
@@ -8583,6 +8586,15 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_da
 	janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher_nodebug(session);
 	if(participant == NULL)
 		return;
+	janus_videoroom_incoming_data_internal(session, participant, packet);
+}
+static void janus_videoroom_incoming_data_internal(janus_videoroom_session *session, janus_videoroom_publisher *participant, janus_plugin_data *packet) {
+	if(packet->buffer == NULL || packet->length == 0)
+		return;
+	if(g_atomic_int_get(&participant->destroyed) || participant->kicked || !participant->streams || participant->room == NULL) {
+		janus_videoroom_publisher_dereference_nodebug(participant);
+		return;
+	}
 	if(g_atomic_int_get(&participant->destroyed) || participant->data_mindex < 0 || !participant->streams || participant->kicked) {
 		janus_videoroom_publisher_dereference_nodebug(participant);
 		return;
@@ -8607,14 +8619,35 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_da
 	gpointer value;
 	g_hash_table_iter_init(&iter, ps->rtp_forwarders);
 	while(participant->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
-		janus_videoroom_rtp_forwarder* rtp_forward = (janus_videoroom_rtp_forwarder*)value;
+		janus_videoroom_rtp_forwarder *rtp_forward = (janus_videoroom_rtp_forwarder *)value;
 		if(rtp_forward->is_data) {
 			struct sockaddr *address = (rtp_forward->serv_addr.sin_family == AF_INET ?
 				(struct sockaddr *)&rtp_forward->serv_addr : (struct sockaddr *)&rtp_forward->serv_addr6);
 			size_t addrlen = (rtp_forward->serv_addr.sin_family == AF_INET ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6));
-			if(sendto(participant->udp_sock, buf, len, 0, address, addrlen) < 0) {
-				JANUS_LOG(LOG_HUGE, "Error forwarding data packet for %s... %s (len=%d)...\n",
-					participant->display, g_strerror(errno), len);
+			/* Check if this is a regular RTP forwarder, or a publisher remotization */
+			if(rtp_forward->remote_id == NULL) {
+				/* Regular forwarder, send the payload as it is */
+				if(sendto(participant->udp_sock, buf, len, 0, address, addrlen) < 0) {
+					JANUS_LOG(LOG_HUGE, "Error forwarding data packet for %s... %s (len=%d)...\n",
+						participant->display, g_strerror(errno), len);
+				}
+			} else {
+				/* Remotization, prefix with a fake RTP header so that we can
+				 * set an SRRC (and use the payload type for binary vs. text) */
+				char buffer[1500];
+				memset(buffer, 0, sizeof(buffer));
+				int buflen = len + 12;
+				if(buflen > (int)sizeof(buffer))	/* FIXME We're going to truncate */
+					buflen = sizeof(buffer);
+				janus_rtp_header *rtp = (janus_rtp_header *)buffer;
+				rtp->version = 2;
+				rtp->ssrc = htonl(rtp_forward->ssrc);
+				rtp->type = packet->binary ? 1 : 0;
+				memcpy(buffer + 12, buf, buflen - 12);
+				if(sendto(participant->udp_sock, buffer, buflen, 0, address, addrlen) < 0) {
+					JANUS_LOG(LOG_HUGE, "Error forwarding data packet for %s... %s (len=%d)...\n",
+						participant->display, g_strerror(errno), len);
+				}
 			}
 		}
 	}
@@ -12857,8 +12890,8 @@ static int janus_videoroom_get_fd_port(int fd) {
 	return ntohs(server.sin6_port);
 }
 /* Thread responsible for a specific remote publisher */
-static void *janus_videoroom_remote_publisher_thread(void *data) {
-	janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)data;
+static void *janus_videoroom_remote_publisher_thread(void *user_data) {
+	janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)user_data;
 	if(publisher == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid publisher instance\n");
 		g_thread_unref(g_thread_self());
@@ -12892,6 +12925,7 @@ static void *janus_videoroom_remote_publisher_thread(void *data) {
 	int mindex = 0, vindex = 0;
 	janus_videoroom_publisher_stream *ps = NULL;
 	janus_plugin_rtp pkt = { 0 };
+	janus_plugin_data data = { 0 };
 	GList *temp = NULL;
 
 	/* As the first thing, we add the remote publisher to the list */
@@ -12992,7 +13026,7 @@ static void *janus_videoroom_remote_publisher_thread(void *data) {
 				}
 				/* Handle packet: check SSRC and do relay_rtp accordingly */
 				if(!janus_is_rtp(buffer, bytes)) {
-					/* TODO Handle as data channel? */
+					/* Not RTP, drop the packet */
 					continue;
 				}
 				rtp = (janus_rtp_header *)buffer;
@@ -13018,6 +13052,21 @@ static void *janus_videoroom_remote_publisher_thread(void *data) {
 					janus_mutex_unlock(&publisher->streams_mutex);
 					JANUS_LOG(LOG_WARN, "[%s/%s] Invalid substream %d\n",
 						videoroom->room_id_str, publisher->user_id_str, vindex);
+					continue;
+				}
+				/* Check if this is an actual RTP packet, or an
+				 * envelope created to relay data channels */
+				if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA) {
+					/* Handle as data channel, stripping the RTP header */
+					janus_refcount_increase_nodebug(&publisher->ref);
+					janus_mutex_unlock(&publisher->streams_mutex);
+					data.label = NULL;
+					data.protocol = NULL;
+					data.binary = rtp->type ? TRUE : FALSE;
+					data.buffer = buffer + 12;
+					data.length = bytes - 12;
+					/* Now handle the packet as if coming from a regular publisher */
+					janus_videoroom_incoming_data_internal(publisher->session, publisher, &data);
 					continue;
 				}
 				/* Prepare the RTP packet */
