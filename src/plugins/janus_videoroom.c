@@ -12719,7 +12719,90 @@ static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_videoroom_rtp_forwa
 		/* We only handle incoming video PLIs or FIR at the moment */
 		if(!janus_rtcp_has_fir(buffer, len) && !janus_rtcp_has_pli(buffer, len))
 			return;
-		janus_videoroom_reqpli((janus_videoroom_publisher_stream *)forward->source, "RTCP from forwarder");
+		/* Check if this is a regular RTP forwarder, or a publisher remotization */
+		if(forward->remote_id == NULL) {
+			/* Regular forwarder, send the PLI to the stream associated with it */
+			janus_videoroom_reqpli((janus_videoroom_publisher_stream *)forward->source, "RTCP from forwarder");
+		} else {
+			/* Remotization, check the SSRC in the request so that we know
+			 * which publisher video stream we should send the PLI to */
+			uint32_t ssrc = 0;
+			janus_rtcp_header *rtcp = (janus_rtcp_header *)buffer;
+			int pno = 0, total = len;
+			while(rtcp && ssrc == 0) {
+				if(!janus_rtcp_check_len(rtcp, total))
+					return;		/* Invalid RTCP packet */
+				if(rtcp->version != 2)
+					return;		/* Invalid RTCP packet */
+				pno++;
+				switch(rtcp->type) {
+					case RTCP_PSFB: {
+						gint fmt = rtcp->rc;
+						if(fmt == 1) {
+							if(!janus_rtcp_check_fci(rtcp, total, 0))
+								return;		/* Invalid RTCP packet */
+							/* TODO */
+							janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
+							ssrc = ntohl(rtcpfb->media);
+							break;
+						}
+					}
+					default:
+						break;
+				}
+				/* Is this a compound packet? */
+				int length = ntohs(rtcp->length);
+				if(length == 0)
+					break;
+				total -= length*4+4;
+				if(total <= 0)
+					break;
+				rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
+			}
+			if(ssrc > 0) {
+				/* Look for the right publisher stream instance */
+				char *remote_id = forward->remote_id;
+				janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)forward->source;
+				janus_videoroom_publisher *p = ps->publisher;
+				if(p == NULL || g_atomic_int_get(&p->destroyed))
+					return;
+				janus_mutex_lock(&p->rtp_forwarders_mutex);
+				if(g_hash_table_size(p->rtp_forwarders) == 0) {
+					janus_mutex_unlock(&p->rtp_forwarders_mutex);
+					return;
+				}
+				gboolean found = FALSE;
+				GList *temp = p->streams;
+				while(temp && !found) {
+					ps = (janus_videoroom_publisher_stream *)temp->data;
+					janus_mutex_lock(&ps->rtp_forwarders_mutex);
+					if(g_hash_table_size(ps->rtp_forwarders) == 0) {
+						janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+						temp = temp->next;
+						continue;
+					}
+					GHashTableIter iter_f;
+					gpointer key_f, value_f;
+					g_hash_table_iter_init(&iter_f, ps->rtp_forwarders);
+					while(g_hash_table_iter_next(&iter_f, &key_f, &value_f)) {
+						janus_videoroom_rtp_forwarder *rpv = value_f;
+						/* We only care about video forwarders used for the same remotization */
+						if(!rpv->is_video || rpv->remote_id == NULL || strcasecmp(rpv->remote_id, remote_id))
+							continue;
+						/* Check the SSRC */
+						if(rpv->ssrc == ssrc) {
+							found = TRUE;
+							break;
+						}
+					}
+					janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+					temp = temp->next;
+				}
+				janus_mutex_unlock(&p->rtp_forwarders_mutex);
+				if(found && ps)
+					janus_videoroom_reqpli(ps, "RTCP from remotized forwarder");
+			}
+		}
 	}
 }
 
