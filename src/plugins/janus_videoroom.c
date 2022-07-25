@@ -1052,6 +1052,7 @@ room-<unique room ID>: {
 		{
 			"feed" : <unique ID of publisher owning the stream to subscribe to>,
 			"mid" : "<unique mid of the publisher stream to subscribe to; optional>"
+			"crossrefid" : "<id to map this subscription with entries in streams list; optional>"
 			// Optionally, simulcast or SVC targets (defaults if missing)
 		},
 		// Other streams to subscribe to
