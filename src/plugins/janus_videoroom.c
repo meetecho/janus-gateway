@@ -2995,8 +2995,7 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 
 /* Helpers for subscription streams */
 static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(janus_videoroom_subscriber *subscriber,
-		janus_videoroom_publisher_stream *ps,
-		const char *crossrefid,
+		janus_videoroom_publisher_stream *ps, const char *crossrefid,
 		gboolean legacy, gboolean do_audio, gboolean do_video, gboolean do_data) {
 	/* If this is a legacy subscription ("feed"), use the deprecated properties */
 	if(legacy && ((ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO && !do_audio) ||
@@ -3058,8 +3057,7 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(
 }
 
 static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_or_replace(janus_videoroom_subscriber *subscriber,
-		janus_videoroom_publisher_stream *ps,
-		const char *crossrefid) {
+		janus_videoroom_publisher_stream *ps, const char *crossrefid) {
 	if(subscriber == NULL || ps == NULL)
 		return NULL;
 	/* First of all, let's check if there's an m-line we can reuse */
@@ -3120,8 +3118,7 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_
 		temp = temp->next;
 	}
 	if(found)  {
-		if(stream->crossrefid)
-			g_free(stream->crossrefid);
+		g_free(stream->crossrefid);
 		stream->crossrefid = g_strdup(crossrefid);
 		return stream;
 	}
