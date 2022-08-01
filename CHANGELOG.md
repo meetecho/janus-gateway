@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.0.4] - 2022-08-01
+
+- Added codec info to event handlers stats
+- Allow offers to include other roles besides 'actpass' for DTLS [[PR-3020](https://github.com/meetecho/janus-gateway/pull/3020)]
+- Set appropriate channel type when sending DATA_CHANNEL_OPEN_REQUEST message (thanks @ktyu!) [[PR-3018](https://github.com/meetecho/janus-gateway/pull/3018)]
+- Keep a count of VideoRoom subscribers per publisher, to avoid multiple g_list_length calls [[Issue-3007](https://github.com/meetecho/janus-gateway/issues/3007)]
+- Fixed media not enabled by subscribers on publisher renegotiations (thanks @danxuliu!) [[PR-3023](https://github.com/meetecho/janus-gateway/pull/3023)]
+- Check response codes of RTSP requests in Streaming plugin [[Issue-3015](https://github.com/meetecho/janus-gateway/issues/3015)]
+- Fixed small memory leak in SIP plugin [[Issue-3032](https://github.com/meetecho/janus-gateway/issues/3032)]
+- Fixed broken simulcast support in Lua and Duktape plugins
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.12.3] - 2022-06-20
 
 - Keep track of RTP extensions when storing packets for retransmission [[PR-2981](https://github.com/meetecho/janus-gateway/pull/2981)]
