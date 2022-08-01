@@ -1741,6 +1741,8 @@ typedef struct janus_videoroom_subscriber {
 	janus_rtp_simulcasting_context sim_context;
 	janus_vp8_simulcast_context vp8_context;
 	gboolean audio, video, data;		/* Whether audio, video and/or data must be sent to this subscriber */
+	gboolean audio_configured, video_configured, data_configured;		/* Whether audio, video and/or data were explicitly configured for this subscriber */
+	gboolean audio_enabled, video_enabled, data_enabled;		/* When configured, whether audio, video and/or data should be relayed for this subscriber */
 	/* As above, but can't change dynamically (says whether something was negotiated at all in SDP) */
 	gboolean audio_offered, video_offered, data_offered;
 	gboolean paused;
@@ -3003,10 +3005,19 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				}
 				json_t *media = json_object();
 				json_object_set_new(media, "audio", participant->audio ? json_true() : json_false());
+				json_object_set_new(media, "audio-configured", participant->audio_configured ? json_true() : json_false());
+				if(participant->audio_configured)
+					json_object_set_new(media, "audio-configured-enabled", participant->audio_enabled ? json_true() : json_false());
 				json_object_set_new(media, "audio-offered", participant->audio_offered ? json_true() : json_false());
 				json_object_set_new(media, "video", participant->video ? json_true() : json_false());
+				json_object_set_new(media, "video-configured", participant->video_configured ? json_true() : json_false());
+				if(participant->video_configured)
+					json_object_set_new(media, "video-configured-enabled", participant->video_enabled ? json_true() : json_false());
 				json_object_set_new(media, "video-offered", participant->video_offered ? json_true() : json_false());
 				json_object_set_new(media, "data", participant->data ? json_true() : json_false());
+				json_object_set_new(media, "data-configured", participant->data_configured ? json_true() : json_false());
+				if(participant->data_configured)
+					json_object_set_new(media, "data-configured-enabled", participant->data_enabled ? json_true() : json_false());
 				json_object_set_new(media, "data-offered", participant->data_offered ? json_true() : json_false());
 				json_object_set_new(info, "media", media);
 				if(feed && (feed->ssrc[0] != 0 || feed->rid[0] != NULL)) {
@@ -6854,12 +6865,15 @@ static void *janus_videoroom_handler(void *data) {
 						g_free(subscriber);
 						goto error;
 					}
+					subscriber->audio_configured = FALSE;
 					subscriber->audio = audio ? json_is_true(audio) : TRUE;	/* True by default */
 					if(!publisher->audio || !subscriber->audio_offered)
 						subscriber->audio = FALSE;	/* ... unless the publisher isn't sending any audio or we're skipping it */
+					subscriber->video_configured = FALSE;
 					subscriber->video = video ? json_is_true(video) : TRUE;	/* True by default */
 					if(!publisher->video || !subscriber->video_offered)
 						subscriber->video = FALSE;	/* ... unless the publisher isn't sending any video or we're skipping it */
+					subscriber->data_configured = FALSE;
 					subscriber->data = data ? json_is_true(data) : TRUE;	/* True by default */
 					if(!publisher->data || !subscriber->data_offered)
 						subscriber->data = FALSE;	/* ... unless the publisher isn't sending any data or we're skipping it */
@@ -7380,6 +7394,18 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *min_delay = json_object_get(root, "min_delay");
 				json_t *max_delay = json_object_get(root, "max_delay");
 				/* Update the audio/video/data flags, if set */
+				if(audio) {
+					subscriber->audio_configured = TRUE;
+					subscriber->audio_enabled = json_is_true(audio);
+				}
+				if(video) {
+					subscriber->video_configured = TRUE;
+					subscriber->video_enabled = json_is_true(video);
+				}
+				if(data) {
+					subscriber->data_configured = TRUE;
+					subscriber->data_enabled = json_is_true(data);
+				}
 				janus_videoroom_publisher *publisher = subscriber->feed;
 				if(publisher) {
 					if(audio && publisher->audio && subscriber->audio_offered) {
@@ -7605,9 +7631,9 @@ static void *janus_videoroom_handler(void *data) {
 						json_decref(jsep);
 						g_free(newsdp);
 						/* Any update in the media directions? */
-						subscriber->audio = subscriber->audio && publisher->audio && subscriber->audio_offered;
-						subscriber->video = subscriber->video && publisher->video && subscriber->video_offered;
-						subscriber->data = subscriber->data && publisher->data && subscriber->data_offered;
+						subscriber->audio = (!subscriber->audio_configured || subscriber->audio_enabled) && publisher->audio && subscriber->audio_offered;
+						subscriber->video = (!subscriber->video_configured || subscriber->video_enabled) && publisher->video && subscriber->video_offered;
+						subscriber->data = (!subscriber->data_configured || subscriber->data_enabled) && publisher->data && subscriber->data_offered;
 						/* Done */
 						janus_videoroom_message_free(msg);
 						janus_refcount_decrease(&subscriber->ref);
@@ -7735,14 +7761,14 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				/* Subscribe to the new one */
 				subscriber->audio = audio ? json_is_true(audio) : TRUE;	/* True by default */
-				if(!publisher->audio)
-					subscriber->audio = FALSE;	/* ... unless the publisher isn't sending any audio */
+				if(!publisher->audio || (subscriber->audio_configured && !subscriber->audio_enabled))
+					subscriber->audio = FALSE;	/* ... unless the publisher isn't sending any audio or was explicitly disabled */
 				subscriber->video = video ? json_is_true(video) : TRUE;	/* True by default */
-				if(!publisher->video)
-					subscriber->video = FALSE;	/* ... unless the publisher isn't sending any video */
+				if(!publisher->video || (subscriber->video_configured && !subscriber->video_enabled))
+					subscriber->video = FALSE;	/* ... unless the publisher isn't sending any video or was explicitly disabled */
 				subscriber->data = data ? json_is_true(data) : TRUE;	/* True by default */
-				if(!publisher->data)
-					subscriber->data = FALSE;	/* ... unless the publisher isn't sending any data */
+				if(!publisher->data || (subscriber->data_configured && !subscriber->data_enabled))
+					subscriber->data = FALSE;	/* ... unless the publisher isn't sending any data or was explicitly disabled */
 				/* Check if a simulcasting-related request is involved */
 				janus_rtp_simulcasting_context_reset(&subscriber->sim_context);
 				subscriber->sim_context.rid_ext_id = publisher->rid_extmap_id;
