@@ -5336,6 +5336,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_object_set_new(info, "referred_by", json_string(referred_by));
 				gateway->notify_event(&janus_sip_plugin, session->handle, info);
 			}
+			su_free(session->stack->s_home, callee_text);
 			g_free(referred_by);
 			if(!reinvite) {
 				/* Send a Ringing back */
