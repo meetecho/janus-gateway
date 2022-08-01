@@ -428,10 +428,18 @@ function registerUsername() {
 function publishOwnFeed(useAudio) {
 	// Publish our stream
 	$('#publish').attr('disabled', true).unbind('click');
+
+	// We want sendonly audio and video (uncomment the data track
+	// too if you want to publish via datachannels as well)
+	let tracks = [];
+	if(useAudio)
+		tracks.push({ type: 'audio', capture: true, recv: false });
+	tracks.push({ type: 'video', capture: true, recv: false, simulcast: doSimulcast });
+	//~ tracks.push({ type: 'data' });
+
 	sfutest.createOffer(
 		{
-			// Add data:true here if you want to publish datachannels as well
-			media: { audioRecv: false, videoRecv: false, audioSend: useAudio, videoSend: true },	// Publishers are sendonly
+			tracks: tracks,
 			success: function(jsep) {
 				Janus.debug("Got publisher SDP!", jsep);
 				var publish = { request: "configure", audio: useAudio, video: true };
@@ -574,9 +582,13 @@ function newRemoteFeed(id, display, streams) {
 					remoteFeed.createAnswer(
 						{
 							jsep: jsep,
-							// Add data:true here if you want to subscribe to datachannels as well
-							// (obviously only works if the publisher offered them in the first place)
-							media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
+							// We only specify data channels here, as this way in
+							// case they were offered we'll enable them. Since we
+							// don't mention audio or video tracks, we autoaccept them
+							// as recvonly (since we won't capture anything ourselves)
+							tracks: [
+								{ type: 'data' }
+							],
 							success: function(jsep) {
 								Janus.debug("Got SDP!", jsep);
 								var body = { request: "start", room: myroom };

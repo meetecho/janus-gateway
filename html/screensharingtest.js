@@ -136,7 +136,11 @@ $(document).ready(function() {
 													bootbox.alert("Safari requires a user gesture before the screen can be shared: close this dialog to do that. See issue #2455 for more details", function() {
 														screentest.createOffer(
 															{
-																media: { video: capture, audioSend: true, videoRecv: false},	// Screen sharing Publishers are sendonly
+																// We want to capture the screen and audio, but sendonly
+																tracks: [
+																	{ type: 'audio', capture: true, recv: false },
+																	{ type: 'screen', capture: true, recv: false }
+																],
 																success: function(jsep) {
 																	Janus.debug("Got publisher SDP!", jsep);
 																	var publish = { request: "configure", audio: true, video: true };
@@ -152,7 +156,11 @@ $(document).ready(function() {
 													// Other browsers should be fine, we try to call getDisplayMedia directly
 													screentest.createOffer(
 														{
-															media: { video: capture, audioSend: true, videoRecv: false},	// Screen sharing Publishers are sendonly
+															// We want sendonly audio and screensharing
+															tracks: [
+																{ type: 'audio', capture: true, recv: false },
+																{ type: 'screen', capture: true, recv: false }
+															],
 															success: function(jsep) {
 																Janus.debug("Got publisher SDP!", jsep);
 																var publish = { request: "configure", audio: true, video: true };
@@ -345,39 +353,7 @@ function preShareScreen() {
 		return;
 	}
 	capture = "screen";
-	if(navigator.mozGetUserMedia) {
-		// Firefox needs a different constraint for screen and window sharing
-		bootbox.dialog({
-			title: "Share whole screen or a window?",
-			message: "Firefox handles screensharing in a different way: are you going to share the whole screen, or would you rather pick a single window/application to share instead?",
-			buttons: {
-				screen: {
-					label: "Share screen",
-					className: "btn-primary",
-					callback: function() {
-						capture = "screen";
-						shareScreen();
-					}
-				},
-				window: {
-					label: "Pick a window",
-					className: "btn-success",
-					callback: function() {
-						capture = "window";
-						shareScreen();
-					}
-				}
-			},
-			onEscape: function() {
-				$('#desc').removeAttr('disabled', true);
-				$('#create').removeAttr('disabled', true).click(preShareScreen);
-				$('#roomid').removeAttr('disabled', true);
-				$('#join').removeAttr('disabled', true).click(joinScreen);
-			}
-		});
-	} else {
-		shareScreen();
-	}
+	shareScreen();
 }
 
 function shareScreen() {
@@ -509,7 +485,13 @@ function newRemoteFeed(id, display) {
 					remoteFeed.createAnswer(
 						{
 							jsep: jsep,
-							media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
+							// We only specify data channels here, as this way in
+							// case they were offered we'll enable them. Since we
+							// don't mention audio or video tracks, we autoaccept them
+							// as recvonly (since we won't capture anything ourselves)
+							tracks: [
+								{ type: 'data' }
+							],
 							success: function(jsep) {
 								Janus.debug("Got SDP!", jsep);
 								var body = { request: "start", room: room };

@@ -145,12 +145,13 @@ $(document).ready(function() {
 																videocall.createAnswer(
 																	{
 																		jsep: jsep,
-																		// No media provided: by default, it's sendrecv for audio and video
-																		media: { data: true },	// Let's negotiate data channels as well
-																		// If you want to test simulcasting (Chrome and Firefox only), then
-																		// pass a ?simulcast=true when opening this demo page: it will turn
-																		// the following 'simulcast' property to pass to janus.js to true
-																		simulcast: doSimulcast,
+																		// We want bidirectional audio and video, if offered,
+																		// plus data channels too if they were negotiated
+																		tracks: [
+																			{ type: 'audio', capture: true, recv: true },
+																			{ type: 'video', capture: true, recv: true },
+																			{ type: 'data' },
+																		],
 																		success: function(jsep) {
 																			Janus.debug("Got SDP!", jsep);
 																			var body = { request: "accept" };
@@ -200,7 +201,13 @@ $(document).ready(function() {
 														videocall.createAnswer(
 															{
 																jsep: jsep,
-																media: { data: true },	// Let's negotiate data channels as well
+																// We want bidirectional audio and video, if offered,
+																// plus data channels too if they were negotiated
+																tracks: [
+																	{ type: 'audio', capture: true, recv: true },
+																	{ type: 'video', capture: true, recv: true },
+																	{ type: 'data' },
+																],
 																success: function(jsep) {
 																	Janus.debug("Got SDP!", jsep);
 																	var body = { request: "set" };
@@ -580,12 +587,12 @@ function doCall() {
 	// Call this user
 	videocall.createOffer(
 		{
-			// By default, it's sendrecv for audio and video...
-			media: { data: true },	// ... let's negotiate data channels as well
-			// If you want to test simulcasting (Chrome and Firefox only), then
-			// pass a ?simulcast=true when opening this demo page: it will turn
-			// the following 'simulcast' property to pass to janus.js to true
-			simulcast: doSimulcast,
+			// We want bidirectional audio and video, plus data channels
+			tracks: [
+				{ type: 'audio', capture: true, recv: true },
+				{ type: 'video', capture: true, recv: true, simulcast: doSimulcast },
+				{ type: 'data' },
+			],
 			success: function(jsep) {
 				Janus.debug("Got SDP!", jsep);
 				var body = { request: "call", username: $('#peer').val() };

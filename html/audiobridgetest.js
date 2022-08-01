@@ -114,7 +114,10 @@ $(document).ready(function() {
 													// Publish our stream
 													mixertest.createOffer(
 														{
-															media: { video: false },	// This is an audio only room
+															// We only want bidirectional audio
+															tracks: [
+																{ type: 'audio', capture: true, recv: true },
+															],
 															customizeSdp: function(jsep) {
 																if(stereo && jsep.sdp.indexOf("stereo=1") == -1) {
 																	// Make sure that our offer contains stereo too
