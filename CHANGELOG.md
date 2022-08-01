@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.0.4] - 2022-08-01
+
+- Fixed problem with duplicate ptypes when codecs are added in renegotiations
+- Added codec info to event handlers stats
+- Allow offers to include other roles besides 'actpass' for DTLS [[PR-3020](https://github.com/meetecho/janus-gateway/pull/3020)]
+- Fixed rare race conditions when attempting to relay packets sent by plugins [[PR-3010](https://github.com/meetecho/janus-gateway/pull/3010)]
+- Fixed unprotected access to medium instances in janus_plugin_handle_sdp
+- Set appropriate channel type when sending DATA_CHANNEL_OPEN_REQUEST message (thanks @ktyu!) [[PR-3018](https://github.com/meetecho/janus-gateway/pull/3018)]
+- Fixed rare race condition when handling incoming RTCP feedback in VideoRoom
+- Fixed memory leak in VideoRoom when using rid-based simulcast (thanks @OxleyS!) [[PR-2995](https://github.com/meetecho/janus-gateway/pull/2995)]
+- Fixed IPv6 always enabled for VideoRoom RTP forwarders [[Issue-3011](https://github.com/meetecho/janus-gateway/issues/3011)]
+- Start recording VideoRoom publisher on PeerConnection establishment, if needed (thanks @adnanel!) [[PR-3013](https://github.com/meetecho/janus-gateway/pull/3013)]
+- Added an optional ID in subscribe requests to match with subscription events (thanks @JanFellner!) [[PR-3027](https://github.com/meetecho/janus-gateway/pull/3027)]
+- Make Streaming plugin use SDP utils, and codecs instead of rtpmaps [[PR-2994](https://github.com/meetecho/janus-gateway/pull/2994)]
+- Check response codes of RTSP requests in Streaming plugin [[Issue-3015](https://github.com/meetecho/janus-gateway/issues/3015)]
+- Fixed small memory leak in SIP plugin [[Issue-3032](https://github.com/meetecho/janus-gateway/issues/3032)]
+- Fixed broken simulcast support in Lua and Duktape plugins
+- Don't use .clone() on tracks to render them in demos [[PR-3009](https://github.com/meetecho/janus-gateway/pull/3009)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.0.3] - 2022-06-20
 
 - Keep track of RTP extensions when storing packets for retransmission [[PR-2981](https://github.com/meetecho/janus-gateway/pull/2981)]

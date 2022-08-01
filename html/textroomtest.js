@@ -78,7 +78,10 @@ $(document).ready(function() {
 										textroom.createAnswer(
 											{
 												jsep: jsep,
-												media: { audio: false, video: false, data: true },	// We only use datachannels
+												// We only use datachannels
+												tracks: [
+													{ type: 'data' }
+												],
 												success: function(jsep) {
 													Janus.debug("Got SDP!", jsep);
 													var body = { request: "ack" };

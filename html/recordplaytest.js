@@ -115,7 +115,13 @@ $(document).ready(function() {
 												recordplay.createAnswer(
 													{
 														jsep: jsep,
-														media: { audioSend: false, videoSend: false, data: true },	// We want recvonly audio/video
+														// We only specify data channels here, as this way in
+														// case they were offered we'll enable them. Since we
+														// don't mention audio or video tracks, we autoaccept them
+														// as recvonly (since we won't capture anything ourselves)
+														tracks: [
+															{ type: 'data' }
+														],
 														success: function(jsep) {
 															Janus.debug("Got SDP!", jsep);
 															var body = { request: "start" };
@@ -506,13 +512,15 @@ function startRecording() {
 
 		recordplay.createOffer(
 			{
-				// By default, it's sendrecv for audio and video... no datachannels,
-				// unless we've passed the query string argument to record those too
-				media: { data: (recordData != null) },
-				// If you want to test simulcasting (Chrome and Firefox only), then
-				// pass a ?simulcast=true when opening this demo page: it will turn
-				// the following 'simulcast' property to pass to janus.js to true
-				simulcast: doSimulcast,
+				// We want sendonly audio and video, since we'll just send
+				// media to Janus and not receive any back in this scenario
+				// (uncomment the data track if you want to also record data
+				// channels, even though there's no UI for that in the demo)
+				tracks: [
+					{ type: 'audio', capture: true, recv: false },
+					{ type: 'video', capture: true, recv: false, simulcast: doSimulcast },
+					//~ { type: 'data' },
+				],
 				success: function(jsep) {
 					Janus.debug("Got SDP!", jsep);
 					var body = { request: "record", name: myname };

@@ -317,7 +317,9 @@ function setupWebAudioDemo() {
 		echotest.createOffer(
 			{
 				// We provide our own stream
-				stream: peer.stream,
+				tracks: [
+					{ type: 'audio', capture: peer.stream.getAudioTracks()[0], recv: true }
+				],
 				success: function(jsep) {
 					Janus.debug("Got SDP!", jsep);
 					var body = { audio: true, video: true };
