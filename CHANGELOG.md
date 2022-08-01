@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 
-## [v1.0.4] - 2022-08-01
+## [v1.12.4] - 2022-08-01
 
 - Added codec info to event handlers stats
 - Allow offers to include other roles besides 'actpass' for DTLS [[PR-3020](https://github.com/meetecho/janus-gateway/pull/3020)]
