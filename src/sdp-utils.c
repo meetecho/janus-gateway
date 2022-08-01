@@ -261,6 +261,8 @@ const char *janus_sdp_oa_type_str(janus_sdp_oa_type type) {
 			return "JANUS_SDP_OA_ENABLED";
 		case JANUS_SDP_OA_MID:
 			return "JANUS_SDP_OA_MID";
+		case JANUS_SDP_OA_MSID:
+			return "JANUS_SDP_OA_MSID";
 		case JANUS_SDP_OA_DIRECTION:
 			return "JANUS_SDP_OA_DIRECTION";
 		case JANUS_SDP_OA_CODEC:
@@ -1345,8 +1347,8 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	janus_sdp_mtype type = JANUS_SDP_OTHER;
 	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, data_legacy = FALSE;
 	int pt = -1, opusred_pt = -1;
-	const char *codec = NULL, *mid = NULL, *fmtp = NULL,
-		*vp9_profile = NULL, *h264_profile = NULL;
+	const char *codec = NULL, *mid = NULL, *msid = NULL, *mstid = NULL,
+		*fmtp = NULL, *vp9_profile = NULL, *h264_profile = NULL;
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	GHashTable *extmaps = NULL, *extids = NULL, *m_extids = NULL;
 
@@ -1374,6 +1376,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 					if(janus_sdp_generate_offer_mline(offer,
 						JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
 						JANUS_SDP_OA_MID, mid,
+						JANUS_SDP_OA_MSID, msid, mstid,
 						JANUS_SDP_OA_OPUSRED_PT, opusred_pt,
 						JANUS_SDP_OA_CODEC, codec,
 						JANUS_SDP_OA_DIRECTION, mdir,
@@ -1396,6 +1399,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 					if(janus_sdp_generate_offer_mline(offer,
 						JANUS_SDP_OA_MLINE, JANUS_SDP_VIDEO,
 						JANUS_SDP_OA_MID, mid,
+						JANUS_SDP_OA_MSID, msid, mstid,
 						JANUS_SDP_OA_PT, pt,
 						JANUS_SDP_OA_CODEC, codec,
 						JANUS_SDP_OA_DIRECTION, mdir,
@@ -1444,6 +1448,8 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			pt = -1;
 			opusred_pt = -1;
 			mid = NULL;
+			msid = NULL;
+			mstid = NULL;
 			codec = NULL;
 			fmtp = NULL;
 			vp9_profile = NULL;
@@ -1484,6 +1490,9 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			mline_enabled = va_arg(args, gboolean);
 		} else if(property == JANUS_SDP_OA_MID) {
 			mid = va_arg(args, char *);
+		} else if(property == JANUS_SDP_OA_MSID) {
+			msid = va_arg(args, char *);
+			mstid = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_DIRECTION) {
 			mdir = va_arg(args, janus_sdp_mdirection);
 		} else if(property == JANUS_SDP_OA_CODEC) {
@@ -1551,8 +1560,8 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 	janus_sdp_mtype type = JANUS_SDP_OTHER;
 	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, data_legacy = FALSE;
 	int pt = -1, opusred_pt = -1;
-	const char *codec = NULL, *mid = NULL, *rtpmap = NULL, *fmtp = NULL,
-		*vp9_profile = NULL, *h264_profile = NULL;
+	const char *codec = NULL, *mid = NULL, *msid = NULL, *mstid = NULL,
+		*rtpmap = NULL, *fmtp = NULL, *vp9_profile = NULL, *h264_profile = NULL;
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	GHashTable *extmaps = NULL, *extids = NULL;
 	gboolean extids_allocated = FALSE;
@@ -1596,6 +1605,9 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 			codec = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_MID) {
 			mid = va_arg(args, char *);
+		} else if(property == JANUS_SDP_OA_MSID) {
+			msid = va_arg(args, char *);
+			mstid = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_PT) {
 			pt = va_arg(args, int);
 		} else if(property == JANUS_SDP_OA_OPUSRED_PT) {
@@ -1710,6 +1722,11 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 	/* Any mid we should set? */
 	if(mid != NULL) {
 		a = janus_sdp_attribute_create("mid", "%s", mid);
+		m->attributes = g_list_append(m->attributes, a);
+	}
+	/* Any msid we should set? */
+	if(type != JANUS_SDP_APPLICATION && msid != NULL && mstid != NULL) {
+		a = janus_sdp_attribute_create("msid", "%s %s", msid, mstid);
 		m->attributes = g_list_append(m->attributes, a);
 	}
 	if(type == JANUS_SDP_AUDIO || type == JANUS_SDP_VIDEO) {
@@ -1877,7 +1894,8 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 	gboolean mline_enabled = TRUE;
 	janus_sdp_mtype type = JANUS_SDP_OTHER;
 	gboolean audio_dtmf = FALSE, audio_opusred = FALSE, video_rtcpfb = TRUE;
-	const char *codec = NULL, *fmtp = NULL, *vp9_profile = NULL, *h264_profile = NULL;
+	const char *codec = NULL, *msid = NULL, *mstid = NULL,
+		*fmtp = NULL, *vp9_profile = NULL, *h264_profile = NULL;
 	char *custom_audio_fmtp = NULL;
 	GList *extmaps = NULL;
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
@@ -1909,6 +1927,9 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 			mdir = va_arg(args, janus_sdp_mdirection);
 		} else if(property == JANUS_SDP_OA_CODEC) {
 			codec = va_arg(args, char *);
+		} else if(property == JANUS_SDP_OA_MSID) {
+			msid = va_arg(args, char *);
+			mstid = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_FMTP) {
 			fmtp = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_VP9_PROFILE) {
@@ -2076,6 +2097,11 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 				}
 			}
 			am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(pt));
+			/* Any msid we should set? */
+			if(msid != NULL && mstid != NULL) {
+				janus_sdp_attribute *a = janus_sdp_attribute_create("msid", "%s %s", msid, mstid);
+				am->attributes = g_list_append(am->attributes, a);
+			}
 			/* Add the related attributes */
 			if(am->type == JANUS_SDP_AUDIO) {
 				/* Add rtpmap attribute */

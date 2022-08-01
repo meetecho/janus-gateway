@@ -3213,6 +3213,20 @@ json_t *janus_admin_peerconnection_medium_summary(janus_ice_peerconnection_mediu
 		json_object_set_new(m, "type", json_string("data"));
 	json_object_set_new(m, "mindex", json_integer(medium->mindex));
 	json_object_set_new(m, "mid", json_string(medium->mid));
+	if(medium->msid || medium->remote_msid) {
+		json_t *mm = json_object();
+		if(medium->msid) {
+			json_object_set_new(mm, "local-stream", json_string(medium->msid));
+			if(medium->mstid)
+				json_object_set_new(mm, "local-track", json_string(medium->mstid));
+		}
+		if(medium->remote_msid) {
+			json_object_set_new(mm, "remote-stream", json_string(medium->remote_msid));
+			if(medium->remote_mstid)
+				json_object_set_new(mm, "remote-track", json_string(medium->remote_mstid));
+		}
+		json_object_set_new(m, "msid", mm);
+	}
 	if(medium->type != JANUS_MEDIA_DATA) {
 		json_object_set_new(m, "do_nacks", medium->do_nacks ? json_true() : json_false());
 		json_object_set_new(m, "nack-queue-ms", json_integer(medium->nack_queue_ms));
@@ -3799,12 +3813,40 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			janus_ice_peerconnection_medium *medium = ice_handle->pc ?
 				g_hash_table_lookup(ice_handle->pc->media, GUINT_TO_POINTER(mindex)) : NULL;
 			gboolean have_mid = FALSE, have_rid = FALSE, have_repaired_rid = FALSE,
-				have_twcc = FALSE, have_dd = FALSE, have_abs_send_time = FALSE;
+				have_twcc = FALSE, have_dd = FALSE, have_abs_send_time = FALSE, have_msid = FALSE;
 			int opusred_pt = -1;
 			GList *tempA = m->attributes;
 			while(tempA) {
 				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
-				if(a->name && a->value && !strcasecmp(a->name, "extmap")) {
+				if(a->name && a->value && !strcasecmp(a->name, "msid")) {
+					/* Found msid attribute */
+					have_msid = TRUE;
+					char msid[65], mstid[65];
+					msid[0] = '\0';
+					mstid[0] = '\0';
+					if(sscanf(a->value, "%64s %64s", msid, mstid) != 2) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid msid on m-line #%d\n",
+							ice_handle->handle_id, m->index);
+						janus_sdp_destroy(parsed_sdp);
+						return NULL;
+					}
+					if(medium->msid == NULL || strcasecmp(medium->msid, msid)) {
+						char *old_msid = medium->msid;
+						medium->msid = g_strdup(msid);
+						g_free(old_msid);
+					}
+					if(medium->mstid == NULL || strcasecmp(medium->mstid, mstid)) {
+						char *old_mstid = medium->mstid;
+						medium->mstid = g_strdup(mstid);
+						g_free(old_mstid);
+					}
+					/* Remove this msid attribute, the core will add it again later */
+					GList *msid_attr = tempA;
+					tempA = tempA->next;
+					m->attributes = g_list_remove_link(m->attributes, msid_attr);
+					g_list_free_full(msid_attr, (GDestroyNotify)janus_sdp_attribute_destroy);
+					continue;
+				} else if(a->name && a->value && !strcasecmp(a->name, "extmap")) {
 					if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
 						have_mid = TRUE;
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_RID))
@@ -3826,6 +3868,12 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			/* If the user offered RED but the plugin rejected it, disable it */
 			if(opusred_pt < 0 && medium != NULL && medium->opusred_pt > 0)
 				medium->opusred_pt = 0;
+			if(!have_msid) {
+				g_free(medium->msid);
+				medium->msid = NULL;
+				g_free(medium->mstid);
+				medium->mstid = NULL;
+			}
 			/* Check if rid-based simulcasting is available */
 			if(!have_rid && medium != NULL) {
 				g_free(medium->rid[0]);

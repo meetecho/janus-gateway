@@ -1829,6 +1829,10 @@ static void janus_ice_peerconnection_medium_dereference(janus_ice_peerconnection
 static void janus_ice_peerconnection_medium_free(const janus_refcount *medium_ref) {
 	janus_ice_peerconnection_medium *medium = janus_refcount_containerof(medium_ref, janus_ice_peerconnection_medium, ref);
 	g_free(medium->mid);
+	g_free(medium->msid);
+	g_free(medium->mstid);
+	g_free(medium->remote_msid);
+	g_free(medium->remote_mstid);
 	g_free(medium->rid[0]);
 	medium->rid[0] = NULL;
 	g_free(medium->rid[1]);

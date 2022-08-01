@@ -155,7 +155,8 @@ rtp-sample: {
 # each identifying a single stream to add, that will then translate to
 # a dedicated m-line in the SDP. For each stream, you specify the type,
 # a unique ID (mid), and can provide a short description (label) so that
-# the client side can know what's what when rendering the streams. Notice
+# the client side can know what's what when rendering the streams;
+# optionally, a msid to add to the SDP m-line can be provided as well. Notice
 # how the port/pt/codec/fmtp/etc. stuff is called just like that, without
 # any audio/video/data prefix: in fact, each media stream can be configured
 # the same way, and it's the type that allows us to differentiate them.

@@ -25,6 +25,7 @@ var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringV
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var subscriber_mode = (getQueryStringValue("subscriber-mode") === "yes" || getQueryStringValue("subscriber-mode") === "true");
+var use_msid = (getQueryStringValue("msid") === "yes" || getQueryStringValue("msid") === "true");
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -630,6 +631,7 @@ function subscribeTo(sources) {
 					room: myroom,
 					ptype: "subscriber",
 					streams: subscription,
+					use_msid: use_msid,
 					private_id: mypvtid
 				};
 				remoteFeed.send({ message: subscribe });
