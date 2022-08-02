@@ -6524,6 +6524,7 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->reset = FALSE;
 			/* If this is a plain RTP participant, create the socket */
 			if(rtp != NULL) {
+				gen_offer = NULL;
 				const char *ip = json_string_value(json_object_get(rtp, "ip"));
 				uint16_t port = json_integer_value(json_object_get(rtp, "port"));
 				if(participant->codec == JANUS_AUDIOCODEC_OPUS) {
