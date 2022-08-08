@@ -2261,6 +2261,7 @@ function Janus(gatewayCallbacks) {
 			// Nothing to do
 			return;
 		}
+		let openedConsentDialog = false;
 		// Check if we can/should group getUserMedia calls
 		let groups = {};
 		for(let track of tracks) {
@@ -2375,6 +2376,10 @@ function Janus(gatewayCallbacks) {
 					// An external track was provided, use that
 					nt = track.capture;
 				} else {
+					if(!openedConsentDialog) {
+						openedConsentDialog = true;
+						pluginHandle.consentDialog(true);
+					}
 					let constraints = Janus.trackConstraints(track), stream = null;
 					if(track.type === 'audio' || track.type === 'video') {
 						// Use getUserMedia: check if we need to group audio and video together
@@ -2660,6 +2665,8 @@ function Janus(gatewayCallbacks) {
 				}
 			}
 		}
+		if(openedConsentDialog)
+			pluginHandle.consentDialog(false);
 	}
 
 	function getLocalTracks(handleId) {
