@@ -72,7 +72,7 @@ void janus_turnrest_deinit(void) {
 	janus_mutex_unlock(&api_mutex);
 }
 
-void janus_turnrest_set_backend(const char *server, const char *key, const char *method, const char *unix, const uint timeout) {
+void janus_turnrest_set_backend(const char *server, const char *key, const char *method, const char *unixpath, const uint timeout) {
 	janus_mutex_lock(&api_mutex);
 
 	/* Get rid of the old values first */
@@ -98,11 +98,11 @@ void janus_turnrest_set_backend(const char *server, const char *key, const char 
 				api_http_get = FALSE;
 			}
 		}
-		if(unix != NULL) {
-			if(access(unix, R_OK | W_OK) != 0) {
-				JANUS_LOG(LOG_WARN, "TURN REST API unix socket '%s' was not accessible by the service during startup\n", unix);
+		if(unixpath != NULL) {
+			if(access(unixpath, R_OK | W_OK) != 0) {
+				JANUS_LOG(LOG_WARN, "TURN REST API unix socket '%s' was not accessible by the service during startup\n", unixpath);
 			}
-			api_unix = g_strdup(unix);
+			api_unix = g_strdup(unixpath);
 		}
 		api_timeout = timeout;
 	}

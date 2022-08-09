@@ -25,46 +25,45 @@ void janus_turnrest_init(void);
 /*! \brief De-initialize the TURN REST API client stack */
 void janus_turnrest_deinit(void);
 
-
 /*! \brief Set (or reset, in case the server is NULL) the backend that
  * needs to be contacted, and optionally the API key, if required
  * @param server The REST API server address (pass NULL to disable the
  * TURN REST API entirely)
  * @param key The API key, if any (pass NULL if it's not required)
  * @param method The HTTP method to use, POST or GET (NULL means POST)
- * @param unix The REST API unix socket path (pass NULL to use TCP)
+ * @param unixpath The REST API unix socket path (pass NULL to use TCP)
  * @param timeout The timeout in seconds */
-void janus_turnrest_set_backend(const char *server, const char *key, const char *method, const char *unix, const uint timeout);
+void janus_turnrest_set_backend(const char *server, const char *key, const char *method, const char *unixpath, const uint timeout);
 /*! \brief Get the currently set TURN REST API backend
  * @returns The currently set TURN REST API backend */
 const char *janus_turnrest_get_backend(void);
 
-
 /*! \brief Complete response from the TURN REST API service */
-typedef struct janus_turnrest_response {
-	/*! \brief TURN username */
-	char *username;
-	/*! \brief TURN password */
-	char *password;
-	/*! \brief Time-to-live of the credentials, in seconds */
-	guint32 ttl;
-	/*! \brief List of TURN servers */
-	GList *servers;
+typedef struct janus_turnrest_response
+{
+    /*! \brief TURN username */
+    char *username;
+    /*! \brief TURN password */
+    char *password;
+    /*! \brief Time-to-live of the credentials, in seconds */
+    guint32 ttl;
+    /*! \brief List of TURN servers */
+    GList *servers;
 } janus_turnrest_response;
 
 /*! \brief Instance of TURN server as returned by TURN REST API service */
-typedef struct janus_turnrest_instance {
-	/*! \brief TURN server address */
-	char *server;
-	/*! \brief TURN server port */
-	guint16 port;
-	/*! \brief TURN server transport type */
-	int transport;
+typedef struct janus_turnrest_instance
+{
+    /*! \brief TURN server address */
+    char *server;
+    /*! \brief TURN server port */
+    guint16 port;
+    /*! \brief TURN server transport type */
+    int transport;
 } janus_turnrest_instance;
 /*! \brief De-allocate a janus_turnrest_response instance
  * @param response The janus_turnrest_response instance to destroy */
 void janus_turnrest_response_destroy(janus_turnrest_response *response);
-
 
 /*! \brief Retrieve address and credentials for one or more TURN servers
  * @note Use janus_turnrest_response_destroy to get rid of the response, once done
