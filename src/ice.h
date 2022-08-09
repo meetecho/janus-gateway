@@ -75,9 +75,10 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
  * @param[in] api_server TURN REST API backend (NULL to disable the API)
  * @param[in] api_key API key to use, if required
  * @param[in] api_method HTTP method to use (POST by default)
+ * @param[in] api_unix The REST API unix socket path (pass NULL to use TCP)
  * @param[in] api_timeout total timeout for HTTP method in seconds
  * @returns 0 in case of success, a negative integer on errors */
-int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method, uint api_timeout);
+int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method, gchar *api_unix, uint api_timeout);
 /*! \brief Method to get the STUN server IP address
  * @returns The currently used STUN server IP address, if available, or NULL if not */
 char *janus_ice_get_stun_server(void);

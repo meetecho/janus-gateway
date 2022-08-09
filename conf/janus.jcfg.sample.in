@@ -341,11 +341,14 @@ nat: {
 	# 10 seconds and a minimum of 1 second. Notice that the 'opaque_id' provided
 	# via Janus API will be used as the username for a specific PeerConnection
 	# by default; if that one is missing, the 'session_id' will be used as the
-	# username instead.
+	# username instead. If the 'turn_rest_api_unix' setting is set, the API
+	# requests will be send to the unix domain socket specified by the provided
+	# path instead of performing TCP requests.
 	#turn_rest_api = "http://yourbackend.com/path/to/api"
 	#turn_rest_api_key = "anyapikeyyoumayhaveset"
 	#turn_rest_api_method = "GET"
 	#turn_rest_api_timeout = 10
+	#turn_rest_api_unix = "/path/to/api/socket"
 
 	# In case a TURN server is provided, you can allow applications to force
 	# Janus to use TURN (https://github.com/meetecho/janus-gateway/pull/2774).

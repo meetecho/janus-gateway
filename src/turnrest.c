@@ -21,6 +21,7 @@
 #include <curl/curl.h>
 #include <jansson.h>
 #include <agent.h>
+#include <unistd.h>
 
 #include "turnrest.h"
 #include "debug.h"
@@ -30,6 +31,7 @@
 
 static const char *api_server = NULL;
 static const char *api_key = NULL;
+static const char *api_unix = NULL;
 static gboolean api_http_get = FALSE;
 static uint api_timeout;
 static janus_mutex api_mutex = JANUS_MUTEX_INITIALIZER;
@@ -70,7 +72,7 @@ void janus_turnrest_deinit(void) {
 	janus_mutex_unlock(&api_mutex);
 }
 
-void janus_turnrest_set_backend(const char *server, const char *key, const char *method, const uint timeout) {
+void janus_turnrest_set_backend(const char *server, const char *key, const char *method, const char *unix, const uint timeout) {
 	janus_mutex_lock(&api_mutex);
 
 	/* Get rid of the old values first */
@@ -78,6 +80,8 @@ void janus_turnrest_set_backend(const char *server, const char *key, const char 
 	api_server = NULL;
 	g_free((char *)api_key);
 	api_key = NULL;
+	g_free((char *)api_unix);
+	api_unix = NULL;
 
 	if(server != NULL) {
 		/* Set a new server now */
@@ -93,6 +97,12 @@ void janus_turnrest_set_backend(const char *server, const char *key, const char 
 				JANUS_LOG(LOG_WARN, "Unknown method '%s' for TURN REST API, assuming POST\n", method);
 				api_http_get = FALSE;
 			}
+		}
+		if(unix != NULL) {
+			if(access(unix, R_OK | W_OK) != 0) {
+				JANUS_LOG(LOG_WARN, "TURN REST API unix socket '%s' was not accessible by the service during startup\n", unix);
+			}
+			api_unix = g_strdup(unix);
 		}
 		api_timeout = timeout;
 	}
@@ -165,6 +175,9 @@ janus_turnrest_response *janus_turnrest_request(const char *user) {
 	if(!api_http_get) {
 		/* FIXME Some servers don't like a POST with no data */
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query_string);
+	}
+	if(api_unix) {
+		curl_easy_setopt(curl, CURLOPT_UNIX_SOCKET_PATH, api_unix);
 	}
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, api_timeout);
 	/* For getting data, we use an helper struct and the libcurl callback */

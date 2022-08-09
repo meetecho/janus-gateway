@@ -4914,6 +4914,7 @@ gint main(int argc, char *argv[]) {
 	char *turn_rest_api = NULL, *turn_rest_api_key = NULL;
 #ifdef HAVE_TURNRESTAPI
 	char *turn_rest_api_method = NULL;
+	char *turn_rest_api_unix = NULL;
 	uint turn_rest_api_timeout = 10;
 #endif
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
@@ -5033,6 +5034,9 @@ gint main(int argc, char *argv[]) {
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_rest_api_method");
 	if(item && item->value)
 		turn_rest_api_method = (char *)item->value;
+	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_rest_api_unix");
+	if (item && item->value)
+		turn_rest_api_unix = (char *)item->value;
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_rest_api_timeout");
 	if(item && item->value) {
 		int rst = atoi(item->value);
@@ -5103,8 +5107,8 @@ gint main(int argc, char *argv[]) {
 		JANUS_LOG(LOG_WARN, "A TURN REST API backend specified in the settings, but libcurl support has not been built\n");
 	}
 #else
-	if(janus_ice_set_turn_rest_api(turn_rest_api, turn_rest_api_key, turn_rest_api_method, turn_rest_api_timeout) < 0) {
-		JANUS_LOG(LOG_FATAL, "Invalid TURN REST API configuration: %s (%s, %s)\n", turn_rest_api, turn_rest_api_key, turn_rest_api_method);
+	if(janus_ice_set_turn_rest_api(turn_rest_api, turn_rest_api_key, turn_rest_api_method, turn_rest_api_unix, turn_rest_api_timeout) < 0) {
+		JANUS_LOG(LOG_FATAL, "Invalid TURN REST API configuration: %s (%s, %s, %s)\n", turn_rest_api, turn_rest_api_key, turn_rest_api_method, turn_rest_api_unix);
 		janus_options_destroy();
 		exit(1);
 	}

@@ -32,8 +32,9 @@ void janus_turnrest_deinit(void);
  * TURN REST API entirely)
  * @param key The API key, if any (pass NULL if it's not required)
  * @param method The HTTP method to use, POST or GET (NULL means POST)
+ * @param unix The REST API unix socket path (pass NULL to use TCP)
  * @param timeout The timeout in seconds */
-void janus_turnrest_set_backend(const char *server, const char *key, const char *method, const uint timeout);
+void janus_turnrest_set_backend(const char *server, const char *key, const char *method, const char *unix, const uint timeout);
 /*! \brief Get the currently set TURN REST API backend
  * @returns The currently set TURN REST API backend */
 const char *janus_turnrest_get_backend(void);
