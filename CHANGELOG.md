@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 
-## [v1.0.4] - 2022-08-01
+## [v1.0.4/v0.12.4] - 2022-08-01
 
 - Fixed problem with duplicate ptypes when codecs are added in renegotiations
 - Added codec info to event handlers stats
@@ -23,7 +23,7 @@ All notable changes to this project will be documented in this file.
 - Don't use .clone() on tracks to render them in demos [[PR-3009](https://github.com/meetecho/janus-gateway/pull/3009)]
 - Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
 
-## [v1.0.3] - 2022-06-20
+## [v1.0.3/v0.12.3] - 2022-06-20
 
 - Keep track of RTP extensions when storing packets for retransmission [[PR-2981](https://github.com/meetecho/janus-gateway/pull/2981)]
 - Fixed negotiation of RTP extensions when direction is involved
@@ -40,7 +40,7 @@ All notable changes to this project will be documented in this file.
 - Add new shared JavaScript file for settings in demos [[PR-2991](https://github.com/meetecho/janus-gateway/pull/2991)]
 - Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
 
-## [v1.0.2] - 2022-05-23
+## [v1.0.2/v0.12.2] - 2022-05-23
 
 - Abort DTLS handshake if DTLSv1_handle_timeout returns an error
 - Fixed rtx not being offered on Janus originated PeerConnections
@@ -60,7 +60,7 @@ All notable changes to this project will be documented in this file.
 - Disable IPv6 in WebSockets transport if binding to IPv4 address explicitly [[Issue-2969](https://github.com/meetecho/janus-gateway/issues/2969)]
 - Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
 
-## [v1.0.1] - 2022-04-26
+## [v1.0.1/v0.12.1] - 2022-04-26
 
 - Removed gengetopt as a dependency, to use Glib's GOptionEntry instead [[PR-2898](https://github.com/meetecho/janus-gateway/pull/2898)]
 - Fixed occasional problem of duplicate mid attribute in Janus SDPs [[Issue-2917](https://github.com/meetecho/janus-gateway/issues/2917)]
@@ -77,7 +77,7 @@ All notable changes to this project will be documented in this file.
 - Fixed potential race conditions in multistream VideoRoom demo [[Issue-2929](https://github.com/meetecho/janus-gateway/issues/2929)]
 - Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
 
-## [v1.0.0] - 2022-03-03
+## [v1.0.0/v0.12.0] - 2022-03-03
 
 - Refactored Janus to support multistream PeerConnections [[PR-2211](https://github.com/meetecho/janus-gateway/pull/2211)]
 - Moved all source files under new 'src' folder to unclutter the repo [[PR-2885](https://github.com/meetecho/janus-gateway/pull/2885)]
