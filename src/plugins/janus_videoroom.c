@@ -4305,11 +4305,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(error_code != 0)
 				goto prepare_response;
 		}
-		//BB -- Added hook to validate the join_checksum parameter
-		if(!janus_check_param_checksum(root, "create")) {
-			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-			goto prepare_response;
-		}
 
 		json_t *desc = json_object_get(root, "description");
 		json_t *is_private = json_object_get(root, "is_private");
@@ -8900,17 +8895,6 @@ static void *janus_videoroom_handler(void *data) {
 			janus_mutex_lock(&videoroom->mutex);
 			json_t *ptype = json_object_get(root, "ptype");
 			const char *ptype_text = json_string_value(ptype);
-			//BB -- Added hook to validate the join_checksum parameter
-			JANUS_LOG(LOG_INFO, "Request type '%s', ptype '%s'\n", request_text, ptype_text);
-			if(!strcasecmp(ptype_text, "publisher")) {
-				// Verify the checksum only on a publisher join
-				if(!janus_check_param_checksum(root, "join")) {
-					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-					janus_mutex_unlock(&videoroom->mutex);
-					janus_refcount_decrease(&videoroom->ref);
-					goto error;
-				}
-			}
 			if(!strcasecmp(ptype_text, "publisher")) {
 				JANUS_LOG(LOG_VERB, "Configuring new publisher\n");
 				JANUS_VALIDATE_JSON_OBJECT(root, publisher_parameters,
@@ -13040,7 +13024,7 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 	g_hash_table_remove_all(publisher->streams_byid);
 	g_hash_table_remove_all(publisher->streams_bymid);
 	janus_mutex_unlock(&publisher->streams_mutex);
-	janus_videoroom_leave_or_unpublish(publisher, TRUE, FALSE);
+	janus_videoroom_leave_or_unpublish(publisher, publisher->session, TRUE, FALSE);
 	janus_videoroom_publisher_destroy(publisher);
 	/* Done */
 	JANUS_LOG(LOG_VERB, "[%s/%s] Leaving remote publisher thread...\n",

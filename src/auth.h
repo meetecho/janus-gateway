@@ -24,9 +24,8 @@
 
 /*! \brief Method to initializing the token based authentication
  * @param[in] enabled Whether the authentication mechanism should be enabled or not
- * @param[in] secret the secret to validate signed tokens against, or NULL to use stored tokens
- * @param[in] checksum_enabled whenever the checksum verification mechanism should be enabled - BB */
-void janus_auth_init(gboolean enabled, const char *secret, gboolean checksum_enabled);
+ * @param[in] secret the secret to validate signed tokens against, or NULL to use stored tokens */
+void janus_auth_init(gboolean enabled, const char *secret);
 /*! \brief Method to check whether the mechanism is enabled or not */
 gboolean janus_auth_is_enabled(void);
 /*! \brief Method to check whether the mechanism is in stored-token mode or not */
@@ -87,7 +86,5 @@ GList *janus_auth_list_plugins(const char *token);
  * @param[in] plugin Opaque pointer to the janus_plugin instance this token can not access anymore
  * @returns TRUE if the operation was successful, FALSE otherwise */
 gboolean janus_auth_disallow_plugin(const char *token, janus_plugin *plugin);
-
-gboolean janus_check_param_checksum(json_t *root, const char* request);
 
 #endif

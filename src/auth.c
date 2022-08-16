@@ -36,7 +36,6 @@
 /* Hash table to contain the tokens to match */
 static GHashTable *tokens = NULL, *allowed_plugins = NULL;
 static gboolean auth_enabled = FALSE;
-static gboolean auth_checksum_enabled = FALSE;
 static janus_mutex mutex;
 static char *auth_secret = NULL;
 
@@ -45,8 +44,7 @@ static void janus_auth_free_token(char *token) {
 }
 
 /* Setup */
-//BB - Added checksum configuration
-void janus_auth_init(gboolean enabled, const char *secret, gboolean checksum_enabled) {
+void janus_auth_init(gboolean enabled, const char *secret) {
 	if(enabled) {
 		if(secret == NULL) {
 			JANUS_LOG(LOG_INFO, "Stored-Token based authentication enabled\n");
@@ -58,8 +56,6 @@ void janus_auth_init(gboolean enabled, const char *secret, gboolean checksum_ena
 			auth_secret = g_strdup(secret);
 			auth_enabled = TRUE;
 		}
-		auth_checksum_enabled = checksum_enabled;
-		JANUS_LOG(LOG_INFO, "Param checksum validation %s\n", auth_checksum_enabled ? "ENABLED" : "DISABLED");
 	} else {
 		JANUS_LOG(LOG_INFO, "Token based authentication disabled\n");
 	}
@@ -128,143 +124,6 @@ fail:
 	g_strfreev(data);
 	g_strfreev(parts);
 	return FALSE;
-}
-
-/* BB - Added parameter checksum verification */
-#define MAX_CHECKSUM_FIELD_NAME_SIZE 64
-#define MAX_CHECKSUM_FIELD_SIZE 1024
-#define MIN_CHECKSUM_FIELD_SIZE 20
-
-gboolean janus_check_param_checksum(json_t *root, const char* request) {
-
-	/* If the authorization is diactivated always return true */
-    if ( (!auth_enabled) || (auth_secret == NULL) || !auth_checksum_enabled) {
-		return TRUE;
-    }
-
-	char param_name[MAX_CHECKSUM_FIELD_NAME_SIZE];
-	gchar **parts = NULL;
-	gchar **fields = NULL;
-	gboolean success = FALSE;
-
-	/* Build the field name */
-	g_snprintf(param_name, MAX_CHECKSUM_FIELD_NAME_SIZE, "%s_checksum", request);
-
-	/* Get the checksum parameter */
-	json_t *checksum = json_object_get(root, param_name);
-
-	if(!checksum) {
-		JANUS_LOG(LOG_ERR, "Field '%s' not present\n", param_name);
-		goto fail;
-	}
-
-	/* Get the string from the parameter */
-	gchar* checksum_str = (char*)json_string_value(checksum);
-
-	JANUS_LOG(LOG_INFO, "Field '%s', value '%s'\n", param_name, checksum_str);
-
-	if(strlen(checksum_str) < MIN_CHECKSUM_FIELD_SIZE) {
-		JANUS_LOG(LOG_ERR, "Field '%s' too short: '%s'\n", param_name, checksum_str);
-		goto fail;
-	}
-
-	/* Get the three components: fields, time, signature separated by commas */
-	parts = g_strsplit(checksum_str, ":", 3);
-
-	int content_count = 0;
-
-	while(parts[content_count]) {
-		content_count++;
-	}
-
-	if(content_count < 2) {
-		JANUS_LOG(LOG_ERR, "Missing components in '%s': '%s'\n", param_name, checksum_str);
-		goto fail;
-	}
-
-	fields = g_strsplit(parts[0], ",", -1);
-
-	int field_count = 0;
-
-	while(fields[field_count])
-		field_count++;
-
-	if(field_count < 1) {
-		JANUS_LOG(LOG_ERR, "Missing fields in '%s': '%s'\n", param_name, checksum_str);
-		goto fail;
-	}
-
-	char field_content[MAX_CHECKSUM_FIELD_SIZE];
-	field_content[0] = 0;
-
-    int i;
-	for(i = 0; i < field_count; i++) {
-
-		json_t* json_field = json_object_get(root, fields[i]);
-
-		if (!json_field) {
-			JANUS_LOG(LOG_ERR, "Field '%s' unavailable for '%s': '%s'\n", fields[i], param_name, checksum_str);
-			goto fail;
-		}
-
-		int type = json_typeof(json_field);
-
-		const gchar* field = NULL;
-		switch(type) {
-		case JSON_STRING:
-			field = json_string_value(json_field);
-			break;
-		case JSON_TRUE:
-			field = "true";
-			break;
-		case JSON_FALSE:
-			field = "false";
-			break;
-		}
-
-		if (!field) {
-			JANUS_LOG(LOG_ERR, "Field value of '%s' could not be obtained for '%s': '%s'\n", fields[i], param_name, checksum_str);
-			goto fail;
-		}
-		if((strlen(field_content) + strlen(field)) >= MAX_CHECKSUM_FIELD_SIZE) {
-			JANUS_LOG(LOG_ERR, "Maximum size (%d) exceeded in '%s': '%s'\n", MAX_CHECKSUM_FIELD_SIZE, param_name, checksum_str);
-			goto fail;
-		}
-		strcat(field_content, field);
-	}
-
-	if(strlen(field_content) + strlen(parts[1]) >= MAX_CHECKSUM_FIELD_SIZE) {
-		JANUS_LOG(LOG_ERR, "Maximum size (%d) exceeded when adding time in '%s': '%s'\n", MAX_CHECKSUM_FIELD_SIZE, param_name, checksum_str);
-	}
-	else {
-		strcat(field_content, parts[1]);
-	}
-
-	unsigned char signature[EVP_MAX_MD_SIZE];
-	unsigned int len;
-	HMAC(EVP_sha256(), auth_secret, strlen(auth_secret), (const unsigned char*)field_content, strlen(field_content), signature, &len);
-	gchar *base64 = g_base64_encode(signature, len);
-	base64ToBase64UrlNoPadding(base64);
-
-	if(!strcmp(parts[2], base64)) {
-		success = TRUE;
-	}
-	if(success){
-		JANUS_LOG(LOG_INFO, "%s: Calculated checksum hash '%s' -> '%s' %s\n", param_name, field_content, base64, "MATCHES\n");
-	}
-	else{
-		JANUS_LOG(LOG_ERR, "%s: Calculated checksum hash '%s' -> '%s' %s\n", param_name, field_content, base64, "DOES NOT MATCH\n");
-	}
-
-	g_free(base64);
-
-fail:
-
-	g_strfreev(parts);
-	g_strfreev(fields);
-
-	/* If the auth_checksum is deactivated (FALSE) we always return true */
-	return auth_checksum_enabled ? success : TRUE;
 }
 
 gboolean janus_auth_check_signature_contains(const char *token, const char *realm, const char *desc) {
