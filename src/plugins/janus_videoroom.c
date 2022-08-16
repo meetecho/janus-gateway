@@ -4581,30 +4581,11 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		/* By default, the VideoRoom plugin does not notify about participants simply joining the room.
 		   It only notifies when the participant actually starts publishing media. */
 		videoroom->notify_joining = notify_joining ? json_is_true(notify_joining) : FALSE;
-		// BB - Modified to ignore the record boolean parameter, recording is set to true if the valid non-empty folder value is received or to
-		// false if valid empty folder value is received
 		if(record) {
 			videoroom->record = json_is_true(record);
 		}
 		if(rec_dir) {
 			videoroom->rec_dir = g_strdup(json_string_value(rec_dir));
-		}
-		else {
-			videoroom->rec_dir = NULL;
-		}
-
-		if(!videoroom->rec_dir) {
-			JANUS_LOG(LOG_ERR, "Room %s, recording information is missing\n", videoroom->room_id_str);
-			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-			goto prepare_response;
-		}
-		if(!strlen(videoroom->rec_dir)) {
-			JANUS_LOG(LOG_INFO, "Room %s, setting recording to FALSE\n", videoroom->room_id_str);
-			videoroom->record = FALSE;
-		}
-		else {
-			JANUS_LOG(LOG_INFO, "Room %s, setting recording to TRUE, folder: %s\n", videoroom->room_id_str, videoroom->rec_dir);
-			videoroom->record = TRUE;
 		}
 		if(lock_record) {
 			videoroom->lock_record = json_is_true(lock_record);
