@@ -4433,20 +4433,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		videoroom->require_e2ee = req_e2ee ? json_is_true(req_e2ee) : FALSE;
 		if(secret)
 			videoroom->room_secret = g_strdup(json_string_value(secret));
-		if(pin) {
+		if(pin)
 			videoroom->room_pin = g_strdup(json_string_value(pin));
-		}
-		else {
-			videoroom->room_pin = NULL;
-		}
-		if(!videoroom->room_pin) {
-			JANUS_LOG(LOG_ERR, "Room %s is missing pin\n", videoroom->room_name);
-			error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-			goto prepare_response;
-		}
-		else {
-			JANUS_LOG(LOG_INFO, "Room %s pin set to %s\n", videoroom->room_name, videoroom->room_pin);
-		}
 		videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
 		if(publishers)
 			videoroom->max_publishers = json_integer_value(publishers);
@@ -4942,7 +4930,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
 		JANUS_LOG(LOG_VERB, "Attempt to destroy an existing VideoRoom room\n");
-
 		if(!string_ids) {
 			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
 				error_code, error_cause, TRUE,
@@ -5056,7 +5043,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 	} else if(!strcasecmp(request_text, "list")) {
 		/* List all rooms (but private ones) and their details (except for the secret, of course...) */
 		JANUS_LOG(LOG_VERB, "Getting the list of VideoRoom rooms\n");
-
 		gboolean lock_room_list = TRUE;
 		if(admin_key != NULL) {
 			json_t *admin_key_json = json_object_get(root, "admin_key");
@@ -6075,7 +6061,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "kick")) {
 		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing VideoRoom room\n");
-
 		if(!string_ids) {
 			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
 				error_code, error_cause, TRUE,
@@ -6326,7 +6311,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room, specifying whether they're publishers or just attendees */
-
 		if(!string_ids) {
 			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
 				error_code, error_cause, TRUE,
@@ -6487,7 +6471,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_object_set_new(response, "publishers", list);
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "enable_recording")) {
-
 		JANUS_VALIDATE_JSON_OBJECT(root, record_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
