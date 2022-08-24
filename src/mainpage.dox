@@ -3813,22 +3813,13 @@ ldd janus | grep asan
         {
             "name": "Linux",
             "compilerPath": "/usr/bin/gcc",
-            "cStandard": "gnu11",
-            "cppStandard": "gnu++17",
+            "cStandard": "gnu17",
             "includePath": [
                 "${workspaceFolder}/**",
                 "/usr/lib/x86_64-linux-gnu/glib-2.0/include",
-                "/usr/include/glib-2.0",
-                "/usr/include/nice",
-                "/usr/include/sofia-sip-1.12"
+                "/usr/include/**"
             ],
             "intelliSenseMode": "linux-gcc-x64",
-            "systemIncludePath": [
-                "/usr/lib/gcc/x86_64-linux-gnu/9/include",
-                "/usr/local/include",
-                "/usr/include/x86_64-linux-gnu",
-                "/usr/include"
-            ],
             "defines": [
                 "CONFDIR=\"\"",
                 "EVENTDIR=\"\"",
