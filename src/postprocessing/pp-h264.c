@@ -119,7 +119,7 @@ int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart, 
 
 	int res = avio_open2(&fctx->pb, filename, AVIO_FLAG_WRITE, NULL, &options);
 	if(res < 0) {
-		JANUS_LOG(LOG_ERR, "Error opening file for output (%d)\n", res);
+		JANUS_LOG(LOG_ERR, "Error opening file for output (%d, %s)\n", res, av_err2str(res));
 		return -1;
 	}
 	if(avformat_write_header(fctx, &options) < 0) {
@@ -519,7 +519,8 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			if(fctx) {
 				int res = av_write_frame(fctx, packet);
 				if(res < 0) {
-					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d)\n", res);
+					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d, %s)\n",
+						res, av_err2str(res));
 				}
 			}
 		}

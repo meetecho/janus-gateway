@@ -277,8 +277,10 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				pkt->pts = pkt->dts = av_rescale_q(pos, timebase, fctx->streams[0]->time_base);
 				pkt->duration = OPUS_PACKET_DURATION;
 
-				if(av_write_frame(fctx, pkt) < 0) {
-					JANUS_LOG(LOG_ERR, "Error writing audio frame to file...\n");
+				int res = av_write_frame(fctx, pkt);
+				if(res < 0) {
+					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d, %s)\n",
+						res, av_err2str(res));
 				}
 			}
 		}

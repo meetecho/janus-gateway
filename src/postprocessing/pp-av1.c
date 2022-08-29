@@ -500,7 +500,8 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 			if(fctx) {
 				int res = av_write_frame(fctx, packet);
 				if(res < 0) {
-					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d)\n", res);
+					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d, %s)\n",
+						res, av_err2str(res));
 				}
 			}
 		}
