@@ -1303,6 +1303,7 @@ typedef struct janus_streaming_rtp_source {
 #ifdef HAVE_LIBCURL
 	gboolean rtsp;
 	CURL *curl;
+	char *curl_errbuf;
 	janus_streaming_buffer *curldata;
 	char *rtsp_url;
 	char *rtsp_username, *rtsp_password;
@@ -6828,6 +6829,7 @@ static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) 
 			JANUS_LOG(LOG_ERR, "Couldn't send TEARDOWN request: %s\n", curl_easy_strerror(res));
 		}
 		curl_easy_cleanup(source->curl);
+		g_free(source->curl_errbuf);
 	}
 	janus_streaming_buffer *curldata = source->curldata;
 	if(curldata != NULL) {
@@ -7446,6 +7448,9 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_RTSP);
 	curl_easy_setopt(curl, CURLOPT_HTTP09_ALLOWED, 1L);
 #endif
+	char *curl_errbuf = g_malloc(CURL_ERROR_SIZE);
+	*curl_errbuf = '\0';
+	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curl_errbuf);
 	/* Any authentication to take into account? */
 	if(source->rtsp_username && source->rtsp_password) {
 		/* Point out that digest authentication is only available is libcurl >= 7.45.0 */
@@ -7468,8 +7473,10 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	curl_easy_setopt(curl, CURLOPT_HEADERDATA, curldata);
 	int res = curl_easy_perform(curl);
 	if(res != CURLE_OK) {
-		JANUS_LOG(LOG_ERR, "Couldn't send DESCRIBE request: %s\n", curl_easy_strerror(res));
+		JANUS_LOG(LOG_ERR, "Couldn't send DESCRIBE request: %s (%s)\n",
+			curl_easy_strerror(res), curl_errbuf);
 		curl_easy_cleanup(curl);
+		g_free(curl_errbuf);
 		g_free(curldata->buffer);
 		g_free(curldata);
 		return -2;
@@ -7496,14 +7503,17 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	}
 #endif
 	if(res != CURLE_OK) {
-		JANUS_LOG(LOG_ERR, "Couldn't get DESCRIBE answer: %s\n", curl_easy_strerror(res));
+		JANUS_LOG(LOG_ERR, "Couldn't get DESCRIBE answer: %s (%s)\n",
+			curl_easy_strerror(res), curl_errbuf);
 		curl_easy_cleanup(curl);
+		g_free(curl_errbuf);
 		g_free(curldata->buffer);
 		g_free(curldata);
 		return -3;
 	} else if(code != 200) {
 		JANUS_LOG(LOG_ERR, "Couldn't get DESCRIBE code: %ld\n", code);
 		curl_easy_cleanup(curl);
+		g_free(curl_errbuf);
 		g_free(curldata->buffer);
 		g_free(curldata);
 		return -4;
@@ -7543,6 +7553,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		if(g_atomic_int_get(&mp->destroyed)) {
 			JANUS_LOG(LOG_WARN, "[%s] Destroying mountpoint while trying to reconnect, aborting\n", mp->name);
 			curl_easy_cleanup(curl);
+			g_free(curl_errbuf);
 			g_free(curldata->buffer);
 			g_free(curldata);
 			return -8;
@@ -7569,6 +7580,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	if(vresult == -1 && aresult == -1) {
 		/* Both audio and video failed? Give up... */
 		curl_easy_cleanup(curl);
+		g_free(curl_errbuf);
 		g_free(curldata->buffer);
 		g_free(curldata);
 		return -7;
@@ -7607,9 +7619,11 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);
 		res = curl_easy_perform(curl);
 		if(res != CURLE_OK) {
-			JANUS_LOG(LOG_ERR, "Couldn't send SETUP request: %s\n", curl_easy_strerror(res));
+			JANUS_LOG(LOG_ERR, "Couldn't send SETUP request: %s (%s)\n",
+				curl_easy_strerror(res), curl_errbuf);
 			g_strfreev(parts);
 			curl_easy_cleanup(curl);
+			g_free(curl_errbuf);
 			g_free(curldata->buffer);
 			g_free(curldata);
 			if(video_fds.fd != -1) close(video_fds.fd);
@@ -7623,6 +7637,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			JANUS_LOG(LOG_ERR, "Couldn't SETUP, got error code: %ld\n", code);
 			g_strfreev(parts);
 			curl_easy_cleanup(curl);
+			g_free(curl_errbuf);
 			g_free(curldata->buffer);
 			g_free(curldata);
 			if(video_fds.fd != -1) close(video_fds.fd);
@@ -7784,9 +7799,11 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);
 		res = curl_easy_perform(curl);
 		if(res != CURLE_OK) {
-			JANUS_LOG(LOG_ERR, "Couldn't send SETUP request: %s\n", curl_easy_strerror(res));
+			JANUS_LOG(LOG_ERR, "Couldn't send SETUP request: %s (%s)\n",
+				curl_easy_strerror(res), curl_errbuf);
 			g_strfreev(parts);
 			curl_easy_cleanup(curl);
+			g_free(curl_errbuf);
 			g_free(curldata->buffer);
 			g_free(curldata);
 			if(video_fds.fd != -1) close(video_fds.fd);
@@ -7800,6 +7817,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			JANUS_LOG(LOG_ERR, "Couldn't SETUP, got error code: %ld\n", code);
 			g_strfreev(parts);
 			curl_easy_cleanup(curl);
+			g_free(curl_errbuf);
 			g_free(curldata->buffer);
 			g_free(curldata);
 			if(video_fds.fd != -1) close(video_fds.fd);
@@ -8019,6 +8037,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		temp = temp->next;
 	}
 	source->curl = curl;
+	source->curl_errbuf = curl_errbuf;
 	source->curldata = curldata;
 	return 0;
 }
@@ -8100,7 +8119,8 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 	curl_easy_setopt(source->curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_PLAY);
 	int res = curl_easy_perform(source->curl);
 	if(res != CURLE_OK) {
-		JANUS_LOG(LOG_ERR, "Couldn't send PLAY request: %s\n", curl_easy_strerror(res));
+		JANUS_LOG(LOG_ERR, "Couldn't send PLAY request: %s (%s)\n",
+			curl_easy_strerror(res), source->curl_errbuf);
 		janus_mutex_unlock(&source->rtsp_mutex);
 		return -1;
 	}
@@ -8744,6 +8764,8 @@ static void *janus_streaming_relay_thread(void *data) {
 				/* Let's clean up the source first */
 				curl_easy_cleanup(source->curl);
 				source->curl = NULL;
+				g_free(source->curl_errbuf);
+				source->curl_errbuf = NULL;
 				if(source->curldata)
 					g_free(source->curldata->buffer);
 				g_free(source->curldata);
@@ -8792,7 +8814,8 @@ static void *janus_streaming_relay_thread(void *data) {
 				curl_easy_setopt(source->curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_OPTIONS);
 				resfd = curl_easy_perform(source->curl);
 				if(resfd != CURLE_OK) {
-					JANUS_LOG(LOG_ERR, "[%s] Couldn't send OPTIONS request: %s\n", name, curl_easy_strerror(resfd));
+					JANUS_LOG(LOG_ERR, "[%s] Couldn't send OPTIONS request: %s (%s)\n",
+						name, curl_easy_strerror(resfd), source->curl_errbuf);
 				}
 				janus_mutex_unlock(&source->rtsp_mutex);
 			}
