@@ -237,7 +237,6 @@ static const char *janus_wsevh_reason_string(enum lws_callback_reasons reason) {
 		CASE_STR(LWS_CALLBACK_CHANGE_MODE_POLL_FD);
 		CASE_STR(LWS_CALLBACK_LOCK_POLL);
 		CASE_STR(LWS_CALLBACK_UNLOCK_POLL);
-		CASE_STR(LWS_CALLBACK_OPENSSL_CONTEXT_REQUIRES_PRIVATE_KEY);
 		CASE_STR(LWS_CALLBACK_USER);
 		default:
 			break;
