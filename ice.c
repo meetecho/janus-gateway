@@ -4337,7 +4337,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		if(rtcp_ctx == NULL) {
 			sr->si.rtp_ts = htonl(stream->audio_last_rtp_ts);	/* FIXME */
 		} else {
-			int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+			int64_t ntp = ((int64_t)tv.tv_sec)*G_USEC_PER_SEC + tv.tv_usec;
 			uint32_t rtp_ts = ((ntp-stream->audio_last_ntp_ts)*(rtcp_ctx->tb))/1000000 + stream->audio_last_rtp_ts;
 			sr->si.rtp_ts = htonl(rtp_ts);
 		}
@@ -4398,7 +4398,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		if(rtcp_ctx == NULL) {
 			sr->si.rtp_ts = htonl(stream->video_last_rtp_ts);	/* FIXME */
 		} else {
-			int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+			int64_t ntp = ((int64_t)tv.tv_sec)*G_USEC_PER_SEC + tv.tv_usec;
 			uint32_t rtp_ts = ((ntp-stream->video_last_ntp_ts)*(rtcp_ctx->tb))/1000000 + stream->video_last_rtp_ts;
 			sr->si.rtp_ts = htonl(rtp_ts);
 		}
