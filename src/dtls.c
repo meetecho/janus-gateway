@@ -184,22 +184,24 @@ static void janus_dtls_cb_openssl_lock(int mode, int type, const char *file, int
 
 static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key, gboolean rsa_private_key) {
 	static const int num_bits = 2048;
+#if OPENSSL_VERSION_MAJOR < 3
 	BIGNUM *bne = NULL;
 	RSA *rsa_key = NULL;
-	X509_NAME *cert_name = NULL;
 	EC_KEY *ecc_key = NULL;
+#endif
+	X509_NAME *cert_name = NULL;
 
 	JANUS_LOG(LOG_VERB, "Generating DTLS key / cert\n");
 
-	/* Create a private key object (needed to hold the RSA key). */
-	*private_key = EVP_PKEY_new();
-	if(!*private_key) {
-		JANUS_LOG(LOG_FATAL, "EVP_PKEY_new() failed\n");
-		goto error;
-	}
-
-
 	if(rsa_private_key) {
+#if OPENSSL_VERSION_MAJOR < 3
+		/* Create a private key object (needed to hold the RSA key). */
+		*private_key = EVP_PKEY_new();
+		if(!*private_key) {
+			JANUS_LOG(LOG_FATAL, "EVP_PKEY_new() failed\n");
+			goto error;
+		}
+
 		/* Create a big number object. */
 		bne = BN_new();
 		if(!bne) {
@@ -232,8 +234,16 @@ static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key, 
 
 		/* The RSA key now belongs to the private key, so don't clean it up separately. */
 		rsa_key = NULL;
+#else
+		*private_key = EVP_RSA_gen(num_bits);
+		if(!*private_key) {
+			JANUS_LOG(LOG_FATAL, "EVP_RSA_gen() failed\n");
+			goto error;
+		}
+#endif
 	} else {
 		/* Create key with curve dictated by DTLS_ELLIPTIC_CURVE */
+#if OPENSSL_VERSION_MAJOR < 3
 		if((ecc_key = EC_KEY_new_by_curve_name(DTLS_ELLIPTIC_CURVE)) == NULL) {
 			JANUS_LOG(LOG_FATAL, "EC_KEY_new_by_curve_name() failed\n");
 			goto error;
@@ -254,6 +264,13 @@ static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key, 
 
 		/* The EC key now belongs to the private key, so don't clean it up separately. */
 		ecc_key = NULL;
+#else
+		*private_key = EVP_EC_gen("prime256v1");
+		if(!*private_key) {
+			JANUS_LOG(LOG_FATAL, "EVP_EC_gen() failed\n");
+			goto error;
+		}
+#endif
 	}
 
 	/* Create the X509 certificate. */
@@ -301,16 +318,20 @@ static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key, 
 	}
 
 	/* Free stuff and resurn. */
+#if OPENSSL_VERSION_MAJOR < 3
 	BN_free(bne);
+#endif
 	return 0;
 
 error:
+#if OPENSSL_VERSION_MAJOR < 3
 	if(bne)
 		BN_free(bne);
 	if(rsa_key && !*private_key)
 		RSA_free(rsa_key);
 	if(ecc_key && !*private_key)
 		EC_KEY_free(ecc_key);
+#endif
 	if(*private_key)
 		EVP_PKEY_free(*private_key);  /* This also frees the RSA key. */
 	if(*certificate)
@@ -585,6 +606,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_pc, janus_dtls_role role) {
 	 * negotiated when acting as the server. Use NIST's P-256 which is
 	 * commonly supported.
 	 */
+#if OPENSSL_VERSION_MAJOR < 3
 	EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
 	if(ecdh == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating ECDH group! (%s)\n",
@@ -592,10 +614,14 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_pc, janus_dtls_role role) {
 		janus_refcount_decrease(&dtls->ref);
 		return NULL;
 	}
-	const long flags = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_SINGLE_ECDH_USE;
-	SSL_set_options(dtls->ssl, flags);
 	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
 	EC_KEY_free(ecdh);
+#else
+	int grp_list[1] = { NID_X9_62_prime256v1 };
+	SSL_set1_groups(dtls->ssl, grp_list, 1);
+#endif
+	const long flags = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_SINGLE_ECDH_USE;
+	SSL_set_options(dtls->ssl, flags);
 #ifdef HAVE_DTLS_SETTIMEOUT
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting DTLS initial timeout: %"SCNu16"ms\n", handle->handle_id, dtls_timeout_base);
 	DTLSv1_set_initial_timeout_duration(dtls->ssl, dtls_timeout_base);
