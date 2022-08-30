@@ -4924,6 +4924,10 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_ice_peerconne
 void janus_ice_relay_rtcp(janus_ice_handle *handle, janus_plugin_rtcp *packet) {
 	/* Find the right medium instance */
 	janus_mutex_lock(&handle->mutex);
+	if(!handle || !handle->pc || packet == NULL || packet->buffer == NULL) {
+		janus_mutex_unlock(&handle->mutex);
+		return;
+	}
 	janus_ice_peerconnection_medium *medium = (packet->mindex != -1 ?
 			g_hash_table_lookup(handle->pc->media, GINT_TO_POINTER(packet->mindex)) :
 			g_hash_table_lookup(handle->pc->media_bytype,
