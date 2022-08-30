@@ -25,7 +25,7 @@
 #include "../debug.h"
 
 /* G.722 decoder */
-static AVCodec *dec_codec;			/* FFmpeg decoding codec */
+static const AVCodec *dec_codec;	/* FFmpeg decoding codec */
 static AVCodecContext *dec_ctx;		/* FFmpeg decoding context */
 
 /* WAV header */
