@@ -33,7 +33,7 @@ static int fps = 0;
 
 /* Supported target formats */
 static const char *janus_pp_av1_formats[] = {
-	"mp4", "mkv", NULL
+	"mp4", NULL
 };
 const char **janus_pp_av1_get_extensions(void) {
 	return janus_pp_av1_formats;
@@ -47,9 +47,6 @@ int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart, c
 	JANUS_LOG(LOG_ERR, "This version of libavcodec doesn't support AV1...\n");
 	return -1;
 #else
-	/* .mkv is Matroska video */
-	if(!strcasecmp(extension, "mkv"))
-		extension = "matroska";
 
 	/* Video output */
 	fctx = janus_pp_create_avformatcontext(extension, metadata, destination);
@@ -500,7 +497,8 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 			if(fctx) {
 				int res = av_write_frame(fctx, packet);
 				if(res < 0) {
-					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d)\n", res);
+					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d, %s)\n",
+						res, av_err2str(res));
 				}
 			}
 		}
