@@ -4922,9 +4922,11 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_ice_peerconne
 }
 
 void janus_ice_relay_rtcp(janus_ice_handle *handle, janus_plugin_rtcp *packet) {
+	if(!handle || packet == NULL || packet->buffer == NULL)
+		return;
 	/* Find the right medium instance */
 	janus_mutex_lock(&handle->mutex);
-	if(!handle || !handle->pc || packet == NULL || packet->buffer == NULL) {
+	if(!handle->pc || !handle->pc->media || !handle->pc->media_bytype) {
 		janus_mutex_unlock(&handle->mutex);
 		return;
 	}
