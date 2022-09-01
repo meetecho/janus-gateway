@@ -520,7 +520,7 @@ static void *janus_logevh_handler(void *data) {
 					JANUS_LOG(LOG_WARN, "Unknown type of event '%d'\n", type);
 					break;
 			}
-			log_event(event);
+			//log_event(event);
 			json_decref(event);
 
 			event = g_async_queue_try_pop(events);
