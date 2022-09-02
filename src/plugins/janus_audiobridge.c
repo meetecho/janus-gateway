@@ -907,7 +907,17 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
- * All the participants will receive an \c event notification with the
+ * The leaving user will receive a \c left notification:
+ *
+\verbatim
+{
+	"audiobridge" : "left",
+	"room" : <numeric ID of the room>,
+	"id" : <numeric ID of the participant who left>
+}
+\endverbatim
+ *
+ * All the other participants will receive an \c event notification with the
  * ID of the participant who just left:
  *
 \verbatim
