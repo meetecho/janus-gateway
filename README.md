@@ -33,7 +33,7 @@ To install it, you'll need to satisfy the following dependencies:
 
 A couple of plugins depend on a few more libraries:
 
-* [Sofia-SIP](http://sofia-sip.sourceforge.net/) (only needed for the SIP plugin)
+* [Sofia-SIP](https://github.com/freeswitch/sofia-sip) (only needed for the SIP plugin)
 * [libopus](http://opus-codec.org/) (only needed for the AudioBridge plugin)
 * [libogg](http://xiph.org/ogg/) (needed for the VoiceMail plugin and/or post-processor, and optionally AudioBridge and Streaming plugins)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are interested in RTSP support in the Streaming plugin or in the sample Event Handler plugin)
