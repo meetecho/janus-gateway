@@ -716,13 +716,13 @@ All notable changes to this project will be documented in this file.
 - Added several fixes to RTP/RTCP parsing after fuzzing tests
 - Added fixes to keyframe detection after fuzzing tests
 - Fixed some demos not working after update to Chrome 72
-- Fixed occasional crashes when saving .jfcg files (e.g., saving permanent Streaming mountpoints)
+- Fixed occasional crashes when saving .jcfg files (e.g., saving permanent Streaming mountpoints)
 - Added new Admin API command to temporarily stop/resume accepting sessions (e.g., for draining servers)
 - Fixed recordings sometimes not closed/destroyed/renamed when hanging up SIP sessions
 - Added option to SIP/SIPre/NoSIP plugin to override c= IP in SDP
 - Fixed missing RTSP support in Streaming plugin if TURN REST API was disabled in configure
 - Fixed Streaming plugin not returning complete information on secret-less mountpoints (thanks @Musashi178!)
-- Fixed missing .jfcg support in Duktape plugin (thanks @fbertone!)
+- Fixed missing .jcfg support in Duktape plugin (thanks @fbertone!)
 - Updated janus.js to use transceivers for Chrome >=72
 - Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
 
