@@ -159,17 +159,6 @@ $(document).ready(function() {
 										mstreamId = "mstream0";
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
-										var stream = remoteTracks[mid];
-										if(stream) {
-											try {
-												var tracks = stream.getTracks();
-												for(var i in tracks) {
-													var mst = tracks[i];
-													if(mst)
-														mst.stop();
-												}
-											} catch(e) {}
-										}
 										$('#remotevideo' + mid).remove();
 										if(track.kind === "video") {
 											remoteVideos--;

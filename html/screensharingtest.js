@@ -511,17 +511,6 @@ function newRemoteFeed(id, display) {
 				Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
 				if(!on) {
 					// Track removed, get rid of the stream and the rendering
-					var stream = remoteTracks[mid];
-					if(stream) {
-						try {
-							var tracks = stream.getTracks();
-							for(var i in tracks) {
-								var mst = tracks[i];
-								if(mst)
-									mst.stop();
-							}
-						} catch(e) {}
-					}
 					$('#screenvideo' + mid).remove();
 					if(track.kind === "video") {
 						remoteVideos--;

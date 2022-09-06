@@ -739,18 +739,6 @@ function subscribeTo(sources) {
 				Janus.debug(" >> mid " + mid + " is in slot " + slot);
 				if(!on) {
 					// Track removed, get rid of the stream and the rendering
-					var stream = remoteTracks[mid];
-					if(stream) {
-						try {
-							var tracks = stream.getTracks();
-							for(var i in tracks) {
-								var mst = tracks[i];
-								// Temporarily disabled as per https://github.com/meetecho/janus-gateway/issues/3055
-								//~ if(mst)
-									//~ mst.stop();
-							}
-						} catch(e) {}
-					}
 					$('#remotevideo' + slot + '-' + mid).remove();
 					if(track.kind === "video" && feed) {
 						feed.remoteVideos--;
