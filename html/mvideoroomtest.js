@@ -745,8 +745,9 @@ function subscribeTo(sources) {
 							var tracks = stream.getTracks();
 							for(var i in tracks) {
 								var mst = tracks[i];
-								if(mst)
-									mst.stop();
+								// Temporarily disabled as per https://github.com/meetecho/janus-gateway/issues/3055
+								//~ if(mst)
+									//~ mst.stop();
 							}
 						} catch(e) {}
 					}
