@@ -67,9 +67,9 @@ On Ubuntu or Debian, it would require something like this:
 While `libnice` is typically available in most distros as a package, the version available out of the box in Ubuntu is known to cause problems. As such, we always recommend manually compiling and installing the master version of libnice.
 To build libnice, you need Python 3, Meson and Ninja:
 
-	git clone https://gitlab.freedesktop.org/libnice/libnice
+	git clone --branch 0.1.19 https://gitlab.freedesktop.org/libnice/libnice
 	cd libnice
-	meson --prefix=/usr build && ninja -C build && sudo ninja -C build install
+	meson builddir && ninja -C builddir && sudo ninja -C builddir install
 
 * *Note:* Make sure you remove the distro version first, or you'll cause conflicts between the installations. In case you want to keep both for some reason, for custom installations of libnice you can also run `pkg-config --cflags --libs nice` to make sure Janus can find the right installation. If that fails, you may need to set the `PKG_CONFIG_PATH` environment variable prior to compiling Janus, e.g., `export PKG_CONFIG_PATH=/path/to/libnice/lib/pkgconfig`
 
