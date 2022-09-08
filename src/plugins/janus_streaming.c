@@ -7663,7 +7663,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 					index++;
 					continue;
 				}
-				if(strlen(line) < 3) {
+				if(strnlen(line, 3) < 3) {
 					JANUS_LOG(LOG_ERR, "Invalid RTSP line (%zu bytes): %s\n", strlen(line), line);
 					success = FALSE;
 					break;
@@ -7843,7 +7843,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 					index++;
 					continue;
 				}
-				if(strlen(line) < 3) {
+				if(strnlen(line, 3) < 3) {
 					JANUS_LOG(LOG_ERR, "Invalid RTSP line (%zu bytes): %s\n", strlen(line), line);
 					success = FALSE;
 					break;
