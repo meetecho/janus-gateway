@@ -327,7 +327,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 				index++;
 				continue;
 			}
-			if(strlen(line) < 3) {
+			if(strnlen(line, 3) < 3) {
 				if(error)
 					g_snprintf(error, errlen, "Invalid line (%zu bytes): %s", strlen(line), line);
 				success = FALSE;
@@ -465,7 +465,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						/* Start with media type, port and protocol */
 						char type[32];
 						char proto[64];
-						if(strlen(line) > 200) {
+						if(strnlen(line, 200 + 1) > 200) {
 							janus_sdp_mline_destroy(m);
 							if(error)
 								g_snprintf(error, errlen, "Invalid m= line (too long): %zu", strlen(line));
