@@ -376,7 +376,7 @@ int janus_wsevh_init(const char *config_path) {
 		goto error;
 	}
 	path[0] = '/';
-	if(strlen(p) > 1)
+	if(strnlen(p, 1 + 1) > 1)
 		g_strlcpy(path + 1, p, sizeof(path)-2);
 	/* Before connecting, let's check if the server expects a subprotocol */
 	item = janus_config_get(config, config_general, janus_config_type_item, "subprotocol");
