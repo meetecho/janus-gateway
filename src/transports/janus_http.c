@@ -685,7 +685,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				return -1;
 			}
 			ws_path = g_strdup(item->value);
-			if(strlen(ws_path) > 1 && ws_path[strlen(ws_path)-1] == '/') {
+			if(strnlen(ws_path, 1 + 1) > 1 && ws_path[strlen(ws_path)-1] == '/') {
 				/* Remove the trailing slash, it makes things harder when we parse requests later */
 				ws_path[strlen(ws_path)-1] = '\0';
 			}
@@ -700,7 +700,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				return -1;
 			}
 			admin_ws_path = g_strdup(item->value);
-			if(strlen(admin_ws_path) > 1 && admin_ws_path[strlen(admin_ws_path)-1] == '/') {
+			if(strnlen(admin_ws_path, 1 + 1) > 1 && admin_ws_path[strlen(admin_ws_path)-1] == '/') {
 				/* Remove the trailing slash, it makes things harder when we parse requests later */
 				admin_ws_path[strlen(admin_ws_path)-1] = '\0';
 			}
@@ -1423,7 +1423,7 @@ static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connectio
 	}
 	/* Get path components */
 	if(strcasecmp(url, ws_path)) {
-		if(strlen(ws_path) > 1) {
+		if(strnlen(ws_path, 1 + 1) > 1) {
 			basepath = g_strsplit(url, ws_path, -1);
 		} else {
 			/* The base path is the web server too itself, we process the url itself */
@@ -1821,7 +1821,7 @@ static MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connection *con
 	}
 	/* Get path components */
 	if(strcasecmp(url, admin_ws_path)) {
-		if(strlen(admin_ws_path) > 1) {
+		if(strnlen(admin_ws_path, 1 + 1) > 1) {
 			basepath = g_strsplit(url, admin_ws_path, -1);
 		} else {
 			/* The base path is the web server too itself, we process the url itself */
