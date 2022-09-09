@@ -180,7 +180,7 @@ static int janus_pfunix_create_socket(char *pfname, gboolean use_dgram) {
 	if(pfname == NULL)
 		return -1;
 	int fd = -1;
-	if(strlen(pfname) > UNIX_PATH_MAX) {
+	if(strnlen(pfname, UNIX_PATH_MAX + 1) > UNIX_PATH_MAX) {
 		JANUS_LOG(LOG_WARN, "The provided path name (%s) is longer than %lu characters, it will be truncated\n", pfname, UNIX_PATH_MAX);
 		pfname[UNIX_PATH_MAX] = '\0';
 	}
