@@ -304,16 +304,6 @@ $(document).ready(function() {
 										return;
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
-										if(remoteStream) {
-											try {
-												var tracks = remoteStream.getTracks();
-												for(var i in tracks) {
-													var mst = tracks[i];
-													if(mst)
-														mst.stop();
-												}
-											} catch(e) {}
-										}
 										remoteStream = null;
 										$('#roomaudio').remove();
 										return;

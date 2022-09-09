@@ -149,17 +149,6 @@ $(document).ready(function() {
 									// Now that we're aware of the remote stream, we process it to visualize it
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
-										var stream = remoteTracks[mid];
-										if(stream) {
-											try {
-												var tracks = stream.getTracks();
-												for(var i in tracks) {
-													var mst = tracks[i];
-													if(mst)
-														mst.stop();
-												}
-											} catch(e) {}
-										}
 										$('#peeraudio' + mid).remove();
 										delete remoteTracks[mid];
 										return;
