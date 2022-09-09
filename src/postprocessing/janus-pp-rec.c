@@ -198,7 +198,7 @@ static char *janus_pp_extensions_string(const char **allowed, char *supported, s
 	janus_strlcat(supported, "[", suplen);
 	const char **ext = allowed;
 	while(*ext != NULL) {
-		if(strlen(supported) > 1)
+		if(strnlen(supported, 1 + 1) > 1)
 			janus_strlcat(supported, ", ", suplen);
 		janus_strlcat(supported, *ext, suplen);
 		ext++;

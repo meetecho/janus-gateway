@@ -100,7 +100,7 @@ janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *erro
 						return NULL;
 					}
 					if((m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) && m->port > 0) {
-						if(strlen(a->value) > 16) {
+						if(strnlen(a->value, 16 + 1) > 16) {
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] mid on m-line #%d too large: (%zu > 16)\n",
 								handle->handle_id, m->index, strlen(a->value));
 							janus_sdp_destroy(parsed_sdp);
@@ -298,7 +298,7 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 			if(a->name && a->value) {
 				if(!strcasecmp(a->name, "mid")) {
 					/* Found mid attribute */
-					if(strlen(a->value) > 16) {
+					if(strnlen(a->value, 16 + 1) > 16) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] mid on m-line #%d too large: (%zu > 16)\n",
 							handle->handle_id, m->index, strlen(a->value));
 						return -2;
@@ -759,7 +759,7 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 			if(a->name && a->value) {
 				if(!strcasecmp(a->name, "mid")) {
 					/* Found mid attribute */
-					if(strlen(a->value) > 16) {
+					if(strnlen(a->value, 16 + 1) > 16) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] mid on m-line #%d too large: (%zu > 16)\n",
 							handle->handle_id, m->index, strlen(a->value));
 						return -2;
