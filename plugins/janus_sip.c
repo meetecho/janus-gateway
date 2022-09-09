@@ -5540,7 +5540,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				break;
 			}
 			const char *from_value = (const char *)from->t_value;
-			if(from_value == NULL || strlen(from_value) < 2) {
+			if(from_value == NULL || strnlen(from_value, 2) < 2) {
 				JANUS_LOG(LOG_WARN, "Invalid 'siptag_from_str' value '%s'\n", from_value);
 				break;
 			}

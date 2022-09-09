@@ -8023,7 +8023,7 @@ static void *janus_videoroom_handler(void *data) {
 										}
 									}
 									char *tmp = strchr(a->value, ' ');
-									if(tmp && strlen(tmp) > 1) {
+									if(tmp && strnlen(tmp, 1 + 1) > 1) {
 										tmp++;
 										g_free(audio_fmtp);
 										audio_fmtp = g_strdup(tmp);
