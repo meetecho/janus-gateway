@@ -1655,7 +1655,7 @@ static void janus_sip_parse_custom_contact_params(json_t *root, char *custom_par
 /* Sofia SIP logger function: when the Event Handlers mechanism is enabled,
  * we use this to intercept SIP messages sent by the stack (received
  * messages are more easily recoverable in janus_sip_sofia_callback) */
-char sofia_log[2048];
+char sofia_log[3072];
 char call_id[255];
 gboolean skip = FALSE, started = FALSE, append = FALSE;
 static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
