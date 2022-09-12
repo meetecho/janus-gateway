@@ -867,6 +867,7 @@ static char *sips_certs_dir = NULL;
 static int sip_timer_t1x64 = JANUS_DEFAULT_SIP_TIMER_T1X64;
 
 static gboolean query_contact_header = FALSE;
+static gboolean message_log_single_callback = FALSE;
 
 static GThread *handler_thread;
 static void *janus_sip_handler(void *data);
@@ -1771,6 +1772,127 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 	}
 }
 
+/* Sofia SIP logger function: when the Event Handlers mechanism is enabled,
+ * we use this to intercept SIP messages sent by the stack (received
+ * messages are more easily recoverable in janus_sip_sofia_callback) */
+static void janus_sip_sofia_logger_single(void *stream, char const *fmt, va_list ap) {
+	if(!fmt)
+		return;
+	char line[255];
+	char message[16000];
+	char sofia_log_buf[16000];
+	char call_id_hdr[255];
+	sofia_log_buf[0] = '\0';
+	call_id_hdr[0] = '\0';
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#ifndef __clang__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsuggest-attribute=format"
+#endif
+	g_vsnprintf(line, sizeof(message), fmt, ap);
+#ifndef __clang__
+#pragma GCC diagnostic pop
+#endif
+#pragma GCC diagnostic pop
+	gchar **parts = g_strsplit(message, "\n", -1);
+	if (parts) {
+		int index = 0;
+		char *line = NULL, *cr = NULL;
+		while((line = parts[index]) != NULL) {
+			cr = strchr(line, '\r');
+			if(cr != NULL)
+				*cr = '\0';
+			if(*line == '\0') {
+				if(cr != NULL)
+					*cr = '\r';
+				index++;
+				continue;
+			}
+
+			/* First line of the log indicates if we send or receive a message. */
+			/* We are only interested in the sent ones */
+			if(index==0) {
+				if(strstr(line, "send ") == line) {
+					int length = atoi(line+5);
+					JANUS_LOG(LOG_HUGE, "Intercepting message (%d bytes)\n", length);
+					index++;
+					continue;
+				}
+				g_strfreev(parts);
+				return ;
+			}
+
+			if(strlen(line) == 1) {
+				/* Append a carriage and return */
+				janus_strlcat(sofia_log_buf, "\r\n", sizeof(sofia_log_buf));
+			} else if(strstr(line, "-") == line ) {
+				index++;
+				continue;
+			} else if(strstr(line, "OPTIONS") == line) {
+				index++;
+				continue;
+			} else {
+				/* Is this a Call-ID header? Keep note of it */
+				if(strstr(line, "Call-ID") == line) {
+					g_snprintf(call_id_hdr, sizeof(call_id_hdr), "%s", line+9);
+				}
+				/* Append the line to our buffer, skipping the indent */
+				janus_strlcat(sofia_log_buf, line, sizeof(sofia_log_buf));
+				janus_strlcat(sofia_log_buf, "\r\n", sizeof(sofia_log_buf));
+			}
+			if(cr != NULL)
+				*cr = '\r';
+			index++;
+		}
+		g_strfreev(parts);
+	} else {
+		return;
+	}
+
+	/* Look for the session this message belongs to */
+	janus_sip_session *session = NULL;
+	janus_mutex_lock(&sessions_mutex);
+	if(strlen(call_id_hdr))
+		session = g_hash_table_lookup(callids, call_id_hdr);
+	if(!session) {
+		/* Couldn't find any SIP session with that Call-ID, check the request */
+		if(strstr(sofia_log_buf, "REGISTER") == sofia_log_buf || strstr(sofia_log_buf, "SIP/2.0 ") == sofia_log) {
+			/* FIXME This is a REGISTER or a response code:
+			* check the To header and get the identity from there */
+			char *from = strstr(sofia_log_buf, "To: ");
+			if(from) {
+				from = from+4;
+				char *start = strstr(from, "<");
+				if(start) {
+					start++;
+					char *end = strstr(from, ">");
+					if(end) {
+						*end = '\0';
+						g_snprintf(call_id_hdr, sizeof(call_id_hdr), "%s", start);
+						*end = '>';
+						session = g_hash_table_lookup(identities, call_id_hdr);
+					}
+				}
+			}
+		}
+	}
+	if(session)
+		janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
+	if(session) {
+		/* Notify event handlers about the content of the whole outgoing SIP message */
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("sip-out"));
+		json_object_set_new(info, "sip", json_string(sofia_log_buf));
+		gateway->notify_event(&janus_sip_plugin, session->handle, info);
+		janus_refcount_decrease(&session->ref);
+	} else {
+		JANUS_LOG(LOG_WARN, "Couldn't find a session associated to this message, dropping it...\n%s", sofia_log_buf);
+	}
+	return;
+}
+
 /* Helpers to ref/unref sessions with active calls */
 static void janus_sip_ref_active_call(janus_sip_session *session) {
 	if(session == NULL)
@@ -1828,6 +1950,10 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			/* Versions of Sofia SIP >= 1.13 apparently don't add a Contact header in
 			 * dialogs, so we'll query it ourselves using nua_get_params (see #2597) */
 			query_contact_header = TRUE;
+			/* In Sofia SIP >= 1.13 versions the full SIP message is received in the
+			* su_log_redirect callback function. In prior versions the callback function
+			* was called line by line. */
+			message_log_single_callback = TRUE;
 		}
 	}
 
@@ -1997,7 +2123,11 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		JANUS_LOG(LOG_WARN, "sofia-sip logs are going to be redirected and they will not be shown in the process output\n");
 		/* Enable the transport logging, as we want to have access to the SIP messages */
 		setenv("TPORT_LOG", "1", 1);
-		su_log_redirect(NULL, janus_sip_sofia_logger, NULL);
+		if(message_log_single_callback) {
+			su_log_redirect(NULL, janus_sip_sofia_logger_single, NULL);
+		} else {
+			su_log_redirect(NULL, janus_sip_sofia_logger, NULL);
+		}
 	}
 
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sip_session_destroy);
