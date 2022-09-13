@@ -121,7 +121,9 @@ int janus_pp_h265_create(char *destination, char *metadata, gboolean faststart, 
 		JANUS_LOG(LOG_ERR, "Error opening file for output (%d, %s)\n", res, av_err2str(res));
 		return -1;
 	}
+#if LIBAVFORMAT_VER_AT_LEAST(58, 7)
 	fctx->url = g_strdup(filename);
+#endif
 	if(avformat_write_header(fctx, &options) < 0) {
 		JANUS_LOG(LOG_ERR, "Error writing header\n");
 		return -1;
@@ -643,7 +645,9 @@ void janus_pp_h265_close(void) {
 	}
 	if(fctx != NULL) {
 		avio_close(fctx->pb);
+#if LIBAVFORMAT_VER_AT_LEAST(58, 7)
 		g_free(fctx->url);
+#endif
 		av_free(fctx);
 	}
 }
