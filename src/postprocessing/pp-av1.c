@@ -25,7 +25,7 @@
 
 /* MP4 output */
 static AVFormatContext *fctx;
-#if LIBAVCODEC_VER_AT_LEAST(57, 25)
+#if LIBAVCODEC_VER_AT_LEAST(58, 18)
 static AVStream *vStream;
 #endif
 static uint16_t max_width = 0, max_height = 0;
@@ -43,7 +43,7 @@ const char **janus_pp_av1_get_extensions(void) {
 int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart, const char *extension) {
 	if(destination == NULL)
 		return -1;
-#if !LIBAVCODEC_VER_AT_LEAST(57, 25)
+#if !LIBAVCODEC_VER_AT_LEAST(58, 18)
 	JANUS_LOG(LOG_ERR, "This version of libavcodec doesn't support AV1...\n");
 	return -1;
 #else
