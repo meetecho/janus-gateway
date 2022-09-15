@@ -52,6 +52,9 @@
 #				optionally with a fmtp attribute to match (codec/fmtp properties).
 #				If not provided, all codecs enabled in the room are offered, with no fmtp.
 #				Notice that the fmtp is parsed, and only a few codecs are supported.
+# threads = number of threads each publisher should be assigned to assist with the
+#           relaying part, which can help if you expect a lot of subscribers that
+#           may cause the plugin to slow down and fail to catch up (default=0)
 #}
 
 general: {
