@@ -8901,7 +8901,11 @@ static void janus_videoroom_incoming_data_internal(janus_videoroom_session *sess
 	pkt.is_rtp = FALSE;
 	pkt.textdata = !packet->binary;
 	janus_mutex_lock_nodebug(&ps->subscribers_mutex);
-	g_slist_foreach(ps->subscribers, janus_videoroom_relay_data_packet, &pkt);
+	if(participant->helper_threads > 0) {
+		g_list_foreach(participant->threads, janus_videoroom_helper_rtpdata_packet, &packet);
+	} else {
+		g_slist_foreach(ps->subscribers, janus_videoroom_relay_data_packet, &pkt);
+	}
 	janus_mutex_unlock_nodebug(&ps->subscribers_mutex);
 	janus_videoroom_publisher_dereference_nodebug(participant);
 }
