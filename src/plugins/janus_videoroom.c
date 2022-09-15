@@ -120,6 +120,10 @@ room-<unique room ID>: {
 				optionally with a fmtp attribute to match (codec/fmtp properties).
 				If not provided, all codecs enabled in the room are offered, with no fmtp.
 				Notice that the fmtp is parsed, and only a few codecs are supported.
+	cache_publisher_keyframes = true|false (whether to cache keyframes for new subscribers
+				so that they can be sent when a PLI from a subscriber is requested. Note that this
+				stops the PLI from a subscriber being sent to a publisher, as the cached keyframe is
+				sent instead; default=false)
 }
 \endverbatim
  *
@@ -1627,7 +1631,8 @@ static struct janus_json_parameter create_parameters[] = {
 	{"notify_joining", JANUS_JSON_BOOL, 0},
 	{"require_e2ee", JANUS_JSON_BOOL, 0},
 	{"dummy_publisher", JANUS_JSON_BOOL, 0},
-	{"dummy_streams", JANUS_JSON_ARRAY, 0}
+	{"dummy_streams", JANUS_JSON_ARRAY, 0},
+	{"cache_publisher_keyframe", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter edit_parameters[] = {
 	{"secret", JSON_STRING, 0},
@@ -2035,6 +2040,7 @@ typedef struct janus_videoroom {
 	gboolean check_allowed;		/* Whether to check tokens when participants join (see below) */
 	GHashTable *allowed;		/* Map of participants (as tokens) allowed to join */
 	gboolean notify_joining;	/* Whether an event is sent to notify all participants if a new participant joins the room */
+	gboolean cache_publisher_keyframe; /* Whether to cache keyframes of the publishers */
 	janus_mutex mutex;			/* Mutex to lock this room instance */
 	janus_refcount ref;			/* Reference counter for this room */
 } janus_videoroom;
@@ -2144,6 +2150,16 @@ static GMainLoop *rtcpfwd_loop = NULL;
 static GThread *rtcpfwd_thread = NULL;
 static void *janus_videoroom_rtp_forwarder_rtcp_thread(void *data);
 
+typedef struct janus_videoroom_publisher_keyframe {
+	gboolean enabled;
+	/* If enabled, we store the packets of the last keyframe, to immediately send them for new viewers */
+	GList *latest_keyframe;
+	/* This is where we store packets while we're still collecting the whole keyframe */
+	GList *temp_keyframe;
+	guint32 temp_ts;
+	janus_mutex mutex;
+} janus_videoroom_publisher_keyframe;
+
 typedef struct janus_videoroom_publisher {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
@@ -2246,6 +2262,7 @@ typedef struct janus_videoroom_publisher_stream {
 	janus_mutex subscribers_mutex;
 	volatile gint destroyed;
 	janus_refcount ref;
+	janus_videoroom_publisher_keyframe keyframe;
 } janus_videoroom_publisher_stream;
 /* Helper to add a new RTP forwarder for a specific stream sent by publisher */
 static janus_videoroom_rtp_forwarder *janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publisher *p,
@@ -2427,6 +2444,13 @@ static void janus_videoroom_publisher_stream_dereference_void(void *ps) {
 	janus_videoroom_publisher_stream_unref((janus_videoroom_publisher_stream *)ps);
 }
 
+static void janus_videoroom_rtp_relay_packet_free(janus_videoroom_rtp_relay_packet *pkt) {
+	if(pkt == NULL)
+		return;
+	g_free(pkt->data);
+	g_free(pkt);
+}
+
 static void janus_videoroom_publisher_stream_free(const janus_refcount *ps_ref) {
 	janus_videoroom_publisher_stream *ps = janus_refcount_containerof(ps_ref, janus_videoroom_publisher_stream, ref);
 	/* This publisher stream can be destroyed, free all the resources */
@@ -2444,6 +2468,13 @@ static void janus_videoroom_publisher_stream_free(const janus_refcount *ps_ref) 
 	janus_mutex_destroy(&ps->subscribers_mutex);
 	janus_mutex_destroy(&ps->rid_mutex);
 	janus_rtp_simulcasting_cleanup(NULL, NULL, ps->rid, NULL);
+
+	janus_mutex_lock(&ps->keyframe.mutex);
+	if(ps->keyframe.latest_keyframe != NULL)
+		g_list_free_full(ps->keyframe.latest_keyframe, (GDestroyNotify)janus_videoroom_rtp_relay_packet_free);
+	ps->keyframe.latest_keyframe = NULL;
+	janus_mutex_unlock(&ps->keyframe.mutex);
+
 	g_free(ps);
 }
 
@@ -3599,6 +3630,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *req_e2ee = janus_config_get(config, cat, janus_config_type_item, "require_e2ee");
 			janus_config_item *dummy_pub = janus_config_get(config, cat, janus_config_type_item, "dummy_publisher");
 			janus_config_item *dummy_str = janus_config_get(config, cat, janus_config_type_array, "dummy_streams");
+			janus_config_item *cache_publisher_keyframe = janus_config_get(config, cat, janus_config_type_item, "cache_publisher_keyframe");
 			janus_config_item *record = janus_config_get(config, cat, janus_config_type_item, "record");
 			janus_config_item *rec_dir = janus_config_get(config, cat, janus_config_type_item, "rec_dir");
 			janus_config_item *lock_record = janus_config_get(config, cat, janus_config_type_item, "lock_record");
@@ -3826,6 +3858,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->private_ids = g_hash_table_new(NULL, NULL);
 			videoroom->check_allowed = FALSE;	/* Static rooms can't have an "allowed" list yet, no hooks to the configuration file */
 			videoroom->allowed = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
+			videoroom->cache_publisher_keyframe = cache_publisher_keyframe && cache_publisher_keyframe->value && janus_is_true(cache_publisher_keyframe->value);
 			/* Should we create a dummy participant for placeholder m-lines? */
 			if(dummy_pub && dummy_pub->value && janus_is_true(dummy_pub->value)) {
 				videoroom->dummy_publisher = TRUE;
@@ -4650,6 +4683,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *rec_dir = json_object_get(root, "rec_dir");
 		json_t *lock_record = json_object_get(root, "lock_record");
 		json_t *permanent = json_object_get(root, "permanent");
+		json_t *cache_publisher_keyframe = json_object_get(root, "cache_publisher_keyframe");
 		if(allowed) {
 			/* Make sure the "allowed" array only contains strings */
 			gboolean ok = TRUE;
@@ -4971,6 +5005,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if(videoroom->dummy_publisher) {
 			JANUS_LOG(LOG_VERB, "  -- The room is going to have a dummy publisher for placeholder subscriptions\n");
 		}
+
+		videoroom->cache_publisher_keyframe = cache_publisher_keyframe ? json_is_true(cache_publisher_keyframe) : FALSE;
+
 		if(save) {
 			/* This room is permanent: save to the configuration file too
 			 * FIXME: We should check if anything fails... */
@@ -7607,6 +7644,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 						ps->vssrc[1] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 1;
 						ps->vssrc[2] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 2;
 					}
+
+					ps->keyframe.enabled = publisher->room->cache_publisher_keyframe;
+					ps->keyframe.latest_keyframe = NULL;
+					ps->keyframe.temp_keyframe = NULL;
+					ps->keyframe.temp_ts = 0;
+					janus_mutex_init(&ps->keyframe.mutex);
 				}
 				int video_orient_extmap_id = json_integer_value(json_object_get(s, "videoorient_ext_id"));
 				if(video_orient_extmap_id > 0)
@@ -8516,7 +8559,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 					participant->remb_latest = janus_get_monotonic_time();
 			}
 			/* Generate FIR/PLI too, if needed */
-			if(video && ps->active && !ps->muted && (videoroom->fir_freq > 0)) {
+			if(video && ps->active && !ps->muted && (videoroom->fir_freq > 0 || ps->keyframe.enabled)) {
 				/* We generate RTCP every tot seconds/frames */
 				gint64 now = janus_get_monotonic_time();
 				/* First check if this is a keyframe, though: if so, we reset the timer */
@@ -8526,25 +8569,66 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 					janus_videoroom_publisher_dereference_nodebug(participant);
 					return;
 				}
+
+				gboolean kf = FALSE;
 				if(ps->vcodec == JANUS_VIDEOCODEC_VP8) {
-					if(janus_vp8_is_keyframe(payload, plen))
-						ps->fir_latest = now;
+					kf = janus_vp8_is_keyframe(payload, plen);
 				} else if(ps->vcodec == JANUS_VIDEOCODEC_VP9) {
-					if(janus_vp9_is_keyframe(payload, plen))
-						ps->fir_latest = now;
+					kf = janus_vp9_is_keyframe(payload, plen);
 				} else if(ps->vcodec == JANUS_VIDEOCODEC_H264) {
-					if(janus_h264_is_keyframe(payload, plen))
-						ps->fir_latest = now;
+					kf = janus_h264_is_keyframe(payload, plen);
 				} else if(ps->vcodec == JANUS_VIDEOCODEC_AV1) {
-					if(janus_av1_is_keyframe(payload, plen))
-						ps->fir_latest = now;
+					kf = janus_av1_is_keyframe(payload, plen);
 				} else if(ps->vcodec == JANUS_VIDEOCODEC_H265) {
-					if(janus_h265_is_keyframe(payload, plen))
-						ps->fir_latest = now;
+					kf = janus_h265_is_keyframe(payload, plen);
 				}
-				if((now-ps->fir_latest) >= ((gint64)videoroom->fir_freq*G_USEC_PER_SEC)) {
+
+				if (kf) {
+					ps->fir_latest = now;
+				}
+
+				if(videoroom->fir_freq > 0 && (now-ps->fir_latest) >= ((gint64)videoroom->fir_freq*G_USEC_PER_SEC)) {
 					/* FIXME We send a FIR every tot seconds */
 					janus_videoroom_reqpli(ps, "Regular keyframe request");
+				}
+
+				//Buffer the keyframe if enabled
+				if (ps->keyframe.enabled) {
+					if(kf) {
+						/* New keyframe, start saving it */
+						ps->keyframe.temp_ts = ntohl(rtp->timestamp);
+						janus_videoroom_rtp_relay_packet *kfpkt = g_malloc(sizeof(janus_videoroom_rtp_relay_packet));
+						memcpy(kfpkt, &packet, sizeof(janus_videoroom_rtp_relay_packet));
+						kfpkt->data = g_malloc(len);
+						memcpy(kfpkt->data, buf, len);
+						kfpkt->data->ssrc = htons(1);
+						JANUS_LOG(LOG_HUGE, "[%s] %s:%s: New keyframe received! ts=%"SCNu32"\n", ps->publisher->room_id_str, ps->publisher->user_id_str, ps->mid, ps->keyframe.temp_ts);
+						janus_mutex_lock(&ps->keyframe.mutex);
+						ps->keyframe.temp_keyframe = g_list_append(ps->keyframe.temp_keyframe, kfpkt);
+						janus_mutex_unlock(&ps->keyframe.mutex);
+					} else if(ps->keyframe.temp_ts > 0 && ntohl(rtp->timestamp) != ps->keyframe.temp_ts) {
+						/* We received the last part of the keyframe, get rid of the old one and use this from now on */
+						JANUS_LOG(LOG_HUGE, "[%s] %s:%s: ... last part of keyframe received! ts=%"SCNu32", %d packets\n",
+							ps->publisher->room_id_str, ps->publisher->user_id_str, ps->mid, ps->keyframe.temp_ts, g_list_length(ps->keyframe.temp_keyframe));
+						ps->keyframe.temp_ts = 0;
+						janus_mutex_lock(&ps->keyframe.mutex);
+						if(ps->keyframe.latest_keyframe != NULL)
+							g_list_free_full(ps->keyframe.latest_keyframe, (GDestroyNotify)janus_videoroom_rtp_relay_packet_free);
+						ps->keyframe.latest_keyframe = ps->keyframe.temp_keyframe;
+						ps->keyframe.temp_keyframe = NULL;
+						janus_mutex_unlock(&ps->keyframe.mutex);
+					} else if(ntohl(rtp->timestamp) == ps->keyframe.temp_ts) {
+						/* Part of the keyframe we're currently saving, store */
+						janus_videoroom_rtp_relay_packet *kfpkt = g_malloc(sizeof(janus_videoroom_rtp_relay_packet));
+						memcpy(kfpkt, &packet, sizeof(janus_videoroom_rtp_relay_packet));
+						kfpkt->data = g_malloc(len);
+						memcpy(kfpkt->data, buf, len);
+						kfpkt->data->ssrc = htons(1);
+						janus_mutex_lock(&ps->keyframe.mutex);
+						JANUS_LOG(LOG_HUGE, "[%s] %s:%s: ... other part of keyframe received! ts=%"SCNu32"\n", ps->publisher->room_id_str, ps->publisher->user_id_str, ps->mid, ps->keyframe.temp_ts);
+						ps->keyframe.temp_keyframe = g_list_append(ps->keyframe.temp_keyframe, kfpkt);
+						janus_mutex_unlock(&ps->keyframe.mutex);
+					}
 				}
 			}
 		}
@@ -8593,8 +8677,24 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 		if(janus_rtcp_has_fir(buf, len) || janus_rtcp_has_pli(buf, len)) {
 			/* We got a FIR or PLI, forward a PLI to the publisher */
 			janus_videoroom_publisher *p = ps->publisher;
-			if(p && p->session)
-				janus_videoroom_reqpli(ps, "PLI from subscriber");
+
+			if(p && p->session) {
+				if(ps->keyframe.enabled) {
+					JANUS_LOG(LOG_HUGE, "Any keyframe to send? (%s)\n", ps->mid);
+					janus_mutex_lock(&ps->keyframe.mutex);
+					if(ps->keyframe.latest_keyframe != NULL) {
+						JANUS_LOG(LOG_HUGE, "Yep! %d packets\n", g_list_length(ps->keyframe.latest_keyframe));
+						GList *temp = ps->keyframe.latest_keyframe;
+						while(temp) {
+							janus_videoroom_relay_rtp_packet(ss, temp->data);
+							temp = temp->next;
+						}
+					}
+					janus_mutex_unlock(&ps->keyframe.mutex);
+				} else {
+					janus_videoroom_reqpli(ps, "PLI from subscriber");
+				}
+			}
 		}
 		uint32_t bitrate = janus_rtcp_get_remb(buf, len);
 		if(bitrate > 0) {
@@ -12043,6 +12143,13 @@ static void *janus_videoroom_handler(void *data) {
 							}
 							mdir = (ps->acodec != JANUS_AUDIOCODEC_NONE ? JANUS_SDP_RECVONLY : JANUS_SDP_INACTIVE);
 						} else if(m->type == JANUS_SDP_VIDEO) {
+							// Set up keyframe cache
+							ps->keyframe.enabled = participant->room->cache_publisher_keyframe;
+							ps->keyframe.latest_keyframe = NULL;
+							ps->keyframe.temp_keyframe = NULL;
+							ps->keyframe.temp_ts = 0;
+							janus_mutex_init(&ps->keyframe.mutex);
+
 							vp9_profile = videoroom->vp9_profile;
 							h264_profile = videoroom->h264_profile;
 							if(ps->vcodec != JANUS_VIDEOCODEC_NONE) {
