@@ -2874,7 +2874,9 @@ function Janus(gatewayCallbacks) {
 				}
 				transceiver.sender.track.enabled = mute ? false : true;
 			} else {
-				config.myStream.getVideoTracks()[0].enabled = mute ? false : true;
+				for(const videostream of config.myStream.getVideoTracks()) {
+					videostream.enabled = !mute
+				}
 			}
 		} else {
 			// Mute/unmute audio track
@@ -2895,7 +2897,9 @@ function Janus(gatewayCallbacks) {
 				}
 				transceiver.sender.track.enabled = mute ? false : true;
 			} else {
-				config.myStream.getAudioTracks()[0].enabled = mute ? false : true;
+				for(const audiostream of config.myStream.getAudioTracks()) {
+					audiostream.enabled = !mute
+				}
 			}
 		}
 		return true;
