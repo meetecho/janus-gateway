@@ -4250,11 +4250,11 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 					/* We missed more than no_second_timer seconds of video! */
 					medium->in_stats.info[vindex].notified_lastsec = TRUE;
 					if(vindex == 0) {
-						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive %s for more than a second...\n",
-							handle->handle_id, medium->type == JANUS_MEDIA_VIDEO ? "video" : "audio");
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive %s for more than %u second(s)...\n",
+							handle->handle_id, medium->type == JANUS_MEDIA_VIDEO ? "video" : "audio", no_media_timer);
 					} else {
-						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive %s (substream #%d) for more than a second...\n",
-							handle->handle_id, medium->type == JANUS_MEDIA_VIDEO ? "video" : "audio", vindex);
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive %s (substream #%d) for more than %u second(s)...\n",
+							handle->handle_id, medium->type == JANUS_MEDIA_VIDEO ? "video" : "audio", vindex, no_media_timer);
 					}
 					janus_ice_notify_media(handle, medium->mid, medium->type == JANUS_MEDIA_VIDEO, medium->rtcp_ctx[1] != NULL, vindex, FALSE);
 				}
