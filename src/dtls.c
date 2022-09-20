@@ -184,7 +184,8 @@ static void janus_dtls_cb_openssl_lock(int mode, int type, const char *file, int
 
 static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key, gboolean rsa_private_key) {
 	static const int num_bits = 2048;
-#if OPENSSL_VERSION_MAJOR < 3
+/* OPENSSL_VERSION_MAJOR is defined only in OpenSSL >= 3 */
+#ifndef OPENSSL_VERSION_MAJOR
 	BIGNUM *bne = NULL;
 	RSA *rsa_key = NULL;
 	EC_KEY *ecc_key = NULL;
@@ -194,7 +195,7 @@ static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key, 
 	JANUS_LOG(LOG_VERB, "Generating DTLS key / cert\n");
 
 	if(rsa_private_key) {
-#if OPENSSL_VERSION_MAJOR < 3
+#ifndef OPENSSL_VERSION_MAJOR
 		/* Create a private key object (needed to hold the RSA key). */
 		*private_key = EVP_PKEY_new();
 		if(!*private_key) {
@@ -243,7 +244,13 @@ static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key, 
 #endif
 	} else {
 		/* Create key with curve dictated by DTLS_ELLIPTIC_CURVE */
-#if OPENSSL_VERSION_MAJOR < 3
+#ifndef OPENSSL_VERSION_MAJOR
+		*private_key = EVP_PKEY_new();
+		if(!*private_key) {
+			JANUS_LOG(LOG_FATAL, "EVP_PKEY_new() failed\n");
+			goto error;
+		}
+
 		if((ecc_key = EC_KEY_new_by_curve_name(DTLS_ELLIPTIC_CURVE)) == NULL) {
 			JANUS_LOG(LOG_FATAL, "EC_KEY_new_by_curve_name() failed\n");
 			goto error;
@@ -318,13 +325,13 @@ static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key, 
 	}
 
 	/* Free stuff and resurn. */
-#if OPENSSL_VERSION_MAJOR < 3
+#ifndef OPENSSL_VERSION_MAJOR
 	BN_free(bne);
 #endif
 	return 0;
 
 error:
-#if OPENSSL_VERSION_MAJOR < 3
+#ifndef OPENSSL_VERSION_MAJOR
 	if(bne)
 		BN_free(bne);
 	if(rsa_key && !*private_key)
@@ -606,7 +613,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_pc, janus_dtls_role role) {
 	 * negotiated when acting as the server. Use NIST's P-256 which is
 	 * commonly supported.
 	 */
-#if OPENSSL_VERSION_MAJOR < 3
+#ifndef OPENSSL_VERSION_MAJOR
 	EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
 	if(ecdh == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating ECDH group! (%s)\n",
