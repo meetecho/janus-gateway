@@ -6890,7 +6890,7 @@ static void *janus_audiobridge_handler(void *data) {
 						spatial_position = 100;
 					participant->spatial_position = spatial_position;
 				}
-				/* Notify all other participants about the mute/unmute */
+				/* Notify all other participants */
 				janus_mutex_lock(&rooms_mutex);
 				janus_audiobridge_room *audiobridge = participant->room;
 				if(audiobridge != NULL) {
