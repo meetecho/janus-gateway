@@ -4246,7 +4246,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 				gint64 last = medium->in_stats.info[vindex].updated;
 				if(!medium->in_stats.info[vindex].notified_lastsec && last &&
 						!medium->in_stats.info[vindex].bytes_lastsec && !medium->in_stats.info[vindex].bytes_lastsec_temp &&
-							now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+							now - last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of video! */
 					medium->in_stats.info[vindex].notified_lastsec = TRUE;
 					if(vindex == 0) {
