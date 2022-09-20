@@ -276,7 +276,7 @@ static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key, 
 	/* Create the X509 certificate. */
 	*certificate = X509_new();
 	if(!*certificate) {
-		JANUS_LOG(LOG_FATAL, "X509_new() failed\n");
+		JANUS_LOG(LOG_FATAL, "X509_new() failed (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		goto error;
 	}
 
@@ -292,14 +292,14 @@ static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key, 
 
 	/* Set the public key for the certificate using the key. */
 	if(!X509_set_pubkey(*certificate, *private_key)) {
-		JANUS_LOG(LOG_FATAL, "X509_set_pubkey() failed\n");
+		JANUS_LOG(LOG_FATAL, "X509_set_pubkey() failed (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		goto error;
 	}
 
 	/* Set certificate fields. */
 	cert_name = X509_get_subject_name(*certificate);
 	if(!cert_name) {
-		JANUS_LOG(LOG_FATAL, "X509_get_subject_name() failed\n");
+		JANUS_LOG(LOG_FATAL, "X509_get_subject_name() failed (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		goto error;
 	}
 	X509_NAME_add_entry_by_txt(cert_name, "O", MBSTRING_ASC, (const unsigned char*)"Janus", -1, -1, 0);
@@ -307,13 +307,13 @@ static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key, 
 
 	/* It is self-signed so set the issuer name to be the same as the subject. */
 	if(!X509_set_issuer_name(*certificate, cert_name)) {
-		JANUS_LOG(LOG_FATAL, "X509_set_issuer_name() failed\n");
+		JANUS_LOG(LOG_FATAL, "X509_set_issuer_name() failed (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		goto error;
 	}
 
 	/* Sign the certificate with the private key. */
-	if(!X509_sign(*certificate, *private_key, EVP_sha1())) {
-		JANUS_LOG(LOG_FATAL, "X509_sign() failed\n");
+	if(!X509_sign(*certificate, *private_key, EVP_sha256())) {
+		JANUS_LOG(LOG_FATAL, "X509_sign() failed (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		goto error;
 	}
 
