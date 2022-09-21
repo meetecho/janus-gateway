@@ -4165,9 +4165,9 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 
 		participant->muted = muted;
+		JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %s, user %s)\n",
+			participant->muted ? "true" : "false", participant->room->room_id_str, participant->user_id_str);
 		if(participant->muted) {
-			JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %s, user %s)\n",
-				participant->muted ? "true" : "false", participant->room->room_id_str, participant->user_id_str);
 			/* Clear the queued packets waiting to be handled */
 			janus_mutex_lock(&participant->qmutex);
 			while(participant->inbuf) {
