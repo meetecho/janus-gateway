@@ -5761,6 +5761,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 			} else if(participant->codec == JANUS_AUDIOCODEC_PCMA || participant->codec == JANUS_AUDIOCODEC_PCMU) {
 				/* G.711 */
 				if(plen != 160) {
+					g_atomic_int_set(&participant->decoding, 0);
 					JANUS_LOG(LOG_WARN, "[G.711] Wrong packet size (expected 160, got %d), skipping audio packet\n", plen);
 					g_free(pkt->data);
 					g_free(pkt);
