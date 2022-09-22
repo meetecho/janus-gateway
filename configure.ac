@@ -9,7 +9,6 @@ AC_ENABLE_STATIC(no)
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AM_SILENT_RULES([yes])
 
-#AC_GNU_SOURCE has been deprecated (https://www.gnu.org/software/autoconf/manual/autoconf-2.69/html_node/Obsolete-Macros.html)
 AC_USE_SYSTEM_EXTENSIONS
 
 AC_PROG_CC
@@ -659,7 +658,7 @@ AM_CONDITIONAL([ENABLE_GELFEVH], [test "x$enable_gelf_event_handler" = "xyes"])
 
 AM_CONDITIONAL([ENABLE_JSONLOGGER], [test "x$enable_json_logger" = "xyes"])
 
-AC_TRY_COMPILE([
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
                #include <stdlib.h>
                #include <sys/socket.h>
                #include <sys/un.h>
@@ -667,16 +666,13 @@ AC_TRY_COMPILE([
                  int pfd = socket(PF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0);
                  if(pfd < 0)
                    exit(1);
-               }],
-               [],
-               [
+               }]], [[]])],[
                  AS_IF([test "x$enable_unix_sockets" != "xno"],
                  [
                     AC_DEFINE(HAVE_PFUNIX)
                     enable_unix_sockets=yes
                  ])
-               ],
-               [
+               ],[
                  AS_IF([test "x$enable_unix_sockets" = "xyes"],
                        [AC_MSG_ERROR([SOCK_SEQPACKET not defined in your OS. Use --disable-unix-sockets])])
                ])
