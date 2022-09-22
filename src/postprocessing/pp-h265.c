@@ -67,7 +67,7 @@ int janus_pp_h265_create(char *destination, char *metadata, gboolean faststart, 
     char filename[1024];
 	snprintf(filename, sizeof(filename), "%s", destination);
 #ifdef USE_CODECPAR
-	const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H265);
+	AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H265);
 	if(!codec) {
 		/* Error opening video codec */
 		JANUS_LOG(LOG_ERR, "Encoder not available\n");
