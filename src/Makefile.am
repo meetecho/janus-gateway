@@ -203,6 +203,10 @@ transports_cflags = \
 	$(TRANSPORTS_CFLAGS) \
 	$(NULL)
 
+transports_ldflags = \
+	-version-info $(JANUS_VERSION_SO) \
+	$(NULL)
+
 transports_libadd = \
 	$(TRANSPORTS_LIBS) \
 	$(NULL)
@@ -274,6 +278,10 @@ endif
 events_cflags = \
 	$(AM_CFLAGS) \
 	$(EVENTS_CFLAGS) \
+	$(NULL)
+
+events_ldflags = \
+	-version-info $(JANUS_VERSION_SO) \
 	$(NULL)
 
 events_libadd = \
@@ -349,6 +357,10 @@ loggers_cflags = \
 	$(LOGGERS_CFLAGS) \
 	$(NULL)
 
+loggers_ldflags = \
+	-version-info $(JANUS_VERSION_SO) \
+	$(NULL)
+
 loggers_libadd = \
 	$(LOGGERS_LIBS) \
 	$(NULL)
@@ -370,6 +382,10 @@ endif
 plugins_cflags = \
 	$(AM_CFLAGS) \
 	$(PLUGINS_CFLAGS) \
+	$(NULL)
+
+plugins_ldflags = \
+	-version-info $(JANUS_VERSION_SO) \
 	$(NULL)
 
 plugins_libadd = \
