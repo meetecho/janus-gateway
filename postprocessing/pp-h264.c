@@ -67,7 +67,11 @@ int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart, 
     char filename[1024];
 	snprintf(filename, sizeof(filename), "%s", destination);
 #ifdef USE_CODECPAR
+#if LIBAVCODEC_VER_AT_LEAST(59, 18)
 	const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+#else
+	AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+#endif
 	if(!codec) {
 		/* Error opening video codec */
 		JANUS_LOG(LOG_ERR, "Encoder not available\n");
