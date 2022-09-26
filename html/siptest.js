@@ -546,7 +546,12 @@ $(document).ready(function() {
 									if($('#videoright audio').length === 0 && $('#videoright video').length === 0) {
 										$('#videos').removeClass('hide').show();
 										$('#videoright').parent().find('h3').html(
-											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
+											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>' +
+											'<span id="ctrls" class="pull-right btn-group btn-group-xs">' +
+												'<button id="msg" title="Send message" class="btn btn-info"><i class="fa fa-envelope"></i></button>' +
+												'<button id="info" title="Send INFO" class="btn btn-info"><i class="fa fa-info"></i></button>' +
+												'<button id="transfer" title="Transfer call" class="btn btn-info"><i class="fa fa-mail-forward"></i></button>' +
+											'</span>');
 										for(var i=0; i<12; i++) {
 											if(i<10)
 												$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
@@ -1508,7 +1513,12 @@ function addHelper(helperCreated) {
 				if($('#videoright' + helperId + ' audio').length === 0 && $('#videoright' + helperId + ' video').length === 0) {
 					$('#videos' + helperId).removeClass('hide').show();
 					$('#videoright' + helperId).parent().find('h3').html(
-						'Send DTMF: <span id="dtmf' + helperId + '" class="btn-group btn-group-xs"></span>');
+						'Send DTMF: <span id="dtmf' + helperId + '" class="btn-group btn-group-xs"></span>' +
+						'<span id="ctrls" class="pull-right btn-group btn-group-xs">' +
+							'<button id="msg' + helperId + '" title="Send message" class="btn btn-info"><i class="fa fa-envelope"></i></button>' +
+							'<button id="info' + helperId + '" title="Send INFO" class="btn btn-info"><i class="fa fa-info"></i></button>' +
+							'<button id="transfer' + helperId + '" title="Transfer call" class="btn btn-info"><i class="fa fa-mail-forward"></i></button>' +
+						'</span>');
 					for(var i=0; i<12; i++) {
 						if(i<10)
 							$('#dtmf' + helperId).append('<button class="btn btn-info dtmf">' + i + '</button>');
