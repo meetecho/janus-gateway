@@ -3926,6 +3926,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			stream->rtx_payload_types == NULL) {
 		/* Make sure we have a list of rtx payload types to generate, if needed */
 		janus_sdp_mline *m = janus_sdp_mline_find(parsed_sdp, JANUS_SDP_VIDEO);
+		janus_sdp_mline *m_audio = janus_sdp_mline_find(parsed_sdp, JANUS_SDP_AUDIO);
+		GList *m_audio_ptypes = m_audio ? m_audio->ptypes : NULL;
 		if(m && m->ptypes) {
 			stream->rtx_payload_types = g_hash_table_new(NULL, NULL);
 			GList *ptypes = g_list_copy(m->ptypes), *tempP = ptypes;
@@ -3935,8 +3937,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				int rtx_ptype = ptype+1;
 				if(rtx_ptype > 127)
 					rtx_ptype = 96;
-				while(g_list_find(m->ptypes, GINT_TO_POINTER(rtx_ptype))
-						|| g_list_find(rtx_ptypes, GINT_TO_POINTER(rtx_ptype))) {
+				while(g_list_find(m->ptypes, GINT_TO_POINTER(rtx_ptype)) || g_list_find(rtx_ptypes, GINT_TO_POINTER(rtx_ptype)) ||
+						(m_audio_ptypes && g_list_find(m_audio_ptypes, GINT_TO_POINTER(rtx_ptype)))) {
 					rtx_ptype++;
 					if(rtx_ptype > 127)
 						rtx_ptype = 96;
