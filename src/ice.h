@@ -491,6 +491,14 @@ struct janus_ice_peerconnection {
 	 * or video m-line, in order to make it easier for plugins that don't do
 	 * multistream. That said, we don't plan to keep it forever */
 	GHashTable *media_bytype;
+	/*! \brief List of payload types we can expect */
+	GList *payload_types;
+	/*! \brief Mapping of payload types to their clock rates, as advertised in the SDP */
+	GHashTable *clock_rates;
+	/*! \brief Mapping of rtx payload types to actual media-related packet types */
+	GHashTable *rtx_payload_types;
+	/*! \brief Reverse mapping of rtx payload types to actual media-related packet types */
+	GHashTable *rtx_payload_types_rev;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this stream */

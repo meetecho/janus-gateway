@@ -3964,6 +3964,20 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	/* Iterate on all media */
 	janus_ice_peerconnection_medium *medium = NULL;
 	uint mi=0;
+	/* Let's build a list of payload types first */
+	for(mi=0; mi<g_hash_table_size(pc->media); mi++) {
+		medium = g_hash_table_lookup(pc->media, GUINT_TO_POINTER(mi));
+		if(medium && medium->type != JANUS_MEDIA_DATA) {
+			janus_sdp_mline *m = janus_sdp_mline_find_by_index(parsed_sdp, medium->mindex);
+			GList *tpt = m->ptypes;
+			while(tpt) {
+				if(!g_list_find(pc->payload_types, tpt->data))
+					pc->payload_types = g_list_prepend(pc->payload_types, tpt->data);
+				tpt = tpt->next;
+			}
+		}
+	}
+	/* Now let's iterate on media */
 	for(mi=0; mi<g_hash_table_size(pc->media); mi++) {
 		medium = g_hash_table_lookup(pc->media, GUINT_TO_POINTER(mi));
 		if(medium && medium->type == JANUS_MEDIA_VIDEO &&
@@ -3973,32 +3987,43 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			janus_sdp_mline *m = janus_sdp_mline_find_by_index(parsed_sdp, medium->mindex);
 			if(m && m->ptypes) {
 				medium->rtx_payload_types = g_hash_table_new(NULL, NULL);
-				GList *ptypes = g_list_copy(m->ptypes), *tempP = ptypes;
-				GList *rtx_ptypes = g_hash_table_get_values(medium->rtx_payload_types);
+				if(pc->rtx_payload_types == NULL)
+					pc->rtx_payload_types = g_hash_table_new(NULL, NULL);
+				if(pc->rtx_payload_types_rev == NULL)
+					pc->rtx_payload_types_rev = g_hash_table_new(NULL, NULL);
+				GList *ptypes = pc->payload_types, *tempP = ptypes;
+				GList *rtx_ptypes = g_hash_table_get_values(pc->rtx_payload_types);
 				while(tempP) {
 					int ptype = GPOINTER_TO_INT(tempP->data);
-					int rtx_ptype = ptype+1;
-					if(rtx_ptype > 127)
-						rtx_ptype = 96;
-					while(g_list_find(m->ptypes, GINT_TO_POINTER(rtx_ptype))
-							|| g_list_find(rtx_ptypes, GINT_TO_POINTER(rtx_ptype))) {
-						rtx_ptype++;
+					/* First of all, let's check if a mapping exists already */
+					int rtx_ptype = GPOINTER_TO_INT(g_hash_table_lookup(pc->rtx_payload_types, GINT_TO_POINTER(ptype)));
+					if(rtx_ptype == 0) {
+						/* No mapping yet, find one now */
+						rtx_ptype = ptype+1;
 						if(rtx_ptype > 127)
 							rtx_ptype = 96;
-						if(rtx_ptype == ptype) {
-							/* We did a whole round? should never happen... */
-							rtx_ptype = -1;
-							break;
+						while(g_list_find(ptypes, GINT_TO_POINTER(rtx_ptype))
+								|| g_list_find(rtx_ptypes, GINT_TO_POINTER(rtx_ptype))) {
+							rtx_ptype++;
+							if(rtx_ptype > 127)
+								rtx_ptype = 96;
+							if(rtx_ptype == ptype) {
+								/* We did a whole round? should never happen... */
+								rtx_ptype = -1;
+								break;
+							}
 						}
 					}
-					if(rtx_ptype > 0)
+					if(rtx_ptype > 0) {
+						g_hash_table_insert(pc->rtx_payload_types, GINT_TO_POINTER(ptype), GINT_TO_POINTER(rtx_ptype));
+						g_hash_table_insert(pc->rtx_payload_types_rev, GINT_TO_POINTER(rtx_ptype), GINT_TO_POINTER(ptype));
 						g_hash_table_insert(medium->rtx_payload_types, GINT_TO_POINTER(ptype), GINT_TO_POINTER(rtx_ptype));
+					}
 					g_list_free(rtx_ptypes);
 					rtx_ptypes = g_hash_table_get_values(medium->rtx_payload_types);
 					medium->do_nacks = TRUE;
 					tempP = tempP->next;
 				}
-				g_list_free(ptypes);
 				g_list_free(rtx_ptypes);
 			}
 		} else if(medium && medium->type == JANUS_MEDIA_VIDEO &&

@@ -228,6 +228,12 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 				if(m->ptypes != NULL) {
 					g_list_free(medium->payload_types);
 					medium->payload_types = g_list_copy(m->ptypes);
+					GList *temp = medium->payload_types;
+					while(temp) {
+						if(!g_list_find(pc->payload_types, temp->data))
+							pc->payload_types = g_list_prepend(pc->payload_types, GPOINTER_TO_INT(temp->data));
+						temp = temp->next;
+					}
 				}
 			} else {
 				/* Medium rejected? */
@@ -591,9 +597,21 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 						} else {
 							rtx = TRUE;
 							janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
-							if(medium->rtx_payload_types == NULL)
-								medium->rtx_payload_types = g_hash_table_new(NULL, NULL);
-							g_hash_table_insert(medium->rtx_payload_types, GINT_TO_POINTER(ptype), GINT_TO_POINTER(rtx_ptype));
+							if(pc->rtx_payload_types == NULL)
+								pc->rtx_payload_types = g_hash_table_new(NULL, NULL);
+							if(pc->rtx_payload_types_rev == NULL)
+								pc->rtx_payload_types_rev = g_hash_table_new(NULL, NULL);
+							int map_pt = GPOINTER_TO_INT(g_hash_table_lookup(pc->rtx_payload_types_rev, GINT_TO_POINTER(rtx_ptype)));
+							if(map_pt && map_pt != ptype) {
+								JANUS_LOG(LOG_WARN, "[%"SCNu64"] RTX payload type %d already mapped to %d, skipping fmtp/apt mapping with %d...\n",
+									handle->handle_id, rtx_ptype, map_pt, ptype);
+							} else {
+								g_hash_table_insert(pc->rtx_payload_types, GINT_TO_POINTER(ptype), GINT_TO_POINTER(rtx_ptype));
+								g_hash_table_insert(pc->rtx_payload_types_rev, GINT_TO_POINTER(rtx_ptype), GINT_TO_POINTER(ptype));
+								if(medium->rtx_payload_types == NULL)
+									medium->rtx_payload_types = g_hash_table_new(NULL, NULL);
+								g_hash_table_insert(medium->rtx_payload_types, GINT_TO_POINTER(ptype), GINT_TO_POINTER(rtx_ptype));
+							}
 						}
 					}
 				} else if(!strcasecmp(a->name, "rtpmap")) {
@@ -605,12 +623,21 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 								cr++;
 								uint32_t clock_rate = 0;
 								if(janus_string_to_uint32(cr, &clock_rate) == 0) {
+									if(pc->clock_rates == NULL)
+										pc->clock_rates = g_hash_table_new(NULL, NULL);
 									if(medium->clock_rates == NULL)
 										medium->clock_rates = g_hash_table_new(NULL, NULL);
-									g_hash_table_insert(medium->clock_rates, GINT_TO_POINTER(ptype), GUINT_TO_POINTER(clock_rate));
-									/* Check if opus/red is negotiated */
-									if(strstr(a->value, "red/48000/2"))
-										medium->opusred_pt = ptype;
+									uint32_t map_cr = GPOINTER_TO_UINT(g_hash_table_lookup(pc->clock_rates, GINT_TO_POINTER(ptype)));
+									if(map_cr && map_cr != clock_rate) {
+										JANUS_LOG(LOG_WARN, "[%"SCNu64"] Payload type %d already mapped to clock rate %d, skipping rtpmap mapping with %d...\n",
+											handle->handle_id, ptype, map_cr, clock_rate);
+									} else {
+										g_hash_table_insert(pc->clock_rates, GINT_TO_POINTER(ptype), GUINT_TO_POINTER(clock_rate));
+										g_hash_table_insert(medium->clock_rates, GINT_TO_POINTER(ptype), GUINT_TO_POINTER(clock_rate));
+										/* Check if opus/red is negotiated */
+										if(strstr(a->value, "red/48000/2"))
+											medium->opusred_pt = ptype;
+									}
 								}
 							}
 						}
@@ -693,6 +720,7 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 						/* We have a payload type that is both a codec and rtx, get rid of it */
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Removing duplicate payload type %d\n", handle->handle_id, ptype);
 						janus_sdp_remove_payload_type(remote_sdp, medium->mindex, ptype);
+						g_hash_table_remove(pc->clock_rates, GINT_TO_POINTER(ptype));
 						g_hash_table_remove(medium->clock_rates, GINT_TO_POINTER(ptype));
 					}
 					tempP = tempP->next;
