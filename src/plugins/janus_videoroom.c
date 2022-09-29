@@ -12141,7 +12141,7 @@ static void *janus_videoroom_handler(void *data) {
 							mdir = JANUS_SDP_RECVONLY;
 						}
 					}
-					ps->disabled = (mdir == JANUS_SDP_INACTIVE);
+					ps->disabled = (m->direction == JANUS_SDP_RECVONLY || mdir == JANUS_SDP_INACTIVE);
 					/* Add a new m-line to the answer */
 					if(m->type == JANUS_SDP_AUDIO) {
 						char audio_fmtp[256];
