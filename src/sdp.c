@@ -228,10 +228,11 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 				if(m->ptypes != NULL) {
 					g_list_free(medium->payload_types);
 					medium->payload_types = g_list_copy(m->ptypes);
+					if(pc->payload_types == NULL)
+						pc->payload_types = g_hash_table_new(NULL, NULL);
 					GList *temp = medium->payload_types;
 					while(temp) {
-						if(!g_list_find(pc->payload_types, temp->data))
-							pc->payload_types = g_list_prepend(pc->payload_types, GPOINTER_TO_INT(temp->data));
+						g_hash_table_insert(pc->payload_types, temp->data, temp->data);
 						temp = temp->next;
 					}
 				}

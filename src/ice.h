@@ -492,7 +492,7 @@ struct janus_ice_peerconnection {
 	 * multistream. That said, we don't plan to keep it forever */
 	GHashTable *media_bytype;
 	/*! \brief List of payload types we can expect */
-	GList *payload_types;
+	GHashTable *payload_types;
 	/*! \brief Mapping of payload types to their clock rates, as advertised in the SDP */
 	GHashTable *clock_rates;
 	/*! \brief Mapping of rtx payload types to actual media-related packet types */
