@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.1.0] - 2022-10-03
+
+- Added versioning to .so files [[PR-3075](https://github.com/meetecho/janus-gateway/pull/3075)]
+- Allow plugins to specify msid in SDPs [[PR-2998](https://github.com/meetecho/janus-gateway/pull/2998)]
+- Fixed broken RTCP timestamp on 32bit architectures [[Issue-3045](https://github.com/meetecho/janus-gateway/issues/3045)]
+- Fixed problems compiling against recent versions of libwebsockets [[Issue-3039](https://github.com/meetecho/janus-gateway/issues/3039)]
+- Updated deprecated DTLS functions to OpenSSL v3.0 [PR-3048](https://github.com/meetecho/janus-gateway/pull/3048)]
+- Switched to SHA256 for signing self signed DTLS certificates (thanks @tgabi333!) [[PR-3069](https://github.com/meetecho/janus-gateway/pull/3069)]
+- Started using strnlen to optimize performance of some strlen calls (thanks @tmatth!) [[PR-3059](https://github.com/meetecho/janus-gateway/pull/3059)]
+- Added checks to avoid RTX payload type collisions [[PR-3080](https://github.com/meetecho/janus-gateway/pull/3080)]
+- Added new APIs for cascading VideoRoom publishers [[PR-3014](https://github.com/meetecho/janus-gateway/pull/3014)]
+- Fixed deadlock when using legacy switch in VideoRoom [[Issue-3066](https://github.com/meetecho/janus-gateway/issues/3066)]
+- Fixed disabled property not being advertized to subscribers when VideoRoom publishers removed tracks
+- Fixed occasional deadlock when using G.711 in the AudioBridge [[Issue-3062](https://github.com/meetecho/janus-gateway/issues/3062)]
+- Added new way of capturing devices/tracks in janus.js [[PR-3003](https://github.com/meetecho/janus-gateway/pull/3003)]
+- Removed call to .stop() for remote tracks in demos [[PR-3056](https://github.com/meetecho/janus-gateway/pull/3056)]
+- Fixed missing message/info/transfer buttons in SIP demo page
+- Fixed postprocessing compilation issue on older FFmpeg versions [[PR-3064](https://github.com/meetecho/janus-gateway/pull/3064)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.0.4] - 2022-08-01
 
 - Fixed problem with duplicate ptypes when codecs are added in renegotiations
