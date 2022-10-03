@@ -1766,6 +1766,18 @@ static void janus_ice_peerconnection_free(const janus_refcount *pc_ref) {
 	pc->remote_candidates = NULL;
 	g_free(pc->selected_pair);
 	pc->selected_pair = NULL;
+	if(pc->payload_types != NULL)
+		g_hash_table_destroy(pc->payload_types);
+	pc->payload_types = NULL;
+	if(pc->clock_rates != NULL)
+		g_hash_table_destroy(pc->clock_rates);
+	pc->clock_rates = NULL;
+	if(pc->rtx_payload_types != NULL)
+		g_hash_table_destroy(pc->rtx_payload_types);
+	pc->rtx_payload_types = NULL;
+	if(pc->rtx_payload_types_rev != NULL)
+		g_hash_table_destroy(pc->rtx_payload_types_rev);
+	pc->rtx_payload_types_rev = NULL;
 	g_free(pc);
 	pc = NULL;
 }
