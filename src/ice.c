@@ -197,6 +197,7 @@ static void *janus_ice_static_event_loop_thread(void *data) {
 		return NULL;
 	}
 	JANUS_LOG(LOG_DBG, "[loop#%d] Looping...\n", loop->id);
+	g_main_context_push_thread_default(loop->mainctx);
 	g_main_loop_run(loop->mainloop);
 	/* When the loop quits, we can unref it */
 	g_main_loop_unref(loop->mainloop);
@@ -1295,6 +1296,7 @@ static void *janus_ice_handle_thread(void *data) {
 		return NULL;
 	}
 	JANUS_LOG(LOG_DBG, "[%"SCNu64"] Looping...\n", handle->handle_id);
+	g_main_context_push_thread_default(handle->mainctx);
 	g_main_loop_run(handle->mainloop);
 	janus_ice_webrtc_free(handle);
 	handle->thread = NULL;
