@@ -1827,7 +1827,6 @@ static struct janus_json_parameter configure_parameters[] = {
 static struct janus_json_parameter subscriber_parameters[] = {
 	{"streams", JANUS_JSON_ARRAY, 0},
 	{"private_id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"close_pc", JANUS_JSON_BOOL, 0},
 	/* All the following parameters are deprecated: use streams instead */
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
@@ -2283,7 +2282,6 @@ typedef struct janus_videoroom_subscriber {
 	GHashTable *streams_bymid;	/* As above, indexed by mid */
 	janus_mutex streams_mutex;
 	gboolean use_msid;		/* Whether we should add custom msid attributes to offers, to match publishers and streams */
-	gboolean close_pc;		/* Whether we should automatically close the PeerConnection when the publisher goes away */
 	guint32 pvt_id;			/* Private ID of the participant that is subscribing (if available/provided) */
 	gboolean paused;
 	gboolean kicked;	/* Whether this subscription belongs to a participant that has been kicked */
@@ -9616,8 +9614,6 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				json_t *msid = json_object_get(root, "use_msid");
 				gboolean use_msid  = json_is_true(msid);
-				json_t *cpc = json_object_get(root, "close_pc");
-				gboolean close_pc  = cpc ? json_is_true(cpc) : TRUE;
 				/* Make sure all the feeds we're subscribing to exist */
 				GList *publishers = NULL;
 				size_t i = 0;
@@ -9785,7 +9781,6 @@ static void *janus_videoroom_handler(void *data) {
 				videoroom = NULL;
 				subscriber->pvt_id = pvt_id;
 				subscriber->use_msid = use_msid;
-				subscriber->close_pc = close_pc;
 				subscriber->paused = TRUE;	/* We need an explicit start from the stream */
 				subscriber->streams_byid = g_hash_table_new_full(NULL, NULL,
 					NULL, (GDestroyNotify)janus_videoroom_subscriber_stream_destroy);
