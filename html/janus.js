@@ -1925,8 +1925,9 @@ function Janus(gatewayCallbacks) {
 				Janus.log('Remote track removed:', ev);
 				clearTimeout(trackMutedTimeoutId);
 				// Notify the application
-				let transceiver = config.pc.getTransceivers().find(
-					t => t.receiver.track === ev.target);
+				let transceivers = config.pc ? config.pc.getTransceivers() : null;
+				let transceiver = transceivers ? transceivers.find(
+					t => t.receiver.track === ev.target) : null;
 				let mid = transceiver ? transceiver.mid : ev.target.id;
 				try {
 					pluginHandle.onremotetrack(ev.target, mid, false);
