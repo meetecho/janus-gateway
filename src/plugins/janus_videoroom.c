@@ -1048,6 +1048,7 @@ room-<unique room ID>: {
 	"ptype" : "subscriber",
 	"room" : <unique ID of the room to subscribe in>,
 	"use_msid" : <whether subscriptions should include an msid that references the publisher; false by default>,
+	"autoupdate" : <whether a new SDP offer is sent automatically when a subscribed publisher leaves; true by default>,
 	"private_id" : <unique ID of the publisher that originated this request; optional, unless mandated by the room configuration>,
 	"streams" : [
 		{
@@ -1827,6 +1828,7 @@ static struct janus_json_parameter configure_parameters[] = {
 static struct janus_json_parameter subscriber_parameters[] = {
 	{"streams", JANUS_JSON_ARRAY, 0},
 	{"private_id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"autoupdate", JANUS_JSON_BOOL, 0},
 	/* All the following parameters are deprecated: use streams instead */
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
@@ -2282,11 +2284,12 @@ typedef struct janus_videoroom_subscriber {
 	GHashTable *streams_bymid;	/* As above, indexed by mid */
 	janus_mutex streams_mutex;
 	gboolean use_msid;		/* Whether we should add custom msid attributes to offers, to match publishers and streams */
+	gboolean autoupdate;	/* Whether we should trigger a renegotiation automatically when a subscribed publisher goes away */
 	guint32 pvt_id;			/* Private ID of the participant that is subscribing (if available/provided) */
 	gboolean paused;
 	gboolean kicked;	/* Whether this subscription belongs to a participant that has been kicked */
 	gboolean e2ee;		/* If media for this subscriber is end-to-end encrypted */
-	volatile gint answered, pending_offer, pending_restart;
+	volatile gint answered, pending_offer, pending_restart, skipped_autoupdate;
 	volatile gint destroyed;
 	janus_refcount ref;
 } janus_videoroom_subscriber;
@@ -8926,14 +8929,16 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 			while(temp) {
 				janus_videoroom_subscriber *subscriber = (janus_videoroom_subscriber *)temp->data;
 				/* Send (or schedule) a new offer */
-				if(room != NULL && !g_atomic_int_get(&room->destroyed)) {
-					/* ... unless there's no room (anymore) */
+				janus_mutex_lock(&subscriber->streams_mutex);
+				if(!subscriber->autoupdate || (room != NULL && !g_atomic_int_get(&room->destroyed))) {
+					/* ... unless we've been asked not to, or there's no room (anymore) */
+					g_atomic_int_set(&subscriber->skipped_autoupdate, 1);
+					janus_mutex_unlock(&subscriber->streams_mutex);
 					janus_refcount_decrease(&subscriber->session->ref);
 					janus_refcount_decrease(&subscriber->ref);
 					temp = temp->next;
 					continue;
 				}
-				janus_mutex_lock(&subscriber->streams_mutex);
 				if(!g_atomic_int_get(&subscriber->answered)) {
 					/* We're still waiting for an answer to a previous offer, postpone this */
 					g_atomic_int_set(&subscriber->pending_offer, 1);
@@ -9614,6 +9619,8 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				json_t *msid = json_object_get(root, "use_msid");
 				gboolean use_msid  = json_is_true(msid);
+				json_t *au = json_object_get(root, "autoupdate");
+				gboolean autoupdate  = au ? json_is_true(au) : TRUE;
 				/* Make sure all the feeds we're subscribing to exist */
 				GList *publishers = NULL;
 				size_t i = 0;
@@ -9781,6 +9788,7 @@ static void *janus_videoroom_handler(void *data) {
 				videoroom = NULL;
 				subscriber->pvt_id = pvt_id;
 				subscriber->use_msid = use_msid;
+				subscriber->autoupdate = autoupdate;
 				subscriber->paused = TRUE;	/* We need an explicit start from the stream */
 				subscriber->streams_byid = g_hash_table_new_full(NULL, NULL,
 					NULL, (GDestroyNotify)janus_videoroom_subscriber_stream_destroy);
@@ -10945,6 +10953,8 @@ static void *janus_videoroom_handler(void *data) {
 					}
 				}
 				/* We're done: check if this resulted in any actual change */
+				if(g_atomic_int_compare_and_exchange(&subscriber->skipped_autoupdate, 1, 0))
+					changes++;
 				if(changes == 0) {
 					janus_mutex_unlock(&subscriber->streams_mutex);
 					/* Nothing changed, just ack and don't do anything else */
