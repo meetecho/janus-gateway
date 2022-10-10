@@ -8922,11 +8922,19 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 			temp = temp->next;
 		}
 		/* Any subscriber session to update? */
+		janus_videoroom *room = participant->room;
 		if(subscribers != NULL) {
 			temp = subscribers;
 			while(temp) {
 				janus_videoroom_subscriber *subscriber = (janus_videoroom_subscriber *)temp->data;
 				/* Send (or schedule) a new offer */
+				if(room != NULL && !g_atomic_int_get(&room->destroyed)) {
+					/* ... unless there's no room (anymore) */
+					janus_refcount_decrease(&subscriber->session->ref);
+					janus_refcount_decrease(&subscriber->ref);
+					temp = temp->next;
+					continue;
+				}
 				janus_mutex_lock(&subscriber->streams_mutex);
 				if(!g_atomic_int_get(&subscriber->answered)) {
 					/* We're still waiting for an answer to a previous offer, postpone this */
