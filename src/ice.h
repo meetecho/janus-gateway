@@ -362,6 +362,8 @@ struct janus_ice_handle {
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
 	gint64 agent_created;
+	/*! \brief Monotonic time of when the ICE agent has been started (remote credentials set) */
+	gint64 agent_started;
 	/*! \brief ICE role (controlling or controlled) */
 	gboolean controlling;
 	/*! \brief Main mid */
@@ -416,6 +418,8 @@ struct janus_ice_peerconnection {
 	gint cdone:1;
 	/*! \brief libnice ICE component state */
 	guint state;
+	/*! \brief Monotonic time of when gathering has completed */
+	gint64 gathered;
 	/*! \brief Monotonic time of when ICE has successfully connected */
 	gint64 connected;
 	/*! \brief GLib list of libnice remote candidates for this component */

@@ -2992,6 +2992,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(info, "flags", flags);
 		if(handle->agent) {
 			json_object_set_new(info, "agent-created", json_integer(handle->agent_created));
+			if(handle->agent_started > 0)
+				json_object_set_new(info, "agent-started", json_integer(handle->agent_started));
 			json_object_set_new(info, "ice-mode", json_string(janus_ice_is_ice_lite_enabled() ? "lite" : "full"));
 			json_object_set_new(info, "ice-role", json_string(handle->controlling ? "controlling" : "controlled"));
 		}
@@ -3099,6 +3101,8 @@ json_t *janus_admin_peerconnection_summary(janus_ice_peerconnection *pc) {
 		json_object_set_new(i, "failed-detected", json_integer(pc->icefailed_detected));
 		json_object_set_new(i, "icetimer-started", pc->icestate_source ? json_true() : json_false());
 	}
+	if(pc->gathered > 0)
+		json_object_set_new(i, "gathered", json_integer(pc->gathered));
 	if(pc->connected > 0)
 		json_object_set_new(i, "connected", json_integer(pc->connected));
 	if(pc->local_candidates) {

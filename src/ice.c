@@ -1617,6 +1617,7 @@ static void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		return;
 	}
 	handle->agent_created = 0;
+	handle->agent_started = 0;
 	if(handle->pc != NULL) {
 		janus_ice_peerconnection_destroy(handle->pc);
 		handle->pc = NULL;
@@ -2027,6 +2028,7 @@ static void janus_ice_cb_candidate_gathering_done(NiceAgent *agent, guint stream
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]  No stream %d??\n", handle->handle_id, stream_id);
 		return;
 	}
+	pc->gathered = janus_get_monotonic_time();
 	pc->cdone = 1;
 	/* If we're doing full-trickle, send an event to the user too */
 	if(janus_full_trickle_enabled) {
@@ -4371,6 +4373,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		}
 		guint count = g_slist_length(candidates);
 		if(pc != NULL && count > 0) {
+			if(handle->agent_started == 0)
+				handle->agent_started = janus_get_monotonic_time();
 			int added = nice_agent_set_remote_candidates(handle->agent, pc->stream_id, pc->component_id, candidates);
 			if(added < 0 || (guint)added != count) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Failed to add some remote candidates (added %u, expected %u)\n",
