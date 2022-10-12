@@ -356,6 +356,8 @@ struct janus_ice_handle {
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
 	gint64 agent_created;
+	/*! \brief Monotonic time of when the ICE agent has been started (remote credentials set) */
+	gint64 agent_started;
 	/*! \brief ICE role (controlling or controlled) */
 	gboolean controlling;
 	/*! \brief Audio mid (media ID) */
@@ -412,6 +414,8 @@ struct janus_ice_stream {
 	guint stream_id;
 	/*! \brief Whether this stream is ready to be used */
 	gint cdone:1;
+	/*! \brief Monotonic time of when gathering has completed */
+	gint64 gathered;
 	/*! \brief Audio SSRC of the server for this stream */
 	guint32 audio_ssrc;
 	/*! \brief Video SSRC of the server for this stream */

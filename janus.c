@@ -2969,6 +2969,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(info, "flags", flags);
 		if(handle->agent) {
 			json_object_set_new(info, "agent-created", json_integer(handle->agent_created));
+			if(handle->agent_started > 0)
+				json_object_set_new(info, "agent-started", json_integer(handle->agent_started));
 			json_object_set_new(info, "ice-mode", json_string(janus_ice_is_ice_lite_enabled() ? "lite" : "full"));
 			json_object_set_new(info, "ice-role", json_string(handle->controlling ? "controlling" : "controlled"));
 		}
@@ -3072,6 +3074,8 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 	json_t *s = json_object();
 	json_object_set_new(s, "id", json_integer(stream->stream_id));
 	json_object_set_new(s, "ready", json_integer(stream->cdone));
+	if(stream->gathered > 0)
+		json_object_set_new(s, "gathered", json_integer(stream->gathered));
 	json_t *ss = json_object();
 	if(stream->audio_ssrc)
 		json_object_set_new(ss, "audio", json_integer(stream->audio_ssrc));
