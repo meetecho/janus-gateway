@@ -3834,12 +3834,12 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						janus_sdp_destroy(parsed_sdp);
 						return NULL;
 					}
-					if(medium->msid == NULL || strcasecmp(medium->msid, msid)) {
+					if(medium != NULL && (medium->msid == NULL || strcasecmp(medium->msid, msid))) {
 						char *old_msid = medium->msid;
 						medium->msid = g_strdup(msid);
 						g_free(old_msid);
 					}
-					if(medium->mstid == NULL || strcasecmp(medium->mstid, mstid)) {
+					if(medium != NULL && (medium->mstid == NULL || strcasecmp(medium->mstid, mstid))) {
 						char *old_mstid = medium->mstid;
 						medium->mstid = g_strdup(mstid);
 						g_free(old_mstid);
@@ -3872,7 +3872,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			/* If the user offered RED but the plugin rejected it, disable it */
 			if(opusred_pt < 0 && medium != NULL && medium->opusred_pt > 0)
 				medium->opusred_pt = 0;
-			if(!have_msid) {
+			if(!have_msid && medium != NULL) {
 				g_free(medium->msid);
 				medium->msid = NULL;
 				g_free(medium->mstid);
