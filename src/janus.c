@@ -3975,10 +3975,12 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		medium = g_hash_table_lookup(pc->media, GUINT_TO_POINTER(mi));
 		if(medium && medium->type != JANUS_MEDIA_DATA) {
 			janus_sdp_mline *m = janus_sdp_mline_find_by_index(parsed_sdp, medium->mindex);
-			GList *tpt = m->ptypes;
-			while(tpt) {
-				g_hash_table_insert(pc->payload_types, tpt->data, tpt->data);
-				tpt = tpt->next;
+			if(m && m->ptypes) {
+				GList *tpt = m->ptypes;
+				while(tpt) {
+					g_hash_table_insert(pc->payload_types, tpt->data, tpt->data);
+					tpt = tpt->next;
+				}
 			}
 		}
 	}
