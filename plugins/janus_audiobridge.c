@@ -8491,6 +8491,8 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					janus_audiobridge_relay_rtp_packet(participant->session, outpkt);
 				}
 			}
+		}
+		if(mixedpkt) {
 			g_free(mixedpkt->data);
 			g_free(mixedpkt);
 		}
