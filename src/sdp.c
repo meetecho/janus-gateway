@@ -364,7 +364,6 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 						/* FIXME We should handle this somehow anyway... OpenSSL supports them all */
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"]  Hashing algorithm not the one we expected (sha-256), *NOT* cool\n", handle->handle_id);
 					}
-
 				} else if(!strcasecmp(a->name, "setup")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS setup (local):  %s\n", handle->handle_id, a->value);
 					if(!update) {
