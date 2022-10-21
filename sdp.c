@@ -181,10 +181,10 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 		if(a && a->name && a->value) {
 			if(!strcasecmp(a->name, "fingerprint")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Fingerprint (global) : %s\n", handle->handle_id, a->value);
-				if(strcasestr(a->value, "sha-256 ") == a->value) {
+				if(!strncasecmp(a->value, "sha-256 ", strlen("sha-256 "))) {
 					rhashing = g_strdup("sha-256");
 					rfingerprint = g_strdup(a->value + strlen("sha-256 "));
-				} else if(strcasestr(a->value, "sha-1 ") == a->value) {
+				} else if(!strncasecmp(a->value, "sha-1 ", strlen("sha-1 "))) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"]  Hashing algorithm not the one we expected (sha-1 instead of sha-256), but that's ok\n", handle->handle_id);
 					rhashing = g_strdup("sha-1");
 					rfingerprint = g_strdup(a->value + strlen("sha-1 "));
@@ -392,12 +392,12 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 					}
 				} else if(!strcasecmp(a->name, "fingerprint")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Fingerprint (local) : %s\n", handle->handle_id, a->value);
-					if(strcasestr(a->value, "sha-256 ") == a->value) {
+					if(!strncasecmp(a->value, "sha-256 ", strlen("sha-256 "))) {
 						g_free(rhashing);	/* FIXME We're overwriting the global one, if any */
 						rhashing = g_strdup("sha-256");
 						g_free(rfingerprint);	/* FIXME We're overwriting the global one, if any */
 						rfingerprint = g_strdup(a->value + strlen("sha-256 "));
-					} else if(strcasestr(a->value, "sha-1 ") == a->value) {
+					} else if(!strncasecmp(a->value, "sha-1 ", strlen("sha-1 "))) {
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"]  Hashing algorithm not the one we expected (sha-1 instead of sha-256), but that's ok\n", handle->handle_id);
 						g_free(rhashing);	/* FIXME We're overwriting the global one, if any */
 						rhashing = g_strdup("sha-1");
