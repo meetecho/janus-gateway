@@ -6809,10 +6809,10 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&videoroom->mutex);
 		/* Set recording status */
-		gboolean room_prev_recording_active = recording_active;
-		if (room_prev_recording_active != videoroom->record) {
+		gboolean room_new_recording_active = recording_active;
+		if (room_new_recording_active != videoroom->record) {
 			/* Room recording state has changed */
-			videoroom->record = room_prev_recording_active;
+			videoroom->record = room_new_recording_active;
 			/* Iterate over all participants */
 			gpointer value;
 			GHashTableIter iter;
