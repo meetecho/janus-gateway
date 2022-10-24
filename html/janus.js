@@ -1915,7 +1915,7 @@ function Janus(gatewayCallbacks) {
 			try {
 				pluginHandle.onremotetrack(event.track, mid, true);
 			} catch(e) {
-				Janus.error("Error calling track event handler", e);
+				Janus.error("Error calling onremotetrack", e);
 			}
 			if(event.track.onended)
 				return;
@@ -1931,7 +1931,7 @@ function Janus(gatewayCallbacks) {
 				try {
 					pluginHandle.onremotetrack(ev.target, mid, false);
 				} catch(e) {
-					Janus.error("Error calling track event handler on removal", e);
+					Janus.error("Error calling onremotetrack on removal", e);
 				}
 			};
 			event.track.onmute = function(ev) {
@@ -1946,7 +1946,7 @@ function Janus(gatewayCallbacks) {
 						try {
 							pluginHandle.onremotetrack(ev.target, mid, false);
 						} catch(e) {
-							Janus.error("Error calling track event handling on mute", e);
+							Janus.error("Error calling onremotetrack on mute", e);
 						}
 						trackMutedTimeoutId = null;
 					// Chrome seems to raise mute events only at multiples of 834ms;
@@ -1967,7 +1967,7 @@ function Janus(gatewayCallbacks) {
 						let mid = transceiver ? transceiver.mid : ev.target.id;
 						pluginHandle.onremotetrack(ev.target, mid, true);
 					} catch(e) {
-						Janus.error("Error calling track event handling on unmute", e);
+						Janus.error("Error calling onremotetrack on unmute", e);
 					}
 				}
 			};
@@ -2615,7 +2615,7 @@ function Janus(gatewayCallbacks) {
 						config.myStream.removeTrack(rt);
 						pluginHandle.onlocaltrack(rt, false);
 					} catch(e) {
-						Janus.error("Error on removing local track", e);
+						Janus.error("Error calling onlocaltrack on removal for renegotiation", e);
 					}
 					// Close the old track (unless we've been asked not to)
 					if(rt.dontStop !== true) {
@@ -2634,13 +2634,13 @@ function Janus(gatewayCallbacks) {
 					try {
 						pluginHandle.onlocaltrack(ev.target, false);
 					} catch(e) {
-						Janus.error("Error on removing local track", e);
+						Janus.error("Error calling onlocaltrack following end", e);
 					}
 				}
 				try {
 					pluginHandle.onlocaltrack(nt, true);
 				} catch(e) {
-					Janus.error("Error on adding local track", e);
+					Janus.error("Error calling onlocaltrack for track add", e);
 				}
 			}
 			// Update the direction of the transceiver
