@@ -1020,8 +1020,8 @@ typedef struct janus_sip_media {
 	srtp_t audio_srtp_in, audio_srtp_out;
 	srtp_policy_t audio_remote_policy, audio_local_policy;
 	char *audio_srtp_local_profile, *audio_srtp_local_crypto;
-	gboolean audio_send;
-	janus_sdp_mdirection pre_hold_audio_dir;
+	gboolean audio_send, audio_recv;
+	janus_sdp_mdirection hold_audio_dir, pre_hold_audio_dir;
 	gboolean has_video;
 	int video_rtp_fd, video_rtcp_fd;
 	int local_video_rtp_port, remote_video_rtp_port;
@@ -1034,8 +1034,8 @@ typedef struct janus_sip_media {
 	srtp_t video_srtp_in, video_srtp_out;
 	srtp_policy_t video_remote_policy, video_local_policy;
 	char *video_srtp_local_profile, *video_srtp_local_crypto;
-	gboolean video_send;
-	janus_sdp_mdirection pre_hold_video_dir;
+	gboolean video_send, video_recv;
+	janus_sdp_mdirection hold_video_dir, pre_hold_video_dir;
 	janus_rtp_switching_context context;
 	int pipefd[2];
 	gboolean updated;
@@ -1477,11 +1477,15 @@ static void janus_sip_media_reset(janus_sip_session *session) {
 	session->media.opusred_pt = -1;
 	session->media.audio_pt_name = NULL;	/* Immutable string, no need to free*/
 	session->media.audio_send = TRUE;
+	session->media.audio_recv = TRUE;
+	session->media.hold_audio_dir = JANUS_SDP_SENDONLY;
 	session->media.pre_hold_audio_dir = JANUS_SDP_DEFAULT;
 	session->media.has_video = FALSE;
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;	/* Immutable string, no need to free*/
 	session->media.video_send = TRUE;
+	session->media.video_recv = TRUE;
+	session->media.hold_video_dir = JANUS_SDP_SENDONLY;
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	session->media.video_orientation_extension_id = -1;
 	session->media.audio_level_extension_id = -1;
@@ -2163,6 +2167,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.opusred_pt = -1;
 	session->media.audio_pt_name = NULL;
 	session->media.audio_send = TRUE;
+	session->media.audio_recv = TRUE;
+	session->media.hold_audio_dir = JANUS_SDP_SENDONLY;
 	session->media.pre_hold_audio_dir = JANUS_SDP_DEFAULT;
 	session->media.has_video = FALSE;
 	session->media.video_rtp_fd = -1;
@@ -2177,6 +2183,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;
 	session->media.video_send = TRUE;
+	session->media.video_recv = TRUE;
+	session->media.hold_video_dir = JANUS_SDP_SENDONLY;
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	session->media.video_orientation_extension_id = -1;
 	session->media.audio_level_extension_id = -1;
@@ -2407,6 +2415,10 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 				/* Dropping video packet, peer doesn't want to receive it */
 				return;
 			}
+			if(session->media.on_hold && session->media.hold_video_dir != JANUS_SDP_SENDONLY) {
+				/* Dropping video packet, the call is on hold and we're not sending anything */
+				return;
+			}
 			if(session->media.simulcast_ssrc) {
 				/* The user is simulcasting: drop everything except the base layer */
 				janus_rtp_header *header = (janus_rtp_header *)buf;
@@ -2460,6 +2472,10 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 		} else {
 			if(!session->media.audio_send) {
 				/* Dropping audio packet, peer doesn't want to receive it */
+				return;
+			}
+			if(session->media.on_hold && session->media.hold_audio_dir != JANUS_SDP_SENDONLY) {
+				/* Dropping audio packet, the call is on hold and we're not sending anything */
 				return;
 			}
 			if(session->media.audio_ssrc == 0) {
@@ -4350,6 +4366,7 @@ static void *janus_sip_handler(void *data) {
 				if(m) {
 					if(hold) {
 						/* Take note of the original media direction */
+						session->media.hold_audio_dir = hold_dir;
 						session->media.pre_hold_audio_dir = m->direction;
 						if(m->direction != hold_dir) {
 							/* Update the media direction */
@@ -4371,6 +4388,7 @@ static void *janus_sip_handler(void *data) {
 				if(m) {
 					if(hold) {
 						/* Take note of the original media direction */
+						session->media.hold_video_dir = hold_dir;
 						session->media.pre_hold_video_dir = m->direction;
 						if(m->direction != hold_dir) {
 							/* Update the media direction */
@@ -6289,8 +6307,13 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 					session->media.audio_send = FALSE;
 				else
 					session->media.audio_send = TRUE;
+				if(m->direction == JANUS_SDP_RECVONLY || m->direction == JANUS_SDP_INACTIVE)
+					session->media.audio_recv = FALSE;
+				else
+					session->media.audio_recv = TRUE;
 			} else {
 				session->media.audio_send = FALSE;
+				session->media.audio_recv = FALSE;
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			if(m->port) {
@@ -6306,8 +6329,13 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 					session->media.video_send = FALSE;
 				else
 					session->media.video_send = TRUE;
+				if(m->direction == JANUS_SDP_RECVONLY || m->direction == JANUS_SDP_INACTIVE)
+					session->media.video_recv = FALSE;
+				else
+					session->media.video_recv = TRUE;
 			} else {
 				session->media.video_send = FALSE;
+				session->media.video_recv = FALSE;
 			}
 		} else {
 			JANUS_LOG(LOG_WARN, "Unsupported media line (not audio/video)\n");
@@ -6860,10 +6888,14 @@ static void *janus_sip_relay_thread(void *data) {
 			}
 
 			/* In case we're on hold (remote address is 0.0.0.0) set the send properties to FALSE */
-			if(have_audio_server_ip && !strcmp(session->media.remote_audio_ip, "0.0.0.0"))
+			if(have_audio_server_ip && !strcmp(session->media.remote_audio_ip, "0.0.0.0")) {
 				session->media.audio_send = FALSE;
-			if(have_video_server_ip && !strcmp(session->media.remote_video_ip, "0.0.0.0"))
+				session->media.audio_recv = FALSE;
+			}
+			if(have_video_server_ip && !strcmp(session->media.remote_video_ip, "0.0.0.0")) {
 				session->media.video_send = FALSE;
+				session->media.video_recv = FALSE;
+			}
 		}
 
 		/* Prepare poll */
@@ -6981,6 +7013,14 @@ static void *janus_sip_relay_thread(void *data) {
 						continue;
 					}
 					pollerrs = 0;
+					if(!session->media.audio_recv) {
+						/* Dropping audio packet, we weren't expecting anything */
+						continue;
+					}
+					if(session->media.on_hold && session->media.hold_audio_dir != JANUS_SDP_RECVONLY) {
+						/* Dropping video packet, the call is on hold and we're not receiving anything */
+						continue;
+					}
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
 					if(session->media.audio_ssrc_peer == 0) {
 						session->media.audio_ssrc_peer = ntohl(header->ssrc);
@@ -7028,6 +7068,14 @@ static void *janus_sip_relay_thread(void *data) {
 						continue;
 					}
 					pollerrs = 0;
+					if(!session->media.video_recv) {
+						/* Dropping video packet, we weren't expecting anything */
+						continue;
+					}
+					if(session->media.on_hold && session->media.hold_video_dir != JANUS_SDP_RECVONLY) {
+						/* Dropping video packet, the call is on hold and we're not receiving anything */
+						continue;
+					}
 					/* Is this SRTCP? */
 					if(session->media.has_srtp_remote_audio) {
 						int buflen = bytes;
