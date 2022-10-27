@@ -1543,12 +1543,12 @@ static void *janus_videocall_handler(void *data) {
 						gateway->send_pli(peer->handle);
 				}
 			}
+			if(msg_sdp) {
+				session->has_audio = (strstr(msg_sdp, "m=audio") != NULL);
+				session->has_video = (strstr(msg_sdp, "m=video") != NULL);
+				session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);
+			}
 			if(record) {
-				if(msg_sdp) {
-					session->has_audio = (strstr(msg_sdp, "m=audio") != NULL);
-					session->has_video = (strstr(msg_sdp, "m=video") != NULL);
-					session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);
-				}
 				gboolean recording = json_is_true(record);
 				const char *recording_base = json_string_value(recfile);
 				JANUS_LOG(LOG_VERB, "Recording %s (base filename: %s)\n", recording ? "enabled" : "disabled", recording_base ? recording_base : "not provided");
