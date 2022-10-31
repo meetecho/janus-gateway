@@ -1035,6 +1035,7 @@ typedef struct janus_sip_media {
 	srtp_policy_t video_remote_policy, video_local_policy;
 	char *video_srtp_local_profile, *video_srtp_local_crypto;
 	gboolean video_send, video_recv;
+	gboolean video_pli_supported;
 	janus_sdp_mdirection hold_video_dir, pre_hold_video_dir;
 	janus_rtp_switching_context acontext, vcontext;
 	int pipefd[2];
@@ -1086,6 +1087,7 @@ static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_sip_srtp_cleanup(janus_sip_session *session);
 static void janus_sip_media_reset(janus_sip_session *session);
+static void janus_sip_rtcp_pli_send(janus_sip_session *session);
 
 static void janus_sip_call_update_status(janus_sip_session *session, janus_sip_call_status new_status) {
 	if(session->status != new_status) {
@@ -1485,6 +1487,7 @@ static void janus_sip_media_reset(janus_sip_session *session) {
 	session->media.video_pt_name = NULL;	/* Immutable string, no need to free*/
 	session->media.video_send = TRUE;
 	session->media.video_recv = TRUE;
+	session->media.video_pli_supported = FALSE;
 	session->media.hold_video_dir = JANUS_SDP_SENDONLY;
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	session->media.video_orientation_extension_id = -1;
@@ -2184,6 +2187,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;
 	session->media.video_recv = TRUE;
+	session->media.video_pli_supported = FALSE;
 	session->media.hold_video_dir = JANUS_SDP_SENDONLY;
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	session->media.video_orientation_extension_id = -1;
@@ -4570,7 +4574,9 @@ static void *janus_sip_handler(void *data) {
 						/* If the video-orientation extension has been negotiated, mark it in the recording */
 						if(session->media.video_orientation_extension_id > 0)
 							janus_recorder_add_extmap(session->vrc_peer, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
-						/* TODO We should send a FIR/PLI to this peer... */
+						/* If we detected PLI support in the remote SDP, craft and send a PLI to the peer */
+						if(session->media.video_pli_supported)
+							janus_sip_rtcp_pli_send(session);
 						if(rc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this peer!\n");
@@ -6407,6 +6413,9 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 							}
 						}
 					}
+				} else if(m->type == JANUS_SDP_VIDEO && !strcasecmp(a->name, "rtcp-fb") && a->value) {
+					if(strstr(a->value, " pli"))
+						session->media.video_pli_supported = TRUE;
 				}
 			}
 			tempA = tempA->next;
@@ -7281,4 +7290,47 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	JANUS_LOG(LOG_VERB, "Leaving sofia loop thread...\n");
 	g_thread_unref(g_thread_self());
 	return NULL;
+}
+
+/* Helper method to send an RTCP PLI to the SIP peer */
+static void janus_sip_rtcp_pli_send(janus_sip_session *session) {
+	if(!session || g_atomic_int_get(&session->destroyed)) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return;
+	}
+	if(!janus_sip_call_is_established(session))
+		return;
+	if(!session->media.has_video || session->media.video_rtcp_fd == -1)
+		return;
+	/* Generate a PLI */
+	char rtcp_buf[12];
+	int rtcp_len = 12;
+	janus_rtcp_pli((char *)&rtcp_buf, rtcp_len);
+	/* Fix SSRCs as the Janus core does */
+	JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
+		session->media.video_ssrc, session->media.video_ssrc_peer);
+	janus_rtcp_fix_ssrc(NULL, (char *)rtcp_buf, rtcp_len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
+	/* Is SRTP involved? */
+	if(session->media.has_srtp_local_video) {
+		char sbuf[50];
+		memcpy(&sbuf, rtcp_buf, rtcp_len);
+		int protected = rtcp_len;
+		int res = srtp_protect_rtcp(session->media.video_srtp_out, &sbuf, &protected);
+		if(res != srtp_err_status_ok) {
+			JANUS_LOG(LOG_ERR, "[SIP-%s] Video SRTCP protect error... %s (len=%d-->%d)...\n",
+				session->account.username, janus_srtp_error_str(res), rtcp_len, protected);
+		} else {
+			/* Forward the message to the peer */
+			if(send(session->media.video_rtcp_fd, sbuf, protected, 0) < 0) {
+				JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTCP video packet... %s (len=%d)...\n",
+					session->account.username, g_strerror(errno), protected);
+			}
+		}
+	} else {
+		/* Forward the message to the peer */
+		if(send(session->media.video_rtcp_fd, rtcp_buf, rtcp_len, 0) < 0) {
+			JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTCP video packet... %s (len=%d)...\n",
+				session->account.username, g_strerror(errno), rtcp_len);
+		}
+	}
 }
