@@ -5820,7 +5820,7 @@ static void *janus_streaming_handler(void *data) {
 			}
 			/* New viewer: we send an offer ourselves */
 			JANUS_LOG(LOG_VERB, "Request to watch mountpoint/stream %s\n", id_value_str);
-			if(session->mountpoint != NULL || g_list_find(mp->viewers, session) != NULL) {
+			if(g_list_find(mp->viewers, session) != NULL) {
 				janus_mutex_unlock(&session->mutex);
 				janus_mutex_unlock(&mp->mutex);
 				janus_refcount_decrease(&mp->ref);
