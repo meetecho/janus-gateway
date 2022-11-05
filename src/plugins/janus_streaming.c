@@ -7488,13 +7488,15 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		/* Possibly a quirk in the RTSP server, where the DESCRIBE request expects a path only. */
 		CURLU *curl_u = curl_url();
 		char *path = NULL;
-		if(!(curl_url_set(curl_u, CURLUPART_URL, source->rtsp_url, 0))) {
+		if(curl_u && !(curl_url_set(curl_u, CURLUPART_URL, source->rtsp_url, 0))) {
 			if(!(curl_url_get(curl_u, CURLUPART_PATH, &path, 0))) {
 				curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, path);
-				curl_easy_perform(curl);
-				res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
-				if((res == CURLE_OK) && (code != 404)) {
-					source->rtsp_stream_uri = g_strdup(path);
+				res = curl_easy_perform(curl);
+				if(res == CURLE_OK) {
+					res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+					if((res == CURLE_OK) && (code != 404)) {
+						source->rtsp_stream_uri = g_strdup(path);
+					}
 				}
 				curl_free(path);
 			}

@@ -2718,14 +2718,14 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Finally, let's check if IPv6 is disabled, as we may need to know for forwarders */
 	int fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-	if(fd <= 0) {
+	if(fd < 0) {
 		ipv6_disabled = TRUE;
 	} else {
 		int v6only = 0;
 		if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)
 			ipv6_disabled = TRUE;
 	}
-	if(fd > 0)
+	if(fd >= 0)
 		close(fd);
 	if(ipv6_disabled) {
 		JANUS_LOG(LOG_WARN, "IPv6 disabled, will only create VideoRoom forwarders to IPv4 addresses\n");

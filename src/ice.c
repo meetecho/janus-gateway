@@ -3948,7 +3948,10 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 					}
 				} else {
 					size_t midlen = strlen(mid);
-					if(extbufsize < (midlen + 2)) {
+					if(midlen > 16) {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] mid too large, capping to first 16 characters...\n", handle->handle_id);
+						midlen = 16;
+					} else if(extbufsize < (midlen + 2)) {
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Not enough room for mid extension, skipping it...\n", handle->handle_id);
 					} else {
 						*index = handle->pc->mid_ext_id;

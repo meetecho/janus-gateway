@@ -1105,6 +1105,7 @@ int main(int argc, char *argv[]) {
 			if(p->drop) {
 				/* We don't need this */
 				g_free(p);
+				p = NULL;
 			} else if(!added) {
 				/* We reached the start */
 				p->next = list;
@@ -1113,7 +1114,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		/* Add to the extended header, if that's what we're doing */
-		if(extjson_only && p->rotation != -1 && p->rotation != last_rotation) {
+		if(extjson_only && p && p->rotation != -1 && p->rotation != last_rotation) {
 			last_rotation = p->rotation;
 			if(rotations == NULL)
 				rotations = json_array();

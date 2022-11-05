@@ -3926,14 +3926,14 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Finally, let's check if IPv6 is disabled, as we may need to know for forwarders */
 	int fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-	if(fd <= 0) {
+	if(fd < 0) {
 		ipv6_disabled = TRUE;
 	} else {
 		int v6only = 0;
 		if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)
 			ipv6_disabled = TRUE;
 	}
-	if(fd > 0)
+	if(fd >= 0)
 		close(fd);
 	if(ipv6_disabled) {
 		JANUS_LOG(LOG_WARN, "IPv6 disabled, will only create VideoRoom forwarders to IPv4 addresses\n");
@@ -12824,6 +12824,8 @@ static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_videoroom_rtp_forwa
 				/* Look for the right publisher stream instance */
 				char *remote_id = forward->remote_id;
 				janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)forward->source;
+				if(ps == NULL)
+					return;
 				janus_videoroom_publisher *p = ps->publisher;
 				if(p == NULL || g_atomic_int_get(&p->destroyed))
 					return;
@@ -12860,7 +12862,7 @@ static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_videoroom_rtp_forwa
 					temp = temp->next;
 				}
 				janus_mutex_unlock(&p->rtp_forwarders_mutex);
-				if(found && ps)
+				if(found)
 					janus_videoroom_reqpli(ps, "RTCP from remotized forwarder");
 			}
 		}
