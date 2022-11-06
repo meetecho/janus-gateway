@@ -430,16 +430,6 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
  * @returns 0 in case of success, -1 on errors */
 int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb);
 
-/*! \brief Method to quickly fetch the lost packets info from an RR packet, if present
- * \note This is just means as a simple way for plugins to extract this information from
- * a packet, without the need to setup a dedicated RTCP context for tracking the stats flow
- * @param[in] packet The message data
- * @param[in] len The message data length in bytes
- * @param[out] lost The number of lost packets as a whole
- * @param[out] fraction The fraction of lost packets since the last RR/SR
- * @returns TRUE in case of success, FALSE otherwise */
-gboolean janus_rtcp_parse_lost_info(char *packet, int len, uint32_t *lost, int *fraction);
-
 /*! \brief Method to check whether an RTCP message contains a BYE message
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
