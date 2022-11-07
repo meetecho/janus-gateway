@@ -6251,7 +6251,8 @@ auth_failed:
 				JANUS_LOG(LOG_WARN, "[%s] SUBSCRIBE failed: %d %s\n", session->account.username, status, phrase ? phrase : "");
 				json_t *event = json_object();
 				json_object_set_new(event, "sip", json_string("event"));
-				json_object_set_new(event, "call_id", json_string(sip->sip_call_id->i_id));
+				if(sip->sip_call_id)
+					json_object_set_new(event, "call_id", json_string(sip->sip_call_id->i_id));
 				json_t *result = json_object();
 				json_object_set_new(result, "event", json_string("subscribe_failed"));
 				json_object_set_new(result, "code", json_integer(status));
