@@ -148,6 +148,7 @@ $(document).ready(function() {
 														continue;
 													var id = list[f]["id"];
 													var streams = list[f]["streams"];
+													var display = list[f]["display"];
 													for(var i in streams) {
 														var stream = streams[i];
 														stream["id"] = id;
