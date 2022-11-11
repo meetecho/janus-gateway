@@ -85,15 +85,15 @@ void send_alarm(const char* severity, const char* message){
         /* Janus is closing or the plugin is */
         return;
     }
-    
+
     json_t *alarm = json_object();
     json_object_set_new(alarm, "action", json_string("EventsRouter"));
     json_object_set_new(alarm, "method", json_string("add_event"));
 
     json_t *data_array = json_array();
 
-    char* device = malloc((strlen("ENT//KUBERNETES/Nina4/webrtc-janus-/") + strlen(host_region) + strlen(host_environment) + strlen(host) + 1 ) * sizeof(char));
-    sprintf(device, "ENT/%s/KUBERNETES/Nina4/webrtc-janus-%s/%s", host_region, host_environment, host);
+    char* device = malloc((strlen("ENT/DIGITAL/AKS//webrtc-janus-/") + strlen(host_region) + strlen(host_environment) + strlen(host) + 1 ) * sizeof(char));
+    sprintf(device, "ENT/DIGITAL/AKS/%s/webrtc-janus-%s/%s", host_region, host_environment, host);
 
     json_t *data_obj = json_object();
     json_object_set_new(data_obj, "device", json_string(device));
@@ -162,12 +162,12 @@ static void *alarm_client_thread(void *data){
                     JANUS_LOG(LOG_INFO, "Alarm [%s] successfully sent to [%s]!\n", alarm_message, endpoint);
                 }
             }
-            
+
         }
         /* Cleanup */
         if(curl){
             curl_easy_cleanup(curl);
-        }	
+        }
         if(headers){
             curl_slist_free_all(headers);
         }
