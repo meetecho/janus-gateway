@@ -8932,7 +8932,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 				janus_videoroom_subscriber *subscriber = (janus_videoroom_subscriber *)temp->data;
 				/* Send (or schedule) a new offer */
 				janus_mutex_lock(&subscriber->streams_mutex);
-				if(!subscriber->autoupdate || (room != NULL && !g_atomic_int_get(&room->destroyed))) {
+				if(!subscriber->autoupdate || room == NULL || g_atomic_int_get(&room->destroyed)) {
 					/* ... unless we've been asked not to, or there's no room (anymore) */
 					g_atomic_int_set(&subscriber->skipped_autoupdate, 1);
 					janus_mutex_unlock(&subscriber->streams_mutex);
