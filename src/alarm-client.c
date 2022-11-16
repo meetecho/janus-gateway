@@ -56,7 +56,10 @@ int alarm_client_init(janus_config* config){
     || config_get_item(config, alarm_config, "host_environment", &host_environment, FALSE) < 0){
         return -1;
     }
-
+    if (g_getenv("ALARM_HOST_NAME") != NULL) {
+        g_free(host);
+        host = g_strdup(g_getenv("ALARM_HOST_NAME"));
+    }
     /* Initialize libcurl, needed for sending alarms via HTTP POST */
     curl_global_init(CURL_GLOBAL_ALL);
 
