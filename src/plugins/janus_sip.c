@@ -826,6 +826,7 @@ static struct janus_json_parameter recording_parameters[] = {
 	{"video", JANUS_JSON_BOOL, 0},
 	{"peer_audio", JANUS_JSON_BOOL, 0},
 	{"peer_video", JANUS_JSON_BOOL, 0},
+	{"send_peer_pli", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0}
 };
 static struct janus_json_parameter dtmf_info_parameters[] = {
