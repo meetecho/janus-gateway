@@ -6665,6 +6665,10 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			mp->codecs.video_codec = JANUS_VIDEOCODEC_VP9;
 		else if(strstr(vrtpmap, "h264") || strstr(vrtpmap, "H264"))
 			mp->codecs.video_codec = JANUS_VIDEOCODEC_H264;
+		else if(strstr(vrtpmap, "av1") || strstr(vrtpmap, "AV1"))
+			mp->codecs.video_codec = JANUS_VIDEOCODEC_AV1;
+		else if(strstr(vrtpmap, "h265") || strstr(vrtpmap, "H265"))
+			mp->codecs.video_codec = JANUS_VIDEOCODEC_H265;
 
 		/* Send an RTSP SETUP for video */
 		g_free(curldata->buffer);
