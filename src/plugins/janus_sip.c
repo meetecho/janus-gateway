@@ -531,7 +531,7 @@
 	"video" : <true|false; whether or not our video should be recorded>,
 	"peer_audio" : <true|false; whether or not our peer's audio should be recorded>,
 	"peer_video" : <true|false; whether or not our peer's video should be recorded>,
-	"send_peer_pli" : <true|false; whether or not send pli to request keyframe from peer>,
+	"send_peer_pli" : <true|false; whether or not send PLI to request keyframe from peer>,
 	"filename" : "<base path/filename to use for all the recordings>"
 }
 \endverbatim
