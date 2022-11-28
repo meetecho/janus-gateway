@@ -531,6 +531,7 @@
 	"video" : <true|false; whether or not our video should be recorded>,
 	"peer_audio" : <true|false; whether or not our peer's audio should be recorded>,
 	"peer_video" : <true|false; whether or not our peer's video should be recorded>,
+	"send_peer_pli" : <true|false; whether or not send PLI to request keyframe from peer>,
 	"filename" : "<base path/filename to use for all the recordings>"
 }
 \endverbatim
@@ -825,6 +826,7 @@ static struct janus_json_parameter recording_parameters[] = {
 	{"video", JANUS_JSON_BOOL, 0},
 	{"peer_audio", JANUS_JSON_BOOL, 0},
 	{"peer_video", JANUS_JSON_BOOL, 0},
+	{"send_peer_pli", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0}
 };
 static struct janus_json_parameter dtmf_info_parameters[] = {
@@ -4493,7 +4495,7 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			gboolean record_audio = FALSE, record_video = FALSE,	/* No media is recorded by default */
-				record_peer_audio = FALSE, record_peer_video = FALSE;
+				record_peer_audio = FALSE, record_peer_video = FALSE, send_peer_pli = FALSE;
 			json_t *audio = json_object_get(root, "audio");
 			record_audio = audio ? json_is_true(audio) : FALSE;
 			json_t *video = json_object_get(root, "video");
@@ -4502,6 +4504,8 @@ static void *janus_sip_handler(void *data) {
 			record_peer_audio = peer_audio ? json_is_true(peer_audio) : FALSE;
 			json_t *peer_video = json_object_get(root, "peer_video");
 			record_peer_video = peer_video ? json_is_true(peer_video) : FALSE;
+			json_t *peer_pli = json_object_get(root, "send_peer_pli");
+			send_peer_pli = peer_pli ? json_is_true(peer_pli) : FALSE;
 			if(!record_audio && !record_video && !record_peer_audio && !record_peer_video) {
 				JANUS_LOG(LOG_ERR, "Invalid request (at least one of audio, video, peer_audio and peer_video should be true)\n");
 				error_code = JANUS_SIP_ERROR_RECORDING_ERROR;
@@ -4567,7 +4571,7 @@ static void *janus_sip_handler(void *data) {
 						if(session->media.video_orientation_extension_id > 0)
 							janus_recorder_add_extmap(session->vrc_peer, session->media.video_orientation_extension_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
 						/* If we detected PLI support in the remote SDP, craft and send a PLI to the peer */
-						if(session->media.video_pli_supported)
+						if(session->media.video_pli_supported || send_peer_pli)
 							janus_sip_rtcp_pli_send(session);
 						if(rc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
