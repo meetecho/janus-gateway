@@ -1941,8 +1941,9 @@ function Janus(gatewayCallbacks) {
 					trackMutedTimeoutId = setTimeout(function() {
 						Janus.log('Removing remote track');
 						// Notify the application the track is gone
-						let transceiver = config.pc.getTransceivers().find(
-							t => t.receiver.track === ev.target);
+						let transceivers = config.pc ? config.pc.getTransceivers() : null;
+						let transceiver = transceivers ? transceivers.find(
+							t => t.receiver.track === ev.target) : null;
 						let mid = transceiver ? transceiver.mid : ev.target.id;
 						try {
 							pluginHandle.onremotetrack(ev.target, mid, false);
@@ -1963,8 +1964,9 @@ function Janus(gatewayCallbacks) {
 				} else {
 					try {
 						// Notify the application the track is back
-						let transceiver = config.pc.getTransceivers().find(
-							t => t.receiver.track === ev.target);
+						let transceivers = config.pc ? config.pc.getTransceivers() : null;
+						let transceiver = transceivers ? transceivers.find(
+							t => t.receiver.track === ev.target) : null;
 						let mid = transceiver ? transceiver.mid : ev.target.id;
 						pluginHandle.onremotetrack(ev.target, mid, true);
 					} catch(e) {
@@ -2738,7 +2740,7 @@ function Janus(gatewayCallbacks) {
 			config.volume[stream] = { value: 0 };
 		// Start getting the volume, if audioLevel in getStats is supported (apparently
 		// they're only available in Chrome/Safari right now: https://webrtc-stats.callstats.io/)
-		if(config.pc.getStats && (Janus.webRTCAdapter.browserDetails.browser === "chrome" ||
+		if(config.pc && config.pc.getStats && (Janus.webRTCAdapter.browserDetails.browser === "chrome" ||
 				Janus.webRTCAdapter.browserDetails.browser === "safari")) {
 			// Are we interested in a mid in particular?
 			let query = config.pc;
