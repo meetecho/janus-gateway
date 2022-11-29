@@ -126,6 +126,13 @@ janus_turnrest_response *janus_turnrest_request(const char *user) {
 		janus_mutex_unlock(&api_mutex);
 		return NULL;
 	}
+	/* Prepare the libcurl context */
+	CURLcode res;
+	CURL *curl = curl_easy_init();
+	if(curl == NULL) {
+		JANUS_LOG(LOG_ERR, "libcurl error\n");
+		return NULL;
+	}
 	/* Prepare the request URI */
 	char query_string[512];
 	g_snprintf(query_string, 512, "service=turn");
@@ -135,10 +142,12 @@ janus_turnrest_response *janus_turnrest_request(const char *user) {
 		 * suggested 'key' instead: as such, we send them both
 		 * See https://github.com/meetecho/janus-gateway/issues/1416 */
 		char buffer[256];
-		g_snprintf(buffer, 256, "&api=%s", api_key);
+		char *encoded_key = curl_easy_escape(curl, api_key, 0);
+		g_snprintf(buffer, 256, "&api=%s", encoded_key);
 		janus_strlcat(query_string, buffer, 512);
-		g_snprintf(buffer, 256, "&key=%s", api_key);
+		g_snprintf(buffer, 256, "&key=%s", encoded_key);
 		janus_strlcat(query_string, buffer, 512);
+		curl_free(encoded_key);
 	}
 	if(user != NULL) {
 		/* Note: 'username' is supposedly optional, but a commonly used
@@ -146,20 +155,15 @@ janus_turnrest_response *janus_turnrest_request(const char *user) {
 		 * now send that too, letting the Janus core tell us what to use
 		 * See https://github.com/meetecho/janus-gateway/issues/2199 */
 		char buffer[256];
-		g_snprintf(buffer, 256, "&username=%s", user);
+		char *encoded_user = curl_easy_escape(curl, user, 0);
+		g_snprintf(buffer, 256, "&username=%s", encoded_user);
 		janus_strlcat(query_string, buffer, 512);
+		curl_free(encoded_user);
 	}
 	char request_uri[1024];
 	g_snprintf(request_uri, 1024, "%s?%s", api_server, query_string);
 	JANUS_LOG(LOG_VERB, "Sending request: %s\n", request_uri);
 	janus_mutex_unlock(&api_mutex);
-	/* Prepare the libcurl context */
-	CURLcode res;
-	CURL *curl = curl_easy_init();
-	if(curl == NULL) {
-		JANUS_LOG(LOG_ERR, "libcurl error\n");
-		return NULL;
-	}
 	curl_easy_setopt(curl, CURLOPT_URL, request_uri);
 	curl_easy_setopt(curl, api_http_get ? CURLOPT_HTTPGET : CURLOPT_POST, 1);
 	if(!api_http_get) {
