@@ -129,6 +129,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr
 #include "pp-opus.h"
 #include "pp-g711.h"
 #include "pp-g722.h"
+#include "pp-l16.h"
 #include "pp-srt.h"
 #include "pp-binary.h"
 
@@ -237,6 +238,7 @@ int main(int argc, char *argv[]) {
 		JANUS_LOG(LOG_INFO, "  -- Opus:   %s\n", janus_pp_extensions_string(janus_pp_opus_get_extensions(), supported, sizeof(supported)));
 		JANUS_LOG(LOG_INFO, "  -- G.711:  %s\n", janus_pp_extensions_string(janus_pp_g711_get_extensions(), supported, sizeof(supported)));
 		JANUS_LOG(LOG_INFO, "  -- G.722:  %s\n", janus_pp_extensions_string(janus_pp_g722_get_extensions(), supported, sizeof(supported)));
+		JANUS_LOG(LOG_INFO, "  -- L16:    %s\n", janus_pp_extensions_string(janus_pp_l16_get_extensions(), supported, sizeof(supported)));
 		JANUS_LOG(LOG_INFO, "  -- VP8:    %s\n", janus_pp_extensions_string(janus_pp_webm_get_extensions(), supported, sizeof(supported)));
 		JANUS_LOG(LOG_INFO, "  -- VP9:    %s\n", janus_pp_extensions_string(janus_pp_webm_get_extensions(), supported, sizeof(supported)));
 		JANUS_LOG(LOG_INFO, "  -- H.264:  %s\n", janus_pp_extensions_string(janus_pp_h264_get_extensions(), supported, sizeof(supported)));
@@ -374,7 +376,7 @@ int main(int argc, char *argv[]) {
 	gboolean has_timestamps = FALSE;
 	gboolean parsed_header = FALSE;
 	gboolean video = FALSE, data = FALSE, textdata = FALSE;
-	gboolean opus = FALSE, multiopus = FALSE, g711 = FALSE, g722 = FALSE,
+	gboolean opus = FALSE, multiopus = FALSE, g711 = FALSE, g722 = FALSE, l16 = FALSE, l16_48k = FALSE,
 		vp8 = FALSE, vp9 = FALSE, h264 = FALSE, av1 = FALSE, h265 = FALSE;
 	int opusred_pt = 0;
 	gboolean e2ee = FALSE;
@@ -614,6 +616,16 @@ int main(int argc, char *argv[]) {
 						if(extension && !janus_pp_extension_check(extension, janus_pp_g722_get_extensions())) {
 							JANUS_LOG(LOG_ERR, "G.722 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
 								janus_pp_extensions_string(janus_pp_g722_get_extensions(), supported, sizeof(supported)));
+							json_decref(info);
+							janus_pprec_options_destroy();
+							exit(1);
+						}
+					} else if(!strcasecmp(c, "l16") || !strcasecmp(c, "l16-48")) {
+						l16 = TRUE;
+						l16_48k = !strcasecmp(c, "l16-48");
+						if(extension && !janus_pp_extension_check(extension, janus_pp_l16_get_extensions())) {
+							JANUS_LOG(LOG_ERR, "L16 RTP packets cannot be converted to this target file, at the moment (supported formats: %s)\n",
+								janus_pp_extensions_string(janus_pp_l16_get_extensions(), supported, sizeof(supported)));
 							json_decref(info);
 							janus_pprec_options_destroy();
 							exit(1);
@@ -1143,6 +1155,8 @@ int main(int argc, char *argv[]) {
 	int rate = video ? 90000 : 48000;
 	if(g711 || g722)
 		rate = 8000;
+	else if(l16 && !l16_48k)
+		rate = 16000;
 	double ts = 0.0, pts = 0.0;
 	while(tmp) {
 		count++;
@@ -1353,6 +1367,14 @@ int main(int argc, char *argv[]) {
 				janus_pprec_options_destroy();
 				exit(1);
 			}
+		} else if(l16) {
+			if(janus_pp_l16_create(destination, l16_48k ? 48000 : 16000, metadata) < 0) {
+				JANUS_LOG(LOG_ERR, "Error creating .wav file...\n");
+				g_free(metadata);
+				g_free(extension);
+				janus_pprec_options_destroy();
+				exit(1);
+			}
 		}
 	} else if(data) {
 		if(textdata) {
@@ -1422,6 +1444,10 @@ int main(int argc, char *argv[]) {
 			if(janus_pp_g722_process(file, list, &working) < 0) {
 				JANUS_LOG(LOG_ERR, "Error processing G.722 RTP frames...\n");
 			}
+		} else if(l16) {
+			if(janus_pp_l16_process(file, list, &working) < 0) {
+				JANUS_LOG(LOG_ERR, "Error processing L16 RTP frames...\n");
+			}
 		}
 	} else if(data) {
 		if(textdata) {
@@ -1477,6 +1503,8 @@ int main(int argc, char *argv[]) {
 			janus_pp_g711_close();
 		} else if(g722) {
 			janus_pp_g722_close();
+		} else if(l16) {
+			janus_pp_l16_close();
 		}
 	}
 	fclose(file);

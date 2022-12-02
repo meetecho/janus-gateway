@@ -97,7 +97,7 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 		type = JANUS_RECORDER_VIDEO;
 	} else if(!strcasecmp(codec, "opus") || !strcasecmp(codec, "multiopus")
 			|| !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")
-			|| !strcasecmp(codec, "g722")) {
+			|| !strcasecmp(codec, "g722") || !strcasecmp(codec, "l16-48") || !strcasecmp(codec, "l16")) {
 		type = JANUS_RECORDER_AUDIO;
 	} else if(!strcasecmp(codec, "text") || !strcasecmp(codec, "binary")) {
 		/* Data channels may be text or binary, so that's what we can save too */

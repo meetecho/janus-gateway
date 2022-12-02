@@ -105,7 +105,9 @@ typedef enum janus_audiocodec {
 	JANUS_AUDIOCODEC_PCMA,
 	JANUS_AUDIOCODEC_G722,
 	JANUS_AUDIOCODEC_ISAC_32K,
-	JANUS_AUDIOCODEC_ISAC_16K
+	JANUS_AUDIOCODEC_ISAC_16K,
+	JANUS_AUDIOCODEC_L16_48K,
+	JANUS_AUDIOCODEC_L16_16K
 } janus_audiocodec;
 const char *janus_audiocodec_name(janus_audiocodec acodec);
 janus_audiocodec janus_audiocodec_from_name(const char *name);
