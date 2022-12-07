@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.1.1] - 2022-12-07
+
+- Added timing info on ICE starting and gathering done to Admin API
+- Fixed rare crash when generating SDP to send [[Issue-3081](https://github.com/meetecho/janus-gateway/issues/3081)]
+- Fixed rare crash when checking payload types (thanks @zevarito!) [[PR-3086](3086)]
+- Fixed double a=ssrc attribute in SDP for inactive m-line
+- Replaced non-portable strcasestr() with strncasecmp() (thanks @iskraman!) [[PR-3076](https://github.com/meetecho/janus-gateway/pull/3076)]
+- Fixed parameters not being URL-encoded when using TURN REST API [[Issue-3112](https://github.com/meetecho/janus-gateway/issues/3112)]
+- Fixed renegotiation sent to VideoRoom subscribers when a room is destroyed [[Issue-3083](https://github.com/meetecho/janus-gateway/issues/3083)]
+- Added option to prevent automatic SDP offer updates to VideoRoom subscribers when a publisher leaves
+- Fixed "send" property not being automatically reset to "true" in the VideoRoom for new subscriptions
+- Fixed small memory leak in AudioBridge (thanks @RSATom!) [[PR-3088](https://github.com/meetecho/janus-gateway/pull/3088)]
+- Minor fixes to the Streaming plugin
+- Enforced media direction policies when SIP call is on hold [PR-3087](https://github.com/meetecho/janus-gateway/pull/3087)]
+- Added code to send PLI to SIP peer when recording [[PR-3093](https://github.com/meetecho/janus-gateway/pull/3093)]
+- Fixed renegotiations in VideoCall not updating session properties
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.1.0] - 2022-10-03
 
 - Added versioning to .so files [[PR-3075](https://github.com/meetecho/janus-gateway/pull/3075)]
