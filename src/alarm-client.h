@@ -13,11 +13,11 @@
 #include "utils.h"
 #include "config.h"
 
-/* 
+/*
 * Alarm client initialization.
 * Must be called before attempting to use the alarm client.
 * @param config Janus config
-* @returns 0 in case of success, a negative integer otherwise 
+* @returns 0 in case of success, a negative integer otherwise
 */
 int alarm_client_init(janus_config* config);
 

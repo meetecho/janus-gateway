@@ -214,7 +214,7 @@ AC_ARG_ENABLE([all-handlers],
                AS_IF([test "x$enable_sample_event_handler" != "xyes"],
                      [enable_sample_event_handler=no])
                AS_IF([test "x$enable_log_event_handler" != "xyes"],
-                     [enable_log_event_handler=no])              
+                     [enable_log_event_handler=no])
                AS_IF([test "x$enable_websockets_event_handler" != "xyes"],
                      [enable_websockets_event_handler=no])
                AS_IF([test "x$enable_rabbitmq_event_handler" != "xyes"],
@@ -296,7 +296,7 @@ AC_ARG_ENABLE([sample-event-handler],
               [AS_IF([test "x$enable_sample_event_handler" != "xyes"],
                      [enable_sample_event_handler=no])],
               [enable_sample_event_handler=maybe])
-              
+
 AC_ARG_ENABLE([log-event-handler],
               [AS_HELP_STRING([--disable-log-event-handler],
                               [Disable log event handler ])],

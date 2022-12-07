@@ -8831,7 +8831,7 @@ static void *janus_videoroom_handler(void *data) {
 						g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, user_id);
 						user_id_str = user_id_num;
 					} else {
-						user_id_str = (char*)json_string_value(id);
+						user_id_str = (char *)json_string_value(id);
 					}
 					if(g_hash_table_lookup(videoroom->participants,
 							string_ids ? (gpointer)user_id_str : (gpointer)&user_id) != NULL) {
@@ -8860,11 +8860,11 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_VERB, "  -- Participant ID: %"SCNu64"\n", user_id);
 				} else {
 					if(user_id_str == NULL) {
-						// Generate a random ID
+						/* Generate a random ID */
 						while(user_id_str == NULL) {
 							user_id_str = janus_random_uuid();
 							if(g_hash_table_lookup(videoroom->participants, user_id_str) != NULL) {
-								// User ID already taken, try another one
+								/* User ID already taken, try another one */
 								g_clear_pointer(&user_id_str, g_free);
 							}
 						}
