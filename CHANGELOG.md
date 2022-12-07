@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.13.1] - 2022-12-07
+
+- Added timing info on ICE starting and gathering done to Admin API
+- Replaced non-portable strcasestr() with strncasecmp() (thanks @iskraman!) [[PR-3076](https://github.com/meetecho/janus-gateway/pull/3076)]
+- Fixed parameters not being URL-encoded when using TURN REST API [[Issue-3112](https://github.com/meetecho/janus-gateway/issues/3112)]
+- Fixed small memory leak in AudioBridge (thanks @RSATom!) [[PR-3088](https://github.com/meetecho/janus-gateway/pull/3088)]
+- Minor fixes to the Streaming plugin
+- Enforced media direction policies when SIP call is on hold [PR-3087](https://github.com/meetecho/janus-gateway/pull/3087)]
+- Added code to send PLI to SIP peer when recording [[PR-3093](https://github.com/meetecho/janus-gateway/pull/3093)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.13.0] - 2022-10-03
 
 - Fixed broken RTCP timestamp on 32bit architectures [[Issue-3045](https://github.com/meetecho/janus-gateway/issues/3045)]
