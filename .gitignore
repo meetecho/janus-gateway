@@ -14,6 +14,7 @@ Makefile
 Makefile.in
 /build
 /configure
+/configure~
 /autom4te.cache
 /aclocal.m4
 /m4
