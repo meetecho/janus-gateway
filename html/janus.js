@@ -2527,7 +2527,7 @@ function Janus(gatewayCallbacks) {
 							}
 						}
 					}
-					// FIXME Check if insertable streams are involved
+					// Check if insertable streams are involved
 					if(track.transforms) {
 						if(sender && track.transforms.sender) {
 							// There's a sender transform, set it on the transceiver sender
@@ -2583,6 +2583,59 @@ function Janus(gatewayCallbacks) {
 				}
 				if(nt && track.dontStop === true)
 					nt.dontStop = true;
+			} else if(track.recv && !transceiver) {
+				// Maybe a new recvonly track
+				transceiver = config.pc.addTransceiver(kind);
+				if(transceiver) {
+					// Check if we need to override some settings
+					if(track.codec) {
+						if(Janus.webRTCAdapter.browserDetails.browser === 'firefox') {
+							Janus.warn('setCodecPreferences not supported in Firefox, ignoring codec for track:', track);
+						} else if(typeof track.codec !== 'string') {
+							Janus.warn('Invalid codec value, ignoring for track:', track);
+						} else {
+							let mimeType = kind + '/' + track.codec.toLowerCase();
+							let codecs = RTCRtpReceiver.getCapabilities(kind).codecs.filter(function(codec) {
+								return codec.mimeType.toLowerCase() === mimeType;
+							});
+							if(!codecs || codecs.length === 0) {
+								Janus.warn('Codec not supported in this browser for this track, ignoring:', track);
+							} else {
+								try {
+									transceiver.setCodecPreferences(codecs);
+								} catch(err) {
+									Janus.warn('Failed enforcing codec for this ' + kind + ' track:', err);
+								}
+							}
+						}
+					}
+					// Check if insertable streams are involved
+					if(transceiver.receiver && track.transforms && track.transforms.receiver) {
+						// There's a receiver transform, set it on the transceiver receiver
+						let receiverStreams = null;
+						if(RTCRtpReceiver.prototype.createEncodedStreams) {
+							receiverStreams = transceiver.receiver.createEncodedStreams();
+						} else if(RTCRtpReceiver.prototype.createAudioEncodedStreams || RTCRtpReceiver.prototype.createEncodedVideoStreams) {
+							if(kind === 'audio') {
+								receiverStreams = transceiver.receiver.createEncodedAudioStreams();
+							} else if(kind === 'video') {
+								receiverStreams = transceiver.receiver.createEncodedVideoStreams();
+							}
+						}
+						if(receiverStreams) {
+							console.log('Insertable Streams receiver transform:', receiverStreams);
+							if(receiverStreams.readableStream && receiverStreams.writableStream) {
+								receiverStreams.readableStream
+									.pipeThrough(track.transforms.receiver)
+									.pipeTo(receiverStreams.writableStream);
+							} else if(receiverStreams.readable && receiverStreams.writable) {
+								receiverStreams.readable
+									.pipeThrough(track.transforms.receiver)
+									.pipeTo(receiverStreams.writable);
+							}
+						}
+					}
+				}
 			}
 			// Get rid of the old track
 			// FIXME We should probably do this *before* capturing the new
