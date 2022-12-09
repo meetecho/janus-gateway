@@ -1617,6 +1617,7 @@ static void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		return;
 	}
 	handle->agent_created = 0;
+	handle->agent_started = 0;
 	if(handle->pc != NULL) {
 		janus_ice_peerconnection_destroy(handle->pc);
 		handle->pc = NULL;
@@ -1766,6 +1767,18 @@ static void janus_ice_peerconnection_free(const janus_refcount *pc_ref) {
 	pc->remote_candidates = NULL;
 	g_free(pc->selected_pair);
 	pc->selected_pair = NULL;
+	if(pc->payload_types != NULL)
+		g_hash_table_destroy(pc->payload_types);
+	pc->payload_types = NULL;
+	if(pc->clock_rates != NULL)
+		g_hash_table_destroy(pc->clock_rates);
+	pc->clock_rates = NULL;
+	if(pc->rtx_payload_types != NULL)
+		g_hash_table_destroy(pc->rtx_payload_types);
+	pc->rtx_payload_types = NULL;
+	if(pc->rtx_payload_types_rev != NULL)
+		g_hash_table_destroy(pc->rtx_payload_types_rev);
+	pc->rtx_payload_types_rev = NULL;
 	g_free(pc);
 	pc = NULL;
 }
@@ -2015,6 +2028,7 @@ static void janus_ice_cb_candidate_gathering_done(NiceAgent *agent, guint stream
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]  No stream %d??\n", handle->handle_id, stream_id);
 		return;
 	}
+	pc->gathered = janus_get_monotonic_time();
 	pc->cdone = 1;
 	/* If we're doing full-trickle, send an event to the user too */
 	if(janus_full_trickle_enabled) {
@@ -3934,7 +3948,10 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 					}
 				} else {
 					size_t midlen = strlen(mid);
-					if(extbufsize < (midlen + 2)) {
+					if(midlen > 16) {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] mid too large, capping to first 16 characters...\n", handle->handle_id);
+						midlen = 16;
+					} else if(extbufsize < (midlen + 2)) {
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Not enough room for mid extension, skipping it...\n", handle->handle_id);
 					} else {
 						*index = handle->pc->mid_ext_id;
@@ -4246,15 +4263,15 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 				gint64 last = medium->in_stats.info[vindex].updated;
 				if(!medium->in_stats.info[vindex].notified_lastsec && last &&
 						!medium->in_stats.info[vindex].bytes_lastsec && !medium->in_stats.info[vindex].bytes_lastsec_temp &&
-							now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+							now - last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of video! */
 					medium->in_stats.info[vindex].notified_lastsec = TRUE;
 					if(vindex == 0) {
-						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive %s for more than a second...\n",
-							handle->handle_id, medium->type == JANUS_MEDIA_VIDEO ? "video" : "audio");
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive %s for more than %u second(s)...\n",
+							handle->handle_id, medium->type == JANUS_MEDIA_VIDEO ? "video" : "audio", no_media_timer);
 					} else {
-						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive %s (substream #%d) for more than a second...\n",
-							handle->handle_id, medium->type == JANUS_MEDIA_VIDEO ? "video" : "audio", vindex);
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive %s (substream #%d) for more than %u second(s)...\n",
+							handle->handle_id, medium->type == JANUS_MEDIA_VIDEO ? "video" : "audio", vindex, no_media_timer);
 					}
 					janus_ice_notify_media(handle, medium->mid, medium->type == JANUS_MEDIA_VIDEO, medium->rtcp_ctx[1] != NULL, vindex, FALSE);
 				}
@@ -4359,6 +4376,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		}
 		guint count = g_slist_length(candidates);
 		if(pc != NULL && count > 0) {
+			if(handle->agent_started == 0)
+				handle->agent_started = janus_get_monotonic_time();
 			int added = nice_agent_set_remote_candidates(handle->agent, pc->stream_id, pc->component_id, candidates);
 			if(added < 0 || (guint)added != count) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Failed to add some remote candidates (added %u, expected %u)\n",

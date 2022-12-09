@@ -5820,11 +5820,11 @@ static void *janus_streaming_handler(void *data) {
 			}
 			/* New viewer: we send an offer ourselves */
 			JANUS_LOG(LOG_VERB, "Request to watch mountpoint/stream %s\n", id_value_str);
-			if(session->mountpoint != NULL || g_list_find(mp->viewers, session) != NULL) {
+			if(g_list_find(mp->viewers, session) != NULL) {
 				janus_mutex_unlock(&session->mutex);
 				janus_mutex_unlock(&mp->mutex);
 				janus_refcount_decrease(&mp->ref);
-				JANUS_LOG(LOG_ERR, "Already watching a stream...\n");
+				JANUS_LOG(LOG_ERR, "Already watching a stream (found %p in %s's viewers)...\n", session, id_value_str);
 				error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
 				g_snprintf(error_cause, 512, "Already watching a stream");
 				goto error;
@@ -7488,13 +7488,15 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		/* Possibly a quirk in the RTSP server, where the DESCRIBE request expects a path only. */
 		CURLU *curl_u = curl_url();
 		char *path = NULL;
-		if(!(curl_url_set(curl_u, CURLUPART_URL, source->rtsp_url, 0))) {
+		if(curl_u && !(curl_url_set(curl_u, CURLUPART_URL, source->rtsp_url, 0))) {
 			if(!(curl_url_get(curl_u, CURLUPART_PATH, &path, 0))) {
 				curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, path);
-				curl_easy_perform(curl);
-				res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
-				if((res == CURLE_OK) && (code != 404)) {
-					source->rtsp_stream_uri = g_strdup(path);
+				res = curl_easy_perform(curl);
+				if(res == CURLE_OK) {
+					res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+					if((res == CURLE_OK) && (code != 404)) {
+						source->rtsp_stream_uri = g_strdup(path);
+					}
 				}
 				curl_free(path);
 			}
@@ -9737,6 +9739,9 @@ static void janus_streaming_helper_rtprtcp_packet(gpointer data, gpointer user_d
 	copy->ssrc[2] = packet->ssrc[2];
 	copy->codec = packet->codec;
 	copy->substream = packet->substream;
+	copy->svc = packet->svc;
+	if(copy->svc)
+		copy->svc_info = packet->svc_info;
 	copy->ptype = packet->ptype;
 	copy->timestamp = packet->timestamp;
 	copy->seq_number = packet->seq_number;

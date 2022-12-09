@@ -332,14 +332,12 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len);
 gboolean janus_h264_is_keyframe(const char *buffer, int len);
 
 /*! \brief Helper method to check if an AV1 frame is a keyframe or not
- * @note Currently only a placeholder, always returns FALSE
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
  * @returns TRUE if it's a keyframe, FALSE otherwise */
 gboolean janus_av1_is_keyframe(const char *buffer, int len);
 
 /*! \brief Helper method to check if an H.265 frame is a keyframe or not
- * @note Currently only a placeholder, always returns FALSE
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
  * @returns TRUE if it's a keyframe, FALSE otherwise */

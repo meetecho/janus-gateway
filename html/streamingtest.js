@@ -176,6 +176,8 @@ $(document).ready(function() {
 										delete remoteTracks[mid];
 										return;
 									}
+									if($('#remotevideo' + mid).length > 0)
+										return;
 									// If we're here, a new track was added
 									var stream = null;
 									if(track.kind === "audio") {

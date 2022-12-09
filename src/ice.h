@@ -362,6 +362,8 @@ struct janus_ice_handle {
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
 	gint64 agent_created;
+	/*! \brief Monotonic time of when the ICE agent has been started (remote credentials set) */
+	gint64 agent_started;
 	/*! \brief ICE role (controlling or controlled) */
 	gboolean controlling;
 	/*! \brief Main mid */
@@ -416,6 +418,8 @@ struct janus_ice_peerconnection {
 	gint cdone:1;
 	/*! \brief libnice ICE component state */
 	guint state;
+	/*! \brief Monotonic time of when gathering has completed */
+	gint64 gathered;
 	/*! \brief Monotonic time of when ICE has successfully connected */
 	gint64 connected;
 	/*! \brief GLib list of libnice remote candidates for this component */
@@ -491,6 +495,14 @@ struct janus_ice_peerconnection {
 	 * or video m-line, in order to make it easier for plugins that don't do
 	 * multistream. That said, we don't plan to keep it forever */
 	GHashTable *media_bytype;
+	/*! \brief List of payload types we can expect */
+	GHashTable *payload_types;
+	/*! \brief Mapping of payload types to their clock rates, as advertised in the SDP */
+	GHashTable *clock_rates;
+	/*! \brief Mapping of rtx payload types to actual media-related packet types */
+	GHashTable *rtx_payload_types;
+	/*! \brief Reverse mapping of rtx payload types to actual media-related packet types */
+	GHashTable *rtx_payload_types_rev;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this stream */

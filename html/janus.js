@@ -1915,7 +1915,7 @@ function Janus(gatewayCallbacks) {
 			try {
 				pluginHandle.onremotetrack(event.track, mid, true);
 			} catch(e) {
-				Janus.error(e);
+				Janus.error("Error calling onremotetrack", e);
 			}
 			if(event.track.onended)
 				return;
@@ -1925,13 +1925,14 @@ function Janus(gatewayCallbacks) {
 				Janus.log('Remote track removed:', ev);
 				clearTimeout(trackMutedTimeoutId);
 				// Notify the application
-				let transceiver = config.pc.getTransceivers().find(
-					t => t.receiver.track === ev.target);
+				let transceivers = config.pc ? config.pc.getTransceivers() : null;
+				let transceiver = transceivers ? transceivers.find(
+					t => t.receiver.track === ev.target) : null;
 				let mid = transceiver ? transceiver.mid : ev.target.id;
 				try {
 					pluginHandle.onremotetrack(ev.target, mid, false);
 				} catch(e) {
-					Janus.error(e);
+					Janus.error("Error calling onremotetrack on removal", e);
 				}
 			};
 			event.track.onmute = function(ev) {
@@ -1940,13 +1941,14 @@ function Janus(gatewayCallbacks) {
 					trackMutedTimeoutId = setTimeout(function() {
 						Janus.log('Removing remote track');
 						// Notify the application the track is gone
-						let transceiver = config.pc.getTransceivers().find(
-							t => t.receiver.track === ev.target);
+						let transceivers = config.pc ? config.pc.getTransceivers() : null;
+						let transceiver = transceivers ? transceivers.find(
+							t => t.receiver.track === ev.target) : null;
 						let mid = transceiver ? transceiver.mid : ev.target.id;
 						try {
 							pluginHandle.onremotetrack(ev.target, mid, false);
 						} catch(e) {
-							Janus.error(e);
+							Janus.error("Error calling onremotetrack on mute", e);
 						}
 						trackMutedTimeoutId = null;
 					// Chrome seems to raise mute events only at multiples of 834ms;
@@ -1962,12 +1964,13 @@ function Janus(gatewayCallbacks) {
 				} else {
 					try {
 						// Notify the application the track is back
-						let transceiver = config.pc.getTransceivers().find(
-							t => t.receiver.track === ev.target);
+						let transceivers = config.pc ? config.pc.getTransceivers() : null;
+						let transceiver = transceivers ? transceivers.find(
+							t => t.receiver.track === ev.target) : null;
 						let mid = transceiver ? transceiver.mid : ev.target.id;
 						pluginHandle.onremotetrack(ev.target, mid, true);
 					} catch(e) {
-						Janus.error(e);
+						Janus.error("Error calling onremotetrack on unmute", e);
 					}
 				}
 			};
@@ -2615,7 +2618,7 @@ function Janus(gatewayCallbacks) {
 						config.myStream.removeTrack(rt);
 						pluginHandle.onlocaltrack(rt, false);
 					} catch(e) {
-						Janus.error(e);
+						Janus.error("Error calling onlocaltrack on removal for renegotiation", e);
 					}
 					// Close the old track (unless we've been asked not to)
 					if(rt.dontStop !== true) {
@@ -2634,13 +2637,13 @@ function Janus(gatewayCallbacks) {
 					try {
 						pluginHandle.onlocaltrack(ev.target, false);
 					} catch(e) {
-						Janus.error(e);
+						Janus.error("Error calling onlocaltrack following end", e);
 					}
 				}
 				try {
 					pluginHandle.onlocaltrack(nt, true);
 				} catch(e) {
-					Janus.error(e);
+					Janus.error("Error calling onlocaltrack for track add", e);
 				}
 			}
 			// Update the direction of the transceiver
@@ -2737,7 +2740,7 @@ function Janus(gatewayCallbacks) {
 			config.volume[stream] = { value: 0 };
 		// Start getting the volume, if audioLevel in getStats is supported (apparently
 		// they're only available in Chrome/Safari right now: https://webrtc-stats.callstats.io/)
-		if(config.pc.getStats && (Janus.webRTCAdapter.browserDetails.browser === "chrome" ||
+		if(config.pc && config.pc.getStats && (Janus.webRTCAdapter.browserDetails.browser === "chrome" ||
 				Janus.webRTCAdapter.browserDetails.browser === "safari")) {
 			// Are we interested in a mid in particular?
 			let query = config.pc;
@@ -2874,7 +2877,9 @@ function Janus(gatewayCallbacks) {
 				}
 				transceiver.sender.track.enabled = mute ? false : true;
 			} else {
-				config.myStream.getVideoTracks()[0].enabled = mute ? false : true;
+				for(const videostream of config.myStream.getVideoTracks()) {
+					videostream.enabled = !mute
+				}
 			}
 		} else {
 			// Mute/unmute audio track
@@ -2895,7 +2900,9 @@ function Janus(gatewayCallbacks) {
 				}
 				transceiver.sender.track.enabled = mute ? false : true;
 			} else {
-				config.myStream.getAudioTracks()[0].enabled = mute ? false : true;
+				for(const audiostream of config.myStream.getAudioTracks()) {
+					audiostream.enabled = !mute
+				}
 			}
 		}
 		return true;
