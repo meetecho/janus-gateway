@@ -1021,6 +1021,12 @@ int janus_process_incoming_request(janus_request *request) {
 		JANUS_LOG(LOG_ERR, "Missing request or payload to process, giving up...\n");
 		return ret;
 	}
+	janus_session *session = NULL;
+	janus_ice_handle *handle = NULL;
+	if(request->message == NULL) {
+		ret = janus_process_error_string(request, 0, NULL, JANUS_ERROR_INVALID_JSON, (char *)"Invalid Janus API request");
+		goto jsondone;
+	}
 	int error_code = 0;
 	char error_cause[100];
 	json_t *root = request->message;
@@ -1036,9 +1042,6 @@ int janus_process_incoming_request(janus_request *request) {
 		h = NULL;
 	if(h && json_is_integer(h))
 		handle_id = json_integer_value(h);
-
-	janus_session *session = NULL;
-	janus_ice_handle *handle = NULL;
 
 	/* Get transaction and message request */
 	JANUS_VALIDATE_JSON_OBJECT(root, incoming_request_parameters,
