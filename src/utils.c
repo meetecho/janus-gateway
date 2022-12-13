@@ -1037,8 +1037,13 @@ void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simu
 		context->base_tlzi = tlzi;
 	}
 	context->last_picid = (picid-context->base_picid)+context->base_picid_prev+1;
-	if((!m && context->last_picid > 127) || (m && context->last_picid > 32767))
-		context->last_picid -= (m ? 32768 : 128);
+	if(!m && context->last_picid > 127) {
+		context->last_picid -= 128;
+		if(context->last_picid > 127)
+			context->last_picid = 0;
+	} else if(m && context->last_picid > 32767) {
+		context->last_picid -= 32768;
+	}
 	context->last_tlzi = (tlzi-context->base_tlzi)+context->base_tlzi_prev+1;
 	/* Overwrite the values in the VP8 payload descriptors with the ones we have */
 	janus_vp8_replace_descriptor(buffer, len, m, context->last_picid, context->last_tlzi);
