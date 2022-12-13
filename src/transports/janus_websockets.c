@@ -1287,20 +1287,23 @@ static int janus_websockets_common_callback(
 			/* Refresh the lws connection validity (avoid sending a ping) */
 			lws_validity_confirmed(ws_client->wsi);
 #endif
+			size_t incoming_length;
 			/* Is this a new message, or part of a fragmented one? */
 			const size_t remaining = lws_remaining_packet_payload(wsi);
 			if(ws_client->incoming == NULL) {
 				JANUS_LOG(LOG_HUGE, "[%s-%p] First fragment: %zu bytes, %zu remaining\n", log_prefix, wsi, len, remaining);
 				ws_client->incoming = g_malloc(len+1);
 				memcpy(ws_client->incoming, in, len);
-				ws_client->incoming[len] = '\0';
+				incoming_length = len;
+				ws_client->incoming[incoming_length] = '\0';
 				JANUS_LOG(LOG_HUGE, "%s\n", ws_client->incoming);
 			} else {
 				size_t offset = strlen(ws_client->incoming);
 				JANUS_LOG(LOG_HUGE, "[%s-%p] Appending fragment: offset %zu, %zu bytes, %zu remaining\n", log_prefix, wsi, offset, len, remaining);
 				ws_client->incoming = g_realloc(ws_client->incoming, offset+len+1);
 				memcpy(ws_client->incoming+offset, in, len);
-				ws_client->incoming[offset+len] = '\0';
+				incoming_length = offset+len;
+				ws_client->incoming[incoming_length] = '\0';
 				JANUS_LOG(LOG_HUGE, "%s\n", ws_client->incoming+offset);
 			}
 			if(remaining > 0 || !lws_is_final_fragment(wsi)) {
@@ -1310,12 +1313,29 @@ static int janus_websockets_common_callback(
 			}
 			JANUS_LOG(LOG_HUGE, "[%s-%p] Done, parsing message: %zu bytes\n", log_prefix, wsi, strlen(ws_client->incoming));
 			/* If we got here, the message is complete: parse the JSON payload */
-			json_error_t error;
-			json_t *root = json_loads(ws_client->incoming, 0, &error);
+			const char* request_curr = ws_client->incoming;
+			const char* request_end = ws_client->incoming + incoming_length;
+			
+			do { /* load all json objects from the message */
+			
+				json_error_t error;
+				json_t *root = json_loads(request_curr, JSON_DISABLE_EOF_CHECK, &error);
+
+				/* Notify the core, passing both the object and, since it may be needed, the error */
+				gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, root, &error);
+
+				/* Stop processing on json load errors */
+				if(root == NULL) {
+					break;	
+				}
+				
+				/* Position is set to bytes read on success when EOF_CHECK is disabled as above. */
+				request_curr += error.position;
+
+			} while (request_curr < request_end);
+		
 			g_free(ws_client->incoming);
 			ws_client->incoming = NULL;
-			/* Notify the core, passing both the object and, since it may be needed, the error */
-			gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, root, &error);
 			return 0;
 		}
 #if (LWS_LIBRARY_VERSION_MAJOR >= 3)
