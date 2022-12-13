@@ -1311,24 +1311,19 @@ static int janus_websockets_common_callback(
 				JANUS_LOG(LOG_HUGE, "[%s-%p] Waiting for more fragments\n", log_prefix, wsi);
 				return 0;
 			}
-			JANUS_LOG(LOG_HUGE, "[%s-%p] Done, parsing message: %zu bytes\n", log_prefix, wsi, strlen(ws_client->incoming));
+			JANUS_LOG(LOG_HUGE, "[%s-%p] Done, parsing message: %zu bytes\n", log_prefix, wsi, incoming_length);
 			/* If we got here, the message is complete: parse the JSON payload */
 			const char* request_curr = ws_client->incoming;
 			const char* request_end = ws_client->incoming + incoming_length;
-			
 			do { /* load all json objects from the message */
-			
 				json_error_t error;
 				json_t *root = json_loads(request_curr, JSON_DISABLE_EOF_CHECK, &error);
-
 				/* Notify the core, passing both the object and, since it may be needed, the error */
 				gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, root, &error);
-
 				/* Stop processing on json load errors */
 				if(root == NULL) {
 					break;	
 				}
-				
 				/* Position is set to bytes read on success when EOF_CHECK is disabled as above. */
 				request_curr += error.position;
 
