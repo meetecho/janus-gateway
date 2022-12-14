@@ -919,8 +919,8 @@ janus_request *janus_request_new(janus_transport *transport, janus_transport_ses
 	request->admin = admin;
 	request->message = message;
 	if(error) {
-		request->error = (json_error_t*)g_malloc(sizeof(json_error_t))
-		*request->error = *error
+		request->error = (json_error_t*)g_malloc(sizeof(json_error_t));
+		*request->error = *error;
 	}
 	else {
 		request->error = NULL;
