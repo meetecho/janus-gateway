@@ -138,6 +138,13 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len) {
 				}
 				break;
 			}
+			case RTCP_RTPFB: {
+				/* RTPFB, Transport layer FB message (rfc4585) */
+				if (!janus_rtcp_check_fci(rtcp, total, 4))
+					break;
+				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
+				return ntohl(rtcpfb->media);
+			}
 			default:
 				break;
 		}
