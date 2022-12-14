@@ -1549,6 +1549,11 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		g_free(m->c_addr);
 		m->c_ipv4 = ipv4;
 		m->c_addr = g_strdup(janus_get_public_ip(0));
+		/* a=mid */
+		if(medium->mid) {
+			a = janus_sdp_attribute_create("mid", "%s", medium->mid);
+			m->attributes = g_list_insert_before(m->attributes, first, a);
+		}
 		/* Check if we need to refuse the media or not */
 		if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 			/* Audio/Video */
@@ -1632,11 +1637,6 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			m->direction = JANUS_SDP_INACTIVE;
 			temp = temp->next;
 			continue;
-		}
-		/* a=mid */
-		if(medium->mid) {
-			a = janus_sdp_attribute_create("mid", "%s", medium->mid);
-			m->attributes = g_list_insert_before(m->attributes, first, a);
 		}
 		if(m->type == JANUS_SDP_APPLICATION) {
 			if(!strcasecmp(m->proto, "UDP/DTLS/SCTP"))
