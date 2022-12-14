@@ -1326,7 +1326,7 @@ static int janus_websockets_common_callback(
 				}
 				/* Position is set to bytes read on success when EOF_CHECK is disabled as above. */
 				request_curr += error.position;
-
+				JANUS_LOG(LOG_HUGE, "[%s-%p] Parsed json request - consumed %zu/%zu bytes\n", log_prefix, wsi, (size_t)(request_curr - ws_client->incoming), incoming_length);
 			} while (request_curr < request_end);
 		
 			g_free(ws_client->incoming);
