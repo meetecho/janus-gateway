@@ -1,22 +1,71 @@
+declare global {
+	const jQuery: any
+	const Promise: any
+}
+
 declare namespace JanusJS {
 	interface Dependencies {
 		adapter: any;
 		WebSocket: (server: string, protocol: string) => WebSocket;
 		isArray: (array: any) => array is Array<any>;
-		extension: () => boolean;
-		httpAPICall: (url: string, options: any) => void;
+		extension: ChromeExtension;
+		httpAPICall: (url: string, options: HttpApiCallOption) => void;
+	}
+
+	interface DefaultDependencies extends Dependencies {
+		fetch: typeof fetch;
+		Promise: typeof Promise;
+	}
+
+	interface OldDependencies extends Dependencies {
+		jQuery: typeof jQuery;
 	}
 
 	interface DependenciesResult {
 		adapter: any;
 		newWebSocket: (server: string, protocol: string) => WebSocket;
 		isArray: (array: any) => array is Array<any>;
-		extension: () => boolean;
-		httpAPICall: (url: string, options: any) => void;
+		extension: ChromeExtension;
+		httpAPICall: (url: string, options: HttpApiCallOption) => void;
+	}
+
+	type ChromeExtension = {
+		cache?: { [key in string]: GetScreenCallback },
+		extensionId: string;
+		isInstalled: () => boolean;
+		getScreen: (callback: GetScreenCallback) => void;
+		init: () => void;
+	}
+
+	type GetScreenCallback = (error?, sourceId?) => void
+
+	type HttpApiCallOption = {
+		async: boolean,
+		verb: string,
+		body: JanusRequest,
+		timeout: number,
+		withCredentials: boolean,
+		success: (result: unknown) => void,
+		error: (error: string, reason?: unknown) => void,
+	}
+
+	type JanusRequest = {
+		plugin?: string,
+		token?: string,
+		apisecret?: string,
+		session_id?: string,
+		handle_id?: string,
+		opaque_id?: string,
+		loop_index?: string,
+		janus: string,
+		transaction: string,
+		body?: any | string
+		jsep?: JSEP
 	}
 
 	enum DebugLevel {
 		Trace = 'trace',
+		vDebug = 'vdebug',
 		Debug = 'debug',
 		Log = 'log',
 		Warning = 'warn',
@@ -24,6 +73,7 @@ declare namespace JanusJS {
 	}
 
 	interface JSEP {
+		e2ee?: boolean
 		ee2e?: boolean;
 		sdp?: string;
 		type?: string;
@@ -49,6 +99,10 @@ declare namespace JanusJS {
 		success?: Function;
 		error?: (error: any) => void;
 		destroyed?: Function;
+		iceTransportPolicy?: RTCIceTransportPolicy;
+		bundlePolicy?: RTCBundlePolicy;
+		keepAlivePeriod?: number;
+		longPollTimeout?: number;
 	}
 
 	interface ReconnectOptions {
@@ -110,6 +164,8 @@ declare namespace JanusJS {
 	interface PluginOptions extends PluginCallbacks {
 		plugin: string;
 		opaqueId?: string;
+		token?: string;
+		loopIndex?: string;
 	}
 
 	interface OfferParams {
@@ -158,10 +214,10 @@ declare namespace JanusJS {
 			tsnow: string | null;
 			value: string | null;
 		};
-		dataChannel: Array<RTCDataChannel>;
+		dataChannel: { [key in string]: Partial<RTCDataChannel> };
 		dataChannelOptions: RTCDataChannelInit;
 
-		dtmfSender: string | null;
+		dtmfSender: RTCDTMFSender
 		iceDone: boolean;
 		mediaConstraints: any;
 		mySdp: {
@@ -187,7 +243,46 @@ declare namespace JanusJS {
 			value: number;
 			timer: number;
 		};
+
+		sdpSent: boolean,
+		insertableStreams?: any,
+		candidates: RTCIceCandidateInit[]
 	}
+
+	type CallHolder<CallName extends string, CallSign extends Function> = {
+		[key in CallName]?: CallSign
+	}
+	type SuccessCallback<T> = CallHolder<'success', (result?: T) => void>
+	type ErrorCallback<T> = CallHolder<'error', (error?: T) => void>
+
+	type PluginCreateAnswerParam =
+		& SuccessCallback<unknown>
+		& ErrorCallback<string>
+
+	type PluginHandleRemoteJsepParam =
+		& SuccessCallback<unknown>
+		& ErrorCallback<string>
+		& { jsep: JSEP }
+
+	type PluginReplaceTracksParam =
+		& SuccessCallback<unknown>
+		& ErrorCallback<string>
+
+	type PluginDtmfParam =
+		& SuccessCallback<unknown>
+		& ErrorCallback<string>
+
+	type PluginDataParam =
+		& SuccessCallback<unknown>
+		& ErrorCallback<string>
+
+	type TrackDesc = {
+		mid?: string
+		type?: string
+		id?: string
+		label?: string
+	}
+
 	interface DetachOptions {
 		success?: () => void;
 		error?: (error: string) => void;
@@ -201,12 +296,9 @@ declare namespace JanusJS {
 		webrtcStuff: WebRTCInfo;
 		getId(): string;
 		getPlugin(): string;
-		send(message: PluginMessage): void;
-		createOffer(params: OfferParams): void;
-		createAnswer(params: any): void;
-		handleRemoteJsep(params: { jsep: JSEP }): void;
-		dtmf(params: any): void;
-		data(params: any): void;
+		getVolume(mid: string, callback: (result: number) => void): void;
+		getRemoteVolume(mid: string, callback: (result: number) => void): void;
+		getLocalVolume(mid: string, callback: (result: number) => void): void;
 		isAudioMuted(): boolean;
 		muteAudio(): void;
 		unmuteAudio(): void;
@@ -214,6 +306,16 @@ declare namespace JanusJS {
 		muteVideo(): void;
 		unmuteVideo(): void;
 		getBitrate(): string;
+		setMaxBitrate(bitrate: number): void;
+		send(message: PluginMessage): void;
+		data(params: PluginDataParam): void;
+		dtmf(params: PluginDtmfParam): void;
+		createOffer(params: OfferParams): void;
+		createAnswer(params: PluginCreateAnswerParam): void;
+		handleRemoteJsep(params: PluginHandleRemoteJsepParam): void;
+		replaceTracks(params: PluginReplaceTracksParam): void;
+		getLocalTracks(): TrackDesc[];
+		getRemoteTracks(): TrackDesc[];
 		hangup(sendRequest?: boolean): void;
 		detach(params?: DetachOptions): void;
 	}
@@ -221,8 +323,8 @@ declare namespace JanusJS {
 	class Janus {
 		static webRTCAdapter: any;
 		static safariVp8: boolean;
-		static useDefaultDependencies(deps: Partial<Dependencies>): DependenciesResult;
-		static useOldDependencies(deps: Partial<Dependencies>): DependenciesResult;
+		static useDefaultDependencies(deps?: Partial<DefaultDependencies>): DependenciesResult;
+		static useOldDependencies(deps?: Partial<OldDependencies>): DependenciesResult;
 		static init(options: InitOptions): void;
 		static isWebrtcSupported(): boolean;
 		static debug(...args: any[]): void;
@@ -241,7 +343,7 @@ declare namespace JanusJS {
 		getServer(): string;
 		isConnected(): boolean;
 		reconnect(callbacks: ReconnectOptions): void;
-		getSessionId(): number;
+		getSessionId(): string;
 		getInfo(callbacks: GetInfoOptions): void;
 		destroy(callbacks: DestroyOptions): void;
 	}
