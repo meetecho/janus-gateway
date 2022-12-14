@@ -1313,22 +1313,49 @@ static int janus_websockets_common_callback(
 			}
 			JANUS_LOG(LOG_HUGE, "[%s-%p] Done, parsing message: %zu bytes\n", log_prefix, wsi, incoming_length);
 			/* If we got here, the message is complete: parse the JSON payload */
-			const char *request_curr = ws_client->incoming;
-			const char *request_end = ws_client->incoming + incoming_length;
-			/* Load all JSON objects from the message */
+			const char *incoming_curr = ws_client->incoming;
+			const char *incoming_end = ws_client->incoming + incoming_length;
+			int message_buffer_count = 0;
+			json_t **message_buffer = NULL;
+			/* Load all JSON messages from the websocket incoming */
 			do {
 				json_error_t error;
-				json_t *root = json_loads(request_curr, JSON_DISABLE_EOF_CHECK, &error);
-				/* Notify the core, passing both the object and, since it may be needed, the error */
-				gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, root, &error);
-				/* Stop processing on JSON load errors */
-				if(root == NULL) {
-					break;	
+				json_t *message = json_loads(incoming_curr, JSON_DISABLE_EOF_CHECK, &error);
+				if(message != NULL) {
+					/* Position is set to bytes read on success when EOF_CHECK is disabled as above. */
+					incoming_curr += error.position;
+					JANUS_LOG(LOG_HUGE, "[%s-%p] Parsed JSON message - consumed %zu/%zu bytes\n", log_prefix, wsi, (size_t)(incoming_curr - ws_client->incoming), incoming_length);
+					if(incoming_curr == incoming_end) {
+						/* Process messages in order */
+						json_t **msg = message_buffer;
+						json_t **msg_end = message_buffer + message_buffer_count;
+						while(msg != msg_end) {
+							/* Notify the core, no error since we know there weren't any */
+							gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, *msg++, NULL);
+						}
+						/* Notify the core, no error since we know there weren't any */
+						gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, message, NULL);
+						break;
+					}
+					else {
+						/* Buffer the message */						
+						message_buffer = (json_t**)g_realloc(message_buffer, sizeof(json_t*) * (message_buffer_count + 1));
+						message_buffer[message_buffer_count++] = message;
+					}
 				}
-				/* Position is set to bytes read on success when EOF_CHECK is disabled as above. */
-				request_curr += error.position;
-				JANUS_LOG(LOG_HUGE, "[%s-%p] Parsed JSON request - consumed %zu/%zu bytes\n", log_prefix, wsi, (size_t)(request_curr - ws_client->incoming), incoming_length);
-			} while (request_curr < request_end);
+				else {
+					/* Release any buffered messages */
+					json_t **msg = message_buffer;
+					json_t **msg_end = message_buffer + message_buffer_count;
+					while(msg != msg_end) {
+						json_decref(*msg++);
+					}
+					/* Notify the core, passing the error since we have no message */
+					gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, NULL, &error);
+					break;
+				}
+			} while(incoming_curr < incoming_end);
+			g_free(message_buffer);
 			g_free(ws_client->incoming);
 			ws_client->incoming = NULL;
 			return 0;
