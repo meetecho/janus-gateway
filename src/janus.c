@@ -3382,8 +3382,8 @@ void janus_transport_incoming_request(janus_transport *plugin, janus_transport_s
 	janus_request *request = janus_request_new(plugin, transport, request_id, admin, message);
 	if(message == NULL) {
 		/* Report details about the parsing error */
-		janus_process_error(request, /*session_id=*/0, /*transaction=*/NULL, JANUS_ERROR_INVALID_JSON,
-			"Failed loading json request - %s from %s(%d:%d)", error->text, error->source, error->line, error->column);
+		janus_process_error(request, 0, NULL, JANUS_ERROR_INVALID_JSON,
+			"Failed loading JSON request - %s from %s(%d:%d)", error->text, error->source, error->line, error->column);
 		janus_request_destroy(request);
 	}
 	else {
