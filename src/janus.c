@@ -904,7 +904,7 @@ static void janus_request_free(const janus_refcount *request_ref) {
 		request->message = NULL;
 	}
 	if(request->error) {
-		g_free(request->error)
+		g_free(request->error);
 		request->error = NULL;
 	}
 	g_free(request);
