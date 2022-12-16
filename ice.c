@@ -3791,20 +3791,20 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	if(!offer) {
 		if(audio) {
 			if(handle->audio_mid == NULL)
-				handle->audio_mid = g_strdup("audio");
+				handle->audio_mid = g_strdup("a");
 			if(handle->stream_mid == NULL)
 				handle->stream_mid = handle->audio_mid;
 		}
 		if(video) {
 			if(handle->video_mid == NULL)
-				handle->video_mid = g_strdup("video");
+				handle->video_mid = g_strdup("v");
 			if(handle->stream_mid == NULL)
 				handle->stream_mid = handle->video_mid;
 		}
 #ifdef HAVE_SCTP
 		if(data) {
 			if(handle->data_mid == NULL)
-				handle->data_mid = g_strdup("data");
+				handle->data_mid = g_strdup("d");
 			if(handle->stream_mid == NULL)
 				handle->stream_mid = handle->data_mid;
 		}

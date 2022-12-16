@@ -1366,14 +1366,14 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			audio++;
 			if(audio == 1 && m->port > 0) {
 				g_snprintf(buffer_part, sizeof(buffer_part),
-					" %s", handle->audio_mid ? handle->audio_mid : "audio");
+					" %s", handle->audio_mid ? handle->audio_mid : "a");
 				janus_strlcat(buffer, buffer_part, sizeof(buffer));
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			video++;
 			if(video == 1 && m->port > 0) {
 				g_snprintf(buffer_part, sizeof(buffer_part),
-					" %s", handle->video_mid ? handle->video_mid : "video");
+					" %s", handle->video_mid ? handle->video_mid : "v");
 				janus_strlcat(buffer, buffer_part, sizeof(buffer));
 			}
 #ifdef HAVE_SCTP
@@ -1382,7 +1382,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				data++;
 			if(data == 1 && m->port > 0) {
 				g_snprintf(buffer_part, sizeof(buffer_part),
-					" %s", handle->data_mid ? handle->data_mid : "data");
+					" %s", handle->data_mid ? handle->data_mid : "d");
 				janus_strlcat(buffer, buffer_part, sizeof(buffer));
 			}
 #endif

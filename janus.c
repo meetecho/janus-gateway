@@ -3732,7 +3732,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						}
 					}
 					if(ice_handle->audio_mid == NULL)
-						ice_handle->audio_mid = g_strdup("audio");
+						ice_handle->audio_mid = g_strdup("a");
 				}
 				if(video) {
 					if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
@@ -3744,11 +3744,11 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						}
 					}
 					if(ice_handle->video_mid == NULL)
-						ice_handle->video_mid = g_strdup("video");
+						ice_handle->video_mid = g_strdup("v");
 				}
 				if(data) {
 					if(ice_handle->data_mid == NULL)
-						ice_handle->data_mid = g_strdup("data");
+						ice_handle->data_mid = g_strdup("d");
 				}
 			}
 		}
