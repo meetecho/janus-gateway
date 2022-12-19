@@ -1336,14 +1336,12 @@ static int janus_websockets_common_callback(
 						/* Notify the core, no error since we know there weren't any */
 						gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, message, NULL);
 						break;
-					}
-					else {
+					} else {
 						/* Buffer the message */						
 						message_buffer = (json_t**)g_realloc(message_buffer, sizeof(json_t*) * (message_buffer_count + 1));
 						message_buffer[message_buffer_count++] = message;
 					}
-				}
-				else {
+				} else {
 					/* Release any buffered messages */
 					json_t **msg = message_buffer;
 					json_t **msg_end = message_buffer + message_buffer_count;

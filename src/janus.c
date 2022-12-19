@@ -921,8 +921,7 @@ janus_request *janus_request_new(janus_transport *transport, janus_transport_ses
 	if(error) {
 		request->error = (json_error_t*)g_malloc(sizeof(json_error_t));
 		*request->error = *error;
-	}
-	else {
+	} else {
 		request->error = NULL;
 	}
 	g_atomic_int_set(&request->destroyed, 0);
@@ -1039,8 +1038,7 @@ int janus_process_incoming_request(janus_request *request) {
 		if(error != NULL) {
 			ret = janus_process_error(request, 0, NULL, JANUS_ERROR_INVALID_JSON,
 				"Invalid Janus API request - %s(%d,%d): %s", error->source, error->line, error->column, error->text);
-		}
-		else{
+		} else {
 			ret = janus_process_error_string(request, 0, NULL, JANUS_ERROR_INVALID_JSON, (char *)"Invalid Janus API request");
 		}
 		return ret;
