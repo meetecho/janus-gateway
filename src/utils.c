@@ -369,6 +369,14 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 		video = 0;
 		format = "isac/32000";
 		format2 = "ISAC/32000";
+	} else if(!strcasecmp(codec, "l16-48")) {
+		video = 0;
+		format = "l16/48000";
+		format2 = "L16/48000";
+	} else if(!strcasecmp(codec, "l16")) {
+		video = 0;
+		format = "l16/16000";
+		format2 = "L16/16000";
 	} else if(!strcasecmp(codec, "vp8")) {
 		video = 1;
 		format = "vp8/90000";
@@ -479,6 +487,10 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 						return "isac16";
 					if(strstr(name, "isac/32") || strstr(name, "ISAC/32"))
 						return "isac32";
+					if(strstr(name, "l16/48") || strstr(name, "L16/48"))
+						return "l16-48";
+					if(strstr(name, "l16/16") || strstr(name, "L16/16"))
+						return "l16";
 					if(strstr(name, "red"))
 						return NULL;
 					JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", name);

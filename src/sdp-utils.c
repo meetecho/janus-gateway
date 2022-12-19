@@ -21,7 +21,7 @@
 
 /* Preferred codecs when negotiating audio/video, and number of supported codecs */
 const char *janus_preferred_audio_codecs[] = {
-	"opus", "multiopus", "pcmu", "pcma", "g722", "isac16", "isac32"
+	"opus", "multiopus", "pcmu", "pcma", "g722", "l16-48", "l16", "isac16", "isac32"
 };
 uint janus_audio_codecs = sizeof(janus_preferred_audio_codecs)/sizeof(*janus_preferred_audio_codecs);
 const char *janus_preferred_video_codecs[] = {
@@ -745,6 +745,12 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, int index, const char *codec, co
 	} else if(!strcasecmp(codec, "isac32")) {
 		format = "isac/32000";
 		format2 = "ISAC/32000";
+	} else if(!strcasecmp(codec, "l16-48")) {
+		format = "l16/48000";
+		format2 = "L16/48000";
+	} else if(!strcasecmp(codec, "l16")) {
+		format = "l16/16000";
+		format2 = "L16/16000";
 	} else if(!strcasecmp(codec, "dtmf")) {
 		format = "telephone-event/8000";
 		format2 = "TELEPHONE-EVENT/8000";
@@ -911,6 +917,10 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int index, int pt) {
 						return "isac16";
 					if(strstr(a->value, "isac/32") || strstr(a->value, "ISAC/32"))
 						return "isac32";
+					if(strstr(a->value, "l16/48") || strstr(a->value, "L16/48"))
+						return "l16-48";
+					if(strstr(a->value, "l16/16") || strstr(a->value, "L16/16"))
+						return "l16";
 					if(strstr(a->value, "telephone-event/8000") || strstr(a->value, "telephone-event/8000"))
 						return "dtmf";
 					/* RED is not really a codec, but we need to detect it anyway */
@@ -948,6 +958,10 @@ const char *janus_sdp_get_rtpmap_codec(const char *rtpmap) {
 		codec = "isac16";
 	else if(strstr(rtpmap_val, "isac/32") == rtpmap_val)
 		codec = "isac32";
+	else if(strstr(rtpmap_val, "l16/48") == rtpmap_val)
+		codec = "l16-48";
+	else if(strstr(rtpmap_val, "l16/16") == rtpmap_val)
+		codec = "l16";
 	else if(strstr(rtpmap_val, "telephone-event/") == rtpmap_val)
 		codec = "dtmf";
 	else if(strstr(rtpmap_val, "vp8/") == rtpmap_val)
@@ -984,6 +998,10 @@ const char *janus_sdp_get_codec_rtpmap(const char *codec) {
 		return "ISAC/16000";
 	if(!strcasecmp(codec, "isac32"))
 		return "ISAC/32000";
+	if(!strcasecmp(codec, "l16-48"))
+		return "L16/48000";
+	if(!strcasecmp(codec, "l16"))
+		return "L16/16000";
 	if(!strcasecmp(codec, "dtmf"))
 		return "telephone-event/8000";
 	if(!strcasecmp(codec, "vp8"))
@@ -2040,6 +2058,14 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 										if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
 											/* isac16 not found, maybe multiopus? */
 											codec = "multiopus";
+											if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
+												/* multiopus not found, maybe L16/48000? */
+												codec = "l16-48";
+												if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
+													/* L16/48000 not found, maybe L16/16000? */
+													codec = "l16";
+												}
+											}
 										}
 									}
 								}

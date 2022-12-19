@@ -558,6 +558,8 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-g711.h \
 	postprocessing/pp-g722.c \
 	postprocessing/pp-g722.h \
+	postprocessing/pp-l16.c \
+	postprocessing/pp-l16.h \
 	postprocessing/pp-h264.c \
 	postprocessing/pp-h264.h \
 	postprocessing/pp-av1.c \
