@@ -4602,6 +4602,28 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 					}
 				}
 			}
+#ifdef HAVE_SCTP
+			/* Finally, send data stats */
+			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
+				json_t *info = json_object();
+				json_object_set_new(info, "media", json_string("data"));
+				if(stream->component) {
+					json_object_set_new(info, "packets-received", json_integer(stream->component->in_stats.data.packets));
+					json_object_set_new(info, "packets-sent", json_integer(stream->component->out_stats.data.packets));
+					json_object_set_new(info, "bytes-received", json_integer(stream->component->in_stats.data.bytes));
+					json_object_set_new(info, "bytes-sent", json_integer(stream->component->out_stats.data.bytes));
+				}
+				/* Shall we send dedicated events per media or one per PeerConnection? */
+				if(combine) {
+					if(combined_event == NULL)
+						combined_event = json_array();
+					json_array_append_new(combined_event, info);
+				} else {
+					janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
+						session->session_id, handle->handle_id, handle->opaque_id, info);
+				}
+			}
+#endif
 			if(combined_event) {
 				janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, JANUS_EVENT_SUBTYPE_MEDIA_STATS,
 					session->session_id, handle->handle_id, handle->opaque_id, combined_event);
