@@ -272,6 +272,10 @@ typedef enum janus_media_type {
 	JANUS_MEDIA_VIDEO,
 	JANUS_MEDIA_DATA
 } janus_media_type;
+/*! \brief Helper method to get the string associated to a janus_media_mtype value
+ * @param[in] type The type to stringify
+ * @returns The type as a string, if valid, or NULL otherwise */
+const char *janus_media_type_str(janus_media_type type);
 
 /*! \brief Janus media statistics
  * \note To improve with more stuff */

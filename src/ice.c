@@ -467,6 +467,22 @@ static gboolean janus_ice_nacked_packet_cleanup(gpointer user_data) {
 	return G_SOURCE_REMOVE;
 }
 
+const char *janus_media_type_str(janus_media_type type) {
+	switch(type) {
+		case JANUS_MEDIA_AUDIO:
+			return "audio";
+		case JANUS_MEDIA_VIDEO:
+			return "video";
+		case JANUS_MEDIA_DATA:
+			return "data";
+		case JANUS_MEDIA_UNKNOWN:
+			return "unknown";
+		default:
+			break;
+	}
+	return NULL;
+}
+
 /* Deallocation helpers for handles and related structs */
 static void janus_ice_handle_free(const janus_refcount *handle_ref);
 static void janus_ice_webrtc_free(janus_ice_handle *handle);
@@ -2490,6 +2506,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		/* Update stats (TODO Do the same for the last second window as well) */
 		pc->dtls_in_stats.info[0].packets++;
 		pc->dtls_in_stats.info[0].bytes += len;
+		/* If there's a datachannel medium, update the stats there too */
+		janus_ice_peerconnection_medium *medium = g_hash_table_lookup(pc->media_bytype, GINT_TO_POINTER(JANUS_MEDIA_DATA));
+		if(medium) {
+			medium->out_stats.info[0].packets++;
+			medium->out_stats.info[0].bytes += len;
+		}
 		return;
 	}
 	/* Not DTLS... RTP or RTCP? (http://tools.ietf.org/html/rfc5761#section-4) */
@@ -4242,8 +4264,8 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 	uint mi=0;
 	for(mi=0; mi<g_hash_table_size(pc->media); mi++) {
 		medium = g_hash_table_lookup(pc->media, GUINT_TO_POINTER(mi));
-		if(!medium || (medium->type != JANUS_MEDIA_AUDIO && medium->type != JANUS_MEDIA_VIDEO))
-			continue;	/* We don't process data channels here */
+		if(!medium)
+			continue;
 		int vindex = 0;
 		for(vindex=0; vindex < 3; vindex++) {
 			if(vindex > 0 && (medium->type != JANUS_MEDIA_VIDEO || medium->rtcp_ctx[1] == NULL))
@@ -4258,6 +4280,8 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 				medium->out_stats.info[vindex].bytes_lastsec = 0;
 				medium->out_stats.info[vindex].bytes_lastsec_temp = 0;
 			}
+			if(medium->type != JANUS_MEDIA_AUDIO && medium->type != JANUS_MEDIA_VIDEO)
+				continue;
 			/* Now let's see if we need to notify the user about no incoming audio or video */
 			if(no_media_timer > 0 && pc->dtls && pc->dtls->dtls_connected > 0 && (now - pc->dtls->dtls_connected >= G_USEC_PER_SEC)) {
 				gint64 last = medium->in_stats.info[vindex].updated;
@@ -4285,38 +4309,42 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 					combined_event = json_array();
 				int vindex=0;
 				for(vindex=0; vindex<3; vindex++) {
-					if(medium && medium->rtcp_ctx[vindex]) {
+					if(medium && ((medium->type == JANUS_MEDIA_DATA && vindex == 0) || medium->rtcp_ctx[vindex])) {
 						json_t *info = json_object();
 						json_object_set_new(info, "mid", json_string(medium->mid));
 						json_object_set_new(info, "mindex", json_integer(medium->mindex));
 						if(vindex == 0)
-							json_object_set_new(info, "media", json_string(medium->type == JANUS_MEDIA_VIDEO ? "video" : "audio"));
+							json_object_set_new(info, "media", json_string(janus_media_type_str(medium->type)));
 						else if(vindex == 1)
 							json_object_set_new(info, "media", json_string("video-sim1"));
 						else
 							json_object_set_new(info, "media", json_string("video-sim2"));
-						if(medium->codec)
-							json_object_set_new(info, "codec", json_string(medium->codec));
-						json_object_set_new(info, "base", json_integer(medium->rtcp_ctx[vindex]->tb));
-						if(vindex == 0)
-							json_object_set_new(info, "rtt", json_integer(janus_rtcp_context_get_rtt(medium->rtcp_ctx[vindex])));
-						json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(medium->rtcp_ctx[vindex], FALSE)));
-						json_object_set_new(info, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(medium->rtcp_ctx[vindex], TRUE)));
-						json_object_set_new(info, "jitter-local", json_integer(janus_rtcp_context_get_jitter(medium->rtcp_ctx[vindex], FALSE)));
-						json_object_set_new(info, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(medium->rtcp_ctx[vindex], TRUE)));
-						json_object_set_new(info, "in-link-quality", json_integer(janus_rtcp_context_get_in_link_quality(medium->rtcp_ctx[vindex])));
-						json_object_set_new(info, "in-media-link-quality", json_integer(janus_rtcp_context_get_in_media_link_quality(medium->rtcp_ctx[vindex])));
-						json_object_set_new(info, "out-link-quality", json_integer(janus_rtcp_context_get_out_link_quality(medium->rtcp_ctx[vindex])));
-						json_object_set_new(info, "out-media-link-quality", json_integer(janus_rtcp_context_get_out_media_link_quality(medium->rtcp_ctx[vindex])));
+						if(medium->type == JANUS_MEDIA_AUDIO || medium->type == JANUS_MEDIA_VIDEO) {
+							if(medium->codec)
+								json_object_set_new(info, "codec", json_string(medium->codec));
+							json_object_set_new(info, "base", json_integer(medium->rtcp_ctx[vindex]->tb));
+							if(vindex == 0)
+								json_object_set_new(info, "rtt", json_integer(janus_rtcp_context_get_rtt(medium->rtcp_ctx[vindex])));
+							json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(medium->rtcp_ctx[vindex], FALSE)));
+							json_object_set_new(info, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(medium->rtcp_ctx[vindex], TRUE)));
+							json_object_set_new(info, "jitter-local", json_integer(janus_rtcp_context_get_jitter(medium->rtcp_ctx[vindex], FALSE)));
+							json_object_set_new(info, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(medium->rtcp_ctx[vindex], TRUE)));
+							json_object_set_new(info, "in-link-quality", json_integer(janus_rtcp_context_get_in_link_quality(medium->rtcp_ctx[vindex])));
+							json_object_set_new(info, "in-media-link-quality", json_integer(janus_rtcp_context_get_in_media_link_quality(medium->rtcp_ctx[vindex])));
+							json_object_set_new(info, "out-link-quality", json_integer(janus_rtcp_context_get_out_link_quality(medium->rtcp_ctx[vindex])));
+							json_object_set_new(info, "out-media-link-quality", json_integer(janus_rtcp_context_get_out_media_link_quality(medium->rtcp_ctx[vindex])));
+						}
 						json_object_set_new(info, "packets-received", json_integer(medium->in_stats.info[vindex].packets));
 						json_object_set_new(info, "packets-sent", json_integer(medium->out_stats.info[vindex].packets));
 						json_object_set_new(info, "bytes-received", json_integer(medium->in_stats.info[vindex].bytes));
 						json_object_set_new(info, "bytes-sent", json_integer(medium->out_stats.info[vindex].bytes));
-						json_object_set_new(info, "bytes-received-lastsec", json_integer(medium->in_stats.info[vindex].bytes_lastsec));
-						json_object_set_new(info, "bytes-sent-lastsec", json_integer(medium->out_stats.info[vindex].bytes_lastsec));
-						json_object_set_new(info, "nacks-received", json_integer(medium->in_stats.info[vindex].nacks));
-						json_object_set_new(info, "nacks-sent", json_integer(medium->out_stats.info[vindex].nacks));
-						json_object_set_new(info, "retransmissions-received", json_integer(medium->rtcp_ctx[vindex]->retransmitted));
+						if(medium->type == JANUS_MEDIA_AUDIO || medium->type == JANUS_MEDIA_VIDEO) {
+							json_object_set_new(info, "bytes-received-lastsec", json_integer(medium->in_stats.info[vindex].bytes_lastsec));
+							json_object_set_new(info, "bytes-sent-lastsec", json_integer(medium->out_stats.info[vindex].bytes_lastsec));
+							json_object_set_new(info, "nacks-received", json_integer(medium->in_stats.info[vindex].nacks));
+							json_object_set_new(info, "nacks-sent", json_integer(medium->out_stats.info[vindex].nacks));
+							json_object_set_new(info, "retransmissions-received", json_integer(medium->rtcp_ctx[vindex]->retransmitted));
+						}
 						if(medium->mindex == 0 && pc->remb_bitrate > 0)
 							json_object_set_new(info, "remb-bitrate", json_integer(pc->remb_bitrate));
 						if(combined_event != NULL) {

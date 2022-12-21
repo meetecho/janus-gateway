@@ -158,6 +158,12 @@ static int janus_dtls_bio_agent_write(BIO *bio, const char *in, int inl) {
 	if(bytes > 0) {
 		pc->dtls_out_stats.info[0].packets++;
 		pc->dtls_out_stats.info[0].bytes += bytes;
+		/* If there's a datachannel medium, update the stats there too */
+		janus_ice_peerconnection_medium *medium = g_hash_table_lookup(pc->media_bytype, GINT_TO_POINTER(JANUS_MEDIA_DATA));
+		if(medium) {
+			medium->in_stats.info[0].packets++;
+			medium->in_stats.info[0].bytes += bytes;
+		}
 	}
 	return bytes;
 }
