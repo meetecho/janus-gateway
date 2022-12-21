@@ -356,6 +356,7 @@ void janus_vp8_simulcast_context_reset(janus_vp8_simulcast_context *context);
 /*! \brief Helper method to parse a VP8 payload descriptor for useful info (e.g., when simulcasting)
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
+ * @param[out] m Whether the Picture ID is 15 bit or 7 bit
  * @param[out] picid The Picture ID
  * @param[out] tl0picidx Temporal level zero index
  * @param[out] tid Temporal-layer index
@@ -363,7 +364,7 @@ void janus_vp8_simulcast_context_reset(janus_vp8_simulcast_context *context);
  * @param[out] keyidx Temporal key frame index
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_vp8_parse_descriptor(char *buffer, int len,
-		uint16_t *picid, uint8_t *tl0picidx, uint8_t *tid, uint8_t *y, uint8_t *keyidx);
+		gboolean *m, uint16_t *picid, uint8_t *tl0picidx, uint8_t *tid, uint8_t *y, uint8_t *keyidx);
 
 /*! \brief Use the context info to update the RTP header of a packet, if needed
  * @param[in] buffer The RTP payload to process
