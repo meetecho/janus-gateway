@@ -904,7 +904,7 @@ gboolean janus_h265_is_keyframe(const char *buffer, int len) {
 }
 
 int janus_vp8_parse_descriptor(char *buffer, int len,
-		uint16_t *picid, uint8_t *tl0picidx, uint8_t *tid, uint8_t *y, uint8_t *keyidx) {
+		gboolean *m, uint16_t *picid, uint8_t *tl0picidx, uint8_t *tid, uint8_t *y, uint8_t *keyidx) {
 	if(!buffer || len < 6)
 		return -1;
 	if(picid)
@@ -939,6 +939,8 @@ int janus_vp8_parse_descriptor(char *buffer, int len,
 				partpicid = (wholepicid & 0x7FFF);
 				buffer++;
 			}
+			if(m)
+				*m = (mbit ? TRUE : FALSE);
 			if(picid)
 				*picid = partpicid;
 		}
@@ -964,7 +966,7 @@ int janus_vp8_parse_descriptor(char *buffer, int len,
 	return 0;
 }
 
-static int janus_vp8_replace_descriptor(char *buffer, int len, uint16_t picid, uint8_t tl0picidx) {
+static int janus_vp8_replace_descriptor(char *buffer, int len, gboolean m, uint16_t picid, uint8_t tl0picidx) {
 	if(!buffer || len < 6)
 		return -1;
 	uint8_t vp8pd = *buffer;
@@ -982,7 +984,7 @@ static int janus_vp8_replace_descriptor(char *buffer, int len, uint16_t picid, u
 			buffer++;
 			vp8pd = *buffer;
 			uint8_t mbit = (vp8pd & 0x80);
-			if(!mbit) {
+			if(!mbit || !m) {
 				*buffer = picid;
 			} else {
 				uint16_t wholepicid = htons(picid);
@@ -1019,13 +1021,14 @@ void janus_vp8_simulcast_context_reset(janus_vp8_simulcast_context *context) {
 void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simulcast_context *context, gboolean switched) {
 	if(!buffer || len < 0)
 		return;
+	gboolean m = FALSE;
 	uint16_t picid = 0;
 	uint8_t tlzi = 0;
 	uint8_t tid = 0;
 	uint8_t ybit = 0;
 	uint8_t keyidx = 0;
 	/* Parse the identifiers in the VP8 payload descriptor */
-	if(janus_vp8_parse_descriptor(buffer, len, &picid, &tlzi, &tid, &ybit, &keyidx) < 0)
+	if(janus_vp8_parse_descriptor(buffer, len, &m, &picid, &tlzi, &tid, &ybit, &keyidx) < 0)
 		return;
 	if(switched) {
 		context->base_picid_prev = context->last_picid;
@@ -1034,9 +1037,16 @@ void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simu
 		context->base_tlzi = tlzi;
 	}
 	context->last_picid = (picid-context->base_picid)+context->base_picid_prev+1;
+	if(!m && context->last_picid > 127) {
+		context->last_picid -= 128;
+		if(context->last_picid > 127)
+			context->last_picid = 0;
+	} else if(m && context->last_picid > 32767) {
+		context->last_picid -= 32768;
+	}
 	context->last_tlzi = (tlzi-context->base_tlzi)+context->base_tlzi_prev+1;
 	/* Overwrite the values in the VP8 payload descriptors with the ones we have */
-	janus_vp8_replace_descriptor(buffer, len, context->last_picid, context->last_tlzi);
+	janus_vp8_replace_descriptor(buffer, len, m, context->last_picid, context->last_tlzi);
 }
 
 /* Helper method to parse a VP9 RTP video frame and get some SVC-related info:
