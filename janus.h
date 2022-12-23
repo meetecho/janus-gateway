@@ -127,6 +127,8 @@ struct janus_request {
 	gboolean admin;
 	/*! \brief Pointer to the original request, if available */
 	json_t *message;
+	/*! \brief Pointer to any JSON errors parsing the original request */
+	json_error_t *error;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
 	volatile gint destroyed;
 	/*! \brief Reference counter for this instance */
@@ -139,7 +141,7 @@ struct janus_request {
  * @param[in] admin Whether this is a Janus API or Admin API request
  * @param[in] message Opaque pointer to the original request, if available
  * @returns A pointer to a janus_request instance if successful, NULL otherwise */
-janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message);
+janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message, json_error_t *error);
 /*! \brief Helper to destroy a janus_request instance
  * @param[in] request The janus_request instance to destroy
  * @note The opaque pointers in the instance are not destroyed, that's up to you */
