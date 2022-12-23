@@ -899,13 +899,18 @@ static void janus_request_free(const janus_refcount *request_ref) {
 		janus_refcount_decrease(&request->instance->ref);
 	request->instance = NULL;
 	request->request_id = NULL;
-	if(request->message)
+	if(request->message) {
 		json_decref(request->message);
-	request->message = NULL;
+		request->message = NULL;
+	}
+	if(request->error) {
+		g_free(request->error);
+		request->error = NULL;
+	}
 	g_free(request);
 }
 
-janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message) {
+janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message, json_error_t *error) {
 	janus_request *request = g_malloc(sizeof(janus_request));
 	request->transport = transport;
 	request->instance = instance;
@@ -913,6 +918,12 @@ janus_request *janus_request_new(janus_transport *transport, janus_transport_ses
 	request->request_id = request_id;
 	request->admin = admin;
 	request->message = message;
+	if(error) {
+		request->error = (json_error_t*)g_malloc(sizeof(json_error_t));
+		*request->error = *error;
+	} else {
+		request->error = NULL;
+	}
 	g_atomic_int_set(&request->destroyed, 0);
 	janus_refcount_init(&request->ref, janus_request_free);
 	return request;
@@ -1021,9 +1032,17 @@ int janus_process_incoming_request(janus_request *request) {
 		JANUS_LOG(LOG_ERR, "Missing request or payload to process, giving up...\n");
 		return ret;
 	}
-	int error_code = 0;
-	char error_cause[100];
 	json_t *root = request->message;
+	if(root == NULL) {
+		json_error_t *error = request->error;
+		if(error != NULL) {
+			ret = janus_process_error(request, 0, NULL, JANUS_ERROR_INVALID_JSON,
+				"Invalid Janus API request - %s(%d,%d): %s", error->source, error->line, error->column, error->text);
+		} else {
+			ret = janus_process_error_string(request, 0, NULL, JANUS_ERROR_INVALID_JSON, (char *)"Invalid Janus API request");
+		}
+		return ret;
+	}
 	/* Ok, let's start with the ids */
 	guint64 session_id = 0, handle_id = 0;
 	json_t *s = json_object_get(root, "session_id");
@@ -1040,6 +1059,8 @@ int janus_process_incoming_request(janus_request *request) {
 	janus_session *session = NULL;
 	janus_ice_handle *handle = NULL;
 
+	int error_code = 0;
+	char error_cause[100];
 	/* Get transaction and message request */
 	JANUS_VALIDATE_JSON_OBJECT(root, incoming_request_parameters,
 		error_code, error_cause, FALSE,
@@ -1102,7 +1123,7 @@ int janus_process_incoming_request(janus_request *request) {
 		/* We increase the counter as this request is using the session */
 		janus_refcount_increase(&session->ref);
 		/* Take note of the request source that originated this session (HTTP, WebSockets, RabbitMQ?) */
-		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
+		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL, NULL);
 		/* Notify the source that a new session has been created */
 		request->transport->session_created(request->instance, session->session_id);
 		/* Notify event handlers */
@@ -1317,7 +1338,7 @@ int janus_process_incoming_request(janus_request *request) {
 			janus_request_destroy(session->source);
 			session->source = NULL;
 		}
-		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
+		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL, NULL);
 		/* Notify the new transport that it has claimed a session */
 		session->source->transport->session_claimed(session->source->instance, session->session_id);
 		/* Previous transport may be gone, clear flag */
@@ -3379,7 +3400,7 @@ void janus_transportso_close(gpointer key, gpointer value, gpointer user_data) {
 void janus_transport_incoming_request(janus_transport *plugin, janus_transport_session *transport, void *request_id, gboolean admin, json_t *message, json_error_t *error) {
 	JANUS_LOG(LOG_VERB, "Got %s API request from %s (%p)\n", admin ? "an admin" : "a Janus", plugin->get_package(), transport);
 	/* Create a janus_request instance to handle the request */
-	janus_request *request = janus_request_new(plugin, transport, request_id, admin, message);
+	janus_request *request = janus_request_new(plugin, transport, request_id, admin, message, message ? NULL : error);
 	/* Enqueue the request, the thread will pick it up */
 	g_async_queue_push(requests, request);
 }
