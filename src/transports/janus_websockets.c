@@ -1324,7 +1324,8 @@ static int janus_websockets_common_callback(
 				if(message != NULL) {
 					/* Position is set to bytes read on success when EOF_CHECK is disabled as above. */
 					incoming_curr += error.position;
-					JANUS_LOG(LOG_HUGE, "[%s-%p] Parsed JSON message - consumed %zu/%zu bytes\n", log_prefix, wsi, (size_t)(incoming_curr - ws_client->incoming), incoming_length);
+					JANUS_LOG(LOG_HUGE, "[%s-%p] Parsed JSON message - consumed %zu/%zu bytes\n",
+						log_prefix, wsi, (size_t)(incoming_curr - ws_client->incoming), incoming_length);
 					if(incoming_curr == incoming_end) {
 						/* Process messages in order */
 						json_t **msg = message_buffer;
@@ -1337,7 +1338,7 @@ static int janus_websockets_common_callback(
 						gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, message, NULL);
 						break;
 					} else {
-						/* Buffer the message */						
+						/* Buffer the message */
 						message_buffer = (json_t**)g_realloc(message_buffer, sizeof(json_t*) * (message_buffer_count + 1));
 						message_buffer[message_buffer_count++] = message;
 					}
