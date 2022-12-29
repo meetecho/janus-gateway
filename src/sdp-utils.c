@@ -1888,6 +1888,15 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer) {
 		am->port = 0;
 		am->direction = JANUS_SDP_INACTIVE;
 		am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(0));
+		if(am->type == JANUS_SDP_APPLICATION) {
+			GList *fmt = m->fmts;
+			while(fmt) {
+				char *fmt_str = (char *)fmt->data;
+				if(fmt_str)
+					am->fmts = g_list_append(am->fmts, g_strdup(fmt_str));
+				fmt = fmt->next;
+			}
+		}
 		/* Append to the list of m-lines in the answer */
 		answer->m_lines = g_list_append(answer->m_lines, am);
 		temp = temp->next;
@@ -1988,6 +1997,15 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 		am->attributes = NULL;
 		if(!mline_enabled) {
 			am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(0));
+			if(am->type == JANUS_SDP_APPLICATION) {
+				GList *fmt = offered->fmts;
+				while(fmt) {
+					char *fmt_str = (char *)fmt->data;
+					if(fmt_str)
+						am->fmts = g_list_append(am->fmts, g_strdup(fmt_str));
+					fmt = fmt->next;
+				}
+			}
 			break;
 		}
 		am->port = 9;
