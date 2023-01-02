@@ -3071,23 +3071,25 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						/* In case sender SSRC does not match, we fallback to using media ssrc */
 						gboolean fallback = FALSE;
 						while(1) {
-							if (!fallback)
+							if(!fallback) {
 								rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, buflen);
-							else
+							} else {
 								rtcp_ssrc = janus_rtcp_get_receiver_ssrc(buf, buflen);
+							}
 							if(rtcp_ssrc == 0) {
-								if (!fallback) {
+								if(!fallback) {
 									fallback = true;
 									continue;
 								}
 								/* No SSRC, maybe an empty RR? */
 								return;
 							}
-							if((!fallback && stream->video_ssrc_peer[0] && rtcp_ssrc == stream->video_ssrc_peer[0]) || (fallback && stream->video_ssrc && rtcp_ssrc == stream->video_ssrc)) {
+							if((!fallback && stream->video_ssrc_peer[0] && rtcp_ssrc == stream->video_ssrc_peer[0]) ||
+									(fallback && stream->video_ssrc && rtcp_ssrc == stream->video_ssrc)) {
 								video = 1;
 								vindex = 0;
 								break;
-							} else if (fallback && stream->video_ssrc_rtx && rtcp_ssrc == stream->video_ssrc_rtx) {
+							} else if(fallback && stream->video_ssrc_rtx && rtcp_ssrc == stream->video_ssrc_rtx) {
 								/* rtx SSRC, we don't care */
 								return;
 							} else if(!fallback && (stream->video_ssrc_peer[1] && rtcp_ssrc == stream->video_ssrc_peer[1])) {
@@ -3099,7 +3101,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								vindex = 2;
 								break;
 							} else {
-								if (!fallback) {
+								if(!fallback) {
 									fallback = TRUE;
 									continue;
 								}
@@ -3147,12 +3149,13 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						/* In case sender SSRC does not match, we fallback to using media ssrc */
 						gboolean fallback = FALSE;
 						while(1) {
-							if (!fallback)
+							if(!fallback) {
 								rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, buflen);
-							else
+							} else {
 								rtcp_ssrc = janus_rtcp_get_receiver_ssrc(buf, buflen);
+							}
 							if(rtcp_ssrc == 0) {
-								if (!fallback) {
+								if(!fallback) {
 									fallback = true;
 									continue;
 								}
@@ -3163,11 +3166,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								video = 0;
 								break;
 							}
-							else if (fallback && stream->video_ssrc_rtx && rtcp_ssrc == stream->video_ssrc_rtx) {
+							else if(fallback && stream->video_ssrc_rtx && rtcp_ssrc == stream->video_ssrc_rtx) {
 								/* rtx SSRC, we don't care */
 								return;
 							}
-							else if((!fallback && stream->video_ssrc_peer[0] && rtcp_ssrc == stream->video_ssrc_peer[0]) || (fallback && stream->video_ssrc && rtcp_ssrc == stream->video_ssrc)) {
+							else if((!fallback && stream->video_ssrc_peer[0] && rtcp_ssrc == stream->video_ssrc_peer[0]) ||
+									(fallback && stream->video_ssrc && rtcp_ssrc == stream->video_ssrc)) {
 								video = 1;
 								vindex = 0;
 								break;
@@ -3180,7 +3184,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								vindex = 2;
 								break;
 							} else {
-								if (!fallback) {
+								if(!fallback) {
 									fallback = TRUE;
 									continue;
 								}
