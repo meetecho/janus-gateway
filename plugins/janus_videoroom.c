@@ -1701,6 +1701,7 @@ typedef struct janus_videoroom_publisher {
 	gint64 remb_latest;	/* Time of latest sent REMB (to avoid flooding) */
 	gint64 fir_latest;	/* Time of latest sent FIR (to avoid flooding) */
 	gint fir_seq;		/* FIR sequence number */
+	volatile gint need_pli;		/* Whether we need to send a PLI later */
 	gboolean recording_active;	/* Whether this publisher has to be recorded or not */
 	gchar *recording_base;	/* Base name for the recording (e.g., /path/to/filename, will generate /path/to/filename-audio.mjr and/or /path/to/filename-video.mjr) */
 	janus_recorder *arc;	/* The Janus recorder instance for this publisher's audio, if enabled */
@@ -1967,12 +1968,19 @@ static void janus_videoroom_codecstr(janus_videoroom *videoroom, char *audio_cod
 static void janus_videoroom_reqpli(janus_videoroom_publisher *publisher, const char *reason) {
 	if(publisher == NULL || g_atomic_int_get(&publisher->destroyed))
 		return;
+	gint64 now = janus_get_monotonic_time();
+	if(now - publisher->fir_latest < 100000) {
+		/* We just sent a PLI less than 100ms ago, schedule a new delivery later */
+		g_atomic_int_set(&publisher->need_pli, 1);
+		return;
+	}
 	/* Send a PLI */
 	JANUS_LOG(LOG_VERB, "%s sending PLI to %s (%s)\n", reason,
 		publisher->user_id_str, publisher->display ? publisher->display : "??");
 	gateway->send_pli(publisher->session->handle);
 	/* Update the time of when we last sent a keyframe request */
-	publisher->fir_latest = janus_get_monotonic_time();
+	publisher->fir_latest = now;
+	g_atomic_int_set(&publisher->need_pli, 0);
 }
 
 /* Error codes */
@@ -5804,6 +5812,8 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 			}
 		}
 	}
+	if(g_atomic_int_get(&participant->need_pli))
+		janus_videoroom_reqpli(participant, "Delayed keyframe request");
 	janus_videoroom_publisher_dereference_nodebug(participant);
 }
 
