@@ -637,15 +637,9 @@ static void janus_mqttevh_client_destroy_context(janus_mqttevh_context **ptr) {
 
 	if(ctx) {
 		MQTTAsync_destroy(&ctx->client);
-		if(ctx->publish.topic != NULL) {
-			g_free(ctx->publish.topic);
-		}
-		if(ctx->connect.username != NULL) {
-			g_free(ctx->connect.username);
-		}
-		if(ctx->connect.password != NULL) {
-			g_free(ctx->connect.password);
-		}
+		g_free(ctx->publish.topic);
+		g_free(ctx->connect.username);
+		g_free(ctx->connect.password);
 		g_free(ctx);
 		*ptr = NULL;
 	}

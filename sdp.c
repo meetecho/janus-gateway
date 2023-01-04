@@ -438,18 +438,10 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 				/* Missing mandatory information, failure... */
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] SDP missing mandatory information\n", handle->handle_id);
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] %p, %p, %p, %p\n", handle->handle_id, ruser, rpass, rfingerprint, rhashing);
-				if(ruser)
-					g_free(ruser);
-				ruser = NULL;
-				if(rpass)
-					g_free(rpass);
-				rpass = NULL;
-				if(rhashing)
-					g_free(rhashing);
-				rhashing = NULL;
-				if(rfingerprint)
-					g_free(rfingerprint);
-				rfingerprint = NULL;
+				g_free(ruser);
+				g_free(rpass);
+				g_free(rhashing);
+				g_free(rfingerprint);
 				return -2;
 			}
 			/* If we received the ICE credentials for the first time, enforce them */
