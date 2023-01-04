@@ -165,7 +165,7 @@ janus_turnrest_response *janus_turnrest_request(const char *user) {
 	JANUS_LOG(LOG_VERB, "Sending request: %s\n", request_uri);
 	janus_mutex_unlock(&api_mutex);
 	curl_easy_setopt(curl, CURLOPT_URL, request_uri);
-	curl_easy_setopt(curl, api_http_get ? CURLOPT_HTTPGET : CURLOPT_POST, 1);
+	curl_easy_setopt(curl, (api_http_get ? CURLOPT_HTTPGET : CURLOPT_POST), 1);
 	if(!api_http_get) {
 		/* FIXME Some servers don't like a POST with no data */
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query_string);
