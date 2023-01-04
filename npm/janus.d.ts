@@ -1,6 +1,5 @@
 declare global {
 	const jQuery: any
-	const Promise: any
 }
 
 declare namespace JanusJS {
@@ -14,7 +13,7 @@ declare namespace JanusJS {
 
 	interface DefaultDependencies extends Dependencies {
 		fetch: typeof fetch;
-		Promise: typeof Promise;
+		Promise: PromiseConstructorLike;
 	}
 
 	interface OldDependencies extends Dependencies {
@@ -53,10 +52,10 @@ declare namespace JanusJS {
 		plugin?: string,
 		token?: string,
 		apisecret?: string,
-		session_id?: string,
-		handle_id?: string,
-		opaque_id?: string,
-		loop_index?: string,
+		session_id?: number,
+		handle_id?: number,
+		opaque_id?: number,
+		loop_index?: number,
 		janus: string,
 		transaction: string,
 		body?: any | string
@@ -69,12 +68,11 @@ declare namespace JanusJS {
 		Debug = 'debug',
 		Log = 'log',
 		Warning = 'warn',
-		Error = 'error'
+		Error = 'error',
 	}
 
 	interface JSEP {
-		e2ee?: boolean
-		ee2e?: boolean;
+		e2ee?: boolean;
 		sdp?: string;
 		type?: string;
 		rid_order?: "hml" | "lmh";
@@ -165,7 +163,7 @@ declare namespace JanusJS {
 		plugin: string;
 		opaqueId?: string;
 		token?: string;
-		loopIndex?: string;
+		loopIndex?: number;
 	}
 
 	interface OfferParams {
@@ -214,7 +212,7 @@ declare namespace JanusJS {
 			tsnow: string | null;
 			value: string | null;
 		};
-		dataChannel: { [key in string]: Partial<RTCDataChannel> };
+		dataChannel: { [key in string]: RTCDataChannel };
 		dataChannelOptions: RTCDataChannelInit;
 
 		dtmfSender: RTCDTMFSender
@@ -246,35 +244,60 @@ declare namespace JanusJS {
 
 		sdpSent: boolean,
 		insertableStreams?: any,
-		candidates: RTCIceCandidateInit[]
+		candidates: RTCIceCandidateInit[],
 	}
 
-	type CallHolder<CallName extends string, CallSign extends Function> = {
-		[key in CallName]?: CallSign
+	type PluginCreateAnswerParam = {
+		jsep: JSEP;
+		media: { audioSend: any, videoSend: any };
+		success?: (data: JSEP) => void;
+		error?: (error: string) => void;
 	}
-	type SuccessCallback<T> = CallHolder<'success', (result?: T) => void>
-	type ErrorCallback<T> = CallHolder<'error', (error?: T) => void>
 
-	type PluginCreateAnswerParam =
-		& SuccessCallback<unknown>
-		& ErrorCallback<string>
+	type PluginHandleRemoteJsepParam = {
+		jsep: JSEP;
+		success?: (data: JSEP) => void;
+		error?: (error: string) => void;
+	}
 
-	type PluginHandleRemoteJsepParam =
-		& SuccessCallback<unknown>
-		& ErrorCallback<string>
-		& { jsep: JSEP }
+	type PluginReplaceTracksParam = {
+		tracks: TrackOption[];
+		success?: (data: unknown) => void;
+		error?: (error: string) => void;
+	}
 
-	type PluginReplaceTracksParam =
-		& SuccessCallback<unknown>
-		& ErrorCallback<string>
+	type TrackOption = {
+		add: boolean;
+		replace: boolean;
+		remove: boolean;
+		type: 'video' | 'screen' | 'audio' | 'data';
+		mid: string;
+		capture: MediaStreamTrack;
+		recv: boolean;
+		group: 'default' | string;
+		gumGroup: TrackOption['group'];
+		simulcast: unknown;
+		svc: string;
+		simulcastMaxBitrates: unknown;
+		sendEncodings: unknown;
+	}
 
-	type PluginDtmfParam =
-		& SuccessCallback<unknown>
-		& ErrorCallback<string>
+	type PluginDtmfParam = {
+		dtmf: Dtmf;
+		success?: (data: unknown) => void;
+		error?: (error: string) => void;
+	}
 
-	type PluginDataParam =
-		& SuccessCallback<unknown>
-		& ErrorCallback<string>
+	type Dtmf = {
+		tones: string;
+		duration: number;
+		gap: number;
+	}
+
+	type PluginDataParam = {
+		success?: (data: unknown) => void;
+		error?: (error: string) => void;
+	}
 
 	type TrackDesc = {
 		mid?: string
@@ -288,6 +311,7 @@ declare namespace JanusJS {
 		error?: (error: string) => void;
 		noRequest?: boolean;
 	}
+
 	interface PluginHandle {
 		plugin: string;
 		id: string;
@@ -343,7 +367,7 @@ declare namespace JanusJS {
 		getServer(): string;
 		isConnected(): boolean;
 		reconnect(callbacks: ReconnectOptions): void;
-		getSessionId(): string;
+		getSessionId(): number;
 		getInfo(callbacks: GetInfoOptions): void;
 		destroy(callbacks: DestroyOptions): void;
 	}
