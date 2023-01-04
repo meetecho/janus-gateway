@@ -6003,8 +6003,8 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 	janus_audiobridge_room *audiobridge = participant->room;
 	gboolean removed = FALSE;
 	if(audiobridge != NULL) {
-		participant->room = NULL;
 		janus_mutex_lock(&audiobridge->mutex);
+		participant->room = NULL;
 		json_t *event = json_object();
 		json_object_set_new(event, "audiobridge", json_string("event"));
 		json_object_set_new(event, "room",
