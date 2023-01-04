@@ -48,7 +48,7 @@ jobs:
         libconfig-dev
         libevent-dev
         libglib2.0-dev
-        libgirepository1.0-dev \
+        libgirepository1.0-dev
         liblua5.3-dev
         libjansson-dev
         libmicrohttpd-dev
