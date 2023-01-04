@@ -280,6 +280,13 @@ declare namespace JanusJS {
 		svc: string;
 		simulcastMaxBitrates: unknown;
 		sendEncodings: unknown;
+		framerate: number;
+		bitrate: number;
+		dontStop: boolean;
+		transforms: {
+			sender: ReadableWritablePair;
+			receiver: ReadableWritablePair;
+		};
 	}
 
 	type PluginDtmfParam = {
