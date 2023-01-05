@@ -54,12 +54,12 @@ declare namespace JanusJS {
 		apisecret?: string,
 		session_id?: number,
 		handle_id?: number,
-		opaque_id?: number,
+		opaque_id?: string,
 		loop_index?: number,
 		janus: string,
 		transaction: string,
-		body?: any | string
-		jsep?: JSEP
+		body?: any,
+		jsep?: JSEP,
 	}
 
 	enum DebugLevel {
