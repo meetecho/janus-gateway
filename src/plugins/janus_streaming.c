@@ -9316,6 +9316,25 @@ static void *janus_streaming_relay_thread(void *data) {
 		}
 	}
 
+	/* Close the ports we bound to */
+	temp = source->media;
+	while(temp) {
+		janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
+		if(stream->fd[0] > -1)
+			close(stream->fd[0]);
+		stream->fd[0] = -1;
+		if(stream->fd[1] > -1)
+			close(stream->fd[1]);
+		stream->fd[1] = -1;
+		if(stream->fd[2] > -1)
+			close(stream->fd[2]);
+		stream->fd[2] = -1;
+		if(stream->rtcp_fd > -1)
+			close(stream->rtcp_fd);
+		stream->rtcp_fd = -1;
+		temp = temp->next;
+	}
+
 	/* Notify users this mountpoint is done */
 	janus_mutex_lock(&mountpoint->mutex);
 	GList *viewer = g_list_first(mountpoint->viewers);
