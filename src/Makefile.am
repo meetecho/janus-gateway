@@ -510,6 +510,16 @@ conf_DATA += ../conf/janus.plugin.textroom.jcfg.sample
 EXTRA_DIST += ../conf/janus.plugin.textroom.jcfg.sample
 endif
 
+if ENABLE_PLUGIN_DATAROOM
+plugin_LTLIBRARIES += plugins/libjanus_dataroom.la
+plugins_libjanus_dataroom_la_SOURCES = plugins/janus_dataroom.c
+plugins_libjanus_dataroom_la_CFLAGS = $(plugins_cflags)
+plugins_libjanus_dataroom_la_LDFLAGS = $(plugins_ldflags)
+plugins_libjanus_dataroom_la_LIBADD = $(plugins_libadd)
+conf_DATA += ../conf/janus.plugin.dataroom.jcfg.sample
+EXTRA_DIST += ../conf/janus.plugin.dataroom.jcfg.sample
+endif
+
 if ENABLE_PLUGIN_LUA
 plugin_LTLIBRARIES += plugins/libjanus_lua.la
 plugins_libjanus_lua_la_SOURCES = plugins/janus_lua.c plugins/janus_lua_data.h plugins/janus_lua_extra.c plugins/janus_lua_extra.h

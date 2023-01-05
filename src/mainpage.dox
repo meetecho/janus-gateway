@@ -3179,6 +3179,7 @@ ldd janus | grep asan
  * - \ref audiobridge
  * - \ref videoroom
  * - \ref textroom
+ * - \ref dataroom
  * - \ref recordplay
  * - \ref voicemail
  * - \ref lua
@@ -4118,7 +4119,8 @@ ldd janus | grep asan
  *    Yes they are! Starting from version \c 0.0.3 of Janus, we added a first
  *    experimental support to Data Channels, that can as such be used in
  *    plugins that choose to support them. Right now, they are handled in
- *    several plugins like the Echo Test, VideoCall, VideoRoom and TextRoom plugins.\n\n
+ *    several plugins like the Echo Test, VideoCall, VideoRoom, TextRoom and DataRoom
+ *    plugins.\n\n
  *    Please notice that right now we only support text data: hopefully support
  *    for binary streams will be available soon as well. Until that happens,
  *    you'll have to resort to text-based encodings like Base64 to share

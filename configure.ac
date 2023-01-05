@@ -181,6 +181,8 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_streaming=no])
                AS_IF([test "x$enable_plugin_textroom" != "xyes"],
                      [enable_plugin_textroom=no])
+               AS_IF([test "x$enable_plugin_dataroom" != "xyes"],
+                     [enable_plugin_dataroom=no])
                AS_IF([test "x$enable_plugin_videocall" != "xyes"],
                      [enable_plugin_videocall=no])
                AS_IF([test "x$enable_plugin_videoroom" != "xyes"],
@@ -756,6 +758,13 @@ AC_ARG_ENABLE([plugin-textroom],
                      [enable_plugin_textroom=no])],
               [enable_plugin_textroom=yes])
 
+AC_ARG_ENABLE([plugin-dataroom],
+              [AS_HELP_STRING([--disable-plugin-dataroom],
+                              [Disable dataroom plugin])],
+              [AS_IF([test "x$enable_plugin_dataroom" != "xyes"],
+                     [enable_plugin_dataroom=no])],
+              [enable_plugin_dataroom=yes])
+
 AC_ARG_ENABLE([plugin-videocall],
               [AS_HELP_STRING([--disable-plugin-videocall],
                               [Disable videocall plugin])],
@@ -862,6 +871,7 @@ AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "x
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VOICEMAIL], [test "x$enable_plugin_voicemail" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_DATAROOM], [test "x$enable_plugin_dataroom" = "xyes"])
 
 
 ##
@@ -1074,6 +1084,9 @@ AM_COND_IF([ENABLE_PLUGIN_RECORDPLAY],
 AM_COND_IF([ENABLE_PLUGIN_TEXTROOM],
 	[echo "    Text Room:             yes"],
 	[echo "    Text Room:             no"])
+AM_COND_IF([ENABLE_PLUGIN_DATAROOM],
+	[echo "    Data Room:             yes"],
+	[echo "    Data Room:             no"])
 AM_COND_IF([ENABLE_PLUGIN_LUA],
 	[echo "    Lua Interpreter:       yes"],
 	[echo "    Lua Interpreter:       no"])
