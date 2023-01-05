@@ -323,6 +323,10 @@ function shareScreen() {
 		publishers: 1
 	};
 	screentest.send({ message: create, success: function(result) {
+		if(result["error"]) {
+			bootbox.alert("Couldn't create room: " + result["error"]);
+			return;
+		}
 		var event = result["videoroom"];
 		Janus.debug("Event: " + event);
 		if(event) {
