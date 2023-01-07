@@ -4071,7 +4071,8 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 	}
 
 	if(medium == NULL) {
-		JANUS_LOG(LOG_HUGE, "No medium with a valid peer SSRC found for transport-wide CC feedback\n");
+/*		Removed logging, as it keeps happening when not using a video data medium */
+/*		JANUS_LOG(LOG_HUGE, "No medium with a valid peer SSRC found for transport-wide CC feedback\n");*/
 		return G_SOURCE_CONTINUE;
 	}
 

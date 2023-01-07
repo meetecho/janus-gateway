@@ -538,7 +538,8 @@ static struct janus_json_parameter kick_parameters[] = {
 };
 static struct janus_json_parameter delegate_parameters[] = {
 	{"secret", JSON_STRING, 0},
-	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"room", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter join_parameters[] = {
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -703,20 +704,24 @@ static void janus_dataroom_message_free(janus_dataroom_message *msg) {
 
 
 /* Error codes */
-#define JANUS_DATAROOM_ERROR_NO_MESSAGE			411
-#define JANUS_DATAROOM_ERROR_INVALID_JSON		412
-#define JANUS_DATAROOM_ERROR_MISSING_ELEMENT	413
-#define JANUS_DATAROOM_ERROR_INVALID_ELEMENT	414
-#define JANUS_DATAROOM_ERROR_INVALID_REQUEST	415
-#define JANUS_DATAROOM_ERROR_ALREADY_SETUP		416
-#define JANUS_DATAROOM_ERROR_NO_SUCH_ROOM		417
-#define JANUS_DATAROOM_ERROR_ROOM_EXISTS		418
-#define JANUS_DATAROOM_ERROR_UNAUTHORIZED		419
-#define JANUS_DATAROOM_ERROR_USERNAME_EXISTS	420
-#define JANUS_DATAROOM_ERROR_ALREADY_IN_ROOM	421
-#define JANUS_DATAROOM_ERROR_NOT_IN_ROOM		422
-#define JANUS_DATAROOM_ERROR_NO_SUCH_USER		423
-#define JANUS_DATAROOM_ERROR_UNKNOWN_ERROR		499
+#define JANUS_DATAROOM_ERROR_NO_MESSAGE				411
+#define JANUS_DATAROOM_ERROR_INVALID_JSON			412
+#define JANUS_DATAROOM_ERROR_MISSING_ELEMENT		413
+#define JANUS_DATAROOM_ERROR_INVALID_ELEMENT		414
+#define JANUS_DATAROOM_ERROR_INVALID_REQUEST		415
+#define JANUS_DATAROOM_ERROR_ALREADY_SETUP			416
+#define JANUS_DATAROOM_ERROR_NO_SUCH_ROOM			417
+#define JANUS_DATAROOM_ERROR_ROOM_EXISTS			418
+#define JANUS_DATAROOM_ERROR_UNAUTHORIZED			419
+#define JANUS_DATAROOM_ERROR_USERNAME_EXISTS		420
+#define JANUS_DATAROOM_ERROR_ALREADY_IN_ROOM		421
+#define JANUS_DATAROOM_ERROR_NOT_IN_ROOM			422
+#define JANUS_DATAROOM_ERROR_NO_SUCH_USER			423
+#define JANUS_DATAROOM_ERROR_NO_SUCH_USER_IN_ROOM	424
+#define JANUS_DATAROOM_ERROR_ALREADY_HOST			425
+#define JANUS_DATAROOM_ERROR_NOT_HOST				426
+
+#define JANUS_DATAROOM_ERROR_UNKNOWN_ERROR			499
 
 #ifdef HAVE_LIBCURL
 static size_t janus_dataroom_write_data(void *buffer, size_t size, size_t nmemb, void *userp) {
@@ -1277,59 +1282,59 @@ void janus_dataroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtc
 void janus_dataroom_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	
-	janus_dataroom_session *session = (janus_dataroom_session *)handle->plugin_handle;
+
+	janus_mutex_lock(&sessions_mutex);
+	janus_dataroom_session *session = janus_dataroom_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	
+	if(g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&sessions_mutex);
+		JANUS_LOG(LOG_ERR, "Session destroyed\n");
+		return;
+	}
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
+
 	GHashTableIter iter;
 	gpointer value;
-	janus_dataroom_room *dataroom = NULL;
+	gpointer key;
+	janus_mutex_lock(&session->mutex);
 	janus_mutex_lock(&rooms_mutex);
 	g_hash_table_iter_init(&iter, session->rooms);
-	while(g_hash_table_iter_next(&iter, NULL, &value)) {
-		dataroom = value;
-		break;
-	}
-	JANUS_LOG(LOG_VERB, "Got a DataChannel message\n");
+	while(g_hash_table_iter_next(&iter, &key, &value)) {
+		gchar *room_id = (gchar *)key;
 
-	if(dataroom == NULL) {
-		janus_mutex_unlock(&rooms_mutex);
-		return;
-	}
-	janus_refcount_increase(&dataroom->ref);
-	janus_mutex_unlock(&rooms_mutex);
-	janus_mutex_lock(&dataroom->mutex);
-	/* Send the announcement to everybody in the room */
-	if(dataroom->participants) {
-		GHashTableIter iter;
-		gpointer value;
-		g_hash_table_iter_init(&iter, dataroom->participants);
-		while(g_hash_table_iter_next(&iter, NULL, &value)) {
-			janus_dataroom_participant *top = value;
-			/* Don't send messages to origin */
-			if(top->session == session) continue;
-			JANUS_LOG(LOG_VERB, "  >> To %s in %s\n", top->username, dataroom->room_id_str);
-			janus_refcount_increase(&top->ref);
-			janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = packet->binary,
-					.buffer = packet->buffer, .length = packet->length };
-			gateway->relay_data(top->session->handle, &data);
-			janus_refcount_decrease(&top->ref);
+		janus_dataroom_room *dataroom = g_hash_table_lookup(rooms, room_id);
+		if(dataroom == NULL)
+		{
+			JANUS_LOG(LOG_ERR, "room_id %s didn't map to a room\n", room_id);
+			continue;
+		}
+		/* Send the announcement to everybody in the room */
+		if(dataroom->participants) {
+			GHashTableIter iter_participants;
+			gpointer value_participants;
+			g_hash_table_iter_init(&iter_participants, dataroom->participants);
+			while(g_hash_table_iter_next(&iter_participants, NULL, &value_participants)) {
+				janus_dataroom_participant *top = value_participants;
+				/* Don't send messages to origin */
+				if(top->session == session) continue;
+				JANUS_LOG(LOG_VERB, "  >> To %s in %s\n", top->username, dataroom->room_id_str);
+				janus_refcount_increase(&top->ref);
+				janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = packet->binary,
+						.buffer = packet->buffer, .length = packet->length };
+				gateway->relay_data(top->session->handle, &data);
+				janus_refcount_decrease(&top->ref);
+			}
 		}
 	}
-	janus_mutex_unlock(&dataroom->mutex);
-	janus_refcount_decrease(&dataroom->ref);
-
-		janus_refcount_increase(&session->ref);
-	if(session->destroyed) {
-		janus_refcount_decrease(&session->ref);
-		return;
-	}
+	janus_mutex_unlock(&rooms_mutex);
 	janus_refcount_decrease(&session->ref);
+	janus_mutex_unlock(&session->mutex);
 
-	
 	return;	
 }
 
@@ -2032,7 +2037,7 @@ janus_plugin_result *janus_dataroom_handle_incoming_request(janus_plugin_session
 		if(error_code != 0)
 			goto msg_response;
 		json_t *room = json_object_get(root, "room");
-		json_t *username = json_object_get(root, "username");
+		json_t *host = json_object_get(root, "host");
 		guint64 room_id = 0;
 		char room_id_num[30], *room_id_str = NULL;
 		if(!string_ids) {
@@ -2053,34 +2058,48 @@ janus_plugin_result *janus_dataroom_handle_incoming_request(janus_plugin_session
 			goto msg_response;
 		}
 		janus_mutex_lock(&dataroom->mutex);
-		/* A secret may be required for this action */
-		JANUS_CHECK_SECRET(dataroom->room_secret, root, "secret", error_code, error_cause,
-			JANUS_DATAROOM_ERROR_MISSING_ELEMENT, JANUS_DATAROOM_ERROR_INVALID_ELEMENT, JANUS_DATAROOM_ERROR_UNAUTHORIZED);
-		if(error_code != 0) {
-			janus_mutex_unlock(&dataroom->mutex);
-			janus_mutex_unlock(&rooms_mutex);
-			goto msg_response;
-		}
-		const char *user_id = json_string_value(username);
+		const char *user_id = json_string_value(host);
 		janus_dataroom_participant *participant = g_hash_table_lookup(dataroom->participants, user_id);
 		if(participant == NULL) {
 			janus_mutex_unlock(&dataroom->mutex);
 			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_ERR, "No such participant %s in room %s\n", user_id, room_id_str);
-			error_code = JANUS_DATAROOM_ERROR_NO_SUCH_USER;
+			error_code = JANUS_DATAROOM_ERROR_NO_SUCH_USER_IN_ROOM;
 			g_snprintf(error_cause, 512, "No such user %s in room %s", user_id, room_id_str);
 			goto msg_response;
 		}
-		/* Was it the host? */
+		/* Was already the host? */
 		if(!strcmp(dataroom->host, user_id))
 		{
 			janus_mutex_unlock(&dataroom->mutex);
 			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_ERR, "Attempted to delegate to host %s in room %s\n", user_id, room_id_str);
-			error_code = JANUS_DATAROOM_ERROR_NO_SUCH_USER;
+			error_code = JANUS_DATAROOM_ERROR_ALREADY_HOST;
 			g_snprintf(error_cause, 512, "Already host %s in room %s", user_id, room_id_str);
 			goto msg_response;
 		}
+		/* Requester is not the host? */
+
+		participant = g_hash_table_lookup(session->rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
+		if(participant == NULL) {
+			janus_mutex_unlock(&dataroom->mutex);
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "Requester not a participant in room %s\n", room_id_str);
+			error_code = JANUS_DATAROOM_ERROR_NOT_IN_ROOM;
+			g_snprintf(error_cause, 512, "Not in room %s", room_id_str);
+			goto msg_response;
+		}
+		if(strcmp(dataroom->host, participant->username))
+		{
+			janus_mutex_unlock(&dataroom->mutex);
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "Requester not host in room %s\n", room_id_str);
+			error_code = JANUS_DATAROOM_ERROR_NOT_HOST;
+			g_snprintf(error_cause, 512, "Not host in room %s", room_id_str);
+			goto msg_response;
+		}
+
 		free(dataroom->host);
 		dataroom->host = strdup(user_id);
 		/* Notify all participants */
@@ -2090,7 +2109,7 @@ janus_plugin_result *janus_dataroom_handle_incoming_request(janus_plugin_session
 			json_t *event = json_object();
 			json_object_set_new(event, "dataroom", json_string("host"));
 			json_object_set_new(event, "room", string_ids ? json_string(dataroom->room_id_str) : json_integer(dataroom->room_id));
-			json_object_set_new(event, "username", json_string(participant->username));
+			json_object_set_new(event, "host", json_string(host));
 			char *event_data = json_dumps(event, json_format);
 			json_decref(event);
 			if(event_data == NULL) {
@@ -2123,7 +2142,7 @@ janus_plugin_result *janus_dataroom_handle_incoming_request(janus_plugin_session
 			json_t *info = json_object();
 			json_object_set_new(info, "dataroom", json_string("host"));
 			json_object_set_new(info, "room", string_ids ? json_string(dataroom->room_id_str) : json_integer(dataroom->room_id));
-			json_object_set_new(info, "username", json_string(participant->username));
+			json_object_set_new(info, "host", json_string(host));
 			gateway->notify_event(&janus_dataroom_plugin, session->handle, info);
 		}
 		/* Done */
