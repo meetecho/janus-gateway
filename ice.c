@@ -3067,23 +3067,47 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					} else {
 						/* Check the remote SSRC, compare it to what we have: in case
 							* we're simulcasting, let's compare to the other SSRCs too */
-						guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, buflen);
-						if(rtcp_ssrc == 0) {
-							/* No SSRC, maybe an empty RR? */
-							return;
-						}
-						if(stream->video_ssrc_peer[0] && rtcp_ssrc == stream->video_ssrc_peer[0]) {
-							video = 1;
-							vindex = 0;
-						} else if(stream->video_ssrc_peer[1] && rtcp_ssrc == stream->video_ssrc_peer[1]) {
-							video = 1;
-							vindex = 1;
-						} else if(stream->video_ssrc_peer[2] && rtcp_ssrc == stream->video_ssrc_peer[2]) {
-							video = 1;
-							vindex = 2;
-						} else {
-							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Dropping RTCP packet with unknown SSRC (%"SCNu32")\n", handle->handle_id, rtcp_ssrc);
-							return;
+						guint32 rtcp_ssrc;
+						/* In case sender SSRC does not match, we fallback to using media ssrc */
+						gboolean fallback = FALSE;
+						while(1) {
+							if(!fallback) {
+								rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, buflen);
+							} else {
+								rtcp_ssrc = janus_rtcp_get_receiver_ssrc(buf, buflen);
+							}
+							if(rtcp_ssrc == 0) {
+								if(!fallback) {
+									fallback = true;
+									continue;
+								}
+								/* No SSRC, maybe an empty RR? */
+								return;
+							}
+							if((!fallback && stream->video_ssrc_peer[0] && rtcp_ssrc == stream->video_ssrc_peer[0]) ||
+									(fallback && stream->video_ssrc && rtcp_ssrc == stream->video_ssrc)) {
+								video = 1;
+								vindex = 0;
+								break;
+							} else if(fallback && stream->video_ssrc_rtx && rtcp_ssrc == stream->video_ssrc_rtx) {
+								/* rtx SSRC, we don't care */
+								return;
+							} else if(!fallback && (stream->video_ssrc_peer[1] && rtcp_ssrc == stream->video_ssrc_peer[1])) {
+								video = 1;
+								vindex = 1;
+								break;
+							} else if(!fallback && (stream->video_ssrc_peer[2] && rtcp_ssrc == stream->video_ssrc_peer[2])) {
+								video = 1;
+								vindex = 2;
+								break;
+							} else {
+								if(!fallback) {
+									fallback = TRUE;
+									continue;
+								}
+								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Dropping RTCP packet with unknown SSRC (%"SCNu32")\n", handle->handle_id, rtcp_ssrc);
+								return;
+							}
 						}
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is %s (remote SSRC: video=%"SCNu32" #%d, got %"SCNu32")\n",
 							handle->handle_id, video ? "video" : "audio", stream->video_ssrc_peer[vindex], vindex, rtcp_ssrc);
@@ -3121,24 +3145,52 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					} else {
 						/* Check the remote SSRC, compare it to what we have: in case
 						 * we're simulcasting, let's compare to the other SSRCs too */
-						guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, buflen);
-						if(rtcp_ssrc == 0) {
-							/* No SSRC, maybe an empty RR? */
-							return;
-						}
-						if(rtcp_ssrc == stream->audio_ssrc_peer) {
-							video = 0;
-						} else if(rtcp_ssrc == stream->video_ssrc_peer[0]) {
-							video = 1;
-						} else if(stream->video_ssrc_peer[1] && rtcp_ssrc == stream->video_ssrc_peer[1]) {
-							video = 1;
-							vindex = 1;
-						} else if(stream->video_ssrc_peer[2] && rtcp_ssrc == stream->video_ssrc_peer[2]) {
-							video = 1;
-							vindex = 2;
-						} else {
-							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Dropping RTCP packet with unknown SSRC (%"SCNu32")\n", handle->handle_id, rtcp_ssrc);
-							return;
+						guint32 rtcp_ssrc;
+						/* In case sender SSRC does not match, we fallback to using media ssrc */
+						gboolean fallback = FALSE;
+						while(1) {
+							if(!fallback) {
+								rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, buflen);
+							} else {
+								rtcp_ssrc = janus_rtcp_get_receiver_ssrc(buf, buflen);
+							}
+							if(rtcp_ssrc == 0) {
+								if(!fallback) {
+									fallback = true;
+									continue;
+								}
+								/* No SSRC, maybe an empty RR? */
+								return;
+							}
+							if((!fallback && rtcp_ssrc == stream->audio_ssrc_peer) || (fallback && rtcp_ssrc == stream->audio_ssrc)) {
+								video = 0;
+								break;
+							}
+							else if(fallback && stream->video_ssrc_rtx && rtcp_ssrc == stream->video_ssrc_rtx) {
+								/* rtx SSRC, we don't care */
+								return;
+							}
+							else if((!fallback && stream->video_ssrc_peer[0] && rtcp_ssrc == stream->video_ssrc_peer[0]) ||
+									(fallback && stream->video_ssrc && rtcp_ssrc == stream->video_ssrc)) {
+								video = 1;
+								vindex = 0;
+								break;
+							} else if(!fallback && (stream->video_ssrc_peer[1] && rtcp_ssrc == stream->video_ssrc_peer[1])) {
+								video = 1;
+								vindex = 1;
+								break;
+							} else if(!fallback && (stream->video_ssrc_peer[2] && rtcp_ssrc == stream->video_ssrc_peer[2])) {
+								video = 1;
+								vindex = 2;
+								break;
+							} else {
+								if(!fallback) {
+									fallback = TRUE;
+									continue;
+								}
+								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Dropping RTCP packet with unknown SSRC (%"SCNu32")\n", handle->handle_id, rtcp_ssrc);
+								return;
+							}
 						}
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is %s (remote SSRC: video=%"SCNu32" #%d, audio=%"SCNu32", got %"SCNu32")\n",
 							handle->handle_id, video ? "video" : "audio", stream->video_ssrc_peer[vindex], vindex, stream->audio_ssrc_peer, rtcp_ssrc);
