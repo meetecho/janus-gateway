@@ -272,14 +272,18 @@ declare namespace JanusJS {
 		remove: boolean;
 		type: 'video' | 'screen' | 'audio' | 'data';
 		mid: string;
-		capture: MediaStreamTrack;
+		capture: boolean | MediaStreamTrack;
 		recv: boolean;
 		group: 'default' | string;
 		gumGroup: TrackOption['group'];
-		simulcast: unknown;
+		simulcast: boolean;
 		svc: string;
-		simulcastMaxBitrates: unknown;
-		sendEncodings: unknown;
+		simulcastMaxBitrates: {
+			low: number,
+			medium: number,
+			high: number,
+		};
+		sendEncodings: RTCRtpEncodingParameters;
 		framerate: number;
 		bitrate: number;
 		dontStop: boolean;
