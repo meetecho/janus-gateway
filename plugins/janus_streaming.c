@@ -4769,12 +4769,12 @@ static void *janus_streaming_handler(void *data) {
 			if(session->mountpoint != NULL) {
 				if(session->mountpoint != mp) {
 					/* Already watching something else */
-					janus_refcount_decrease(&mp->ref);
 					JANUS_LOG(LOG_ERR, "Already watching mountpoint %s\n", session->mountpoint->id_str);
 					error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
 					g_snprintf(error_cause, 512, "Already watching mountpoint %s", session->mountpoint->id_str);
 					janus_mutex_unlock(&session->mutex);
 					janus_mutex_unlock(&mp->mutex);
+					janus_refcount_decrease(&mp->ref);
 					goto error;
 				} else {
 					/* Make sure it's not an API error */
