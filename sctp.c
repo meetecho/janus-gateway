@@ -925,7 +925,7 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 
 	if((channel = janus_sctp_find_channel_by_stream(sctp, stream))) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] channel %d is in state %d instead of CLOSED.\n", sctp->handle_id, channel->id, channel->state);
-		JANUS_LOG(LOG_ERR, "%.*s\n", req->label_length, req->label);
+		JANUS_LOG(LOG_ERR, "%.*s\n", ntohs(req->label_length), req->label);
 		/* XXX: some error handling */
 		return;
 	}
