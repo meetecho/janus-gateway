@@ -310,20 +310,15 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 							handle->handle_id, m->index, strlen(a->value));
 						return -2;
 					}
-					gboolean mid_changed = FALSE;
-					if(medium->mid != NULL && strcasecmp(medium->mid, a->value))
-						mid_changed = TRUE;
-					if(medium->mid == NULL || mid_changed) {
-						char *old_mid = mid_changed ? medium->mid : NULL;
+					if(medium->mid != NULL && strcasecmp(medium->mid, a->value)) {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] mid on m-line #%d changed (%s --> %s), ignoring new value\n",
+							handle->handle_id, m->index, medium->mid, a->value);
+					} else if(medium->mid == NULL) {
 						medium->mid = g_strdup(a->value);
 						if(!g_hash_table_lookup(pc->media_bymid, medium->mid)) {
 							g_hash_table_insert(pc->media_bymid, g_strdup(medium->mid), medium);
 							janus_refcount_increase(&medium->ref);
 						}
-						/* If the mid for this m-line changed, get rid of the mapping */
-						if(mid_changed && old_mid != NULL)
-							g_hash_table_remove(pc->media_bymid, old_mid);
-						g_free(old_mid);
 					}
 					if(handle->pc_mid == NULL)
 						handle->pc_mid = g_strdup(a->value);
@@ -785,7 +780,10 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 							handle->handle_id, m->index, strlen(a->value));
 						return -2;
 					}
-					if(medium->mid == NULL) {
+					if(medium->mid != NULL && strcasecmp(medium->mid, a->value)) {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] mid on m-line #%d changed (%s --> %s), ignoring new value\n",
+							handle->handle_id, m->index, medium->mid, a->value);
+					} else if(medium->mid == NULL) {
 						medium->mid = g_strdup(a->value);
 						if(!g_hash_table_lookup(pc->media_bymid, medium->mid)) {
 							g_hash_table_insert(pc->media_bymid, g_strdup(medium->mid), medium);
