@@ -125,7 +125,7 @@ The same applies for libwebsockets, which is needed for the optional WebSockets 
 	git clone https://libwebsockets.org/repo/libwebsockets
 	cd libwebsockets
 	# If you want the stable version of libwebsockets, uncomment the next line
-	# git checkout v3.2-stable
+	# git checkout v4.3-stable
 	mkdir build
 	cd build
 	# See https://github.com/meetecho/janus-gateway/issues/732 re: LWS_MAX_SMP
