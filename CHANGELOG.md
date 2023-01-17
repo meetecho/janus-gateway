@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.1.2] - 2023-01-17
+
+- Always add mid to the SDP, even for disabled m-lines
+- Don't allow mid changes for m-line during renegotiations [[PR-3136](https://github.com/meetecho/janus-gateway/pull/3136)]
+- Consider RTCP feedback messages when evaluating receiver SSRC
+- Added partial support for L16 codec (uncompressed audio) [[PR-3116](https://github.com/meetecho/janus-gateway/pull/3116)]
+- Fixed overwriting of 7-bit PictureID when doing VP8 simulcast [[PR-3121](https://github.com/meetecho/janus-gateway/pull/3121)]
+- Send data stats when using event handlers [[PR-3126](https://github.com/meetecho/janus-gateway/pull/3126)]
+- Copy formats from datachannel m-lines also when rejecting them [[Issue-3134](https://github.com/meetecho/janus-gateway/issues/3134)]
+- Fixed compiler issue with recent versions of libcurl (thanks @bkmgit!) [[PR-3138](https://github.com/meetecho/janus-gateway/pull/3138)]
+- Close mountpoint sockets when leaving relay thread [[PR-3143](https://github.com/meetecho/janus-gateway/pull/3143)]
+- Fixed segfault in SIP plugin in case of broken SUBSCRIBE [[Issue-3133](https://github.com/meetecho/janus-gateway/issues/3133)]
+- Support multiple requests in a single websocket message (thanks @jwittner!) [[PR-3123](https://github.com/meetecho/janus-gateway/pull/3123)]
+- Fixed inability to add recvonly tracks in janus.js ([[Issue-3119](https://github.com/meetecho/janus-gateway/issues/3119)]
+- Updated janus.d.ts type definitions (thanks @jerry4718!) [[PR-3125](https://github.com/meetecho/janus-gateway/pull/3125)]
+- Fixed out of range error when passing large SSRC values to pcap2mjr
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.1.1] - 2022-12-07
 
 - Added timing info on ICE starting and gathering done to Admin API
