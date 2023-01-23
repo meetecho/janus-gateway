@@ -73,9 +73,8 @@ janus_eventhandler *create(void) {
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
-static GThread *ws_thread, *handler_thread;
+static GThread *ws_thread;
 static void *janus_wsevh_thread(void *data);
-static void *janus_wsevh_handler(void *data);
 
 /* Connection related helper methods */
 static void janus_wsevh_schedule_connect_attempt(void);
@@ -87,12 +86,11 @@ static void janus_wsevh_calculate_reconnect_delay_on_fail(void);
 static void janus_wsevh_connect_attempt(lws_sorted_usec_list_t *sul);
 
 /* Queue of events to handle */
-static GAsyncQueue *events = NULL;
+static GQueue *events = NULL;
+static janus_mutex events_mutex = JANUS_MUTEX_INITIALIZER;
 static gboolean group_events = TRUE;
-static json_t exit_event;
+static volatile gint events_cap_on_reconnect = 0, dropped = 0;
 static void janus_wsevh_event_free(json_t *event) {
-	if(!event || event == &exit_event)
-		return;
 	json_decref(event);
 }
 
@@ -106,7 +104,8 @@ static struct janus_json_parameter request_parameters[] = {
 };
 static struct janus_json_parameter tweak_parameters[] = {
 	{"events", JSON_STRING, 0},
-	{"grouping", JANUS_JSON_BOOL, 0}
+	{"grouping", JANUS_JSON_BOOL, 0},
+	{"events_cap_on_reconnect", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 /* Error codes (for the tweaking via Admin API */
 #define JANUS_WSEVH_ERROR_INVALID_REQUEST		411
@@ -164,7 +163,7 @@ static struct lws_context *context = NULL;
 static lws_sorted_usec_list_t sul_stagger = { 0 };
 #endif
 static gint64 disconnected = 0;
-static gboolean reconnect = FALSE;
+static volatile gint reconnect = 0;
 static int reconnect_delay = 0;
 #define JANUS_WSEVH_MAX_RETRY_SECS	8
 
@@ -178,7 +177,6 @@ typedef struct janus_wsevh_client {
 } janus_wsevh_client;
 static janus_wsevh_client *ws_client = NULL;
 static struct lws *wsi = NULL;
-static GAsyncQueue *messages = NULL;	/* Queue of outgoing messages to push */
 static janus_mutex writable_mutex;
 
 static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len);
@@ -355,6 +353,13 @@ int janus_wsevh_init(const char *config_path) {
 	if(item && item->value)
 		group_events = janus_is_true(item->value);
 
+	/* Do we need to cap the number of queued events when reconnecting */
+	item = janus_config_get(config, config_general, janus_config_type_item, "events_cap_on_reconnect");
+	if(item && item->value)
+		events_cap_on_reconnect = atoi(item->value);
+	if(events_cap_on_reconnect < 0)
+		events_cap_on_reconnect = 0;
+
 	/* Handle the rest of the configuration, starting from the server details */
 	item = janus_config_get(config, config_general, janus_config_type_item, "backend");
 	if(item && item->value)
@@ -408,8 +413,7 @@ int janus_wsevh_init(const char *config_path) {
 	janus_mutex_init(&writable_mutex);
 
 	/* Initialize the events queue */
-	events = g_async_queue_new_full((GDestroyNotify) janus_wsevh_event_free);
-	messages = g_async_queue_new();
+	events = g_queue_new();
 	g_atomic_int_set(&initialized, 1);
 
 	/* Start a thread to handle the WebSockets event loop */
@@ -418,16 +422,6 @@ int janus_wsevh_init(const char *config_path) {
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the WebSocketsEventHandler client thread...\n",
-			error->code, error->message ? error->message : "??");
-		g_error_free(error);
-		goto error;
-	}
-	/* Start another thread to handle incoming events */
-	error = NULL;
-	handler_thread = g_thread_try_new("janus wsevh handler", janus_wsevh_handler, NULL, &error);
-	if(error != NULL) {
-		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the WebSocketsEventHandler handler thread...\n",
 			error->code, error->message ? error->message : "??");
 		g_error_free(error);
 		goto error;
@@ -464,19 +458,8 @@ void janus_wsevh_destroy(void) {
 		ws_thread = NULL;
 	}
 
-	g_async_queue_push(events, &exit_event);
-	if(handler_thread != NULL) {
-		g_thread_join(handler_thread);
-		handler_thread = NULL;
-	}
-	g_async_queue_unref(events);
+	g_queue_free_full(events, (GDestroyNotify)janus_wsevh_event_free);
 	events = NULL;
-
-	char *message = NULL;
-	while((message = g_async_queue_try_pop(messages)) != NULL) {
-		g_free(message);
-	}
-	g_async_queue_unref(messages);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -522,11 +505,37 @@ void janus_wsevh_incoming_event(json_t *event) {
 	 * away when something happens, these events are triggered from working threads and
 	 * not some sort of message bus. As such, performing I/O or network operations in
 	 * here could dangerously slow Janus down. Let's just reference and enqueue the event,
-	 * and handle it in our own thread: the event contains a monotonic time indicator of
+	 * and notify the websocket thread: the event contains a monotonic time indicator of
 	 * when the event actually happened on this machine, so that, if relevant, we can compute
 	 * any delay in the actual event processing ourselves. */
 	json_incref(event);
-	g_async_queue_push(events, event);
+	janus_mutex_lock(&events_mutex);
+	g_queue_push_tail(events, event);
+	if(g_atomic_int_get(&reconnect)) {
+		/* We're reconnecting: check if there's a cap to how many events to keep in the buffer */
+		guint cap = g_atomic_int_get(&events_cap_on_reconnect);
+		if(cap > 0 && g_queue_get_length(events) > cap) {
+			/* Get rid of older events, we won't need them anymore */
+			json_t *drop = NULL;
+			while(g_queue_get_length(events) > cap) {
+				drop = g_queue_pop_head(events);
+				json_decref(drop);
+				g_atomic_int_inc(&dropped);
+			}
+		}
+	}
+	janus_mutex_unlock(&events_mutex);
+	/* We notify the websocket thread so that it can be handled */
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+		if(context != NULL)
+			lws_cancel_service(context);
+#else
+		/* On libwebsockets < 3.x we use lws_callback_on_writable */
+		janus_mutex_lock(&writable_mutex);
+		if(wsi != NULL)
+			lws_callback_on_writable(wsi);
+		janus_mutex_unlock(&writable_mutex);
+#endif
 }
 
 json_t *janus_wsevh_handle_request(json_t *request) {
@@ -556,6 +565,9 @@ json_t *janus_wsevh_handle_request(json_t *request) {
 		/* Grouping */
 		if(json_object_get(request, "grouping"))
 			group_events = json_is_true(json_object_get(request, "grouping"));
+		/* Whether we should put a cap on queued events when reconnecting */
+		if(json_object_get(request, "events_cap_on_reconnect"))
+			g_atomic_int_set(&events_cap_on_reconnect, json_integer_value(json_object_get(request, "events_cap_on_reconnect")));
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
 		error_code = JANUS_WSEVH_ERROR_INVALID_REQUEST;
@@ -601,7 +613,7 @@ static void *janus_wsevh_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining WebSocketsEventHandler (lws<3.2) client thread\n");
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		/* Loop until we have to stop */
-		if(!reconnect) {
+		if(!g_atomic_int_get(&reconnect)) {
 			lws_service(context, 50);
 		} else {
 			/* We should reconnect, get rid of the previous context */
@@ -628,76 +640,71 @@ static void *janus_wsevh_thread(void *data) {
 }
 #endif
 
-/* Thread to handle incoming events */
-static void *janus_wsevh_handler(void *data) {
-	JANUS_LOG(LOG_VERB, "Joining WebSocketsEventHandler handler thread\n");
+/* Helper function to pop events from the queue and turn them to string for delivery */
+static char *janus_wsevh_stringify_events(void) {
+	if(!g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping))
+		return NULL;
 	json_t *event = NULL, *output = NULL;
 	char *event_text = NULL;
 	int count = 0, max = group_events ? 100 : 1;
 
-	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
+	/* Pop the first queued event */
+	janus_mutex_lock(&events_mutex);
+	event = g_queue_peek_head(events);
+	if(event != NULL)
+		(void)g_queue_pop_head(events);
+	janus_mutex_unlock(&events_mutex);
+	if(event == NULL)
+		return NULL;
 
-		event = g_async_queue_pop(events);
-		if(event == &exit_event)
+	/* Start with the stringification, grouping if required */
+	count = 0;
+	output = NULL;
+	while(TRUE) {
+		/* Handle event: just for fun, let's see how long it took for us to take care of this */
+		json_t *created = json_object_get(event, "timestamp");
+		if(created && json_is_integer(created)) {
+			gint64 then = json_integer_value(created);
+			gint64 now = janus_get_monotonic_time();
+			JANUS_LOG(LOG_DBG, "Handled event after %"SCNu64" us\n", now-then);
+		}
+		if(!group_events) {
+			/* We're done here, we just need a single event */
+			output = event;
 			break;
-		count = 0;
-		output = NULL;
-
-		while(TRUE) {
-			/* Handle event: just for fun, let's see how long it took for us to take care of this */
-			json_t *created = json_object_get(event, "timestamp");
-			if(created && json_is_integer(created)) {
-				gint64 then = json_integer_value(created);
-				gint64 now = janus_get_monotonic_time();
-				JANUS_LOG(LOG_DBG, "Handled event after %"SCNu64" us\n", now-then);
-			}
-			if(!group_events) {
-				/* We're done here, we just need a single event */
-				output = event;
-				break;
-			}
-			/* If we got here, we're grouping */
-			if(output == NULL)
-				output = json_array();
-			json_array_append_new(output, event);
-			/* Never group more than a maximum number of events, though, or we might stay here forever */
-			count++;
-			if(count == max)
-				break;
-			event = g_async_queue_try_pop(events);
-			if(event == NULL || event == &exit_event)
-				break;
 		}
-
-		if(!g_atomic_int_get(&stopping)) {
-			/* Since this a simple plugin, it does the same for all events: so just convert to string... */
-			event_text = json_dumps(output, json_format);
-			if(event_text == NULL) {
-				JANUS_LOG(LOG_WARN, "Failed to stringify event, event lost...\n");
-				/* Nothing we can do... get rid of the event */
-				json_decref(output);
-				output = NULL;
-				continue;
-			}
-			g_async_queue_push(messages, event_text);
-#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
-			if(context != NULL)
-				lws_cancel_service(context);
-#else
-			/* On libwebsockets < 3.x we use lws_callback_on_writable */
-			janus_mutex_lock(&writable_mutex);
-			if(wsi != NULL)
-				lws_callback_on_writable(wsi);
-			janus_mutex_unlock(&writable_mutex);
-#endif
-		}
-
-		/* Done, let's unref the event */
-		json_decref(output);
-		output = NULL;
+		/* If we got here, we're grouping */
+		if(output == NULL)
+			output = json_array();
+		json_array_append_new(output, event);
+		/* Never group more than a maximum number of events, though, or we might stay here forever */
+		count++;
+		if(count == max)
+			break;
+		janus_mutex_lock(&events_mutex);
+		event = g_queue_peek_head(events);
+		if(event != NULL)
+			(void)g_queue_pop_head(events);
+		janus_mutex_unlock(&events_mutex);
+		if(event == NULL)
+			break;
 	}
-	JANUS_LOG(LOG_VERB, "Leaving WebSocketsEventHandler handler thread\n");
-	return NULL;
+
+	if(!g_atomic_int_get(&stopping)) {
+		/* Since this a simple plugin, it does the same for all events: so just convert to string... */
+		event_text = json_dumps(output, json_format);
+		if(event_text == NULL) {
+			/* Nothing we can do... get rid of the event */
+			json_decref(output);
+			output = NULL;
+			return NULL;
+		}
+	}
+
+	/* Done, let's unref the event */
+	json_decref(output);
+	output = NULL;
+	return event_text;
 }
 
 static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
@@ -712,10 +719,13 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 			ws_client->bufpending = 0;
 			ws_client->bufoffset = 0;
 			reconnect_delay = 0;
-			reconnect = FALSE;
+			g_atomic_int_set(&reconnect, 0);
 			janus_mutex_init(&ws_client->mutex);
 			lws_callback_on_writable(wsi);
 			JANUS_LOG(LOG_INFO, "WebSocketsEventHandler connected\n");
+			if(g_atomic_int_get(&dropped) > 0)
+				JANUS_LOG(LOG_INFO, "  -- %d events lost in between reconnections\n", g_atomic_int_get(&dropped));
+			g_atomic_int_set(&dropped, 0);
 			return 0;
 		}
 		case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
@@ -724,7 +734,7 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 				in ? (char *)in : "unknown error",
 				reconnect_delay);
 			disconnected = janus_get_monotonic_time();
-			reconnect = TRUE;
+			g_atomic_int_set(&reconnect, 1);
 			janus_wsevh_schedule_connect_attempt();
 			return 1;
 		}
@@ -769,7 +779,7 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 					return 0;
 				}
 				/* Shoot all the pending messages */
-				char *event = g_async_queue_try_pop(messages);
+				char *event = janus_wsevh_stringify_events();
 				if(event && !g_atomic_int_get(&stopping)) {
 					/* Gotcha! */
 					int buflen = LWS_PRE + strlen(event);
@@ -831,7 +841,7 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 			ws_client = NULL;
 			wsi = NULL;
 			disconnected = janus_get_monotonic_time();
-			reconnect = TRUE;
+			g_atomic_int_set(&reconnect, 1);
 			janus_wsevh_schedule_connect_attempt();
 			return 0;
 		}
@@ -863,11 +873,11 @@ static void janus_wsevh_connect_attempt(lws_sorted_usec_list_t *sul) {
 	if(!wsi) {
 		/* As we specified a callback pointer in the context the NULL result is unlikely to happen */
 		disconnected = janus_get_monotonic_time();
-		reconnect = TRUE;
+		g_atomic_int_set(&reconnect, 1);
 		JANUS_LOG(LOG_ERR, "WebSocketsEventHandler: Connecting to backend websocket server %s:%d failed\n", address, port);
 		return;
 	}
-	reconnect = FALSE;
+	g_atomic_int_set(&reconnect, 0);
 }
 
 /* Adopts the reconnect_delay value in case of an error
@@ -884,7 +894,7 @@ static void janus_wsevh_calculate_reconnect_delay_on_fail(void) {
 
 /* Schedules a connect attempt using the lws scheduler as */
 static void janus_wsevh_schedule_connect_attempt(void) {
-	#if (LWS_LIBRARY_VERSION_MAJOR >= 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 4)
-		lws_sul_schedule(context, 0, &sul_stagger, janus_wsevh_connect_attempt, reconnect_delay * LWS_US_PER_SEC);
-	#endif
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 4)
+	lws_sul_schedule(context, 0, &sul_stagger, janus_wsevh_connect_attempt, reconnect_delay * LWS_US_PER_SEC);
+#endif
 }
