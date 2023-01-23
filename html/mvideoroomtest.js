@@ -744,8 +744,12 @@ function subscribeTo(sources) {
 			onlocaltrack: function(track, on) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
-			onremotetrack: function(track, mid, on) {
-				Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+			onremotetrack: function(track, mid, on, metadata) {
+				Janus.debug(
+					"Remote track (mid=" + mid + ") " +
+					(on ? "added" : "removed") +
+					(metadata ? " (" + metadata.reason + ") ": "") + ":", track
+				);
 				// Which publisher are we getting on this mid?
 				let sub = subStreams[mid];
 				let feed = feedStreams[sub.feed_id];

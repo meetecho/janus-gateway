@@ -647,8 +647,13 @@ function newRemoteFeed(id, display, streams) {
 			onlocaltrack: function(track, on) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
-			onremotetrack: function(track, mid, on) {
-				Janus.debug("Remote feed #" + remoteFeed.rfindex + ", remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+			onremotetrack: function(track, mid, on, metadata) {
+				Janus.debug(
+					"Remote feed #" + remoteFeed.rfindex +
+					", remote track (mid=" + mid + ") " +
+					(on ? "added" : "removed") +
+					(metadata? " (" + metadata.reason + ") ": "") + ":", track
+				);
 				if(!on) {
 					// Track removed, get rid of the stream and the rendering
 					$('#remotevideo'+remoteFeed.rfindex + '-' + mid).remove();
