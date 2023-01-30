@@ -97,6 +97,8 @@ janus_SOURCES = \
 	rtcp.h \
 	rtp.c \
 	rtp.h \
+	rtpfwd.c \
+	rtpfwd.h \
 	rtpsrtp.h \
 	sctp.c \
 	sctp.h \
