@@ -1024,12 +1024,30 @@ function Janus(gatewayCallbacks) {
 					handleEvent(JSON.parse(event.data));
 				},
 
-				'close': function() {
+				'close': function(event) {
+					Janus.debug(event)
 					if(!server || !connected) {
 						return;
 					}
 					connected = false;
-					// FIXME What if this is called when the page is closed?
+					// 1006 is a status code to indicate that the connection was closed abnormally,
+					// so we have to try the other servers
+					if (event.code === 1006) {
+						if (Janus.isArray(servers) && !callbacks["reconnect"]) {
+							serversIndex++;
+							if (serversIndex === servers.length) {
+								// We tried all the servers the user gave us, and they all failed
+								callbacks.error("Error connecting to any of the provided Janus servers: Is the server down?");
+								return;
+							}
+							// Let's try the next server
+							server = null;
+							setTimeout(function () {
+								createSession(callbacks);
+							}, 200);
+							return;
+						}
+					}
 					gatewayCallbacks.error("Lost connection to the server (is it down?)");
 				}
 			};
@@ -1067,7 +1085,7 @@ function Janus(gatewayCallbacks) {
 				if(Janus.isArray(servers) && !callbacks["reconnect"]) {
 					serversIndex++;
 					if(serversIndex === servers.length) {
-						// We tried all the servers the user gave us and they all failed
+						// We tried all the servers the user gave us, and they all failed
 						callbacks.error("Error connecting to any of the provided Janus servers: Is the server down?");
 						return;
 					}
