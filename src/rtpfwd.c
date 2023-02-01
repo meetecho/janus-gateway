@@ -152,12 +152,21 @@ janus_rtp_forwarder *janus_rtp_forwarder_create(const char *ctx,
 		ctx = "default";
 	char id[1024];
 	if(stream_id > 0) {
+		/* Make sure the provided ID isn't already in use */
 		g_snprintf(id, sizeof(id), "%s-%"SCNu32, ctx, stream_id);
 		if(g_hash_table_lookup(rtpfwds, id) != NULL) {
 			janus_mutex_unlock(&rtpfwds_mutex);
 			JANUS_LOG(LOG_ERR, "RTP forwarder with ID %"SCNu32" already exists in context '%s'\n",
 				stream_id, ctx);
 			return NULL;
+		}
+	} else {
+		/* Autogenerate an ID within the provided context */
+		stream_id = janus_random_uint32();
+		g_snprintf(id, sizeof(id), "%s-%"SCNu32, ctx, stream_id);
+		while(g_hash_table_lookup(rtpfwds, id)) {
+			stream_id = janus_random_uint32();
+			g_snprintf(id, sizeof(id), "%s-%"SCNu32, ctx, stream_id);
 		}
 	}
 	janus_rtp_forwarder *rf = g_malloc0(sizeof(janus_rtp_forwarder));
@@ -226,15 +235,6 @@ janus_rtp_forwarder *janus_rtp_forwarder_create(const char *ctx,
 	}
 	janus_refcount_init(&rf->ref, janus_rtp_forwarder_free);
 	rf->context = g_strdup(ctx);
-	if(stream_id == 0) {
-		/* Autogenerate an ID within the provided context */
-		stream_id = janus_random_uint32();
-		g_snprintf(id, sizeof(id), "%s-%"SCNu32, ctx, stream_id);
-		while(g_hash_table_lookup(rtpfwds, id)) {
-			stream_id = janus_random_uint32();
-			g_snprintf(id, sizeof(id), "%s-%"SCNu32, ctx, stream_id);
-		}
-	}
 	rf->stream_id = stream_id;
 	janus_refcount_increase(&rf->ref);
 	g_hash_table_insert(rtpfwds, g_strdup(id), rf);
@@ -337,7 +337,7 @@ void janus_rtp_forwarder_send_rtp(janus_rtp_forwarder *rf, char *buffer, int len
 /* Helper function to forward an RTP packet within the context of a forwarder */
 void janus_rtp_forwarder_send_rtp_full(janus_rtp_forwarder *rf, char *buffer, int len, int substream,
 		uint32_t *ssrcs, char **rids, janus_videocodec vcodec, janus_mutex *rid_mutex) {
-	if(!rf || g_atomic_int_get(&rf->destroyed) || !buffer || len < 12 || !janus_is_rtp(buffer, len))
+	if(!rf || g_atomic_int_get(&rf->destroyed) || !buffer || !janus_is_rtp(buffer, len))
 		return;
 	/* Access the RTP header */
 	janus_rtp_header *rtp = (janus_rtp_header *)buffer;
