@@ -6561,23 +6561,25 @@ static void *janus_audiobridge_handler(void *data) {
 					g_free(participant->plainrtp_media.remote_audio_ip);
 					participant->plainrtp_media.remote_audio_ip = g_strdup(ip);
 					participant->plainrtp_media.remote_audio_rtp_port = port;
-					struct sockaddr_in audio_server_addr = { 0 };
-					memset(&audio_server_addr, 0, sizeof(struct sockaddr_in));
-					audio_server_addr.sin_family = AF_INET;
-					gboolean have_audio_server_ip = TRUE;
-					if(participant->plainrtp_media.remote_audio_ip && inet_aton(participant->plainrtp_media.remote_audio_ip, &audio_server_addr.sin_addr) == 0) {	/* Not a numeric IP... */
-						/* Note that gethostbyname() may block waiting for response if it triggers on the wire request.*/
-						struct hostent *host = gethostbyname(participant->plainrtp_media.remote_audio_ip);	/* ...resolve name */
-						if(!host) {
-							JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Couldn't get host (%s)\n", session, participant->plainrtp_media.remote_audio_ip);
-							have_audio_server_ip = FALSE;
-						} else {
-							audio_server_addr.sin_addr = *(struct in_addr *)host->h_addr_list;
+					/* Resolve the address */
+					gboolean have_audio_server_ip = FALSE;
+					struct sockaddr_storage audio_server_addr = { 0 };
+					if(janus_network_resolve_address(participant->plainrtp_media.remote_audio_ip, &audio_server_addr) < 0) {
+						JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Couldn't get host '%s'\n", session,
+							participant->plainrtp_media.remote_audio_ip);
+					} else {
+						/* Address resolved */
+						have_audio_server_ip = TRUE;
+						if(audio_server_addr.ss_family == AF_INET6) {
+							struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&audio_server_addr;
+							addr6->sin6_port = htons(port);
+						} else if(audio_server_addr.ss_family == AF_INET) {
+							struct sockaddr_in *addr = (struct sockaddr_in *)&audio_server_addr;
+							addr->sin_port = htons(port);
 						}
 					}
-					audio_server_addr.sin_port = htons(participant->plainrtp_media.remote_audio_rtp_port);
 					if(have_audio_server_ip) {
-						if(connect(participant->plainrtp_media.audio_rtp_fd, (struct sockaddr *)&audio_server_addr, sizeof(struct sockaddr)) == -1) {
+						if(connect(participant->plainrtp_media.audio_rtp_fd, (struct sockaddr *)&audio_server_addr, sizeof(audio_server_addr)) == -1) {
 							JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Couldn't connect audio RTP? (%s:%d)\n", session,
 								participant->plainrtp_media.remote_audio_ip, participant->plainrtp_media.remote_audio_rtp_port);
 							JANUS_LOG(LOG_ERR, "[AudioBridge-%p]   -- %d (%s)\n", session, errno, g_strerror(errno));
@@ -8713,11 +8715,15 @@ static int janus_audiobridge_plainrtp_allocate_port(janus_audiobridge_plainrtp_m
 			JANUS_LOG(LOG_ERR, "No ports available in range: %u -- %u\n", rtp_range_min, rtp_range_max);
 			break;
 		}
+		if(rtp_fd == -1)
+			rtp_fd = socket(AF_INET6, SOCK_DGRAM, 0);
 		if(rtp_fd == -1) {
-			rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+			JANUS_LOG(LOG_ERR, "Error creating socket... %d (%s)\n", errno, g_strerror(errno));
+			break;
 		}
-		if(rtp_fd == -1) {
-			JANUS_LOG(LOG_ERR, "Error creating socket...\n");
+		int v6only = 0;
+		if(setsockopt(rtp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+			JANUS_LOG(LOG_ERR, "setsockopt on socket failed... %d (%s)\n", errno, g_strerror(errno));
 			break;
 		}
 		int rtp_port = rtp_port_next;
@@ -8728,11 +8734,11 @@ static int janus_audiobridge_plainrtp_allocate_port(janus_audiobridge_plainrtp_m
 			rtp_port_next = rtp_range_min;
 			rtp_port_wrap = TRUE;
 		}
-		struct sockaddr_in rtp_address = { 0 };
-		rtp_address.sin_family = AF_INET;
-		rtp_address.sin_port = htons(rtp_port);
-		inet_pton(AF_INET, local_ip, &rtp_address.sin_addr.s_addr);
-		if(bind(rtp_fd, (struct sockaddr *)(&rtp_address), sizeof(struct sockaddr)) < 0) {
+		struct sockaddr_in6 rtp_address = { 0 };
+		rtp_address.sin6_family = AF_INET6;
+		rtp_address.sin6_port = htons(rtp_port);
+		rtp_address.sin6_addr = in6addr_any;
+		if(bind(rtp_fd, (struct sockaddr *)(&rtp_address), sizeof(rtp_address)) < 0) {
 			/* rtp_fd still unbound, reuse it in the next iteration */
 		} else {
 			media->audio_rtp_fd = rtp_fd;
@@ -8759,7 +8765,7 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 
 	/* File descriptors */
 	socklen_t addrlen;
-	struct sockaddr_in remote = { 0 };
+	struct sockaddr_storage remote = { 0 };
 	int resfd = 0, bytes = 0, pollerrs = 0;
 	struct pollfd fds[2];
 	int pipe_fd = participant->plainrtp_media.pipefd[0];
@@ -8836,7 +8842,7 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 				}
 				/* Got an RTP packet */
 				addrlen = sizeof(remote);
-				bytes = recvfrom(fds[i].fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+				bytes = recvfrom(fds[i].fd, buffer, 1500, 0, (struct sockaddr *)&remote, &addrlen);
 				if(bytes < 0) {
 					/* Failed to read? */
 					continue;
