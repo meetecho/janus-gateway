@@ -32,7 +32,7 @@ general: {
 						# a network spike when eventually reconnected, as all stored
 						# events would need to be sent to the backend before new
 						# ones can be relayed as well. You can prune queued events
-						# and put a cap on the amount of bufferint to perform when
+						# and put a cap on the amount of buffering to perform when
 						# reconnecting by setting the 'events_cap_on_reconnect'
 						# property accordingly: any number you set will be the
 						# maximum number of events stored in memory until we
