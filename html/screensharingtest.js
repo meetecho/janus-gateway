@@ -515,16 +515,12 @@ function newRemoteFeed(id, display) {
 				Janus.debug(
 					"Remote track (mid=" + mid + ") " +
 					(on ? "added" : "removed") +
-					(metadata? " (" + metadata.reason + ") ": "") + ":", track
+					(metadata? " (" + metadata.reason + ") " : "") + ":", track
 				);
 				// Screen sharing tracks are sometimes muted/unmuted by browser
-				// when data is not flowing fast enough, this can make streams blink,
-				// we can ignore these
-				if(
-					track.kind === "video"
-					&& metadata
-					&& (metadata.reason === "mute" || metadata.reason === "unmute")
-				) {
+				// when data is not flowing fast enough; this can make streams blink.
+				// We can ignore these.
+				if(track.kind === "video" && metadata && (metadata.reason === "mute" || metadata.reason === "unmute")) {
 					Janus.log("Ignoring mute/unmute on screen-sharing track.")
 					return
 				}

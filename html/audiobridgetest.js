@@ -302,7 +302,7 @@ $(document).ready(function() {
 									Janus.debug(
 										"Remote track (mid=" + mid + ") " +
 										(on ? "added" : "removed") +
-										(metadata ? " (" + metadata.reason + ") ": "") + ":", track
+										(metadata ? " (" + metadata.reason + ") " : "") + ":", track
 									);
 									if(remoteStream || track.kind !== "audio")
 										return;

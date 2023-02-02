@@ -173,7 +173,7 @@ $(document).ready(function() {
 									Janus.debug(
 										"Remote track (mid=" + mid + ") " +
 										(on ? "added" : "removed") +
-										(metadata? " (" + metadata.reason + ") ": "") + ":", track
+										(metadata? " (" + metadata.reason + ") " : "") + ":", track
 									);
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
