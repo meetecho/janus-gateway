@@ -232,8 +232,12 @@ $(document).ready(function() {
 										});
 									}
 								},
-								onremotetrack: function(track, mid, on) {
-									Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+								onremotetrack: function(track, mid, on, metadata) {
+									Janus.debug(
+										"Remote track (mid=" + mid + ") " +
+										(on ? "added" : "removed") +
+										(metadata? " (" + metadata.reason + ") ": "") + ":", track
+									);
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
 										$('#peervideo' + mid).remove();

@@ -298,8 +298,12 @@ $(document).ready(function() {
 									$('#room').removeClass('hide').show();
 									$('#participant').removeClass('hide').html(myusername).show();
 								},
-								onremotetrack: function(track, mid, on) {
-									Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+								onremotetrack: function(track, mid, on, metadata) {
+									Janus.debug(
+										"Remote track (mid=" + mid + ") " +
+										(on ? "added" : "removed") +
+										(metadata ? " (" + metadata.reason + ") " : "") + ":", track
+									);
 									if(remoteStream || track.kind !== "audio")
 										return;
 									if(!on) {

@@ -1913,7 +1913,7 @@ function Janus(gatewayCallbacks) {
 			// Notify about the new track event
 			let mid = event.transceiver ? event.transceiver.mid : event.track.id;
 			try {
-				pluginHandle.onremotetrack(event.track, mid, true);
+				pluginHandle.onremotetrack(event.track, mid, true, { reason: 'created' });
 			} catch(e) {
 				Janus.error("Error calling onremotetrack", e);
 			}
@@ -1930,7 +1930,7 @@ function Janus(gatewayCallbacks) {
 					t => t.receiver.track === ev.target) : null;
 				let mid = transceiver ? transceiver.mid : ev.target.id;
 				try {
-					pluginHandle.onremotetrack(ev.target, mid, false);
+					pluginHandle.onremotetrack(ev.target, mid, false, { reason: 'ended' });
 				} catch(e) {
 					Janus.error("Error calling onremotetrack on removal", e);
 				}
@@ -1946,7 +1946,7 @@ function Janus(gatewayCallbacks) {
 							t => t.receiver.track === ev.target) : null;
 						let mid = transceiver ? transceiver.mid : ev.target.id;
 						try {
-							pluginHandle.onremotetrack(ev.target, mid, false);
+							pluginHandle.onremotetrack(ev.target, mid, false, { reason: 'mute' } );
 						} catch(e) {
 							Janus.error("Error calling onremotetrack on mute", e);
 						}
@@ -1968,7 +1968,7 @@ function Janus(gatewayCallbacks) {
 						let transceiver = transceivers ? transceivers.find(
 							t => t.receiver.track === ev.target) : null;
 						let mid = transceiver ? transceiver.mid : ev.target.id;
-						pluginHandle.onremotetrack(ev.target, mid, true);
+						pluginHandle.onremotetrack(ev.target, mid, true, { reason: 'unmute' });
 					} catch(e) {
 						Janus.error("Error calling onremotetrack on unmute", e);
 					}

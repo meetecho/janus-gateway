@@ -144,8 +144,12 @@ $(document).ready(function() {
 									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
 									// We don't do anything here, since we captured the stream ourselves
 								},
-								onremotetrack: function(track, mid, on) {
-									Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+								onremotetrack: function(track, mid, on, metadata) {
+									Janus.debug(
+										"Remote track (mid=" + mid + ") " +
+										(on ? "added" : "removed") +
+										(metadata? " (" + metadata.reason + ") ": "") + ":", track
+									);
 									// Now that we're aware of the remote stream, we process it to visualize it
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering

@@ -511,8 +511,19 @@ function newRemoteFeed(id, display) {
 			onlocaltrack: function(track, on) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
-			onremotetrack: function(track, mid, on) {
-				Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+			onremotetrack: function(track, mid, on, metadata) {
+				Janus.debug(
+					"Remote track (mid=" + mid + ") " +
+					(on ? "added" : "removed") +
+					(metadata? " (" + metadata.reason + ") " : "") + ":", track
+				);
+				// Screen sharing tracks are sometimes muted/unmuted by browser
+				// when data is not flowing fast enough; this can make streams blink.
+				// We can ignore these.
+				if(track.kind === "video" && metadata && (metadata.reason === "mute" || metadata.reason === "unmute")) {
+					Janus.log("Ignoring mute/unmute on screen-sharing track.")
+					return
+				}
 				if(!on) {
 					// Track removed, get rid of the stream and the rendering
 					$('#screenvideo' + mid).remove();

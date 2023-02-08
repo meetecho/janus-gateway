@@ -152,8 +152,12 @@ $(document).ready(function() {
 											});
 									}
 								},
-								onremotetrack: function(track, mid, on) {
-									Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+								onremotetrack: function(track, mid, on, metadata) {
+									Janus.debug(
+										"Remote track (mid=" + mid + ") " +
+										(on ? "added" : "removed") +
+										(metadata ? " (" + metadata.reason + ") ": "") + ":", track
+									);
 									var mstreamId = "mstream"+mid;
 									if(streamsList[selectedStream] && streamsList[selectedStream].legacy)
 										mstreamId = "mstream0";

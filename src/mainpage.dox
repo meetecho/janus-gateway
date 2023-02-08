@@ -399,8 +399,11 @@ janus.attach(
         onlocaltrack: function(track, added) {
             // A local track to display has just been added (getUserMedia worked!) or removed
         },
-        onremotetrack: function(track, mid, added) {
+        onremotetrack: function(track, mid, added, metadata) {
             // A remote track (working PeerConnection!) with a specific mid has just been added or removed
+            // You can query metadata to get some more information on why track was added or removed
+            // metadata fields:
+            //   - reason: 'created' | 'ended' | 'mute' | 'unmute'
         },
         oncleanup: function() {
             // PeerConnection with the plugin closed, clean the UI
@@ -589,9 +592,12 @@ janus.attach(
             // Invoked after createOffer
             // This is info on a local track: when added, we can choose to render
         },
-        onremotetrack: function(track, mid, added) {
+        onremotetrack: function(track, mid, added, metadata) {
             // Invoked after handleRemoteJsep has got us a PeerConnection
             // This is info on a remote track: when added, we can choose to render
+            // You can query metadata to get some more information on why track was added or removed
+            // metadata fields:
+            //   - reason: 'created' | 'ended' | 'mute' | 'unmute'
         },
         [..]
   \endverbatim
@@ -639,9 +645,13 @@ janus.attach(
         onlocaltrack: function(track, added) {
             // This will NOT be invoked, we chose recvonly
         },
-        onremotetrack: function(track, mid, added) {
+        onremotetrack: function(track, mid, added, metadata) {
             // Invoked after send has got us a PeerConnection
             // This is info on a remote track: when added, we can choose to render
+            // This is info on a remote track: when added, we can choose to render
+            // You can query metadata to get some more information on why track was added or removed
+            // metadata fields:
+            //   - reason: 'created' | 'ended' | 'mute' | 'unmute'
         },
         [..]
   \endverbatim

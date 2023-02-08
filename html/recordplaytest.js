@@ -276,10 +276,14 @@ $(document).ready(function() {
 										});
 									}
 								},
-								onremotetrack: function(track, mid, on) {
+								onremotetrack: function(track, mid, on, metadata) {
 									if(playing === false)
 										return;
-									Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+									Janus.debug(
+										"Remote track (mid=" + mid + ") " +
+										(on ? "added" : "removed") +
+										(metadata? " (" + metadata.reason + ") ": "") + ":", track
+									);
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
 										$('#thevideo' + mid).remove();
