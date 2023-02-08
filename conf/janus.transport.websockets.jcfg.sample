@@ -21,6 +21,8 @@ general: {
 									# to debug, supported values: err, warn, notice, info, debug, parser,
 									# header, ext, client, latency, user, count (plus 'none' and 'all')
 	#ws_acl = "127.,192.168.0."		# Only allow requests coming from this comma separated list of addresses
+	#ws_acl_forwarded = true		# Whether we should check the X-Forwarded-For header too for the ACL
+									# (default=false, since without a proxy in the middle this could be abused)
 }
 
 # If you want to expose the Admin API via WebSockets as well, you need to
@@ -39,6 +41,8 @@ admin: {
 	#admin_wss_ip = "192.168.0.1"		# Whether we should bind this server to a specific IP address only
 	#admin_wss_unix = "/run/awss.sock"	# Use WebSocket server over UNIX socket instead of TCP
 	#admin_ws_acl = "127.,192.168.0."	# Only allow requests coming from this comma separated list of addresses
+	#admin_ws_acl_forwarded = true		# Whether we should check the X-Forwarded-For header too for the ACL
+										# (default=false, since without a proxy in the middle this could be abused)
 }
 
 # The HTTP servers created in Janus support CORS out of the box, but by
