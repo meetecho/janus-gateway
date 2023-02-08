@@ -77,6 +77,8 @@ typedef struct janus_rtp_header_extension {
 #define JANUS_RTP_EXTMAP_TOFFSET			"urn:ietf:params:rtp-hdrext:toffset"
 /*! \brief a=extmap:3 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time */
 #define JANUS_RTP_EXTMAP_ABS_SEND_TIME		"http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time"
+/*! \brief a=extmap:7 http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time */
+#define JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME	"http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time"
 /*! \brief a=extmap:4 urn:3gpp:video-orientation */
 #define JANUS_RTP_EXTMAP_VIDEO_ORIENTATION	"urn:3gpp:video-orientation"
 /*! \brief a=extmap:5 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01 */
@@ -220,7 +222,7 @@ int janus_rtp_header_extension_parse_dependency_desc(char *buf, int len, int id,
  * @param[in] id The extension ID to look for
  * @param[out] abs_ts Variable where the parsed abs-send-time value will be stored
  * @returns 0 if found, -1 otherwise */
-int janus_rtp_header_extension_parse_abs_sent_time(char *buf, int len, int id, uint32_t *abs_ts);
+int janus_rtp_header_extension_parse_abs_send_time(char *buf, int len, int id, uint32_t *abs_ts);
 
 /*! \brief Helper to set an abs-send-time RTP extension (http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time)
  * @param[in] buf The packet data
@@ -229,6 +231,22 @@ int janus_rtp_header_extension_parse_abs_sent_time(char *buf, int len, int id, u
  * @param[out] abs_ts Absolute Send Time value to set
  * @returns 0 if found, -1 otherwise */
 int janus_rtp_header_extension_set_abs_send_time(char *buf, int len, int id, uint32_t abs_ts);
+
+/*! \brief Helper to parse an abs-capture-time RTP extension (http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] abs_ts Variable where the parsed abs-capture-time value will be stored
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_abs_capture_time(char *buf, int len, int id, uint64_t *abs_ts);
+
+/*! \brief Helper to set an abs-capture-time RTP extension (http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] abs_ts Absolute Send Time value to set
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_set_abs_capture_time(char *buf, int len, int id, uint64_t abs_ts);
 
 /*! \brief Helper to parse a transport wide sequence number (https://tools.ietf.org/html/draft-holmer-rmcat-transport-wide-cc-extensions-01)
  * @param[in] buf The packet data

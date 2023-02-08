@@ -29,9 +29,6 @@
 #include "debug.h"
 #include "utils.h"
 
-#define htonll(x) ((1==htonl(1)) ? (x) : ((gint64)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
-#define ntohll(x) ((1==ntohl(1)) ? (x) : ((gint64)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
-
 
 /* Info header in the structured recording */
 static const char *header = "MJR00002";
@@ -439,7 +436,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 	}
 	if(recorder->type == JANUS_RECORDER_DATA) {
 		/* If it's data, then we need to prepend timing related info, as it's not there by itself */
-		gint64 now = htonll(janus_get_real_time());
+		gint64 now = htonll((uint64_t)janus_get_real_time());
 		res = fwrite(&now, sizeof(gint64), 1, recorder->file);
 		if(res != 1) {
 			JANUS_LOG(LOG_WARN, "Couldn't write data timestamp in .mjr file (%zu != %zu, %s), expect issues post-processing\n",

@@ -575,6 +575,8 @@ struct janus_plugin_rtp_extensions {
 	uint8_t dd_len;
 	/*! \brief Dependency Descriptor content */
 	uint8_t dd_content[256];
+	/*! \brief Absolute Capture Time timestamp */
+	uint64_t abs_capture_ts;
 };
 /*! \brief Helper method to initialise/reset the RTP extensions field
  * @note This is important because each of the supported extensions may
