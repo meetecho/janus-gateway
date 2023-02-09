@@ -171,7 +171,7 @@ janus_plugin *create(void) {
  * Janus instance or it will crash.
  *
  */
-#define JANUS_PLUGIN_API_VERSION	102
+#define JANUS_PLUGIN_API_VERSION	103
 
 /*! \brief Initialization of all plugin properties to NULL
  *
