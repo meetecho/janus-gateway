@@ -372,6 +372,7 @@ typedef struct janus_duktape_rtp_relay_packet {
 	janus_duktape_session *sender;
 	janus_rtp_header *data;
 	gint length;
+	janus_plugin_rtp_extensions extensions;
 	gboolean is_rtp;	/* This may be a data packet and not RTP */
 	gboolean is_video;
 	uint32_t ssrc[3];
@@ -2478,6 +2479,7 @@ void janus_duktape_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *
 	packet.data = rtp;
 	packet.length = len;
 	packet.is_video = video;
+	packet.extensions = rtp_packet->extensions;
 	packet.ssrc[0] = (sc != -1 ? session->ssrc[0] : 0);
 	packet.ssrc[1] = (sc != -1 ? session->ssrc[1] : 0);
 	packet.ssrc[2] = (sc != -1 ? session->ssrc[2] : 0);
@@ -2838,7 +2840,8 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 		}
 		/* Send the packet */
 		if(duktape_janus_core != NULL) {
-			janus_plugin_rtp rtp = { .mindex = -1, .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
+			janus_plugin_rtp rtp = { .mindex = -1, .video = packet->is_video,
+				.buffer = (char *)packet->data, .length = packet->length, .extensions = packet->extensions };
 			janus_plugin_rtp_extensions_reset(&rtp.extensions);
 			duktape_janus_core->relay_rtp(session->handle, &rtp);
 		}
@@ -2854,8 +2857,8 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 		janus_rtp_header_update(packet->data, packet->is_video ? &session->vrtpctx : &session->artpctx, packet->is_video, 0);
 		/* Send the packet */
 		if(duktape_janus_core != NULL) {
-			janus_plugin_rtp rtp = { .mindex = -1, .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
-			janus_plugin_rtp_extensions_reset(&rtp.extensions);
+			janus_plugin_rtp rtp = { .mindex = -1, .video = packet->is_video,
+				.buffer = (char *)packet->data, .length = packet->length, .extensions = packet->extensions };
 			duktape_janus_core->relay_rtp(session->handle, &rtp);
 		}
 		/* Restore the timestamp and sequence number to what the publisher set them to */
