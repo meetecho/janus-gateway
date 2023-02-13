@@ -613,6 +613,10 @@ function Janus(gatewayCallbacks) {
 	this.destroyOnUnload = true;
 	if(typeof gatewayCallbacks.destroyOnUnload !== 'undefined' && gatewayCallbacks.destroyOnUnload !== null)
 		this.destroyOnUnload = (gatewayCallbacks.destroyOnUnload === true);
+	// Whether we should try the other servers when the websocket closed abnormally or the HttpApiCall fails
+	let autoTryOtherServers  = true;
+	if(typeof gatewayCallbacks.autoTryOtherServers  !== 'undefined' && gatewayCallbacks.autoTryOtherServers  !== null)
+		autoTryOtherServers  = (gatewayCallbacks.autoTryOtherServers  === true);
 	// Some timeout-related values
 	let keepAlivePeriod = 25000;
 	if(typeof gatewayCallbacks.keepAlivePeriod !== 'undefined' && gatewayCallbacks.keepAlivePeriod !== null)
@@ -1032,7 +1036,7 @@ function Janus(gatewayCallbacks) {
 					connected = false;
 					// 1006 is a status code to indicate that the connection was closed abnormally,
 					// so we have to try the other servers
-					if (event.code === 1006) {
+					if (autoTryOtherServers && event.code === 1006) {
 						if (Janus.isArray(servers) && !callbacks["reconnect"]) {
 							serversIndex++;
 							if (serversIndex === servers.length) {
@@ -1082,7 +1086,7 @@ function Janus(gatewayCallbacks) {
 			},
 			error: function(textStatus, errorThrown) {
 				Janus.error(textStatus + ":", errorThrown);	// FIXME
-				if(Janus.isArray(servers) && !callbacks["reconnect"]) {
+				if(autoTryOtherServers && Janus.isArray(servers) && !callbacks["reconnect"]) {
 					serversIndex++;
 					if(serversIndex === servers.length) {
 						// We tried all the servers the user gave us, and they all failed

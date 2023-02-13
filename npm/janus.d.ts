@@ -101,6 +101,7 @@ declare namespace JanusJS {
 		bundlePolicy?: RTCBundlePolicy;
 		keepAlivePeriod?: number;
 		longPollTimeout?: number;
+		autoTryOtherServers?: boolean;
 	}
 
 	interface ReconnectOptions {
