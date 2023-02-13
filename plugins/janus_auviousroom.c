@@ -760,6 +760,7 @@ static void session_free(gpointer data) {
 		default:
 			break;
 		}
+		janus_refcount_decrease(&session->handle->ref);
 		session->handle = NULL;
 		g_free(session);
 		session = NULL;
@@ -1331,7 +1332,7 @@ void janus_auviousroom_destroy_session(janus_plugin_session *handle, int *error)
 			if(participant->recording_base)
 				g_free(participant->recording_base);
 			participant->recording_base = NULL;
-			session->participant_type = janus_auviousroom_p_type_none;
+			// session->participant_type = janus_auviousroom_p_type_none;
 			janus_auviousroom_leave_or_unpublish(participant, TRUE, FALSE);
 		} else if(session->participant_type == janus_auviousroom_p_type_subscriber) {
 			/* Detaching this listener from its publisher is already done by hangup_media */
@@ -3999,7 +4000,7 @@ static void *janus_auviousroom_handler(void *data) {
 				json_object_set_new(event, "room", json_integer(participant->room->room_id));
 				json_object_set_new(event, "leaving", json_string("ok"));
 				/* This publisher is leaving, tell everybody */
-				session->participant_type = janus_auviousroom_p_type_none;
+				// session->participant_type = janus_auviousroom_p_type_none;
 				janus_auviousroom_leave_or_unpublish(participant, TRUE, FALSE);
 				/* Done */
 				participant->audio_active = FALSE;
@@ -4268,7 +4269,7 @@ static void *janus_auviousroom_handler(void *data) {
 						janus_mutex_unlock(&owner->listeners_mutex);
 					}
 				}
-				session->participant_type = janus_auviousroom_p_type_none;
+				// session->participant_type = janus_auviousroom_p_type_none;
 				event = json_object();
 				json_object_set_new(event, "auviousroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(listener->room->room_id));

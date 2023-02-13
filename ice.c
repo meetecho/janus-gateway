@@ -618,8 +618,10 @@ gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
 	return (result != NULL);
 }
 static void janus_plugin_session_dereference(janus_plugin_session *plugin_session) {
-	if(plugin_session)
+	if(plugin_session) {
+		JANUS_LOG(LOG_VERB, "Plugin session refdecrease (%p)\n", plugin_session);
 		janus_refcount_decrease(&plugin_session->ref);
+	}
 }
 
 
@@ -1377,6 +1379,7 @@ static void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref) 
 		app_handle->gateway_handle = NULL;
 		janus_refcount_decrease(&handle->ref);
 	}
+	JANUS_LOG(LOG_VERB, "g_free(app_handle)");
 	g_free(app_handle);
 }
 
