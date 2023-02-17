@@ -326,10 +326,26 @@ gboolean janus_vp8_is_keyframe(const char *buffer, int len);
 gboolean janus_vp9_is_keyframe(const char *buffer, int len);
 
 /*! \brief Helper method to check if an H.264 frame is a keyframe or not
+ * @note This checks the presence of an SPS NAL (7), nor an I-Frame (5),
+ * since SPS/PPS are what's needed for a browser to actually be able to
+ * decode a stream. If for some reason you want to check for I-Frames
+ * instead, use the janus_h264_is_i_frame() function
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
  * @returns TRUE if it's a keyframe, FALSE otherwise */
 gboolean janus_h264_is_keyframe(const char *buffer, int len);
+
+/*! \brief Helper method to check if an H.264 frame contains an I-Frame or not
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's an I-Frame, FALSE otherwise */
+gboolean janus_h264_is_i_frame(const char *buffer, int len);
+
+/*! \brief Helper method to check if an H.264 frame contains a B-Frame or not
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a B-Frame, FALSE otherwise */
+gboolean janus_h264_is_b_frame(const char *buffer, int len);
 
 /*! \brief Helper method to check if an AV1 frame is a keyframe or not
  * @param[in] buffer The RTP payload to process

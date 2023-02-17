@@ -855,17 +855,17 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 	return FALSE;
 }
 
-gboolean janus_h264_is_keyframe(const char *buffer, int len) {
+static gboolean janus_h264_contains_nal(const char *buffer, int len, int val) {
 	if(!buffer || len < 6)
 		return FALSE;
 	/* Parse H264 header now */
 	uint8_t fragment = *buffer & 0x1F;
 	uint8_t nal = *(buffer+1) & 0x1F;
-	if(fragment == 7 || ((fragment == 28 || fragment == 29) && nal == 7)) {
-		JANUS_LOG(LOG_HUGE, "Got an H264 key frame\n");
+	if(fragment == val || ((fragment == 28 || fragment == 29) && nal == val && (*(buffer+1) & 0x80))) {
+		JANUS_LOG(LOG_HUGE, "Got an H264 NAL %d\n", val);
 		return TRUE;
 	} else if(fragment == 24) {
-		/* May we find an SPS in this STAP-A? */
+		/* May we find it in this STAP-A? */
 		buffer++;
 		len--;
 		uint16_t psize = 0;
@@ -876,16 +876,28 @@ gboolean janus_h264_is_keyframe(const char *buffer, int len) {
 			buffer += 2;
 			len -= 2;
 			int nal = *buffer & 0x1F;
-			if(nal == 7) {
-				JANUS_LOG(LOG_HUGE, "Got an SPS/PPS\n");
+			if(nal == val) {
+				JANUS_LOG(LOG_HUGE, "Got an H264 NAL %d\n", val);
 				return TRUE;
 			}
 			buffer += psize;
 			len -= psize;
 		}
 	}
-	/* If we got here it's not a key frame */
+	/* If we got here we didn't find it */
 	return FALSE;
+}
+
+gboolean janus_h264_is_keyframe(const char *buffer, int len) {
+	return janus_h264_contains_nal(buffer, len, 7);
+}
+
+gboolean janus_h264_is_i_frame(const char *buffer, int len) {
+	return janus_h264_contains_nal(buffer, len, 5);
+}
+
+gboolean janus_h264_is_b_frame(const char *buffer, int len) {
+	return janus_h264_contains_nal(buffer, len, 1);
 }
 
 gboolean janus_av1_is_keyframe(const char *buffer, int len) {
