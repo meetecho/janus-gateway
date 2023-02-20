@@ -1,3 +1,6 @@
+/* global iceServers:readable, Janus:readable, server:readable */
+/* global bootbox:readable, toastr:readable */
+
 // We import the settings.js file to know which address we should contact
 // to talk to Janus, and optionally which STUN/TURN servers should be
 // used as well. Specifically, that file defines the "server" and
@@ -14,11 +17,13 @@ var spinner = null;
 var audioenabled = false;
 var videoenabled = false;
 
-var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
 var simulcastStarted = false;
+
+var stream = null;
+var canvasStream = null;
 
 // We'll try to do 15 frames per second: should be relatively fluid, and
 // most important should be doable in JavaScript on lower end machines too
@@ -155,7 +160,7 @@ $(document).ready(function() {
 										updateSimulcastButtons(substream, temporal);
 									}
 								},
-								onlocaltrack: function(track, on) {
+								onlocaltrack: function() {
 									// We ignore the stream we got here, we're using the canvas to render it
 									if(echotest.webrtcStuff.pc.iceConnectionState !== "completed" &&
 											echotest.webrtcStuff.pc.iceConnectionState !== "connected") {
@@ -321,6 +326,7 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
@@ -438,6 +444,7 @@ function updateCanvas() {
 
 // Helper to parse query string
 function getQueryStringValue(name) {
+	// eslint-disable-next-line no-useless-escape
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
 	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);

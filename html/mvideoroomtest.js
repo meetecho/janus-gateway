@@ -1,3 +1,6 @@
+/* global iceServers:readable, Janus:readable, server:readable */
+/* global bootbox:readable, toastr:readable */
+
 // We import the settings.js file to know which address we should contact
 // to talk to Janus, and optionally which STUN/TURN servers should be
 // used as well. Specifically, that file defines the "server" and
@@ -343,7 +346,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										localVideos++;
 										$('#videolocal .no-video-container').remove();
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										localTracks[trackId] = stream;
 										Janus.log("Created local stream:", stream);
 										Janus.log(stream.getTracks());
@@ -363,7 +366,7 @@ $(document).ready(function() {
 										});
 									}
 								},
-								onremotetrack: function(track, mid, on) {
+								onremotetrack: function() {
 									// The publisher stream is sendonly, we don't expect anything here
 								},
 								oncleanup: function() {
@@ -394,6 +397,7 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(field, event) {
 	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
@@ -479,7 +483,7 @@ function publishOwnFeed(useAudio) {
 			error: function(error) {
 				Janus.error("WebRTC error:", error);
 				if (useAudio) {
-					 publishOwnFeed(false);
+					publishOwnFeed(false);
 				} else {
 					bootbox.alert("WebRTC error... " + error.message);
 					$('#publish').removeAttr('disabled').click(function() { publishOwnFeed(true); });
@@ -688,8 +692,6 @@ function subscribeTo(sources) {
 						let temporal = msg["temporal"];
 						if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 							// Check which this feed this refers to
-							let sub = subStreams[mid];
-							let feed = feedStreams[sub.feed_id];
 							let slot = slots[mid];
 							if(!simulcastStarted[slot]) {
 								simulcastStarted[slot] = true;
@@ -741,7 +743,7 @@ function subscribeTo(sources) {
 						});
 				}
 			},
-			onlocaltrack: function(track, on) {
+			onlocaltrack: function() {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
 			onremotetrack: function(track, mid, on, metadata) {
@@ -791,7 +793,7 @@ function subscribeTo(sources) {
 					return;
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteTracks[mid] = stream;
 					Janus.log("Created remote audio stream:", stream);
 					$('#videoremote' + slot).append('<audio class="hide" id="remotevideo' + slot + '-' + mid + '" autoplay playsinline/>');
@@ -810,7 +812,7 @@ function subscribeTo(sources) {
 					// New video track: create a stream out of it
 					feed.remoteVideos++;
 					$('#videoremote' + slot + ' .no-video-container').remove();
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
 					$('#videoremote' + slot).append('<video class="rounded centered" id="remotevideo' + slot + '-' + mid + '" width=100% autoplay playsinline/>');
@@ -880,6 +882,7 @@ function unsubscribeFrom(id) {
 
 // Helper to parse query string
 function getQueryStringValue(name) {
+	// eslint-disable-next-line no-useless-escape
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
 	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);

@@ -1,3 +1,7 @@
+/* global iceServers:readable, Janus:readable, server:readable */
+/* global bootbox:readable, toastr:readable */
+/* global SelfieSegmentation:readable */
+
 // We import the settings.js file to know which address we should contact
 // to talk to Janus, and optionally which STUN/TURN servers should be
 // used as well. Specifically, that file defines the "server" and
@@ -19,12 +23,10 @@ var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringV
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
-var doDtx = (getQueryStringValue("dtx") === "yes" || getQueryStringValue("dtx") === "true");
-var doOpusred = (getQueryStringValue("opusred") === "yes" || getQueryStringValue("opusred") === "true");
 var simulcastStarted = false;
 
 // Canvas object
-var canvas = null;;
+var canvas = null;
 var context = null;
 var canvasStream = null;
 var width = doSimulcast ? 1280 : 640,
@@ -161,7 +163,7 @@ $(document).ready(function() {
 									var trackId = track.id.replace(/[{}]/g, "");
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
-										var stream = localTracks[trackId];
+										let stream = localTracks[trackId];
 										if(stream) {
 											try {
 												var tracks = stream.getTracks();
@@ -190,7 +192,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
-									var stream = localTracks[trackId];
+									let stream = localTracks[trackId];
 									if(stream) {
 										// We've been here already
 										return;
@@ -265,7 +267,7 @@ $(document).ready(function() {
 									}
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote audio stream:", stream);
 										if($('#peervideo'+mid).length === 0)
@@ -285,7 +287,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										remoteVideos++;
 										$('#videoright .no-video-container').remove();
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote video stream:", stream);
 										if($('#peervideo'+mid).length === 0)
@@ -384,6 +386,7 @@ $(document).ready(function() {
 
 // Helper to parse query string
 function getQueryStringValue(name) {
+	// eslint-disable-next-line no-useless-escape
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
 	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
@@ -448,7 +451,7 @@ function createCanvas() {
 						await selfieSegmentation.send({image: myvideo});
 					lastTime = now;
 					requestAnimationFrame(getFrames);
-				};
+				}
 				getFrames();
 				// Capture the canvas as a local MediaStream
 				canvasStream = canvas.captureStream();

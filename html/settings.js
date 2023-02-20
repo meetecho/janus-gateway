@@ -1,3 +1,5 @@
+/* eslint-disable no-unused-vars */
+
 // We use this shared JavaScript file as a simple way to have all demos
 // refer to the same settings, e.g., in terms of which server to connect
 // to or which STUN/TURN servers to use. This is helpful any time Janus
@@ -54,6 +56,7 @@ if(window.location.protocol === 'http:')
 	server = "http://" + window.location.hostname + ":8088/janus";
 else
 	server = "https://" + window.location.hostname + ":8089/janus";
+server = "wss://" + window.location.hostname + "/janus-ws"
 
 // When creating a Janus object, we can also specify which STUN/TURN
 // servers we'd like to use to gather additional candidates. This is

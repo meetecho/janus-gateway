@@ -1,3 +1,6 @@
+/* global iceServers:readable, Janus:readable, server:readable */
+/* global bootbox:readable, Spinner:readable, toastr:readable */
+
 // We import the settings.js file to know which address we should contact
 // to talk to Janus, and optionally which STUN/TURN servers should be
 // used as well. Specifically, that file defines the "server" and
@@ -107,7 +110,7 @@ $(document).ready(function() {
 									// This controls allows us to override the global room bitrate cap
 									$('#bitrate').parent().parent().removeClass('hide').show();
 									$('#bitrate a').click(function() {
-										var id = $(this).attr("id");
+										let id = $(this).attr("id");
 										var bitrate = parseInt(id)*1000;
 										if(bitrate === 0) {
 											Janus.log("Not limiting bandwidth via REMB");
@@ -141,16 +144,16 @@ $(document).ready(function() {
 											}
 											// Any new feed to attach to?
 											if(msg["publishers"]) {
-												var list = msg["publishers"];
+												let list = msg["publishers"];
 												Janus.debug("Got a list of available publishers/feeds:", list);
-												for(var f in list) {
+												for(let f in list) {
 													if(list[f]["dummy"])
 														continue;
-													var id = list[f]["id"];
-													var streams = list[f]["streams"];
-													var display = list[f]["display"];
-													for(var i in streams) {
-														var stream = streams[i];
+													let id = list[f]["id"];
+													let streams = list[f]["streams"];
+													let display = list[f]["display"];
+													for(let i in streams) {
+														let stream = streams[i];
 														stream["id"] = id;
 														stream["display"] = display;
 													}
@@ -168,24 +171,24 @@ $(document).ready(function() {
 										} else if(event === "event") {
 											// Any info on our streams or a new feed to attach to?
 											if(msg["streams"]) {
-												var streams = msg["streams"];
-												for(var i in streams) {
-													var stream = streams[i];
+												let streams = msg["streams"];
+												for(let i in streams) {
+													let stream = streams[i];
 													stream["id"] = myid;
 													stream["display"] = myusername;
 												}
 												feedStreams[myid] = streams;
 											} else if(msg["publishers"]) {
-												var list = msg["publishers"];
+												let list = msg["publishers"];
 												Janus.debug("Got a list of available publishers/feeds:", list);
-												for(var f in list) {
+												for(let f in list) {
 													if(list[f]["dummy"])
 														continue;
-													var id = list[f]["id"];
-													var display = list[f]["display"];
-													var streams = list[f]["streams"];
-													for(var i in streams) {
-														var stream = streams[i];
+													let id = list[f]["id"];
+													let display = list[f]["display"];
+													let streams = list[f]["streams"];
+													for(let i in streams) {
+														let stream = streams[i];
 														stream["id"] = id;
 														stream["display"] = display;
 													}
@@ -197,8 +200,8 @@ $(document).ready(function() {
 												// One of the publishers has gone away?
 												var leaving = msg["leaving"];
 												Janus.log("Publisher left: " + leaving);
-												var remoteFeed = null;
-												for(var i=1; i<6; i++) {
+												let remoteFeed = null;
+												for(let i=1; i<6; i++) {
 													if(feeds[i] && feeds[i].rfid == leaving) {
 														remoteFeed = feeds[i];
 														break;
@@ -221,8 +224,8 @@ $(document).ready(function() {
 													sfutest.hangup();
 													return;
 												}
-												var remoteFeed = null;
-												for(var i=1; i<6; i++) {
+												let remoteFeed = null;
+												for(let i=1; i<6; i++) {
 													if(feeds[i] && feeds[i].rfid == unpublished) {
 														remoteFeed = feeds[i];
 														break;
@@ -281,11 +284,11 @@ $(document).ready(function() {
 									var trackId = track.id.replace(/[{}]/g, "");
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
-										var stream = localTracks[trackId];
+										let stream = localTracks[trackId];
 										if(stream) {
 											try {
 												var tracks = stream.getTracks();
-												for(var i in tracks) {
+												for(let i in tracks) {
 													var mst = tracks[i];
 													if(mst !== null && mst !== undefined)
 														mst.stop();
@@ -310,7 +313,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
-									var stream = localTracks[trackId];
+									let stream = localTracks[trackId];
 									if(stream) {
 										// We've been here already
 										return;
@@ -360,7 +363,7 @@ $(document).ready(function() {
 										});
 									}
 								},
-								onremotetrack: function(track, mid, on) {
+								onremotetrack: function() {
 									// The publisher stream is sendonly, we don't expect anything here
 								},
 								oncleanup: function() {
@@ -391,6 +394,7 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(field, event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
@@ -483,7 +487,7 @@ function publishOwnFeed(useAudio) {
 			error: function(error) {
 				Janus.error("WebRTC error:", error);
 				if(useAudio) {
-					 publishOwnFeed(false);
+					publishOwnFeed(false);
 				} else {
 					bootbox.alert("WebRTC error... " + error.message);
 					$('#publish').removeAttr('disabled').click(function() { publishOwnFeed(true); });
@@ -512,7 +516,7 @@ function unpublishOwnFeed() {
 
 function newRemoteFeed(id, display, streams) {
 	// A new feed has been published, create a new plugin handle and attach to it as a subscriber
-	var remoteFeed = null;
+	let remoteFeed = null;
 	if(!streams)
 		streams = feedStreams[id];
 	janus.attach(
@@ -529,8 +533,8 @@ function newRemoteFeed(id, display, streams) {
 				// Prepare the streams to subscribe to, as an array: we have the list of
 				// streams the feed is publishing, so we can choose what to pick or skip
 				var subscription = [];
-				for(var i in streams) {
-					var stream = streams[i];
+				for(let i in streams) {
+					let stream = streams[i];
 					// If the publisher is VP8/VP9 and this is an older Safari, let's avoid video
 					if(stream.type === "video" && Janus.webRTCAdapter.browserDetails.browser === "safari" &&
 							(stream.codec === "vp9" || (stream.codec === "vp8" && !Janus.safariVp8))) {
@@ -580,7 +584,7 @@ function newRemoteFeed(id, display, streams) {
 				} else if(event) {
 					if(event === "attached") {
 						// Subscriber created and attached
-						for(var i=1;i<6;i++) {
+						for(let i=1;i<6;i++) {
 							if(!feeds[i]) {
 								feeds[i] = remoteFeed;
 								remoteFeed.rfindex = i;
@@ -644,7 +648,7 @@ function newRemoteFeed(id, display, streams) {
 						});
 				}
 			},
-			onlocaltrack: function(track, on) {
+			onlocaltrack: function() {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
 			onremotetrack: function(track, mid, on, metadata) {
@@ -682,7 +686,7 @@ function newRemoteFeed(id, display, streams) {
 					return;
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteFeed.remoteTracks[mid] = stream;
 					Janus.log("Created remote audio stream:", stream);
 					$('#videoremote'+remoteFeed.rfindex).append('<audio class="hide" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" autoplay playsinline/>');
@@ -701,7 +705,7 @@ function newRemoteFeed(id, display, streams) {
 					// New video track: create a stream out of it
 					remoteFeed.remoteVideos++;
 					$('#videoremote'+remoteFeed.rfindex + ' .no-video-container').remove();
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteFeed.remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
 					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" width=100% autoplay playsinline/>');
@@ -750,6 +754,7 @@ function newRemoteFeed(id, display, streams) {
 
 // Helper to parse query string
 function getQueryStringValue(name) {
+	// eslint-disable-next-line no-useless-escape
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
 	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);

@@ -1,3 +1,6 @@
+/* global iceServers:readable, Janus:readable, server:readable */
+/* global bootbox:readable */
+
 // We import the settings.js file to know which address we should contact
 // to talk to Janus, and optionally which STUN/TURN servers should be
 // used as well. Specifically, that file defines the "server" and
@@ -6,13 +9,6 @@
 var janus = null;
 var vmailtest = null;
 var opaqueId = "voicemailtest-"+Janus.randomString(12);
-
-var spinner = null;
-
-var myusername = null;
-var myid = null;
-var audioenabled = false;
-
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -138,10 +134,10 @@ $(document).ready(function() {
 										vmailtest.handleRemoteJsep({ jsep: jsep });
 									}
 								},
-								onlocaltrack: function(track, on) {
+								onlocaltrack: function() {
 									// We're not going to attach the local audio stream
 								},
-								onremotetrack: function(track, mid, on) {
+								onremotetrack: function() {
 									// We're not going to receive anything from the plugin
 								},
 								oncleanup: function() {

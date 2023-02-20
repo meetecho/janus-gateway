@@ -1,3 +1,6 @@
+/* global iceServers:readable, Janus:readable, server:readable */
+/* global bootbox:readable */
+
 // We import the settings.js file to know which address we should contact
 // to talk to Janus, and optionally which STUN/TURN servers should be
 // used as well. Specifically, that file defines the "server" and
@@ -8,7 +11,6 @@ var mixertest = null;
 var opaqueId = "audiobridgetest-"+Janus.randomString(12);
 
 var remoteStream = null;
-var spinner = null;
 
 var myroom = 1234;	// Demo room
 if(getQueryStringValue("room") !== "")
@@ -138,18 +140,18 @@ $(document).ready(function() {
 											}
 											// Any room participant?
 											if(msg["participants"]) {
-												var list = msg["participants"];
+												let list = msg["participants"];
 												Janus.debug("Got a list of participants:", list);
-												for(var f in list) {
-													var id = list[f]["id"];
-													var display = escapeXmlTags(list[f]["display"]);
-													var setup = list[f]["setup"];
-													var muted = list[f]["muted"];
-													var spatial = list[f]["spatial_position"];
+												for(let f in list) {
+													let id = list[f]["id"];
+													let display = escapeXmlTags(list[f]["display"]);
+													let setup = list[f]["setup"];
+													let muted = list[f]["muted"];
+													let spatial = list[f]["spatial_position"];
 													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp' + id).length === 0) {
 														// Add to the participants list
-														var slider = '';
+														let slider = '';
 														if(spatial !== null && spatial !== undefined)
 															slider = '<span>[L <input id="sp' + id + '" type="text" style="width: 10%;"/> R] </span>';
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
@@ -182,18 +184,18 @@ $(document).ready(function() {
 											// Any room participant?
 											$('#list').empty();
 											if(msg["participants"]) {
-												var list = msg["participants"];
+												let list = msg["participants"];
 												Janus.debug("Got a list of participants:", list);
-												for(var f in list) {
-													var id = list[f]["id"];
-													var display = escapeXmlTags(list[f]["display"]);
-													var setup = list[f]["setup"];
-													var muted = list[f]["muted"];
-													var spatial = list[f]["spatial_position"];
+												for(let f in list) {
+													let id = list[f]["id"];
+													let display = escapeXmlTags(list[f]["display"]);
+													let setup = list[f]["setup"];
+													let muted = list[f]["muted"];
+													let spatial = list[f]["spatial_position"];
 													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp' + id).length === 0) {
 														// Add to the participants list
-														var slider = '';
+														let slider = '';
 														if(spatial !== null && spatial !== undefined)
 															slider = '<span>[L <input id="sp' + id + '" type="text" style="width: 10%;"/> R] </span>';
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
@@ -227,18 +229,18 @@ $(document).ready(function() {
 											});
 										} else if(event === "event") {
 											if(msg["participants"]) {
-												var list = msg["participants"];
+												let list = msg["participants"];
 												Janus.debug("Got a list of participants:", list);
-												for(var f in list) {
-													var id = list[f]["id"];
-													var display = escapeXmlTags(list[f]["display"]);
-													var setup = list[f]["setup"];
-													var muted = list[f]["muted"];
-													var spatial = list[f]["spatial_position"];
+												for(let f in list) {
+													let id = list[f]["id"];
+													let display = escapeXmlTags(list[f]["display"]);
+													let setup = list[f]["setup"];
+													let muted = list[f]["muted"];
+													let spatial = list[f]["spatial_position"];
 													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp' + id).length === 0) {
 														// Add to the participants list
-														var slider = '';
+														let slider = '';
 														if(spatial !== null && spatial !== undefined)
 															slider = '<span>[L <input id="sp' + id + '" type="text" style="width: 10%;"/> R] </span>';
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
@@ -333,7 +335,7 @@ $(document).ready(function() {
 									$('#position').click(
 										function() {
 											bootbox.prompt("Insert new spatial position: [0-100] (0=left, 50=center, 100=right)", function(result) {
-												var spatial = parseInt(result);
+												let spatial = parseInt(result);
 												if(isNaN(spatial) || spatial < 0 || spatial > 100) {
 													bootbox.alert("Invalid value");
 													return;
@@ -367,6 +369,7 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(field, event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
@@ -418,6 +421,7 @@ function registerUsername() {
 
 // Helper to parse query string
 function getQueryStringValue(name) {
+	// eslint-disable-next-line no-useless-escape
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
 	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);

@@ -1,3 +1,6 @@
+/* global iceServers:readable, Janus:readable, server:readable */
+/* global bootbox:readable, Spinner:readable */
+
 // We import the settings.js file to know which address we should contact
 // to talk to Janus, and optionally which STUN/TURN servers should be
 // used as well. Specifically, that file defines the "server" and
@@ -22,13 +25,13 @@ var spinner = null;
 
 // Just an helper to generate random usernames
 function randomString(len, charSet) {
-    charSet = charSet || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    var randomString = '';
-    for (var i = 0; i < len; i++) {
-    	var randomPoz = Math.floor(Math.random() * charSet.length);
-    	randomString += charSet.substring(randomPoz,randomPoz+1);
-    }
-    return randomString;
+	charSet = charSet || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+	var randomString = '';
+	for (var i = 0; i < len; i++) {
+		var randomPoz = Math.floor(Math.random() * charSet.length);
+		randomString += charSet.substring(randomPoz,randomPoz+1);
+	}
+	return randomString;
 }
 
 
@@ -175,13 +178,13 @@ $(document).ready(function() {
 											} else {
 												// We're just watching a session, any feed to attach to?
 												if(msg["publishers"]) {
-													var list = msg["publishers"];
+													let list = msg["publishers"];
 													Janus.debug("Got a list of available publishers/feeds:", list);
-													for(var f in list) {
+													for(let f in list) {
 														if(list[f]["dummy"])
 															continue;
-														var id = list[f]["id"];
-														var display = list[f]["display"];
+														let id = list[f]["id"];
+														let display = list[f]["display"];
 														Janus.debug("  >> [" + id + "] " + display);
 														newRemoteFeed(id, display)
 													}
@@ -190,13 +193,13 @@ $(document).ready(function() {
 										} else if(event === "event") {
 											// Any feed to attach to?
 											if(role === "listener" && msg["publishers"]) {
-												var list = msg["publishers"];
+												let list = msg["publishers"];
 												Janus.debug("Got a list of available publishers/feeds:", list);
-												for(var f in list) {
+												for(let f in list) {
 													if(list[f]["dummy"])
 														continue;
-													var id = list[f]["id"];
-													var display = list[f]["display"];
+													let id = list[f]["id"];
+													let display = list[f]["display"];
 													Janus.debug("  >> [" + id + "] " + display);
 													newRemoteFeed(id, display)
 												}
@@ -225,7 +228,7 @@ $(document).ready(function() {
 									var trackId = track.id.replace(/[{}]/g, "");
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
-										var stream = localTracks[trackId];
+										let stream = localTracks[trackId];
 										if(stream) {
 											try {
 												var tracks = stream.getTracks();
@@ -254,7 +257,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
-									var stream = localTracks[trackId];
+									let stream = localTracks[trackId];
 									if(stream) {
 										// We've been here already
 										return;
@@ -277,7 +280,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										localVideos++;
 										$('#screencapture .no-video-container').remove();
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										localTracks[trackId] = stream;
 										Janus.log("Created local stream:", stream);
 										$('#screencapture').append('<video class="rounded centered" id="screenvideo' + trackId + '" width=100% autoplay playsinline muted="muted"/>');
@@ -295,7 +298,7 @@ $(document).ready(function() {
 										});
 									}
 								},
-								onremotetrack: function(track, mid, on) {
+								onremotetrack: function() {
 									// The publisher stream is sendonly, we don't expect anything here
 								},
 								oncleanup: function() {
@@ -322,6 +325,7 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnterShare(field, event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
@@ -389,6 +393,7 @@ function shareScreen() {
 	}});
 }
 
+// eslint-disable-next-line no-unused-vars
 function checkEnterJoin(field, event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
@@ -508,7 +513,7 @@ function newRemoteFeed(id, display) {
 						});
 				}
 			},
-			onlocaltrack: function(track, on) {
+			onlocaltrack: function() {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
 			onremotetrack: function(track, mid, on, metadata) {
@@ -550,7 +555,7 @@ function newRemoteFeed(id, display) {
 				}
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteTracks[mid] = stream;
 					Janus.log("Created remote audio stream:", stream);
 					$('#screencapture').append('<audio class="hide" id="screenvideo' + mid + '" playsinline/>');
@@ -572,7 +577,7 @@ function newRemoteFeed(id, display) {
 					// New video track: create a stream out of it
 					remoteVideos++;
 					$('#screencapture .no-video-container').remove();
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteFeed.remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
 					$('#screencapture').append('<video class="rounded centered" id="screenvideo' + mid + '" width=100% playsinline/>');
