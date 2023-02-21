@@ -440,10 +440,12 @@ $(document).ready(function() {
 										}
 									}
 								},
-								onlocaltrack: function() {
+								// eslint-disable-next-line no-unused-vars
+								onlocaltrack: function(track, on) {
 									// The callee is our fake peer, we don't display anything
 								},
-								onremotetrack: function() {
+								// eslint-disable-next-line no-unused-vars
+								onremotetrack: function(track, mid, on) {
 									// The callee is our fake peer, we don't display anything
 								},
 								oncleanup: function() {

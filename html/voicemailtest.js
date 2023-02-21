@@ -134,10 +134,12 @@ $(document).ready(function() {
 										vmailtest.handleRemoteJsep({ jsep: jsep });
 									}
 								},
-								onlocaltrack: function() {
+								// eslint-disable-next-line no-unused-vars
+								onlocaltrack: function(track, on) {
 									// We're not going to attach the local audio stream
 								},
-								onremotetrack: function() {
+								// eslint-disable-next-line no-unused-vars
+								onremotetrack: function(track, mid, on) {
 									// We're not going to receive anything from the plugin
 								},
 								oncleanup: function() {

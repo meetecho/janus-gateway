@@ -363,7 +363,8 @@ $(document).ready(function() {
 										});
 									}
 								},
-								onremotetrack: function() {
+								// eslint-disable-next-line no-unused-vars
+								onremotetrack: function(track, mid, on) {
 									// The publisher stream is sendonly, we don't expect anything here
 								},
 								oncleanup: function() {
@@ -648,7 +649,8 @@ function newRemoteFeed(id, display, streams) {
 						});
 				}
 			},
-			onlocaltrack: function() {
+			// eslint-disable-next-line no-unused-vars
+			onlocaltrack: function(track, on) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
 			onremotetrack: function(track, mid, on, metadata) {

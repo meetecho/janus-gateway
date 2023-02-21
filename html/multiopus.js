@@ -192,7 +192,8 @@ $(document).ready(function() {
 										updateSimulcastButtons(substream, temporal);
 									}
 								},
-								onlocaltrack: function() {
+								// eslint-disable-next-line no-unused-vars
+								onlocaltrack: function(track, on) {
 									// We ignore the stream we got here, we're using the static video to render it
 									if(echotest.webrtcStuff.pc.iceConnectionState !== "completed" &&
 											echotest.webrtcStuff.pc.iceConnectionState !== "connected") {
