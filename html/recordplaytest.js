@@ -240,7 +240,7 @@ $(document).ready(function() {
 										return;
 									}
 									$('#videotitle').html("Recording...");
-									$('#stop').unbind('click').click(stop);
+									$('#stop').unbind('click').click(stopRecPlay);
 									$('#video').removeClass('hide').show();
 									if($('#videobox video').length === 0) {
 										$('#videos').removeClass('hide').show();
@@ -309,7 +309,7 @@ $(document).ready(function() {
 									// If we're here, a new track was added
 									if($('#videobox audio').length === 0 && $('#videobox video').length === 0) {
 										$('#videotitle').html(selectedRecordingInfo);
-										$('#stop').unbind('click').click(stop);
+										$('#stop').unbind('click').click(stopRecPlay);
 										$('#video').removeClass('hide').show();
 									}
 									if(track.kind === "audio") {
@@ -577,7 +577,7 @@ function startPlayout() {
 	recordplay.send({ message: play });
 }
 
-function stop() {
+function stopRecPlay() {
 	// Stop a recording/playout
 	$('#stop').unbind('click');
 	var stop = { request: "stop" };

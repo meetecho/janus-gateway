@@ -15,8 +15,7 @@ var bitrateTimer = null;
 
 
 // Web Audio context and filters
-var AudioContext = window.AudioContext || window.webkitAudioContext;
-var audioContext = new AudioContext();
+var audioContext = new (window.AudioContext || window.webkitAudioContext)();
 var compressor = null, analyser = null;
 // Canvas and visualizer data
 var canvasContext = null, dataArray = null;
