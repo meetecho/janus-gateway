@@ -12,6 +12,7 @@ module.exports = {
 	"rules": {
 		"no-console": "off",
 		"no-empty": "off",
+		"no-useless-escapes": "on",
 		"indent": [
 			"warn",
 			"tab",
@@ -21,7 +22,12 @@ module.exports = {
 		],
 	},
 	"globals": {
+		/* WebRTC */
 		"adapter": "readonly",
-		"RTCRtpTransceiver": "readonly"
+		"RTCRtpTransceiver": "readonly",
+		/* bootstrap */
+		"bootbox": "readonly",
+		"Spinner": "readonly",
+		"toastr": "readonly"
 	}
 };

@@ -1,11 +1,10 @@
-/* global iceServers:readable, Janus:readable, server:readable */
-/* global bootbox:readable, toastr:readable */
-/* global md5:readable */
-
 // We import the settings.js file to know which address we should contact
 // to talk to Janus, and optionally which STUN/TURN servers should be
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
+
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+/* global md5:readonly */
 
 var janus = null;
 var sipcall = null;

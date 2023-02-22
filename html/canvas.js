@@ -1,10 +1,9 @@
-/* global iceServers:readable, Janus:readable, server:readable */
-/* global bootbox:readable, toastr:readable */
-
 // We import the settings.js file to know which address we should contact
 // to talk to Janus, and optionally which STUN/TURN servers should be
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
+
+/* global iceServers:readonly, Janus:readonly, server:readonly */
 
 var janus = null;
 var echotest = null;
@@ -445,7 +444,6 @@ function updateCanvas() {
 
 // Helper to parse query string
 function getQueryStringValue(name) {
-	// eslint-disable-next-line no-useless-escape
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
 	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);

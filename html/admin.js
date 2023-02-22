@@ -1,5 +1,3 @@
-/* global bootbox:readable */
-
 //
 // This 'server' variable we use to contact the Admin/Monitor backend is
 // constructed in this example pretty much as we do in all the demos, so
