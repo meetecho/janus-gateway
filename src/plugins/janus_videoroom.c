@@ -7647,9 +7647,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			/* Something went wrong */
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
+			janus_videoroom_publisher_destroy(publisher);
 			janus_refcount_decrease(&publisher->ref);
 			janus_refcount_decrease(&publisher->session->ref);
-			janus_videoroom_publisher_destroy(publisher);
 			JANUS_LOG(LOG_ERR, "Could not spawn thread for remote publisher, %d (%s)\n",
 				errno, g_strerror(errno));
 			error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
@@ -10008,8 +10008,8 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Can't offer an SDP with no stream\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP;
 					g_snprintf(error_cause, 512, "Can't offer an SDP with no stream");
-					janus_refcount_decrease(&subscriber->ref);
 					janus_videoroom_subscriber_destroy(subscriber);
+					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
 				session->participant = subscriber;
@@ -10067,8 +10067,8 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Error pushing event to new subscriber\n");
 					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
 					g_snprintf(error_cause, 512, "Error pushing event");
-					janus_refcount_decrease(&subscriber->ref);
 					janus_videoroom_subscriber_destroy(subscriber);
+					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
 				/* Also notify event handlers */
