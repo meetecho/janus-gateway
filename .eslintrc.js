@@ -12,7 +12,7 @@ module.exports = {
 	"rules": {
 		"no-console": "off",
 		"no-empty": "off",
-		"no-useless-escapes": "on",
+		"no-useless-escape": "off",
 		"indent": [
 			"warn",
 			"tab",

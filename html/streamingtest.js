@@ -254,7 +254,8 @@ $(document).ready(function() {
 									$('#remotevideo' + mid).get(0).play();
 									$('#remotevideo' + mid).get(0).volume = 1;
 								},
-								ondataopen: function() {
+								// eslint-disable-next-line no-unused-vars
+								ondataopen: function(label, protocol) {
 									Janus.log("The DataChannel is available!");
 									$('.waitingvideo').remove();
 									$('#mstream' + dataMid).append(

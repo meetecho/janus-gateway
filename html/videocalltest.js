@@ -471,7 +471,8 @@ $(document).ready(function() {
 										return false;
 									});
 								},
-								ondataopen: function() {
+								// eslint-disable-next-line no-unused-vars
+								ondataopen: function(label, protocol) {
 									Janus.log("The DataChannel is available!");
 									$('#videos').removeClass('hide').show();
 									$('#datasend').removeAttr('disabled');

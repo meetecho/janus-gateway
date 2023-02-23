@@ -21,19 +21,6 @@ var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
 var spinner = null;
 
-
-// Just an helper to generate random usernames
-function randomString(len, charSet) {
-	charSet = charSet || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-	var randomString = '';
-	for (var i = 0; i < len; i++) {
-		var randomPoz = Math.floor(Math.random() * charSet.length);
-		randomString += charSet.substring(randomPoz,randomPoz+1);
-	}
-	return randomString;
-}
-
-
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
@@ -381,7 +368,7 @@ function shareScreen() {
 			// Our own screen sharing session has been created, join it
 			room = result["room"];
 			Janus.log("Screen sharing session created: " + room);
-			myusername = randomString(12);
+			myusername = Janus.randomString(12);
 			var register = {
 				request: "join",
 				room: room,
@@ -421,7 +408,7 @@ function joinScreen() {
 	}
 	room = parseInt(roomid);
 	role = "listener";
-	myusername = randomString(12);
+	myusername = Janus.randomString(12);
 	var register = {
 		request: "join",
 		room: room,
