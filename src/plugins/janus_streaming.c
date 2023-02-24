@@ -1865,13 +1865,13 @@ static char *janus_streaming_parse_sprop(char *sprop, int *len) {
 	char *sps = NULL;
 	if(strstr(sprop, ",")) {
 		char **parts = g_strsplit(sprop, ",", -1);
-		char *sps = parts[0];
-		char *pps = parts[1];
-		if(sps && pps) {
+		char *sps_p = parts[0];
+		char *pps_p = parts[1];
+		if(sps_p && pps_p) {
 			/* Base64 decode both fields */
 			gsize slen = 0, plen = 0;
-			guchar *sps_dec = g_base64_decode(sps, &slen);
-			guchar *pps_dec = g_base64_decode(pps, &plen);
+			guchar *sps_dec = g_base64_decode(sps_p, &slen);
+			guchar *pps_dec = g_base64_decode(pps_p, &plen);
 			if(sps_dec && pps_dec) {
 				/* Prepare the RTP packet with the NAL units */
 				int flen = 12 + 1 + 2 + slen + 2 + plen;
@@ -7466,7 +7466,7 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 				char c = *end;
 				*end = '\0';
 				JANUS_LOG(LOG_VERB, "[%s] Found sprop-parameter-sets: %s\n", name, start);
-				*sps = janus_streaming_parse_sprop(f, spslen);
+				*sps = janus_streaming_parse_sprop(start, spslen);
 				if(*sps == NULL)
 					JANUS_LOG(LOG_WARN, "[%s] Error parsing sprop-parameter-sets value, ignoring...\n", name);
 				*end = c;
@@ -9337,7 +9337,7 @@ static void *janus_streaming_relay_thread(void *data) {
 							spspkt.timestamp = ntohl(spspkt.data->timestamp);
 							spspkt.seq_number = ntohs(spspkt.data->seq_number);
 							janus_mutex_lock(&mountpoint->mutex);
-							JANUS_LOG(LOG_WARN, "[%s] Sending SPS/PPS (seq=%"SCNu16", ts=%"SCNu32")\n", name,
+							JANUS_LOG(LOG_HUGE, "[%s] Sending SPS/PPS (seq=%"SCNu16", ts=%"SCNu32")\n", name,
 								ntohs(spspkt.data->seq_number), ntohl(spspkt.data->timestamp));
 							g_list_foreach(mountpoint->helper_threads == 0 ? mountpoint->viewers : mountpoint->threads,
 								mountpoint->helper_threads == 0 ? janus_streaming_relay_rtp_packet : janus_streaming_helper_rtprtcp_packet,
