@@ -434,7 +434,9 @@ function publishOwnFeed(useAudio) {
 	let tracks = [];
 	if(useAudio)
 		tracks.push({ type: 'audio', capture: true, recv: false });
-	tracks.push({ type: 'video', capture: true, recv: false, simulcast: false});
+	// For video, we add the 'svc' property to set the related scalabilityMode:
+	// since we'll force VP9, this will enable SVC mode in the VP9 encoder
+	tracks.push({ type: 'video', capture: true, recv: false, svc: 'S3T3' });
 	//~ tracks.push({ type: 'data' });
 
 	sfutest.createOffer(

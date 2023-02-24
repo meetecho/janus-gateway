@@ -88,7 +88,7 @@ room-5678: {
 	description = "VP9-SVC Demo Room"
 	secret = "adminpwd"
 	publishers = 6
-	bitrate = 512000
+	bitrate = 0		# No limit, to give room for all layers
 	fir_freq = 10
 	videocodec = "vp9"
 	video_svc = true

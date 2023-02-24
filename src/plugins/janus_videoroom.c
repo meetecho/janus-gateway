@@ -3138,6 +3138,8 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 			ps->h264_profile = g_strdup(room->h264_profile);
 		else if(ps->vcodec == JANUS_VIDEOCODEC_VP9 && ps->vp9_profile == NULL && room->vp9_profile != NULL)
 			ps->vp9_profile = g_strdup(room->vp9_profile);
+		if(ps->vcodec == JANUS_VIDEOCODEC_VP9 && room->do_svc)
+			ps->svc = TRUE;	/* FIXME */
 		ps->min_delay = -1;
 		ps->max_delay = -1;
 		g_atomic_int_set(&ps->destroyed, 0);
@@ -12162,6 +12164,8 @@ static void *janus_videoroom_handler(void *data) {
 									janus_mutex_unlock(&ps->rid_mutex);
 								}
 							}
+							if(ps->vcodec == JANUS_VIDEOCODEC_VP9 && videoroom->do_svc)
+								ps->svc = TRUE;	/* FIXME */
 							mdir = (ps->vcodec != JANUS_VIDEOCODEC_NONE ? JANUS_SDP_RECVONLY : JANUS_SDP_INACTIVE);
 						} else if(m->type == JANUS_SDP_APPLICATION) {
 							mdir = JANUS_SDP_RECVONLY;
