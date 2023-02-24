@@ -6521,7 +6521,7 @@ static int janus_streaming_rtsp_parse_sdp(janus_streaming_rtp_source *source, co
 				char c = *end;
 				*end = '\0';
 				JANUS_LOG(LOG_VERB, "[%s] Found sprop-parameter-sets: %s\n", name, start);
-				janus_streaming_parse_sprop(source, f);
+				janus_streaming_parse_sprop(source, start);
 				if(source->h264_spspps == NULL)
 					JANUS_LOG(LOG_WARN, "[%s] Error parsing sprop-parameter-sets value, skipping...\n", name);
 				*end = c;
@@ -8382,7 +8382,7 @@ static void *janus_streaming_relay_thread(void *data) {
 							spspkt.timestamp = ntohl(spspkt.data->timestamp);
 							spspkt.seq_number = ntohs(spspkt.data->seq_number);
 							janus_mutex_lock(&mountpoint->mutex);
-							JANUS_LOG(LOG_WARN, "[%s] Sending SPS/PPS (seq=%"SCNu16", ts=%"SCNu32")\n", name,
+							JANUS_LOG(LOG_HUGE, "[%s] Sending SPS/PPS (seq=%"SCNu16", ts=%"SCNu32")\n", name,
 								ntohs(spspkt.data->seq_number), ntohl(spspkt.data->timestamp));
 							g_list_foreach(mountpoint->helper_threads == 0 ? mountpoint->viewers : mountpoint->threads,
 								mountpoint->helper_threads == 0 ? janus_streaming_relay_rtp_packet : janus_streaming_helper_rtprtcp_packet,
