@@ -31,12 +31,12 @@ var fps = 15;
 var myText = "Hi there!";
 var myColor = "white";
 var myFont = "20pt Calibri";
-var myX = 15, myY = 223;
+var myX = 15, myY = 460;
 // As the "watermark", we'll use a smaller version of the Janus logo
 var logoUrl = "./janus-logo-small.png";
 var logoW = 340, logoH = 110;
 var logoS = 0.4;
-var logoX = 432 - logoW*logoS - 5, logoY = 5;
+var logoX = 640 - logoW*logoS - 15, logoY = 15;
 
 
 $(document).ready(function() {
@@ -350,18 +350,18 @@ function createCanvas() {
 		{
 			audio: true,
 			video: {
-				width: { ideal: 432 },
-				height: { ideal: 240 }
+				width: { ideal: 640 },
+				height: { ideal: 480 }
 			}
 		})
 		.then(function(stream) {
 			// We have our video
 			Janus.debug(stream);
-			Janus.attachMediaStream($('#myvideo').get(0), stream);
-			$('#myvideo').get(0).muted = "muted";
-			$('#myvideo').get(0).play();
+			Janus.attachMediaStream($('#canvasvideo').get(0), stream);
+			$('#canvasvideo').get(0).muted = "muted";
+			$('#canvasvideo').get(0).play();
 			// Let's setup the canvas, now
-			$('#myvideo').get(0).addEventListener('play', function () {
+			$('#canvasvideo').get(0).addEventListener('play', function () {
 				let myvideo = this;
 				let canvas = document.getElementById('canvas');
 				let context = canvas.getContext('2d');
@@ -377,7 +377,7 @@ function createCanvas() {
 								logoX, logoY, logoW*logoS, logoH*logoS);
 							// Add some text
 							context.fillStyle = 'rgba(0,0,0,0.5)';
-							context.fillRect(0, 190, 432,240);
+							context.fillRect(0, 420, 640, 480);
 							context.font = myFont;
 							context.fillStyle = myColor;
 							context.fillText(myText, myX, myY);
@@ -390,6 +390,10 @@ function createCanvas() {
 				// Capture the canvas as a local MediaStream
 				canvasStream = canvas.captureStream();
 				canvasStream.addTrack(stream.getAudioTracks()[0]);
+				Janus.attachMediaStream($('#myvideo').get(0), canvasStream);
+				$('#myvideo').get(0).muted = "muted";
+				$('#myvideo').get(0).play();
+				$('#myvideo').removeClass('hide');
 				// Now that the stream is ready, we can create the PeerConnection
 				let body = { audio: true, video: true };
 				// We can try and force a specific codec, by telling the plugin what we'd prefer
