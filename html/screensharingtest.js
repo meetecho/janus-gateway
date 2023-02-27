@@ -109,7 +109,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::", msg);
-									var event = msg["videoroom"];
+									let event = msg["videoroom"];
 									Janus.debug("Event: " + event);
 									if(event) {
 										if(event === "joined") {
@@ -132,7 +132,7 @@ $(document).ready(function() {
 																],
 																success: function(jsep) {
 																	Janus.debug("Got publisher SDP!", jsep);
-																	var publish = { request: "configure", audio: true, video: true };
+																	let publish = { request: "configure", audio: true, video: true };
 																	screentest.send({ message: publish, jsep: jsep });
 																},
 																error: function(error) {
@@ -152,7 +152,7 @@ $(document).ready(function() {
 															],
 															success: function(jsep) {
 																Janus.debug("Got publisher SDP!", jsep);
-																var publish = { request: "configure", audio: true, video: true };
+																let publish = { request: "configure", audio: true, video: true };
 																screentest.send({ message: publish, jsep: jsep });
 															},
 															error: function(error) {
@@ -191,7 +191,7 @@ $(document).ready(function() {
 												}
 											} else if(msg["leaving"]) {
 												// One of the publishers has gone away?
-												var leaving = msg["leaving"];
+												let leaving = msg["leaving"];
 												Janus.log("Publisher left: " + leaving);
 												if(role === "listener" && msg["leaving"] === source) {
 													bootbox.alert("The screen sharing session is over, the publisher left", function() {
@@ -211,15 +211,15 @@ $(document).ready(function() {
 								onlocaltrack: function(track, on) {
 									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
 									// We use the track ID as name of the element, but it may contain invalid characters
-									var trackId = track.id.replace(/[{}]/g, "");
+									let trackId = track.id.replace(/[{}]/g, "");
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
 										let stream = localTracks[trackId];
 										if(stream) {
 											try {
-												var tracks = stream.getTracks();
-												for(var i in tracks) {
-													var mst = tracks[i];
+												let tracks = stream.getTracks();
+												for(let i in tracks) {
+													let mst = tracks[i];
 													if(mst)
 														mst.stop();
 												}
@@ -314,7 +314,7 @@ $(document).ready(function() {
 
 // eslint-disable-next-line no-unused-vars
 function checkEnterShare(field, event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		preShareScreen();
 		return false;
@@ -349,9 +349,9 @@ function preShareScreen() {
 
 function shareScreen() {
 	// Create a new room
-	var desc = $('#desc').val();
+	let desc = $('#desc').val();
 	role = "publisher";
-	var create = {
+	let create = {
 		request: "create",
 		description: desc,
 		bitrate: 500000,
@@ -362,14 +362,14 @@ function shareScreen() {
 			bootbox.alert("Couldn't create room: " + result["error"]);
 			return;
 		}
-		var event = result["videoroom"];
+		let event = result["videoroom"];
 		Janus.debug("Event: " + event);
 		if(event) {
 			// Our own screen sharing session has been created, join it
 			room = result["room"];
 			Janus.log("Screen sharing session created: " + room);
 			myusername = Janus.randomString(12);
-			var register = {
+			let register = {
 				request: "join",
 				room: room,
 				ptype: "publisher",
@@ -382,7 +382,7 @@ function shareScreen() {
 
 // eslint-disable-next-line no-unused-vars
 function checkEnterJoin(field, event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		joinScreen();
 		return false;
@@ -397,7 +397,7 @@ function joinScreen() {
 	$('#create').attr('disabled', true).unbind('click');
 	$('#roomid').attr('disabled', true);
 	$('#join').attr('disabled', true).unbind('click');
-	var roomid = $('#roomid').val();
+	let roomid = $('#roomid').val();
 	if(isNaN(roomid)) {
 		bootbox.alert("Session identifiers are numeric only");
 		$('#desc').removeAttr('disabled', true);
@@ -409,7 +409,7 @@ function joinScreen() {
 	room = parseInt(roomid);
 	role = "listener";
 	myusername = Janus.randomString(12);
-	var register = {
+	let register = {
 		request: "join",
 		room: room,
 		ptype: "publisher",
@@ -421,7 +421,7 @@ function joinScreen() {
 function newRemoteFeed(id, display) {
 	// A new feed has been published, create a new plugin handle and attach to it as a listener
 	source = id;
-	var remoteFeed = null;
+	let remoteFeed = null;
 	janus.attach(
 		{
 			plugin: "janus.plugin.videoroom",
@@ -433,7 +433,7 @@ function newRemoteFeed(id, display) {
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
-				var listen = {
+				let listen = {
 					request: "join",
 					room: room,
 					ptype: "subscriber",
@@ -457,13 +457,13 @@ function newRemoteFeed(id, display) {
 			},
 			onmessage: function(msg, jsep) {
 				Janus.debug(" ::: Got a message (listener) :::", msg);
-				var event = msg["videoroom"];
+				let event = msg["videoroom"];
 				Janus.debug("Event: " + event);
 				if(event) {
 					if(event === "attached") {
 						// Subscriber created and attached
 						if(!spinner) {
-							var target = document.getElementById('#screencapture');
+							let target = document.getElementById('#screencapture');
 							spinner = new Spinner({top:100}).spin(target);
 						} else {
 							spinner.spin();
@@ -490,7 +490,7 @@ function newRemoteFeed(id, display) {
 							],
 							success: function(jsep) {
 								Janus.debug("Got SDP!", jsep);
-								var body = { request: "start", room: room };
+								let body = { request: "start", room: room };
 								remoteFeed.send({ message: body, jsep: jsep });
 							},
 							error: function(error) {
@@ -590,7 +590,7 @@ function newRemoteFeed(id, display) {
 // Helper to escape XML tags
 function escapeXmlTags(value) {
 	if(value) {
-		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		let escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
 		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
 		return escapedValue;
 	}

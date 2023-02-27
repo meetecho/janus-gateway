@@ -71,7 +71,7 @@ $(document).ready(function() {
 													// if you need SRTP support, you can use the same syntax
 													// the SIP plugin uses (mandatory vs. optional). We'll
 													// get the result in an event called "generated" here.
-													var body = {
+													let body = {
 														request: "generate",
 														srtp: srtp
 													};
@@ -128,23 +128,23 @@ $(document).ready(function() {
 								onmessage: function(msg, jsep) {
 									Janus.debug("[caller]  ::: Got a message :::", msg);
 									// Any error?
-									var error = msg["error"];
+									let error = msg["error"];
 									if(error) {
 										bootbox.alert(error);
 										caller.hangup();
 										return;
 									}
-									var result = msg["result"];
+									let result = msg["result"];
 									if(result) {
-										var event = result["event"];
+										let event = result["event"];
 										if(event === "generated") {
 											// We got the barebone SDP offer we wanted, let's have
 											// the callee handle it as if it arrived via signalling
-											var sdp = result["sdp"];
+											let sdp = result["sdp"];
 											$('#localsdp').text(
 												"[" + result["type"] + "]\n" + sdp);
 											// This will result in a "processed" event on the callee handle
-											var processOffer = {
+											let processOffer = {
 												request: "process",
 												type: result["type"],
 												sdp: result["sdp"],
@@ -172,15 +172,15 @@ $(document).ready(function() {
 								onlocaltrack: function(track, on) {
 									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
 									// We use the track ID as name of the element, but it may contain invalid characters
-									var trackId = track.id.replace(/[{}]/g, "");
+									let trackId = track.id.replace(/[{}]/g, "");
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
 										let stream = localTracks[trackId];
 										if(stream) {
 											try {
-												var tracks = stream.getTracks();
-												for(var i in tracks) {
-													var mst = tracks[i];
+												let tracks = stream.getTracks();
+												for(let i in tracks) {
+													let mst = tracks[i];
 													if(mst)
 														mst.stop();
 												}
@@ -274,7 +274,7 @@ $(document).ready(function() {
 										$('#videos').removeClass('hide').show();
 										$('#videoright').parent().find('h3').html(
 											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
-										for(var i=0; i<12; i++) {
+										for(let i=0; i<12; i++) {
 											if(i<10)
 												$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
 											else if(i == 10)
@@ -378,22 +378,22 @@ $(document).ready(function() {
 								onmessage: function(msg, jsep) {
 									Janus.debug("[callee]  ::: Got a message :::", msg);
 									// Any error?
-									var error = msg["error"];
+									let error = msg["error"];
 									if(error) {
 										bootbox.alert(error);
 										callee.hangup();
 										return;
 									}
-									var result = msg["result"];
+									let result = msg["result"];
 									if(result) {
-										var event = result["event"];
+										let event = result["event"];
 										if(event === "processed") {
 											// Since we're a callee, this means that the barebone SDP offer
 											// the caller gave us (and that we assumed had been sent via
 											// signalling)has been processed, and we got a JSEP SDP to process:
 											// we need to come up with our own answer now, so let's do that
 											Janus.debug("[callee] Trying a createAnswer too (audio/video sendrecv)");
-											var update = result["update"];
+											let update = result["update"];
 											callee.createAnswer(
 												{
 													// This is the WebRTC enriched offer the plugin gave us
@@ -409,7 +409,7 @@ $(document).ready(function() {
 														// peers can digest, we ask the NoSIP plugin to generate
 														// an answer for us, just as we did for the caller's offer.
 														// We'll get the result in an event called "generated" here.
-														var body = {
+														let body = {
 															request: "generate",
 															update: update,
 															srtp: srtp
@@ -426,11 +426,11 @@ $(document).ready(function() {
 											// As a callee, we get this when our barebone answer has been
 											// generated from the original JSEP answer. Let's have
 											// the caller handle it as if it arrived via signalling
-											var sdp = result["sdp"];
+											let sdp = result["sdp"];
 											$('#remotesdp').text(
 												"[" + result["type"] + "]\n" + sdp);
 											// This will result in a "processed" event on the caller handle
-											var processAnswer = {
+											let processAnswer = {
 												request: "process",
 												type: result["type"],
 												sdp: result["sdp"],
@@ -491,7 +491,7 @@ function renegotiateVideo() {
 				Janus.debug("[caller] Got SDP!", jsep);
 				// As before, we ask the NoSIP plugin to generate a
 				// plain SDP we can then pass to the callee handle
-				var body = {
+				let body = {
 					request: "generate",
 					srtp: srtp
 				};

@@ -80,10 +80,10 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::", msg);
-									var result = msg["result"];
+									let result = msg["result"];
 									if(result) {
 										if(result["status"]) {
-											var status = result["status"];
+											let status = result["status"];
 											if(status === 'starting')
 												$('#status').removeClass('hide').text("Starting, please wait...").show();
 											else if(status === 'started')
@@ -94,8 +94,8 @@ $(document).ready(function() {
 											// Does this event refer to a mid in particular?
 											let mid = result["mid"] ? result["mid"] : "0";
 											// Is simulcast in place?
-											var substream = result["substream"];
-											var temporal = result["temporal"];
+											let substream = result["substream"];
+											let temporal = result["temporal"];
 											if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 												if(!simulcastStarted[mid]) {
 													simulcastStarted[mid] = true;
@@ -105,7 +105,7 @@ $(document).ready(function() {
 												updateSimulcastButtons(mid, substream, temporal);
 											}
 											// Is VP9/SVC in place?
-											var spatial = result["spatial_layer"];
+											let spatial = result["spatial_layer"];
 											temporal = result["temporal_layer"];
 											if((spatial !== null && spatial !== undefined) || (temporal !== null && temporal !== undefined)) {
 												if(!svcStarted[mid]) {
@@ -123,7 +123,7 @@ $(document).ready(function() {
 									}
 									if(jsep) {
 										Janus.debug("Handling SDP as well...", jsep);
-										var stereo = (jsep.sdp.indexOf("stereo=1") !== -1);
+										let stereo = (jsep.sdp.indexOf("stereo=1") !== -1);
 										// Offer from the plugin, let's answer
 										streaming.createAnswer(
 											{
@@ -143,7 +143,7 @@ $(document).ready(function() {
 												},
 												success: function(jsep) {
 													Janus.debug("Got SDP!", jsep);
-													var body = { request: "start" };
+													let body = { request: "start" };
 													streaming.send({ message: body, jsep: jsep });
 													$('#watch').html("Stop").removeAttr('disabled').unbind('click').click(stopStream);
 												},
@@ -160,7 +160,7 @@ $(document).ready(function() {
 										(on ? "added" : "removed") +
 										(metadata ? " (" + metadata.reason + ") ": "") + ":", track
 									);
-									var mstreamId = "mstream"+mid;
+									let mstreamId = "mstream"+mid;
 									if(streamsList[selectedStream] && streamsList[selectedStream].legacy)
 										mstreamId = "mstream0";
 									if(!on) {
@@ -185,7 +185,7 @@ $(document).ready(function() {
 									if($('#remotevideo' + mid).length > 0)
 										return;
 									// If we're here, a new track was added
-									var stream = null;
+									let stream = null;
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
 										stream = new MediaStream([track]);
@@ -219,11 +219,11 @@ $(document).ready(function() {
 												if(!$("#remotevideo" + mid).get(0))
 													return;
 												// Display updated bitrate, if supported
-												var bitrate = streaming.getBitrate(mid);
+												let bitrate = streaming.getBitrate(mid);
 												$('#curbitrate'+mid).text(bitrate);
 												// Check if the resolution changed too
-												var width = $("#remotevideo" + mid).get(0).videoWidth;
-												var height = $("#remotevideo" + mid).get(0).videoHeight;
+												let width = $("#remotevideo" + mid).get(0).videoWidth;
+												let height = $("#remotevideo" + mid).get(0).videoHeight;
 												if(width > 0 && height > 0)
 													$('#curres'+mid).removeClass('hide').text(width+'x'+height).show();
 											}, 1000);
@@ -238,14 +238,14 @@ $(document).ready(function() {
 										if(!this.videoWidth)
 											return;
 										$('#'+ev.target.id).removeClass('hide').show();
-										var width = this.videoWidth;
-										var height = this.videoHeight;
+										let width = this.videoWidth;
+										let height = this.videoHeight;
 										$('#curres'+mid).removeClass('hide').text(width+'x'+height).show();
 										if(Janus.webRTCAdapter.browserDetails.browser === "firefox") {
 											// Firefox Stable has a bug: width and height are not immediately available after a playing
 											setTimeout(function() {
-												var width = $('#'+ev.target.id).get(0).videoWidth;
-												var height = $('#'+ev.target.id).get(0).videoHeight;
+												let width = $('#'+ev.target.id).get(0).videoWidth;
+												let height = $('#'+ev.target.id).get(0).videoHeight;
 												$('#curres'+mid).removeClass('hide').text(width+'x'+height).show();
 											}, 2000);
 										}
@@ -309,7 +309,7 @@ $(document).ready(function() {
 
 function updateStreamsList() {
 	$('#update-streams').unbind('click').addClass('fa-spin');
-	var body = { request: "list" };
+	let body = { request: "list" };
 	Janus.debug("Sending message:", body);
 	streaming.send({ message: body, success: function(result) {
 		setTimeout(function() {
@@ -323,7 +323,7 @@ function updateStreamsList() {
 			$('#streams').removeClass('hide').show();
 			$('#streamslist').empty();
 			$('#watch').attr('disabled', true).unbind('click');
-			var list = result["list"];
+			let list = result["list"];
 			if(list && Array.isArray(list)) {
 				list.sort(function(a, b) {
 					if(!a || a.id < (b ? b.id : 0))
@@ -335,14 +335,14 @@ function updateStreamsList() {
 			}
 			Janus.log("Got a list of available streams:", list);
 			streamsList = {};
-			for(var mp in list) {
+			for(let mp in list) {
 				Janus.debug("  >> [" + list[mp]["id"] + "] " + list[mp]["description"] + " (" + list[mp]["type"] + ")");
 				$('#streamslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + escapeXmlTags(list[mp]["description"]) + " (" + list[mp]["type"] + ")" + "</a></li>");
 				// Check the nature of the available streams, and if there are some multistream ones
 				list[mp].legacy = true;
 				if(list[mp].media) {
-					var audios = 0, videos = 0;
-					for(var mi in list[mp].media) {
+					let audios = 0, videos = 0;
+					for(let mi in list[mp].media) {
 						if(!list[mp].media[mi])
 							continue;
 						if(list[mp].media[mi].type === "audio")
@@ -376,7 +376,7 @@ function getStreamInfo() {
 	if(!selectedStream || !streamsList[selectedStream])
 		return;
 	// Send a request for more info on the mountpoint we subscribed to
-	var body = { request: "info", id: parseInt(selectedStream) || selectedStream };
+	let body = { request: "info", id: parseInt(selectedStream) || selectedStream };
 	streaming.send({ message: body, success: function(result) {
 		if(result && result.info && result.info.metadata) {
 			$('#metadata').html(escapeXmlTags(result.info.metadata));
@@ -426,7 +426,7 @@ function startStream() {
 			// Add a new panel
 			let type = streamsList[selectedStream].media[mi].type;
 			let mid = streamsList[selectedStream].media[mi].mid;
-			var label = streamsList[selectedStream].media[mi].label;
+			let label = streamsList[selectedStream].media[mi].label;
 			if($('#mstream'+mid).length === 0) {
 				addPanel(mid, mid, label);
 				// No remote media yet
@@ -443,7 +443,7 @@ function startStream() {
 		}
 	}
 	// Prepare the request to start streaming and send it
-	var body = { request: "watch", id: parseInt(selectedStream) || selectedStream };
+	let body = { request: "watch", id: parseInt(selectedStream) || selectedStream };
 	// Notice that, for RTP mountpoints, you can subscribe to a subset
 	// of the mountpoint media, rather than them all, by adding a "stream"
 	// array containing the list of stream mids you're interested in, e.g.:
@@ -460,7 +460,7 @@ function startStream() {
 
 function stopStream() {
 	$('#watch').attr('disabled', true).unbind('click');
-	var body = { request: "stop" };
+	let body = { request: "stop" };
 	streaming.send({ message: body });
 	streaming.hangup();
 }
@@ -468,7 +468,7 @@ function stopStream() {
 // Helper to escape XML tags
 function escapeXmlTags(value) {
 	if(value) {
-		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		let escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
 		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
 		return escapedValue;
 	}

@@ -31,7 +31,7 @@ $(document).ready(function() {
 		'	<source src="surround/ChID-BLITS-EBU.mp4" type="video/mp4">' +
 		'</video>'
 	);
-	var myvideo = $('#myvideo').get(0);
+	let myvideo = $('#myvideo').get(0);
 
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
@@ -66,7 +66,7 @@ $(document).ready(function() {
 									localStream = myvideo.captureStream();
 									myvideo.play();
 									// Negotiate WebRTC
-									var body = { audio: true, video: true };
+									let body = { audio: true, video: true };
 									// We can try and force a specific codec, by telling the plugin what we'd prefer
 									// For simplicity, you can set it via a query string (e.g., ?vcodec=vp9)
 									if(acodec)
@@ -156,7 +156,7 @@ $(document).ready(function() {
 										Janus.debug("Handling SDP as well...", jsep);
 										echotest.handleRemoteJsep({ jsep: jsep });
 									}
-									var result = msg["result"];
+									let result = msg["result"];
 									if(result) {
 										if(result === "done") {
 											// The plugin closed the echo test
@@ -174,14 +174,14 @@ $(document).ready(function() {
 											return;
 										}
 										// Any loss?
-										var status = result["status"];
+										let status = result["status"];
 										if(status === "slow_link") {
 											toastr.warning("Janus apparently missed many packets we sent, maybe we should reduce the bitrate", "Packet loss?", {timeOut: 2000});
 										}
 									}
 									// Is simulcast in place?
-									var substream = msg["substream"];
-									var temporal = msg["temporal"];
+									let substream = msg["substream"];
+									let temporal = msg["temporal"];
 									if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 										if(!simulcastStarted) {
 											simulcastStarted = true;
@@ -232,7 +232,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
-									var addButtons = false;
+									let addButtons = false;
 									if($('#videoright audio').length === 0 && $('#videoright video').length === 0) {
 										addButtons = true;
 										$('#videos').removeClass('hide').show();
@@ -272,12 +272,12 @@ $(document).ready(function() {
 												if(!$("#peervideo" + mid).get(0))
 													return;
 												// Display updated bitrate, if supported
-												var bitrate = echotest.getBitrate();
+												let bitrate = echotest.getBitrate();
 												//~ Janus.debug("Current bitrate is " + echotest.getBitrate());
 												$('#curbitrate').text(bitrate);
 												// Check if the resolution changed too
-												var width = $("#peervideo" + mid).get(0).videoWidth;
-												var height = $("#peervideo" + mid).get(0).videoHeight;
+												let width = $("#peervideo" + mid).get(0).videoWidth;
+												let height = $("#peervideo" + mid).get(0).videoHeight;
 												if(width > 0 && height > 0)
 													$('#curres').removeClass('hide').text(width+'x'+height).show();
 											}, 1000);
@@ -308,8 +308,8 @@ $(document).ready(function() {
 										});
 									$('#toggleaudio').parent().removeClass('hide').show();
 									$('#bitrate a').click(function() {
-										var id = $(this).attr("id");
-										var bitrate = parseInt(id)*1000;
+										let id = $(this).attr("id");
+										let bitrate = parseInt(id)*1000;
 										if(bitrate === 0) {
 											Janus.log("Not limiting bandwidth via REMB");
 										} else {
@@ -352,8 +352,8 @@ $(document).ready(function() {
 									$('#simulcast').remove();
 									// Get rid of the local stream
 									try {
-										var tracks = localStream.getTracks();
-										for(var mst of tracks) {
+										let tracks = localStream.getTracks();
+										for(let mst of tracks) {
 											Janus.log(mst);
 											if(mst)
 												mst.stop();
@@ -383,7 +383,7 @@ $(document).ready(function() {
 
 // eslint-disable-next-line no-unused-vars
 function checkEnter(event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		sendData();
 		return false;
@@ -393,7 +393,7 @@ function checkEnter(event) {
 }
 
 function sendData() {
-	var data = $('#datasend').val();
+	let data = $('#datasend').val();
 	if(data === "") {
 		bootbox.alert('Insert a message to send on the DataChannel');
 		return;
@@ -408,7 +408,7 @@ function sendData() {
 // Helper to parse query string
 function getQueryStringValue(name) {
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
-	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }

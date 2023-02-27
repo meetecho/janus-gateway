@@ -85,12 +85,12 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::", msg);
-									var event = msg["voicemail"];
+									let event = msg["voicemail"];
 									Janus.debug("Event: " + event);
 									if(event) {
 										if(event === "event") {
 											if(msg["status"]) {
-												var status = msg["status"];
+												let status = msg["status"];
 												if(status === 'starting') {
 													$('#record')
 														.removeClass("btn-danger").addClass("btn-default")
@@ -170,7 +170,7 @@ function startRecording() {
 			],
 			success: function(jsep) {
 				Janus.debug("Got SDP!", jsep);
-				var publish = { request: "record" };
+				let publish = { request: "record" };
 				vmailtest.send({ message: publish, jsep: jsep });
 			},
 			error: function(error) {

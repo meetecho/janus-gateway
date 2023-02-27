@@ -108,10 +108,10 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::", msg);
-									var result = msg["result"];
+									let result = msg["result"];
 									if(result) {
 										if(result["status"]) {
-											var event = result["status"];
+											let event = result["status"];
 											if(event === 'preparing' || event === 'refreshing') {
 												Janus.log("Preparing the recording playout");
 												recordplay.createAnswer(
@@ -126,7 +126,7 @@ $(document).ready(function() {
 														],
 														success: function(jsep) {
 															Janus.debug("Got SDP!", jsep);
-															var body = { request: "start" };
+															let body = { request: "start" };
 															recordplay.send({ message: body, jsep: jsep });
 														},
 														error: function(error) {
@@ -180,7 +180,7 @@ $(document).ready(function() {
 										}
 									} else {
 										// FIXME Error?
-										var error = msg["error"];
+										let error = msg["error"];
 										bootbox.alert(error);
 										// FIXME Reset status
 										$('#videobox').empty();
@@ -201,15 +201,15 @@ $(document).ready(function() {
 										return;
 									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
 									// We use the track ID as name of the element, but it may contain invalid characters
-									var trackId = track.id.replace(/[{}]/g, "");
+									let trackId = track.id.replace(/[{}]/g, "");
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
 										let stream = localTracks[trackId];
 										if(stream) {
 											try {
-												var tracks = stream.getTracks();
-												for(var i in tracks) {
-													var mst = tracks[i];
+												let tracks = stream.getTracks();
+												for(let i in tracks) {
+													let mst = tracks[i];
 													if(mst)
 														mst.stop();
 												}
@@ -342,17 +342,17 @@ $(document).ready(function() {
 												'<span class="label label-primary" id="curres' +'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
 												'<span class="label label-info" id="curbw' +'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
 											$('#thevideo' + mid).bind("playing", function () {
-												var width = this.videoWidth;
-												var height = this.videoHeight;
+												let width = this.videoWidth;
+												let height = this.videoHeight;
 												$('#curres').text(width + 'x' + height);
 											});
 											recordplay.bitrateTimer = setInterval(function() {
 												// Display updated bitrate, if supported
-												var bitrate = recordplay.getBitrate();
+												let bitrate = recordplay.getBitrate();
 												$('#curbw').text(bitrate);
-												var video = $('video').get(0);
-												var width = video.videoWidth;
-												var height = video.videoHeight;
+												let video = $('video').get(0);
+												let width = video.videoWidth;
+												let height = video.videoHeight;
 												if(width > 0 && height > 0)
 													$('#curres').text(width + 'x' + height);
 											}, 1000);
@@ -420,7 +420,7 @@ $(document).ready(function() {
 
 // eslint-disable-next-line no-unused-vars
 function checkEnter(event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		sendData();
 		return false;
@@ -430,7 +430,7 @@ function checkEnter(event) {
 }
 
 function sendData() {
-	var data = $('#datafield').val();
+	let data = $('#datafield').val();
 	if(data === "") {
 		bootbox.alert('Insert a message to send on the DataChannel');
 		return;
@@ -445,7 +445,7 @@ function sendData() {
 function updateRecsList() {
 	$('#list').unbind('click');
 	$('#update-list').addClass('fa-spin');
-	var body = { request: "list" };
+	let body = { request: "list" };
 	Janus.debug("Sending message:", body);
 	recordplay.send({ message: body, success: function(result) {
 		setTimeout(function() {
@@ -460,10 +460,10 @@ function updateRecsList() {
 			$('#recslist').empty();
 			$('#record').removeAttr('disabled').click(startRecording);
 			$('#list').removeAttr('disabled').click(updateRecsList);
-			var list = result["list"];
+			let list = result["list"];
 			list.sort(function(a, b) {return (a["date"] < b["date"]) ? 1 : ((b["date"] < a["date"]) ? -1 : 0);} );
 			Janus.debug("Got a list of available recordings:", list);
-			for(var mp in list) {
+			for(let mp in list) {
 				Janus.debug("  >> [" + list[mp]["id"] + "] " + list[mp]["name"] + " (" + list[mp]["date"] + ")");
 				$('#recslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + escapeXmlTags(list[mp]["name"]) + " [" + list[mp]["date"] + "]" + "</a></li>");
 			}
@@ -520,7 +520,7 @@ function startRecording() {
 				],
 				success: function(jsep) {
 					Janus.debug("Got SDP!", jsep);
-					var body = { request: "record", name: myname };
+					let body = { request: "record", name: myname };
 					// We can try and force a specific codec, by telling the plugin what we'd prefer
 					// For simplicity, you can set it via a query string (e.g., ?vcodec=vp9)
 					if(acodec)
@@ -573,14 +573,14 @@ function startPlayout() {
 	$('#recset').attr('disabled', true);
 	$('#recslist').attr('disabled', true);
 	$('#pause-resume').addClass('hide');
-	var play = { request: "play", id: parseInt(selectedRecording) };
+	let play = { request: "play", id: parseInt(selectedRecording) };
 	recordplay.send({ message: play });
 }
 
 function stopRecPlay() {
 	// Stop a recording/playout
 	$('#stop').unbind('click');
-	var stop = { request: "stop" };
+	let stop = { request: "stop" };
 	recordplay.send({ message: stop });
 	recordplay.hangup();
 }
@@ -588,7 +588,7 @@ function stopRecPlay() {
 // Helper to parse query string
 function getQueryStringValue(name) {
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
-	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }
@@ -596,7 +596,7 @@ function getQueryStringValue(name) {
 // Helper to escape XML tags
 function escapeXmlTags(value) {
 	if(value) {
-		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		let escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
 		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
 		return escapedValue;
 	}

@@ -48,7 +48,7 @@ $(document).ready(function() {
 									textroom = pluginHandle;
 									Janus.log("Plugin attached! (" + textroom.getPlugin() + ", id=" + textroom.getId() + ")");
 									// Setup the DataChannel
-									var body = { request: "setup" };
+									let body = { request: "setup" };
 									Janus.debug("Sending message:", body);
 									textroom.send({ message: body });
 									$('#start').removeAttr('disabled').html("Stop")
@@ -86,7 +86,7 @@ $(document).ready(function() {
 												],
 												success: function(jsep) {
 													Janus.debug("Got SDP!", jsep);
-													var body = { request: "ack" };
+													let body = { request: "ack" };
 													textroom.send({ message: body, jsep: jsep });
 												},
 												error: function(error) {
@@ -108,22 +108,22 @@ $(document).ready(function() {
 								ondata: function(data) {
 									Janus.debug("We got data from the DataChannel!", data);
 									//~ $('#datarecv').val(data);
-									var json = JSON.parse(data);
-									var transaction = json["transaction"];
+									let json = JSON.parse(data);
+									let transaction = json["transaction"];
 									if(transactions[transaction]) {
 										// Someone was waiting for this
 										transactions[transaction](json);
 										delete transactions[transaction];
 										return;
 									}
-									var what = json["textroom"];
+									let what = json["textroom"];
 									if(what === "message") {
 										// Incoming message: public or private?
 										let msg = escapeXmlTags(json["text"]);
-										var from = json["from"];
+										let from = json["from"];
 										let dateString = getDateString(json["date"]);
-										var whisper = json["whisper"];
-										var sender = participants[from] ? participants[from] : escapeXmlTags(json["display"]);
+										let whisper = json["whisper"];
+										let sender = participants[from] ? participants[from] : escapeXmlTags(json["display"]);
 										if(whisper === true) {
 											// Private message
 											$('#chatroom').append('<p style="color: purple;">[' + dateString + '] <b>[whisper from ' + sender + ']</b> ' + msg);
@@ -142,13 +142,13 @@ $(document).ready(function() {
 									} else if(what === "join") {
 										// Somebody joined
 										let username = json["username"];
-										var display = json["display"];
+										let display = json["display"];
 										participants[username] = escapeXmlTags(display ? display : username);
 										if(username !== myid && $('#rp' + username).length === 0) {
 											// Add to the participants list
 											$('#list').append('<li id="rp' + username + '" class="list-group-item">' + participants[username] + '</li>');
 											$('#rp' + username).css('cursor', 'pointer').click(function() {
-												var username = $(this).attr('id').split("rp")[1];
+												let username = $(this).attr('id').split("rp")[1];
 												sendPrivateMsg(username);
 											});
 										}
@@ -205,7 +205,7 @@ $(document).ready(function() {
 
 // eslint-disable-next-line no-unused-vars
 function checkEnter(field, event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		if(field.id == 'username')
 			registerUsername();
@@ -226,7 +226,7 @@ function registerUsername() {
 		// Try a registration
 		$('#username').attr('disabled', true);
 		$('#register').attr('disabled', true).unbind('click');
-		var username = $('#username').val();
+		let username = $('#username').val();
 		if(username === "") {
 			$('#you')
 				.removeClass().addClass('label label-warning')
@@ -236,8 +236,8 @@ function registerUsername() {
 			return;
 		}
 		myid = Janus.randomString(12);
-		var transaction = Janus.randomString(12);
-		var register = {
+		let transaction = Janus.randomString(12);
+		let register = {
 			textroom: "join",
 			transaction: transaction,
 			room: myroom,
@@ -272,14 +272,14 @@ function registerUsername() {
 			// Any participants already in?
 			console.log("Participants:", response.participants);
 			if(response.participants && response.participants.length > 0) {
-				for(var i in response.participants) {
-					var p = response.participants[i];
+				for(let i in response.participants) {
+					let p = response.participants[i];
 					participants[p.username] = escapeXmlTags(p.display ? p.display : p.username);
 					if(p.username !== myid && $('#rp' + p.username).length === 0) {
 						// Add to the participants list
 						$('#list').append('<li id="rp' + p.username + '" class="list-group-item">' + participants[p.username] + '</li>');
 						$('#rp' + p.username).css('cursor', 'pointer').click(function() {
-							var username = $(this).attr('id').split("rp")[1];
+							let username = $(this).attr('id').split("rp")[1];
 							sendPrivateMsg(username);
 						});
 					}
@@ -300,12 +300,12 @@ function registerUsername() {
 }
 
 function sendPrivateMsg(username) {
-	var display = participants[username];
+	let display = participants[username];
 	if(!display)
 		return;
 	bootbox.prompt("Private message to " + display, function(result) {
 		if(result && result !== "") {
-			var message = {
+			let message = {
 				textroom: "message",
 				transaction: Janus.randomString(12),
 				room: myroom,
@@ -326,12 +326,12 @@ function sendPrivateMsg(username) {
 }
 
 function sendData() {
-	var data = $('#datasend').val();
+	let data = $('#datasend').val();
 	if(data === "") {
 		bootbox.alert('Insert a message to send on the DataChannel');
 		return;
 	}
-	var message = {
+	let message = {
 		textroom: "message",
 		transaction: Janus.randomString(12),
 		room: myroom,
@@ -351,7 +351,7 @@ function sendData() {
 
 // Helper to format times
 function getDateString(jsonDate) {
-	var when = new Date();
+	let when = new Date();
 	if(jsonDate) {
 		when = new Date(Date.parse(jsonDate));
 	}
@@ -365,7 +365,7 @@ function getDateString(jsonDate) {
 // Helper to parse query string
 function getQueryStringValue(name) {
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
-	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }
@@ -373,7 +373,7 @@ function getQueryStringValue(name) {
 // Helper to escape XML tags
 function escapeXmlTags(value) {
 	if(value) {
-		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		let escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
 		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
 		return escapedValue;
 	}

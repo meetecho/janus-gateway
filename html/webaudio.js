@@ -119,7 +119,7 @@ $(document).ready(function() {
 										Janus.debug("Handling SDP as well...", jsep);
 										echotest.handleRemoteJsep({ jsep: jsep });
 									}
-									var result = msg["result"];
+									let result = msg["result"];
 									if(result) {
 										if(result === "done") {
 											// The plugin closed the echo test
@@ -127,7 +127,7 @@ $(document).ready(function() {
 											return;
 										}
 										// Any loss?
-										var status = result["status"];
+										let status = result["status"];
 										if(status === "slow_link") {
 											toastr.warning("Janus apparently missed many packets we sent, maybe we should reduce the bitrate", "Packet loss?", {timeOut: 2000});
 										}
@@ -164,13 +164,13 @@ $(document).ready(function() {
 											// Create a new visualizer: since we're lazy we use this existing example:
 											// https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Visualizations_with_Web_Audio_API
 											$('#remote').append('<canvas id="canvas" width="432" height="240" style="display: block; margin: auto; padding: 0"></canvas>');
-											var canvas = $('#canvas').get(0);
+											let canvas = $('#canvas').get(0);
 											canvasContext = canvas.getContext('2d');
 											analyser = audioContext.createAnalyser();
 											analyser.fftSize = 256;
 											dataArray = new Uint8Array(analyser.frequencyBinCount);
 											canvasContext.clearRect(0, 0, 432, 240);
-											var source = audioContext.createMediaStreamSource(stream);
+											let source = audioContext.createMediaStreamSource(stream);
 											source.connect(analyser);
 											drawVisualizer();
 											// Also unlock the compressor controls
@@ -207,17 +207,17 @@ $(document).ready(function() {
 // Helper to parse query string
 function getQueryStringValue(name) {
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
-	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }
 
 // eslint-disable-next-line no-unused-vars
 function checkEnter(event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		// Update the compressor values, if needed
-		var threshold = parseFloat($('#threshold').val());
+		let threshold = parseFloat($('#threshold').val());
 		if(threshold !== compressor.threshold.value) {
 			if(threshold < compressor.threshold.minValue || threshold > compressor.threshold.maxValue) {
 				toastr["warning"]("Invalid threshold value");
@@ -227,7 +227,7 @@ function checkEnter(event) {
 			}
 			$('#threshold').val('' + compressor.threshold.value);
 		}
-		var knee = parseFloat($('#knee').val());
+		let knee = parseFloat($('#knee').val());
 		if(knee !== compressor.knee.value) {
 			if(knee < compressor.knee.minValue || knee > compressor.knee.maxValue) {
 				toastr["warning"]("Invalid knee value");
@@ -237,7 +237,7 @@ function checkEnter(event) {
 			}
 			$('#knee').val('' + compressor.knee.value);
 		}
-		var ratio = parseFloat($('#ratio').val());
+		let ratio = parseFloat($('#ratio').val());
 		if(ratio !== compressor.ratio.value) {
 			if(ratio < compressor.ratio.minValue || ratio > compressor.ratio.maxValue) {
 				toastr["warning"]("Invalid ratio value");
@@ -247,7 +247,7 @@ function checkEnter(event) {
 			}
 			$('#ratio').val('' + compressor.ratio.value);
 		}
-		var attack = parseFloat($('#attack').val());
+		let attack = parseFloat($('#attack').val());
 		if(attack !== compressor.attack.value) {
 			if(attack < compressor.attack.minValue || attack > compressor.attack.maxValue) {
 				toastr["warning"]("Invalid attack value");
@@ -257,7 +257,7 @@ function checkEnter(event) {
 			}
 			$('#attack').val('' + compressor.attack.value);
 		}
-		var release = parseFloat($('#release').val());
+		let release = parseFloat($('#release').val());
 		if(release !== compressor.release.value) {
 			if(release < compressor.release.minValue || release > compressor.release.maxValue) {
 				toastr["warning"]("Invalid release value");
@@ -279,7 +279,7 @@ function setupWebAudioDemo() {
 	navigator.mediaDevices.getUserMedia({ audio: { autoGainControl: false }, video: false })
 		.then(function(audioStream) {
 		// Let's create a source from the microphone stream
-			var microphone = audioContext.createMediaStreamSource(audioStream);
+			let microphone = audioContext.createMediaStreamSource(audioStream);
 			// Create a compressor node with some default values
 			compressor = audioContext.createDynamicsCompressor();
 			compressor.threshold.setValueAtTime(-18.0, audioContext.currentTime);
@@ -294,7 +294,7 @@ function setupWebAudioDemo() {
 			$('#attack').val('' + compressor.attack.value);
 			$('#release').val('' + compressor.release.value);
 			// Use the compressor as a filter to get a new stream
-			var peer = audioContext.createMediaStreamDestination();
+			let peer = audioContext.createMediaStreamDestination();
 			microphone.connect(compressor);
 			compressor.connect(peer);
 			// Let's use the compressed stream as source for our PeerConnection
@@ -306,7 +306,7 @@ function setupWebAudioDemo() {
 					],
 					success: function(jsep) {
 						Janus.debug("Got SDP!", jsep);
-						var body = { audio: true, video: true };
+						let body = { audio: true, video: true };
 						echotest.send({ message: body, jsep: jsep });
 					},
 					error: function(error) {
@@ -323,10 +323,10 @@ function drawVisualizer() {
 	analyser.getByteFrequencyData(dataArray);
 	canvasContext.fillStyle = 'rgb(0, 0, 0)';
 	canvasContext.fillRect(0, 0, 432, 240);
-	var barWidth = (432 / analyser.frequencyBinCount) * 2.5;
-	var barHeight;
-	var x = 0;
-	for(var i=0; i < analyser.frequencyBinCount; i++) {
+	let barWidth = (432 / analyser.frequencyBinCount) * 2.5;
+	let barHeight;
+	let x = 0;
+	for(let i=0; i < analyser.frequencyBinCount; i++) {
 		barHeight = dataArray[i]/2;
 		canvasContext.fillStyle = 'rgb(' + (barHeight+100) + ',50,50)';
 		canvasContext.fillRect(x, 240-barHeight/2, barWidth, barHeight);

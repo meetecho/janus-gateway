@@ -102,7 +102,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::", msg);
-									var event = msg["audiobridge"];
+									let event = msg["audiobridge"];
 									Janus.debug("Event: " + event);
 									if(event) {
 										if(event === "joined") {
@@ -127,7 +127,7 @@ $(document).ready(function() {
 															},
 															success: function(jsep) {
 																Janus.debug("Got SDP!", jsep);
-																var publish = { request: "configure", muted: false };
+																let publish = { request: "configure", muted: false };
 																mixertest.send({ message: publish, jsep: jsep });
 															},
 															error: function(error) {
@@ -281,7 +281,7 @@ $(document).ready(function() {
 											// Any new feed to attach to?
 											if(msg["leaving"]) {
 												// One of the participants has gone away?
-												var leaving = msg["leaving"];
+												let leaving = msg["leaving"];
 												Janus.log("Participant left: " + leaving + " (we have " + $('#rp'+leaving).length + " elements with ID #rp" +leaving + ")");
 												$('#rp'+leaving).remove();
 											}
@@ -370,7 +370,7 @@ $(document).ready(function() {
 
 // eslint-disable-next-line no-unused-vars
 function checkEnter(field, event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		registerUsername();
 		return false;
@@ -388,7 +388,7 @@ function registerUsername() {
 		// Try a registration
 		$('#username').attr('disabled', true);
 		$('#register').attr('disabled', true).unbind('click');
-		var username = $('#username').val();
+		let username = $('#username').val();
 		if(username === "") {
 			$('#you')
 				.removeClass().addClass('label label-warning')
@@ -405,7 +405,7 @@ function registerUsername() {
 			$('#register').removeAttr('disabled').click(registerUsername);
 			return;
 		}
-		var register = { request: "join", room: myroom, display: username };
+		let register = { request: "join", room: myroom, display: username };
 		myusername = escapeXmlTags(username);
 		// Check if we need to join using G.711 instead of (default) Opus
 		if(acodec === 'opus' || acodec === 'pcmu' || acodec === 'pcma')
@@ -421,7 +421,7 @@ function registerUsername() {
 // Helper to parse query string
 function getQueryStringValue(name) {
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
-	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }
@@ -429,7 +429,7 @@ function getQueryStringValue(name) {
 // Helper to escape XML tags
 function escapeXmlTags(value) {
 	if(value) {
-		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		let escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
 		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
 		return escapedValue;
 	}

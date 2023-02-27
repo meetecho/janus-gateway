@@ -123,7 +123,7 @@ $(document).ready(function() {
 										Janus.debug("Handling SDP as well...", jsep);
 										echotest.handleRemoteJsep({ jsep: jsep });
 									}
-									var result = msg["result"];
+									let result = msg["result"];
 									if(result) {
 										if(result === "done") {
 											// The plugin closed the echo test
@@ -142,14 +142,14 @@ $(document).ready(function() {
 											return;
 										}
 										// Any loss?
-										var status = result["status"];
+										let status = result["status"];
 										if(status === "slow_link") {
 											toastr.warning("Janus apparently missed many packets we sent, maybe we should reduce the bitrate", "Packet loss?", {timeOut: 2000});
 										}
 									}
 									// Is simulcast in place?
-									var substream = msg["substream"];
-									var temporal = msg["temporal"];
+									let substream = msg["substream"];
+									let temporal = msg["temporal"];
 									if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 										if(!simulcastStarted) {
 											simulcastStarted = true;
@@ -200,7 +200,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
-									var addButtons = false;
+									let addButtons = false;
 									if($('#videoright audio').length === 0 && $('#videoright video').length === 0) {
 										addButtons = true;
 										$('#videos').removeClass('hide').show();
@@ -240,12 +240,12 @@ $(document).ready(function() {
 												if(!$("#peervideo" + mid).get(0))
 													return;
 												// Display updated bitrate, if supported
-												var bitrate = echotest.getBitrate();
+												let bitrate = echotest.getBitrate();
 												//~ Janus.debug("Current bitrate is " + echotest.getBitrate());
 												$('#curbitrate').text(bitrate);
 												// Check if the resolution changed too
-												var width = $("#peervideo" + mid).get(0).videoWidth;
-												var height = $("#peervideo" + mid).get(0).videoHeight;
+												let width = $("#peervideo" + mid).get(0).videoWidth;
+												let height = $("#peervideo" + mid).get(0).videoHeight;
 												if(width > 0 && height > 0)
 													$('#curres').removeClass('hide').text(width+'x'+height).show();
 											}, 1000);
@@ -276,8 +276,8 @@ $(document).ready(function() {
 										});
 									$('#toggleaudio').parent().removeClass('hide').show();
 									$('#bitrate a').click(function() {
-										var id = $(this).attr("id");
-										var bitrate = parseInt(id)*1000;
+										let id = $(this).attr("id");
+										let bitrate = parseInt(id)*1000;
 										if(bitrate === 0) {
 											Janus.log("Not limiting bandwidth via REMB");
 										} else {
@@ -328,7 +328,7 @@ $(document).ready(function() {
 
 // eslint-disable-next-line no-unused-vars
 function checkEnter(event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		updateCanvas();
 		return false;
@@ -362,10 +362,10 @@ function createCanvas() {
 			$('#myvideo').get(0).play();
 			// Let's setup the canvas, now
 			$('#myvideo').get(0).addEventListener('play', function () {
-				var myvideo = this;
-				var canvas = document.getElementById('canvas');
-				var context = canvas.getContext('2d');
-				var logo = new Image();
+				let myvideo = this;
+				let canvas = document.getElementById('canvas');
+				let context = canvas.getContext('2d');
+				let logo = new Image();
 				logo.onload = function() {
 					(function loop() {
 						if(!myvideo.paused && !myvideo.ended) {
@@ -391,7 +391,7 @@ function createCanvas() {
 				canvasStream = canvas.captureStream();
 				canvasStream.addTrack(stream.getAudioTracks()[0]);
 				// Now that the stream is ready, we can create the PeerConnection
-				var body = { audio: true, video: true };
+				let body = { audio: true, video: true };
 				// We can try and force a specific codec, by telling the plugin what we'd prefer
 				// For simplicity, you can set it via a query string (e.g., ?vcodec=vp9)
 				if(acodec)
@@ -445,7 +445,7 @@ function updateCanvas() {
 // Helper to parse query string
 function getQueryStringValue(name) {
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
-	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }
