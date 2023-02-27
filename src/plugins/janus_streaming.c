@@ -104,6 +104,9 @@ videoport3 = third local port for receiving video frames (only for rtp, and simu
 videoskew = true|false (whether the plugin should perform skew
 	analisys and compensation on incoming video RTP stream, EXPERIMENTAL)
 videosvc = true|false (whether the video will have SVC support; works only for VP9-SVC, default=false)
+h264sps = if using H.264 as a video codec, value of the sprop-parameter-sets
+	that would normally be sent via SDP, but that we'll use to instead
+	manually ingest SPS and PPS packets via RTP for streams that miss it
 collision = in case of collision (more than one SSRC hitting the same port), the plugin
 	will discard incoming RTP packets with a new SSRC unless this many milliseconds
 	passed, which would then change the current SSRC (0=disabled)
@@ -1133,7 +1136,8 @@ static struct janus_json_parameter rtp_video_parameters[] = {
 	{"videoport2", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"videoport3", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"videoskew", JANUS_JSON_BOOL, 0},
-	{"videosvc", JANUS_JSON_BOOL, 0}
+	{"videosvc", JANUS_JSON_BOOL, 0},
+	{"h264sps", JSON_STRING, 0}
 };
 static struct janus_json_parameter rtp_data_parameters[] = {
 	/* Deprecated parameters: still there only for
@@ -1379,6 +1383,8 @@ typedef struct janus_streaming_rtp_source_stream {
 	int rtcp_fd;
 	gboolean simulcast;
 	gboolean svc;
+	char *h264_spspps;
+	int h264_spspps_len;
 	gboolean skew;
 	gint64 last_received;
 	uint32_t ssrc;				/* Only needed for fixing outgoing RTCP packets */
@@ -1471,7 +1477,7 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 		const char *name, int mindex, const char *type, const char *mid, const char *label, const char *msid,
 		char *mcast, char *miface, const janus_network_address *iface,
 		uint16_t port, uint16_t port2, uint16_t port3, gboolean dortcp, uint16_t rtcpport,
-		uint8_t pt, char *codec, char *fmtp,
+		uint8_t pt, char *codec, char *fmtp, char *sprop,
 		gboolean doskew, gboolean bufferkf, gboolean simulcast, gboolean svc,
 		gboolean textdata, gboolean buffermsg);
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
@@ -1852,6 +1858,52 @@ static void janus_streaming_rtcp_remb_send(janus_streaming_rtp_source *source, j
 	}
 }
 
+/* Helper method to parse a base64-encoded sprop-parameter-sets and update a stream */
+static char *janus_streaming_parse_sprop(char *sprop, int *len) {
+	if(sprop == NULL || len == NULL)
+		return NULL;
+	char *sps = NULL;
+	if(strstr(sprop, ",")) {
+		char **parts = g_strsplit(sprop, ",", -1);
+		char *sps_p = parts[0];
+		char *pps_p = parts[1];
+		if(sps_p && pps_p) {
+			/* Base64 decode both fields */
+			gsize slen = 0, plen = 0;
+			guchar *sps_dec = g_base64_decode(sps_p, &slen);
+			guchar *pps_dec = g_base64_decode(pps_p, &plen);
+			if(sps_dec && pps_dec) {
+				/* Prepare the RTP packet with the NAL units */
+				int flen = 12 + 1 + 2 + slen + 2 + plen;
+				char *buf = g_malloc0(flen);
+				janus_rtp_header *rtp = (janus_rtp_header *)buf;
+				rtp->version = 2;
+				/* STAP-A */
+				char *nal = buf + 12;
+				*nal = 0x18;
+				int offset = 1;
+				/* Add SPS */
+				uint16_t nsize = htons(slen);
+				memcpy(nal + offset, &nsize, sizeof(nsize));
+				offset += sizeof(nsize);
+				memcpy(nal + offset, sps_dec, slen);
+				offset += slen;
+				/* Add PPS */
+				nsize = htons(plen);
+				memcpy(nal + offset, &nsize, sizeof(nsize));
+				offset += sizeof(nsize);
+				memcpy(nal + offset, pps_dec, plen);
+				/* Keep track of the packet */
+				sps = buf;
+				*len = flen;
+			}
+			g_free(sps_dec);
+			g_free(pps_dec);
+		}
+		g_strfreev(parts);
+	}
+	return sps;
+}
 
 /* Error codes */
 #define JANUS_STREAMING_ERROR_NO_MESSAGE			450
@@ -2096,6 +2148,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						janus_config_item *codec = janus_config_get(config, m, janus_config_type_item, "codec");
 						janus_config_item *rtpmap = janus_config_get(config, m, janus_config_type_item, "rtpmap");
 						janus_config_item *fmtp = janus_config_get(config, m, janus_config_type_item, "fmtp");
+						janus_config_item *vsps = janus_config_get(config, m, janus_config_type_item, "h264sps");
 						janus_config_item *vkf = janus_config_get(config, m, janus_config_type_item, "bufferkf");
 						janus_config_item *vsc = janus_config_get(config, m, janus_config_type_item, "simulcast");
 						janus_config_item *dbm = janus_config_get(config, cat, janus_config_type_item, "buffermsg");
@@ -2171,6 +2224,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 							(pt && pt->value) ? atoi(pt->value) : 0,
 							(char *)streamcodec,
 							fmtp ? (char *)fmtp->value : NULL,
+							vsps ? (char *)vsps->value : NULL,
 							doskew, bufferkf, simulcast, dosvc, textdata, buffermsg);
 						if(stream == NULL) {
 							JANUS_LOG(LOG_ERR, "Can't add '%s' stream '%s', error creating source stream...\n", type->value, cat->name);
@@ -2211,6 +2265,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					janus_config_item *vcodec = janus_config_get(config, cat, janus_config_type_item, "videocodec");
 					janus_config_item *vrtpmap = janus_config_get(config, cat, janus_config_type_item, "videortpmap");
 					janus_config_item *vfmtp = janus_config_get(config, cat, janus_config_type_item, "videofmtp");
+					janus_config_item *vsps = janus_config_get(config, cat, janus_config_type_item, "h264sps");
 					janus_config_item *vkf = janus_config_get(config, cat, janus_config_type_item, "videobufferkf");
 					janus_config_item *vsc = janus_config_get(config, cat, janus_config_type_item, "videosimulcast");
 					janus_config_item *vport2 = janus_config_get(config, cat, janus_config_type_item, "videoport2");
@@ -2370,7 +2425,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 							doaudiortcp, (artcpport && artcpport->value) ? atoi(artcpport->value) : 0,
 							(apt && apt->value) ? atoi(apt->value) : 0,
 							(char *)audiocodec,
-							afmtp ? (char *)afmtp->value : NULL,
+							afmtp ? (char *)afmtp->value : NULL, NULL,
 							doaskew, FALSE, FALSE, FALSE, FALSE, FALSE);
 						if(stream == NULL) {
 							JANUS_LOG(LOG_ERR, "Skipping 'audio' stream '%s', error creating source stream...\n", cat->name);
@@ -2395,6 +2450,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 							(vpt && vpt->value) ? atoi(vpt->value) : 0,
 							(char *)videocodec,
 							vfmtp ? (char *)vfmtp->value : NULL,
+							vsps ? (char *)vsps->value : NULL,
 							dovskew, bufferkf, simulcast, dosvc, FALSE, FALSE);
 						if(stream == NULL) {
 							JANUS_LOG(LOG_ERR, "Skipping 'video' stream '%s', error creating source stream...\n", cat->name);
@@ -2414,7 +2470,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 							diface && diface->value ? &data_iface : NULL,
 							(dport && dport->value) ? atoi(dport->value) : 0,
 							0, 0, FALSE, 0,
-							0, NULL, NULL,
+							0, NULL, NULL, NULL,
 							FALSE, FALSE, FALSE, FALSE, textdata, buffermsg);
 						if(stream == NULL) {
 							JANUS_LOG(LOG_ERR, "Skipping 'data' stream '%s', error creating source stream...\n", cat->name);
@@ -3368,7 +3424,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					uint16_t port = 0, port2 = 0, port3 = 0;
 					uint16_t rtcpport = 0;
 					uint8_t pt = 0;
-					char *mtype = NULL, *mid = NULL, *label = NULL, *msid = NULL, *codec = NULL, *fmtp = NULL, *mcast = NULL, *miface = NULL;
+					char *mtype = NULL, *mid = NULL, *label = NULL, *msid = NULL, *codec = NULL, *fmtp = NULL, *sps = NULL, *mcast = NULL, *miface = NULL;
 					gboolean doskew = FALSE, bufferkf = FALSE, simulcast = FALSE, dosvc = FALSE, textdata = TRUE, buffermsg = FALSE;
 					json_t *jmtype = json_object_get(m, "type");
 					mtype = (char *)json_string_value(jmtype);
@@ -3407,6 +3463,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					}
 					json_t *jfmtp = json_object_get(m, "fmtp");
 					fmtp = (char *)json_string_value(jfmtp);
+					json_t *jsps = json_object_get(m, "h264sps");
+					sps = (char *)json_string_value(jsps);
 					json_t *jiface = json_object_get(m, "iface");
 					miface = (char *)json_string_value(jiface);
 					if(jiface) {
@@ -3466,7 +3524,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						name ? (char *)json_string_value(name) : NULL, g_list_length(streams),
 						mtype, mid, label ? label : mtype, msid, mcast, miface, &iface,
 						port, port2, port3, jrtcpport != NULL, rtcpport,
-						pt, codec, fmtp, doskew, bufferkf, simulcast, dosvc, textdata, buffermsg);
+						pt, codec, fmtp, sps, doskew, bufferkf, simulcast, dosvc, textdata, buffermsg);
 					if(stream == NULL) {
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', error creating data source stream...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
@@ -3556,7 +3614,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						"audio", "a", "audio", NULL,
 						amcast, amiface, &audio_iface,
 						aport, 0, 0, audiortcpport != NULL, artcpport,
-						apt, acodec, afmtp, doaskew, FALSE, FALSE, FALSE, FALSE, FALSE);
+						apt, acodec, afmtp, NULL, doaskew, FALSE, FALSE, FALSE, FALSE, FALSE);
 					if(stream == NULL) {
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', error creating audio source stream...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
@@ -3572,7 +3630,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				uint16_t vport = 0, vport2 = 0, vport3 = 0;
 				uint16_t vrtcpport = 0;
 				uint8_t vpt = 0;
-				char *vcodec = NULL, *vfmtp = NULL, *vmcast = NULL, *vmiface = NULL;
+				char *vcodec = NULL, *vfmtp = NULL, *vsps = NULL, *vmcast = NULL, *vmiface = NULL;
 				gboolean bufferkf = FALSE, simulcast = FALSE;
 				if(dovideo) {
 					JANUS_VALIDATE_JSON_OBJECT(root, rtp_video_parameters,
@@ -3603,6 +3661,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					}
 					json_t *videofmtp = json_object_get(root, "videofmtp");
 					vfmtp = (char *)json_string_value(videofmtp);
+					json_t *h264sps = json_object_get(root, "h264sps");
+					vsps = (char *)json_string_value(h264sps);
 					json_t *vkf = json_object_get(root, "videobufferkf");
 					bufferkf = vkf ? json_is_true(vkf) : FALSE;
 					json_t *vsc = json_object_get(root, "videosimulcast");
@@ -3642,7 +3702,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						"video", "v", "video", NULL,
 						vmcast, vmiface, &video_iface,
 						vport, vport2, vport3, videortcpport != NULL, vrtcpport,
-						vpt, vcodec, vfmtp, dovskew, bufferkf, simulcast, dosvc, FALSE, FALSE);
+						vpt, vcodec, vfmtp, vsps, dovskew, bufferkf, simulcast, dosvc, FALSE, FALSE);
 					if(stream == NULL) {
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', error creating video source stream...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
@@ -3714,7 +3774,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						"data", "d", "data", NULL,
 						dmcast, dmiface, &data_iface,
 						dport, 0, 0, FALSE, 0,
-						0, NULL, NULL, FALSE, FALSE, FALSE, FALSE, textdata, buffermsg);
+						0, NULL, NULL, NULL, FALSE, FALSE, FALSE, FALSE, textdata, buffermsg);
 					if(stream == NULL) {
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', error creating data source stream...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
@@ -6797,6 +6857,7 @@ static void janus_streaming_rtp_source_stream_free(const janus_refcount *st_ref)
 	stream->last_msg = NULL;
 	janus_mutex_unlock(&stream->buffermsg_mutex);
 	g_free(stream->codecs.fmtp);
+	g_free(stream->h264_spspps);
 	g_free(stream->mid);
 	g_free(stream->label);
 	g_free(stream->msid);
@@ -6863,7 +6924,7 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 		const char *name, int mindex, const char *type, const char *mid, const char *label, const char *msid,
 		char *mcast, char *miface, const janus_network_address *iface,
 		uint16_t port, uint16_t port2, uint16_t port3, gboolean dortcp, uint16_t rtcpport,
-		uint8_t pt, char *codec, char *fmtp,
+		uint8_t pt, char *codec, char *fmtp, char *sprop,
 		gboolean doskew, gboolean bufferkf, gboolean simulcast, gboolean svc,
 		gboolean textdata, gboolean buffermsg) {
 	if(type == NULL || mid == NULL || label == NULL) {
@@ -6969,6 +7030,17 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 				stream->svc = TRUE;
 			} else {
 				JANUS_LOG(LOG_WARN, "[%s] SVC is only supported, in an experimental way, for VP9-SVC mountpoints: disabling it...\n", name);
+			}
+		}
+		if(sprop && stream->codecs.video_codec == JANUS_VIDEOCODEC_H264) {
+			/* Create a fake RTP packet out of the sprop-parameter-sets */
+			int spslen = 0;
+			char *sps = janus_streaming_parse_sprop(sprop, &spslen);
+			if(sps == NULL) {
+				JANUS_LOG(LOG_WARN, "Error parsing sprop-parameter-sets value, ignoring...\n");
+			} else {
+				stream->h264_spspps = sps;
+				stream->h264_spspps_len = spslen;
 			}
 		}
 	}
@@ -7334,8 +7406,10 @@ static size_t janus_streaming_rtsp_curl_callback(void *payload, size_t size, siz
 	return realsize;
 }
 
-static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, const char *media, char *base, int *pt,
-		char *transport, char *host, char *rtpmap, char *fmtp, char *control, const janus_network_address *iface, multiple_fds *fds) {
+static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, const char *media,
+		char *base, int *pt, char *transport, char *host,
+		char *rtpmap, char *fmtp, char *control, char **sps, int *spslen,
+		const janus_network_address *iface, multiple_fds *fds) {
 	/* Start by checking if there's any Content-Base header we should be aware of */
 	const char *cb = strstr(buffer, "Content-Base:");
 	if(cb == NULL)
@@ -7369,16 +7443,34 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 	sscanf(s, "a=control:%2047s", control);
 	char *r = strstr(m, "a=rtpmap:");
 	if(r != NULL) {
-		if (sscanf(r, "a=rtpmap:%*d%*[ ]%2047[^\r\n]s", rtpmap) != 1) {
+		if(sscanf(r, "a=rtpmap:%*d%*[ ]%2047[^\r\n]s", rtpmap) != 1) {
 			JANUS_LOG(LOG_ERR, "[%s] cannot parse %s rtpmap...\n", name, media);
 			return -1;
 		}
 	}
 	char *f = strstr(m, "a=fmtp:");
 	if(f != NULL) {
-		if (sscanf(f, "a=fmtp:%*d%*[ ]%2047[^\r\n]s", fmtp) != 1) {
+		if(sscanf(f, "a=fmtp:%*d%*[ ]%2047[^\r\n]s", fmtp) != 1) {
 			JANUS_LOG(LOG_ERR, "[%s] cannot parse %s fmtp...\n", name, media);
 			return -1;
+		}
+		char *start = strstr(f, "sprop-parameter-sets=");
+		if(sps != NULL && start != NULL) {
+			start += strlen("sprop-parameter-sets=");
+			char *end = strstr(start, ";");
+			if(end == NULL)
+				end = strstr(start, "\r");
+			if(end == NULL)
+				end = strstr(start, "\n");
+			if(end) {
+				char c = *end;
+				*end = '\0';
+				JANUS_LOG(LOG_VERB, "[%s] Found sprop-parameter-sets: %s\n", name, start);
+				*sps = janus_streaming_parse_sprop(start, spslen);
+				if(*sps == NULL)
+					JANUS_LOG(LOG_WARN, "[%s] Error parsing sprop-parameter-sets value, ignoring...\n", name);
+				*end = c;
+			}
 		}
 	}
 	char *c = strstr(m, "c=IN IP4");
@@ -7567,15 +7659,17 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	/* Parse both video and audio first before proceed to setup as curldata will be reused */
 	janus_network_address audio_iface = { 0 }, video_iface = { 0 };
 	uint32_t audio_ssrc = 0, video_ssrc = 0;
+	int spslen = 0;
+	char *sps = NULL;
 	int vresult = -1;
 	if(dovideo) {
 		vresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", vbase, &vpt,
-			vtransport, vhost, vrtpmap, vfmtp, vcontrol, &video_iface, &video_fds);
+			vtransport, vhost, vrtpmap, vfmtp, vcontrol, &sps, &spslen, &video_iface, &video_fds);
 	}
 	int aresult = -1;
 	if(doaudio) {
 		aresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", abase, &apt,
-			atransport, ahost, artpmap, afmtp, acontrol, &audio_iface, &audio_fds);
+			atransport, ahost, artpmap, afmtp, acontrol, NULL, NULL, &audio_iface, &audio_fds);
 	}
 	janus_mutex_unlock(&mountpoints_mutex);
 
@@ -8015,6 +8109,11 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 				stream->codecs.video_codec = video_codec;
 			g_free(stream->codecs.fmtp);
 			stream->codecs.fmtp = source->rtsp_vcodecs.fmtp ? g_strdup(source->rtsp_vcodecs.fmtp) : g_strdup(vfmtp);
+			g_free(stream->h264_spspps);
+			stream->h264_spspps = sps;
+			sps = NULL;
+			stream->h264_spspps_len = spslen;
+			spslen = 0;
 			g_free(source->rtsp_vhost);
 			source->rtsp_vhost = vsport > 0 ? g_strdup(vhost) : NULL;
 			stream->remote_port = vsport;
@@ -9207,11 +9306,50 @@ static void *janus_streaming_relay_thread(void *data) {
 								name, ret, stream->mindex, ssrc, index);
 						}
 					}
+					if(stream->h264_spspps) {
+						int plen = 0;
+						char *payload = janus_rtp_payload((char *)packet.data, bytes, &plen);
+						/* We have our own SPS/PPS to send, check if we just received a keyframe */
+						if(payload && janus_h264_is_i_frame(payload, plen)) {
+							/* This is an I-frame: prepend an SPS/PPS packet */
+							janus_rtp_header *sps_rtp = (janus_rtp_header *)stream->h264_spspps;
+							sps_rtp->type = rtp->type;
+							sps_rtp->seq_number = rtp->seq_number;
+							rtp->seq_number = htons(ntohs(rtp->seq_number) + 1);
+							stream->context[index].base_seq--;
+							sps_rtp->timestamp = rtp->timestamp;
+							/* Save the packet, if needed */
+							sps_rtp->ssrc = htonl((uint32_t)mountpoint->id);
+							janus_recorder_save_frame(stream->rc, stream->h264_spspps, stream->h264_spspps_len);
+							sps_rtp->ssrc = rtp->ssrc;
+							/* Relay on all sessions */
+							janus_streaming_rtp_relay_packet spspkt = { 0 };
+							spspkt.mindex = stream->mindex;
+							spspkt.data = sps_rtp;
+							spspkt.length = stream->h264_spspps_len;
+							spspkt.is_rtp = TRUE;
+							spspkt.is_video = TRUE;
+							spspkt.is_keyframe = FALSE;
+							spspkt.simulcast = FALSE;
+							spspkt.codec = stream->codecs.video_codec;
+							spspkt.svc = FALSE;
+							spspkt.ptype = spspkt.data->type;
+							spspkt.timestamp = ntohl(spspkt.data->timestamp);
+							spspkt.seq_number = ntohs(spspkt.data->seq_number);
+							janus_mutex_lock(&mountpoint->mutex);
+							JANUS_LOG(LOG_HUGE, "[%s] Sending SPS/PPS (seq=%"SCNu16", ts=%"SCNu32")\n", name,
+								ntohs(spspkt.data->seq_number), ntohl(spspkt.data->timestamp));
+							g_list_foreach(mountpoint->helper_threads == 0 ? mountpoint->viewers : mountpoint->threads,
+								mountpoint->helper_threads == 0 ? janus_streaming_relay_rtp_packet : janus_streaming_helper_rtprtcp_packet,
+								&spspkt);
+							janus_mutex_unlock(&mountpoint->mutex);
+						}
+					}
 					if(index == 0 && stream->rc) {
 						packet.data->ssrc = htonl((uint32_t)mountpoint->id);
 						janus_recorder_save_frame(stream->rc, buffer, bytes);
 					}
-					if (mountpoint->enabled) {
+					if(mountpoint->enabled) {
 						packet.data->ssrc = htonl(ssrc);
 						/* Backup the actual payload type, timestamp and sequence number set by the restreamer, in case switching is involved */
 						packet.ptype = packet.data->type;
