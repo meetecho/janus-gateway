@@ -384,6 +384,8 @@ $(document).ready(function() {
 										delete remoteTracks[mid];
 										return;
 									}
+									if($('#peervideo' + mid).length > 0)
+										return;
 									// If we're here, a new track was added
 									var addButtons = false;
 									if($('#videoright audio').length === 0 && $('#videoright video').length === 0) {
