@@ -25,6 +25,7 @@ module.exports = {
 		/* WebRTC */
 		"adapter": "readonly",
 		"RTCRtpTransceiver": "readonly",
+		"TransformStream": "readonly",
 		/* bootstrap */
 		"bootbox": "readonly",
 		"Spinner": "readonly",
