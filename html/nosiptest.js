@@ -3,6 +3,8 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+
 var janus = null;
 
 // We'll need two handles for this demo: a caller and a callee
@@ -173,7 +175,7 @@ $(document).ready(function() {
 									var trackId = track.id.replace(/[{}]/g, "");
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
-										var stream = localTracks[trackId];
+										let stream = localTracks[trackId];
 										if(stream) {
 											try {
 												var tracks = stream.getTracks();
@@ -202,7 +204,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
-									var stream = localTracks[trackId];
+									let stream = localTracks[trackId];
 									if(stream) {
 										// We've been here already
 										return;
@@ -226,7 +228,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										localVideos++;
 										$('#videoleft .no-video-container').remove();
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										localTracks[trackId] = stream;
 										Janus.log("Created local stream:", stream);
 										$('#videoleft').append('<video class="rounded centered" id="myvideot' + trackId + '" width="100%" height="100%" autoplay playsinline muted="muted"/>');
@@ -285,7 +287,7 @@ $(document).ready(function() {
 									}
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("[caller] Created remote audio stream:", stream);
 										$('#videoright').append('<audio class="hide" id="peervideo' + mid + '" autoplay playsinline/>');
@@ -304,7 +306,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										remoteVideos++;
 										$('#videoright .no-video-container').remove();
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("[caller] Created remote video stream:", stream);
 										$('#videoright').append('<video class="rounded centered" id="peervideo' + mid + '" width="100%" height="100%" autoplay playsinline/>');
@@ -437,9 +439,11 @@ $(document).ready(function() {
 										}
 									}
 								},
+								// eslint-disable-next-line no-unused-vars
 								onlocaltrack: function(track, on) {
 									// The callee is our fake peer, we don't display anything
 								},
+								// eslint-disable-next-line no-unused-vars
 								onremotetrack: function(track, mid, on) {
 									// The callee is our fake peer, we don't display anything
 								},

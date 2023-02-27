@@ -3,6 +3,8 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+
 var janus = null;
 var sfutest = null;
 var opaqueId = "videoroomtest-"+Janus.randomString(12);
@@ -343,7 +345,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										localVideos++;
 										$('#videolocal .no-video-container').remove();
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										localTracks[trackId] = stream;
 										Janus.log("Created local stream:", stream);
 										Janus.log(stream.getTracks());
@@ -363,6 +365,7 @@ $(document).ready(function() {
 										});
 									}
 								},
+								// eslint-disable-next-line no-unused-vars
 								onremotetrack: function(track, mid, on) {
 									// The publisher stream is sendonly, we don't expect anything here
 								},
@@ -394,6 +397,7 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(field, event) {
 	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
@@ -479,7 +483,7 @@ function publishOwnFeed(useAudio) {
 			error: function(error) {
 				Janus.error("WebRTC error:", error);
 				if (useAudio) {
-					 publishOwnFeed(false);
+					publishOwnFeed(false);
 				} else {
 					bootbox.alert("WebRTC error... " + error.message);
 					$('#publish').removeAttr('disabled').click(function() { publishOwnFeed(true); });
@@ -688,8 +692,6 @@ function subscribeTo(sources) {
 						let temporal = msg["temporal"];
 						if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 							// Check which this feed this refers to
-							let sub = subStreams[mid];
-							let feed = feedStreams[sub.feed_id];
 							let slot = slots[mid];
 							if(!simulcastStarted[slot]) {
 								simulcastStarted[slot] = true;
@@ -741,6 +743,7 @@ function subscribeTo(sources) {
 						});
 				}
 			},
+			// eslint-disable-next-line no-unused-vars
 			onlocaltrack: function(track, on) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
@@ -791,7 +794,7 @@ function subscribeTo(sources) {
 					return;
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteTracks[mid] = stream;
 					Janus.log("Created remote audio stream:", stream);
 					$('#videoremote' + slot).append('<audio class="hide" id="remotevideo' + slot + '-' + mid + '" autoplay playsinline/>');
@@ -810,7 +813,7 @@ function subscribeTo(sources) {
 					// New video track: create a stream out of it
 					feed.remoteVideos++;
 					$('#videoremote' + slot + ' .no-video-container').remove();
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
 					$('#videoremote' + slot).append('<video class="rounded centered" id="remotevideo' + slot + '-' + mid + '" width=100% autoplay playsinline/>');

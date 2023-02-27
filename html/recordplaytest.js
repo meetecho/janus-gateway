@@ -3,6 +3,8 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+
 var janus = null;
 var recordplay = null;
 var opaqueId = "recordplaytest-"+Janus.randomString(12);
@@ -138,7 +140,7 @@ $(document).ready(function() {
 												// Got an ANSWER to our recording OFFER
 												if(jsep)
 													recordplay.handleRemoteJsep({ jsep: jsep });
-												var id = result["id"];
+												let id = result["id"];
 												if(id) {
 													Janus.log("The ID of the current recording is " + id);
 													recordingId = id;
@@ -147,7 +149,7 @@ $(document).ready(function() {
 												Janus.log("Playout has started!");
 											} else if(event === 'stopped') {
 												Janus.log("Session has stopped!");
-												var id = result["id"];
+												let id = result["id"];
 												if(recordingId) {
 													if(recordingId !== id) {
 														Janus.warn("Not a stop to our recording?");
@@ -202,7 +204,7 @@ $(document).ready(function() {
 									var trackId = track.id.replace(/[{}]/g, "");
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
-										var stream = localTracks[trackId];
+										let stream = localTracks[trackId];
 										if(stream) {
 											try {
 												var tracks = stream.getTracks();
@@ -231,13 +233,13 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
-									var stream = localTracks[trackId];
+									let stream = localTracks[trackId];
 									if(stream) {
 										// We've been here already
 										return;
 									}
 									$('#videotitle').html("Recording...");
-									$('#stop').unbind('click').click(stop);
+									$('#stop').unbind('click').click(stopRecPlay);
 									$('#video').removeClass('hide').show();
 									if($('#videobox video').length === 0) {
 										$('#videos').removeClass('hide').show();
@@ -258,7 +260,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										localVideos++;
 										$('#videobox .no-video-container').remove();
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										localTracks[trackId] = stream;
 										Janus.log("Created local stream:", stream);
 										$('#videobox').append('<video class="rounded centered" id="thevideo' + trackId + '" width="100%" height="100%" autoplay playsinline muted="muted"/>');
@@ -306,12 +308,12 @@ $(document).ready(function() {
 									// If we're here, a new track was added
 									if($('#videobox audio').length === 0 && $('#videobox video').length === 0) {
 										$('#videotitle').html(selectedRecordingInfo);
-										$('#stop').unbind('click').click(stop);
+										$('#stop').unbind('click').click(stopRecPlay);
 										$('#video').removeClass('hide').show();
 									}
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote audio stream:", stream);
 										$('#videobox').append('<audio class="hide" id="thevideo' + mid + '" autoplay playsinline/>');
@@ -330,7 +332,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										remoteVideos++;
 										$('#videobox .no-video-container').remove();
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote video stream:", stream);
 										$('#videobox').append('<video class="rounded centered" id="thevideo' + mid + '" width="100%" height="100%" autoplay playsinline/>');
@@ -357,7 +359,8 @@ $(document).ready(function() {
 										}
 									}
 								},
-								ondataopen: function(data) {
+								// eslint-disable-next-line no-unused-vars
+								ondataopen: function(label, protocol) {
 									Janus.log("The DataChannel is available!");
 									$('#datafield').parent().removeClass('hide');
 									if(playing === false) {
@@ -415,6 +418,7 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
@@ -573,7 +577,7 @@ function startPlayout() {
 	recordplay.send({ message: play });
 }
 
-function stop() {
+function stopRecPlay() {
 	// Stop a recording/playout
 	$('#stop').unbind('click');
 	var stop = { request: "stop" };

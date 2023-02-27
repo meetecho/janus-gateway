@@ -3,6 +3,8 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+
 var janus = null;
 var echotest = null;
 var opaqueId = "multiopus-"+Janus.randomString(12);
@@ -14,7 +16,6 @@ var spinner = null;
 var audioenabled = false;
 var videoenabled = false;
 
-var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var acodec = "multiopus";
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
@@ -190,6 +191,7 @@ $(document).ready(function() {
 										updateSimulcastButtons(substream, temporal);
 									}
 								},
+								// eslint-disable-next-line no-unused-vars
 								onlocaltrack: function(track, on) {
 									// We ignore the stream we got here, we're using the static video to render it
 									if(echotest.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -237,7 +239,7 @@ $(document).ready(function() {
 									}
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote audio stream:", stream);
 										if($('#peervideo'+mid).length === 0)
@@ -257,7 +259,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										remoteVideos++;
 										$('#videoright .no-video-container').remove();
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote video stream:", stream);
 										if($('#peervideo'+mid).length === 0)
@@ -318,7 +320,8 @@ $(document).ready(function() {
 										return false;
 									});
 								},
-								ondataopen: function(data) {
+								// eslint-disable-next-line no-unused-vars
+								ondataopen: function(label, protocol) {
 									Janus.log("The DataChannel is available!");
 									$('#videos').removeClass('hide').show();
 									$('#datasend').removeAttr('disabled');
@@ -359,8 +362,6 @@ $(document).ready(function() {
 										// Do nothing if this fails
 									}
 									localStream = null;
-									localTracks = {};
-									localVideos = 0;
 									remoteTracks = {};
 									remoteVideos = 0;
 								}
@@ -380,6 +381,7 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {

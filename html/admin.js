@@ -22,9 +22,9 @@ var settings = {};
 var currentHandle = null;
 var localSdp = null, remoteSdp = null;
 
+var handleInfo;
+
 $(document).ready(function() {
-	if(typeof console == "undefined" || typeof console.log == "undefined")
-		console = { log: function() {} };
 	$('#admintabs a').click(function (e) {
 		e.preventDefault()
 		$(this).tab('show')
@@ -69,9 +69,9 @@ function promptAccessDetails() {
 
 // Helper method to create random identifiers (e.g., transaction)
 function randomString(len) {
-	charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+	const charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 	var randomString = '';
-	for (var i = 0; i < len; i++) {
+	for (let i = 0; i < len; i++) {
 		var randomPoz = Math.floor(Math.random() * charSet.length);
 		randomString += charSet.substring(randomPoz,randomPoz+1);
 	}
@@ -112,7 +112,7 @@ function updateServerInfo() {
 			delete json.transports;
 			delete json.events;
 			$('#server-details').empty();
-			for(var k in json) {
+			for(let k in json) {
 				if(k === "dependencies") {
 					$('#server-deps').html(
 						'<tr>' +
@@ -120,7 +120,7 @@ function updateServerInfo() {
 						'	<th>Version</th>' +
 						'</tr>'
 					);
-					for(var ln in json[k]) {
+					for(let ln in json[k]) {
 						$('#server-deps').append(
 							'<tr>' +
 							'	<td>' + ln + '</td>' +
@@ -130,7 +130,7 @@ function updateServerInfo() {
 					}
 					continue;
 				}
-				var v = json[k];
+				let v = json[k];
 				$('#server-details').append(
 					'<tr>' +
 					'	<td><b>' + k + ':</b></td>' +
@@ -146,9 +146,9 @@ function updateServerInfo() {
 				'</tr>'
 			);
 			$('#plugins-list').empty();
-			for(var p in pluginsJson) {
+			for(let p in pluginsJson) {
 				plugins.push(p);
-				var v = pluginsJson[p];
+				let v = pluginsJson[p];
 				$('#server-plugins').append(
 					'<tr>' +
 					'	<td>' + v.name + '</td>' +
@@ -178,9 +178,9 @@ function updateServerInfo() {
 				'	<th>Version</th>' +
 				'</tr>'
 			);
-			for(var t in transportsJson) {
+			for(let t in transportsJson) {
 				transports.push(t);
-				var v = transportsJson[t];
+				let v = transportsJson[t];
 				$('#server-transports').append(
 					'<tr>' +
 					'	<td>' + v.name + '</td>' +
@@ -210,8 +210,8 @@ function updateServerInfo() {
 				'	<th>Version</th>' +
 				'</tr>'
 			);
-			for(var e in eventsJson) {
-				var v = eventsJson[e];
+			for(let e in eventsJson) {
+				let v = eventsJson[e];
 				$('#server-handlers').append(
 					'<tr>' +
 					'	<td>' + v.name + '</td>' +
@@ -311,7 +311,7 @@ function updateSettings() {
 				$('#update-settings').removeClass('fa-spin').click(updateSettings);
 			}, 1000);
 			$('#server-settings').empty();
-			for(var k in json.status) {
+			for(let k in json.status) {
 				settings[k] = json.status[k];
 				$('#server-settings').append(
 					'<tr>' +
@@ -412,7 +412,7 @@ function updateSettings() {
 					$('#'+k + "_button").click(function() {
 						var text = (!settings["locking_debug"] ?
 							"Are you sure you want to enable the locking debug?<br/>This will print a line on the console any time a mutex is locked/unlocked"
-								: "Are you sure you want to disable the locking debug?");
+							: "Are you sure you want to disable the locking debug?");
 						bootbox.confirm(text, function(result) {
 							if(result)
 								setLockingDebug(!settings["locking_debug"]);
@@ -426,7 +426,7 @@ function updateSettings() {
 					$('#'+k + "_button").click(function() {
 						var text = (!settings["refcount_debug"] ?
 							"Are you sure you want to enable the reference counters debug?<br/>This will print a line on the console any time a reference counter is increased/decreased"
-								: "Are you sure you want to disable the reference counters debug?");
+							: "Are you sure you want to disable the reference counters debug?");
 						bootbox.confirm(text, function(result) {
 							if(result)
 								setRefcountDebug(!settings["refcount_debug"]);
@@ -440,7 +440,7 @@ function updateSettings() {
 					$('#'+k + "_button").click(function() {
 						var text = (!settings["log_timestamps"] ?
 							"Are you sure you want to enable the log timestamps?<br/>This will print the current date/time for each new line on the console"
-								: "Are you sure you want to disable the log timestamps?");
+							: "Are you sure you want to disable the log timestamps?");
 						bootbox.confirm(text, function(result) {
 							if(result)
 								setLogTimestamps(!settings["log_timestamps"]);
@@ -454,7 +454,7 @@ function updateSettings() {
 					$('#'+k + "_button").click(function() {
 						var text = (!settings["log_colors"] ?
 							"Are you sure you want to enable the log colors?<br/>This will strip the colors from events like warnings, errors, etc. on the console"
-								: "Are you sure you want to disable the log colors?");
+							: "Are you sure you want to disable the log colors?");
 						bootbox.confirm(text, function(result) {
 							if(result)
 								setLogColors(!settings["log_colors"]);
@@ -468,7 +468,7 @@ function updateSettings() {
 					$('#'+k + "_button").click(function() {
 						var text = (!settings["libnice_debug"] ?
 							"Are you sure you want to enable the libnice debug?<br/>This will print the a very verbose debug of every libnice-related operation on the console"
-								: "Are you sure you want to disable the libnice debug?");
+							: "Are you sure you want to disable the libnice debug?");
 						bootbox.confirm(text, function(result) {
 							if(result)
 								setLibniceDebug(!settings["libnice_debug"]);
@@ -601,7 +601,7 @@ function resetPluginRequest() {
 	$('#sendmsg').click(function() {
 		var message = {};
 		var num = $('.pm-property').length;
-		for(var i=0; i<num; i++) {
+		for(let i=0; i<num; i++) {
 			var name = $('#attrname'+i).val();
 			if(name === '') {
 				bootbox.alert("Missing name in attribute #" + (i+1));
@@ -724,7 +724,7 @@ function resetTransportRequest() {
 	$('#sendmsg').click(function() {
 		var message = {};
 		var num = $('.pm-property').length;
-		for(var i=0; i<num; i++) {
+		for(let i=0; i<num; i++) {
 			var name = $('#attrname'+i).val();
 			if(name === '') {
 				bootbox.alert("Missing name in attribute #" + (i+1));
@@ -875,7 +875,7 @@ function updateSessions() {
 			$('#sessions-list').empty();
 			var sessions = json["sessions"];
 			$('#sessions-num').text(sessions.length);
-			for(var i=0; i<sessions.length; i++) {
+			for(let i=0; i<sessions.length; i++) {
 				var s = sessions[i];
 				$('#sessions-list').append(
 					'<a id="session-'+s+'" href="#" class="list-group-item">'+s+'</a>'
@@ -983,7 +983,7 @@ function updateHandles() {
 			$('#handles-list').empty();
 			var handles = json["handles"];
 			$('#handles-num').text(handles.length);
-			for(var i=0; i<handles.length; i++) {
+			for(let i=0; i<handles.length; i++) {
 				var h = handles[i];
 				$('#handles-list').append(
 					'<a id="handle-'+h+'" href="#" class="list-group-item">'+h+'</a>'
@@ -1141,15 +1141,15 @@ function prettyHandleInfo() {
 	// Prettify the handle info, processing it and turning it into tables
 	$('#handle-info').html('<table class="table table-striped" id="handle-info-table"></table>');
 	$('#options').hide();
-	for(var k in handleInfo) {
+	for(let k in handleInfo) {
 		var v = handleInfo[k];
 		if(k === "plugin_specific") {
 			$('#handle-info').append(
 				'<h4>Plugin specific details</h4>' +
 				'<table class="table table-striped" id="plugin-specific">' +
 				'</table>');
-			for(var kk in v) {
-				var vv = v[kk];
+			for(let kk in v) {
+				let vv = v[kk];
 				$('#plugin-specific').append(
 					'<tr>' +
 					'	<td><b>' + kk + ':</b></td>' +
@@ -1161,8 +1161,8 @@ function prettyHandleInfo() {
 				'<h4>Flags</h4>' +
 				'<table class="table table-striped" id="flags">' +
 				'</table>');
-			for(var kk in v) {
-				var vv = v[kk];
+			for(let kk in v) {
+				let vv = v[kk];
 				$('#flags').append(
 					'<tr>' +
 					'	<td><b>' + kk + ':</b></td>' +
@@ -1176,8 +1176,8 @@ function prettyHandleInfo() {
 				'<h4>Session descriptions (SDP)</h4>' +
 				'<table class="table table-striped" id="sdps">' +
 				'</table>');
-			for(var kk in v) {
-				var vv = v[kk];
+			for(let kk in v) {
+				let vv = v[kk];
 				if(kk === "local") {
 					localSdp = vv;
 				} else if(kk === "remote") {
@@ -1204,14 +1204,14 @@ function prettyHandleInfo() {
 			$('#handle-info').append(
 				'<h4>ICE streams</h4>' +
 				'<div id="streams"></table>');
-			for(var kk in v) {
+			for(let kk in v) {
 				$('#streams').append(
 					'<h5>Stream #' + (parseInt(kk)+1) + '</h5>' +
 					'<table class="table table-striped" id="stream' + kk + '">' +
 					'</table>');
-				var vv = v[kk];
+				let vv = v[kk];
 				console.log(vv);
-				for(var sk in vv) {
+				for(let sk in vv) {
 					var sv = vv[sk];
 					if(sk === "ssrc") {
 						$('#stream' + kk).append(
@@ -1222,8 +1222,8 @@ function prettyHandleInfo() {
 									'</table>' +
 								'</td>' +
 							'</tr>');
-						for(var ssk in sv) {
-							var ssv = sv[ssk];
+						for(let ssk in sv) {
+							let ssv = sv[ssk];
 							$('#ssrc' + kk).append(
 								'<tr>' +
 								'	<td><b>' + ssk + ':</b></td>' +
@@ -1239,8 +1239,8 @@ function prettyHandleInfo() {
 									'</table>' +
 								'</td>' +
 							'</tr>');
-						for(var ssk in sv) {
-							var ssv = sv[ssk];
+						for(let ssk in sv) {
+							let ssv = sv[ssk];
 							$('#components' + kk).append(
 								'<tr>' +
 									'<td colspan="2">' +
@@ -1249,11 +1249,11 @@ function prettyHandleInfo() {
 										'</table>' +
 									'</td>' +
 								'</tr>');
-							for(var cssk in ssv) {
+							for(let cssk in ssv) {
 								var cssv = ssv[cssk];
 								if(cssk === "local-candidates" || cssk === "remote-candidates") {
 									var candidates = "<ul>";
-									for(var c in cssv)
+									for(let c in cssv)
 										candidates += "<li>" + cssv[c] + "</li>";
 									candidates += "</ul>";
 									$('#stream' + kk + 'component' + ssk).append(
@@ -1263,7 +1263,7 @@ function prettyHandleInfo() {
 										'</tr>');
 								} else if(cssk === "dtls" || cssk === "in_stats" || cssk === "out_stats") {
 									var dtls = '<table class="table">';
-									for(var d in cssv) {
+									for(let d in cssv) {
 										dtls +=
 											'<tr>' +
 												'<td style="width:150px;"><b>' + d + '</b></td>' +
@@ -1345,7 +1345,7 @@ function updateTokens() {
 				'	<th>Permissions</th>' +
 				'	<th></th>' +
 				'</tr>');
-			for(var index in json.data.tokens) {
+			for(let index in json.data.tokens) {
 				var t = json.data.tokens[index];
 				var tokenPlugins = t.allowed_plugins.toString().replace(/,/g,'<br/>');
 				$('#auth-tokens').append(
@@ -1369,7 +1369,7 @@ function updateTokens() {
 				'	<td><button id="addtoken" type="button" class="btn btn-xs btn-success">Add token</button></td>' +
 				'</tr>');
 			var pluginsCheckboxes = "";
-			for(var i in plugins) {
+			for(let i in plugins) {
 				var plugin = plugins[i];
 				pluginsCheckboxes +=
 					'<div class="checkbox">' +
@@ -1390,11 +1390,11 @@ function updateTokens() {
 					return;
 				}
 				var pluginPermissions = [];
-				for(var i=0; i<checked.length; i++)
+				for(let i=0; i<checked.length; i++)
 					pluginPermissions.push(checked[i].value);
 				var text = "Are you sure you want to add the new token " + token + " with access to the following plugins?" +
 					"<br/><ul>";
-				for(var i in pluginPermissions)
+				for(let i in pluginPermissions)
 					text += "<li>" + pluginPermissions[i] + "</li>";
 				text += "</ul>";
 				bootbox.confirm(text, function(result) {
@@ -1562,6 +1562,7 @@ function captureTrafficRequest(start, text, folder, filename, truncate) {
 	});
 }
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(field, event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {

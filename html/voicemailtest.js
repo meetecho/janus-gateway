@@ -3,16 +3,11 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+
 var janus = null;
 var vmailtest = null;
 var opaqueId = "voicemailtest-"+Janus.randomString(12);
-
-var spinner = null;
-
-var myusername = null;
-var myid = null;
-var audioenabled = false;
-
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -138,9 +133,11 @@ $(document).ready(function() {
 										vmailtest.handleRemoteJsep({ jsep: jsep });
 									}
 								},
+								// eslint-disable-next-line no-unused-vars
 								onlocaltrack: function(track, on) {
 									// We're not going to attach the local audio stream
 								},
+								// eslint-disable-next-line no-unused-vars
 								onremotetrack: function(track, mid, on) {
 									// We're not going to receive anything from the plugin
 								},

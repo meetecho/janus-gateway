@@ -3,6 +3,8 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+
 var janus = null;
 var textroom = null;
 var opaqueId = "textroomtest-"+Janus.randomString(12);
@@ -94,7 +96,8 @@ $(document).ready(function() {
 											});
 									}
 								},
-								ondataopen: function(data) {
+								// eslint-disable-next-line no-unused-vars
+								ondataopen: function(label, protocol) {
 									Janus.log("The DataChannel is available!");
 									// Prompt for a display name to join the default room
 									$('#roomjoin').removeClass('hide').show();
@@ -116,9 +119,9 @@ $(document).ready(function() {
 									var what = json["textroom"];
 									if(what === "message") {
 										// Incoming message: public or private?
-										var msg = escapeXmlTags(json["text"]);
+										let msg = escapeXmlTags(json["text"]);
 										var from = json["from"];
-										var dateString = getDateString(json["date"]);
+										let dateString = getDateString(json["date"]);
 										var whisper = json["whisper"];
 										var sender = participants[from] ? participants[from] : escapeXmlTags(json["display"]);
 										if(whisper === true) {
@@ -132,13 +135,13 @@ $(document).ready(function() {
 										}
 									} else if(what === "announcement") {
 										// Room announcement
-										var msg = escapeXmlTags(json["text"]);
-										var dateString = getDateString(json["date"]);
+										let msg = escapeXmlTags(json["text"]);
+										let dateString = getDateString(json["date"]);
 										$('#chatroom').append('<p style="color: purple;">[' + dateString + '] <i>' + msg + '</i>');
 										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 									} else if(what === "join") {
 										// Somebody joined
-										var username = json["username"];
+										let username = json["username"];
 										var display = json["display"];
 										participants[username] = escapeXmlTags(display ? display : username);
 										if(username !== myid && $('#rp' + username).length === 0) {
@@ -153,16 +156,14 @@ $(document).ready(function() {
 										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 									} else if(what === "leave") {
 										// Somebody left
-										var username = json["username"];
-										var when = new Date();
+										let username = json["username"];
 										$('#rp' + username).remove();
 										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' left</i></p>');
 										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 										delete participants[username];
 									} else if(what === "kicked") {
 										// Somebody was kicked
-										var username = json["username"];
-										var when = new Date();
+										let username = json["username"];
 										$('#rp' + username).remove();
 										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' was kicked from the room</i></p>');
 										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
@@ -202,6 +203,7 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(field, event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
@@ -233,8 +235,8 @@ function registerUsername() {
 			$('#register').removeAttr('disabled').click(registerUsername);
 			return;
 		}
-		myid = randomString(12);
-		var transaction = randomString(12);
+		myid = Janus.randomString(12);
+		var transaction = Janus.randomString(12);
 		var register = {
 			textroom: "join",
 			transaction: transaction,
@@ -305,7 +307,7 @@ function sendPrivateMsg(username) {
 		if(result && result !== "") {
 			var message = {
 				textroom: "message",
-				transaction: randomString(12),
+				transaction: Janus.randomString(12),
 				room: myroom,
 				to: username,
 				text: result
@@ -331,9 +333,9 @@ function sendData() {
 	}
 	var message = {
 		textroom: "message",
-		transaction: randomString(12),
+		transaction: Janus.randomString(12),
 		room: myroom,
- 		text: data,
+		text: data,
 	};
 	// Note: messages are always acknowledged by default. This means that you'll
 	// always receive a confirmation back that the message has been received by the
@@ -353,22 +355,11 @@ function getDateString(jsonDate) {
 	if(jsonDate) {
 		when = new Date(Date.parse(jsonDate));
 	}
-	var dateString =
+	let dateString =
 			("0" + when.getUTCHours()).slice(-2) + ":" +
 			("0" + when.getUTCMinutes()).slice(-2) + ":" +
 			("0" + when.getUTCSeconds()).slice(-2);
 	return dateString;
-}
-
-// Just an helper to generate random usernames
-function randomString(len, charSet) {
-    charSet = charSet || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    var randomString = '';
-    for (var i = 0; i < len; i++) {
-    	var randomPoz = Math.floor(Math.random() * charSet.length);
-    	randomString += charSet.substring(randomPoz,randomPoz+1);
-    }
-    return randomString;
 }
 
 // Helper to parse query string

@@ -3,6 +3,8 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+
 var janus = null;
 var streaming = null;
 var opaqueId = "streamingtest-"+Janus.randomString(12);
@@ -53,7 +55,7 @@ $(document).ready(function() {
 									$('#start').removeAttr('disabled').html("Stop")
 										.click(function() {
 											$(this).attr('disabled', true);
-											for(var i in bitrateTimer)
+											for(let i in bitrateTimer)
 												clearInterval(bitrateTimer[i]);
 											bitrateTimer = {};
 											janus.destroy();
@@ -90,7 +92,7 @@ $(document).ready(function() {
 												stopStream();
 										} else if(msg["streaming"] === "event") {
 											// Does this event refer to a mid in particular?
-											var mid = result["mid"] ? result["mid"] : "0";
+											let mid = result["mid"] ? result["mid"] : "0";
 											// Is simulcast in place?
 											var substream = result["substream"];
 											var temporal = result["temporal"];
@@ -169,8 +171,8 @@ $(document).ready(function() {
 											if(remoteVideos === 0) {
 												// No video, at least for now: show a placeholder
 												if($('#'+mstreamId+' .no-video-container').length === 0) {
-												$('#'+mstreamId).append(
-													'<div class="no-video-container">' +
+													$('#'+mstreamId).append(
+														'<div class="no-video-container">' +
 														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
 														'<span class="no-video-text">No remote video available</span>' +
 													'</div>');
@@ -252,13 +254,14 @@ $(document).ready(function() {
 									$('#remotevideo' + mid).get(0).play();
 									$('#remotevideo' + mid).get(0).volume = 1;
 								},
-								ondataopen: function(data) {
+								// eslint-disable-next-line no-unused-vars
+								ondataopen: function(label, protocol) {
 									Janus.log("The DataChannel is available!");
 									$('.waitingvideo').remove();
 									$('#mstream' + dataMid).append(
 										'<input class="form-control" type="text" id="datarecv" disabled></input>'
 									);
-									for(var i in spinner) {
+									for(let i in spinner) {
 										if(spinner[i])
 											spinner[i].stop();
 									}
@@ -271,10 +274,10 @@ $(document).ready(function() {
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#videos').empty();
-									for(var i in bitrateTimer)
+									for(let i in bitrateTimer)
 										clearInterval(bitrateTimer[i]);
 									bitrateTimer = {};
-									for(var i in spinner) {
+									for(let i in spinner) {
 										if(spinner[i])
 											spinner[i].stop();
 									}
@@ -394,10 +397,10 @@ function startStream() {
 	// Add some panels to host the remote streams
 	if(streamsList[selectedStream].legacy) {
 		// At max 1-audio/1-video, so use a single panel
-		var mid = null;
-		for(mi in streamsList[selectedStream].media) {
+		let mid = null;
+		for(let mi in streamsList[selectedStream].media) {
 			// Add a new panel
-			var type = streamsList[selectedStream].media[mi].type;
+			let type = streamsList[selectedStream].media[mi].type;
 			if(type === "video") {
 				mid = streamsList[selectedStream].media[mi].mid;
 				break;
@@ -410,7 +413,7 @@ function startStream() {
 		}
 		if(mid) {
 			if(spinner[mid] == null) {
-				var target = document.getElementById('mstream0');
+				let target = document.getElementById('mstream0');
 				spinner[mid] = new Spinner({top:100}).spin(target);
 			} else {
 				spinner[mid].spin();
@@ -419,10 +422,10 @@ function startStream() {
 		dataMid = "0";
 	} else {
 		// Multistream mountpoint, create a panel for each stream
-		for(mi in streamsList[selectedStream].media) {
+		for(let mi in streamsList[selectedStream].media) {
 			// Add a new panel
-			var type = streamsList[selectedStream].media[mi].type;
-			var mid = streamsList[selectedStream].media[mi].mid;
+			let type = streamsList[selectedStream].media[mi].type;
+			let mid = streamsList[selectedStream].media[mi].mid;
 			var label = streamsList[selectedStream].media[mi].label;
 			if($('#mstream'+mid).length === 0) {
 				addPanel(mid, mid, label);
@@ -430,7 +433,7 @@ function startStream() {
 				$('#mstream'+mid).append('<video class="rounded centered waitingvideo" id="waitingvideo'+mid+'" width="100%" height="100%" />');
 			}
 			if(spinner[mid] == null) {
-				var target = document.getElementById('mstream'+mid);
+				let target = document.getElementById('mstream'+mid);
 				spinner[mid] = new Spinner({top:100}).spin(target);
 			} else {
 				spinner[mid].spin();
@@ -487,15 +490,6 @@ function addPanel(panelId, mid, desc) {
 		'	</div>' +
 		'</div>'
 	);
-}
-
-// Helper to escape XML tags
-function escapeXmlTags(value) {
-	if(value) {
-		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
-		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
-		return escapedValue;
-	}
 }
 
 // Helpers to create Simulcast-related UI, if enabled

@@ -3,25 +3,18 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global Janus:readonly, server:readonly */
+
 var janus = null;
 var echotest = null;
 var opaqueId = "echotest-"+Janus.randomString(12);
 
-var localTracks = {}, localVideos = 0,
-	remoteTracks = {}, remoteVideos = 0;
+var remoteTracks = {};
 var bitrateTimer = null;
-var spinner = null;
 
-var audioenabled = false;
-var videoenabled = false;
-
-var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
-var doDtx = (getQueryStringValue("dtx") === "yes" || getQueryStringValue("dtx") === "true");
-var doOpusred = (getQueryStringValue("opusred") === "yes" || getQueryStringValue("opusred") === "true");
 
 // Web Audio context and filters
-var AudioContext = window.AudioContext || window.webkitAudioContext;
-var audioContext = new AudioContext();
+var audioContext = new (window.AudioContext || window.webkitAudioContext)();
 var compressor = null, analyser = null;
 // Canvas and visualizer data
 var canvasContext = null, dataArray = null;
@@ -160,7 +153,7 @@ $(document).ready(function() {
 									// If we're here, a new track was added
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote audio stream:", stream);
 										if($('#peeraudio'+mid).length === 0)
@@ -193,10 +186,7 @@ $(document).ready(function() {
 								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
-									localTracks = {};
-									localVideos = 0;
 									remoteTracks = {};
-									remoteVideos = 0;
 								}
 							});
 					},
@@ -222,6 +212,7 @@ function getQueryStringValue(name) {
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
@@ -286,49 +277,49 @@ function checkEnter(event) {
 function setupWebAudioDemo() {
 	// We have a context already, let's capture the microphone (with gain control disabled)
 	navigator.mediaDevices.getUserMedia({ audio: { autoGainControl: false }, video: false })
-	.then(function(audioStream) {
+		.then(function(audioStream) {
 		// Let's create a source from the microphone stream
-		var microphone = audioContext.createMediaStreamSource(audioStream);
-		// Create a compressor node with some default values
-		compressor = audioContext.createDynamicsCompressor();
-		compressor.threshold.setValueAtTime(-18.0, audioContext.currentTime);
-		compressor.knee.setValueAtTime(9.0, audioContext.currentTime);
-		compressor.ratio.setValueAtTime(3.0, audioContext.currentTime);
-		compressor.attack.setValueAtTime(0.02, audioContext.currentTime);
-		compressor.release.setValueAtTime(0.25, audioContext.currentTime);
-		// Update the content of the compressor UI with the current settings
-		$('#threshold').val('' + compressor.threshold.value);
-		$('#knee').val('' + compressor.knee.value);
-		$('#ratio').val('' + compressor.ratio.value);
-		$('#attack').val('' + compressor.attack.value);
-		$('#release').val('' + compressor.release.value);
-		// Use the compressor as a filter to get a new stream
-		var peer = audioContext.createMediaStreamDestination();
-		microphone.connect(compressor);
-		compressor.connect(peer);
-		// Let's use the compressed stream as source for our PeerConnection
-		echotest.createOffer(
-			{
+			var microphone = audioContext.createMediaStreamSource(audioStream);
+			// Create a compressor node with some default values
+			compressor = audioContext.createDynamicsCompressor();
+			compressor.threshold.setValueAtTime(-18.0, audioContext.currentTime);
+			compressor.knee.setValueAtTime(9.0, audioContext.currentTime);
+			compressor.ratio.setValueAtTime(3.0, audioContext.currentTime);
+			compressor.attack.setValueAtTime(0.02, audioContext.currentTime);
+			compressor.release.setValueAtTime(0.25, audioContext.currentTime);
+			// Update the content of the compressor UI with the current settings
+			$('#threshold').val('' + compressor.threshold.value);
+			$('#knee').val('' + compressor.knee.value);
+			$('#ratio').val('' + compressor.ratio.value);
+			$('#attack').val('' + compressor.attack.value);
+			$('#release').val('' + compressor.release.value);
+			// Use the compressor as a filter to get a new stream
+			var peer = audioContext.createMediaStreamDestination();
+			microphone.connect(compressor);
+			compressor.connect(peer);
+			// Let's use the compressed stream as source for our PeerConnection
+			echotest.createOffer(
+				{
 				// We provide our own stream
-				tracks: [
-					{ type: 'audio', capture: peer.stream.getAudioTracks()[0], recv: true }
-				],
-				success: function(jsep) {
-					Janus.debug("Got SDP!", jsep);
-					var body = { audio: true, video: true };
-					echotest.send({ message: body, jsep: jsep });
-				},
-				error: function(error) {
-					Janus.error("WebRTC error:", error);
-					bootbox.alert("WebRTC error... " + error.message);
-				}
-			});
-	});
+					tracks: [
+						{ type: 'audio', capture: peer.stream.getAudioTracks()[0], recv: true }
+					],
+					success: function(jsep) {
+						Janus.debug("Got SDP!", jsep);
+						var body = { audio: true, video: true };
+						echotest.send({ message: body, jsep: jsep });
+					},
+					error: function(error) {
+						Janus.error("WebRTC error:", error);
+						bootbox.alert("WebRTC error... " + error.message);
+					}
+				});
+		});
 }
 
 // This is our callback to draw the visualizer for the remore audio data
 function drawVisualizer() {
-	drawVisual = requestAnimationFrame(drawVisualizer);
+	requestAnimationFrame(drawVisualizer);
 	analyser.getByteFrequencyData(dataArray);
 	canvasContext.fillStyle = 'rgb(0, 0, 0)';
 	canvasContext.fillRect(0, 0, 432, 240);

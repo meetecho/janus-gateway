@@ -3,6 +3,8 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+
 var janus = null;
 var echotest = null;
 var opaqueId = "canvas-"+Janus.randomString(12);
@@ -14,11 +16,13 @@ var spinner = null;
 var audioenabled = false;
 var videoenabled = false;
 
-var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
 var simulcastStarted = false;
+
+var stream = null;
+var canvasStream = null;
 
 // We'll try to do 15 frames per second: should be relatively fluid, and
 // most important should be doable in JavaScript on lower end machines too
@@ -155,6 +159,7 @@ $(document).ready(function() {
 										updateSimulcastButtons(substream, temporal);
 									}
 								},
+								// eslint-disable-next-line no-unused-vars
 								onlocaltrack: function(track, on) {
 									// We ignore the stream we got here, we're using the canvas to render it
 									if(echotest.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -321,6 +326,7 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {

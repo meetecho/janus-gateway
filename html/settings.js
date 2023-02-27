@@ -1,3 +1,5 @@
+/* eslint-disable no-unused-vars */
+
 // We use this shared JavaScript file as a simple way to have all demos
 // refer to the same settings, e.g., in terms of which server to connect
 // to or which STUN/TURN servers to use. This is helpful any time Janus
