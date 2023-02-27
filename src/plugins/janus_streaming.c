@@ -3254,6 +3254,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					if(stream->port[2] > -1)
 						json_object_set_new(info, "port3", json_integer(stream->port[2]));
 				}
+				if(stream->type == JANUS_STREAMING_MEDIA_DATA)
+					json_object_set_new(info, "datatype", json_string(stream->textdata ? "text" : "binary"));
 				if(stream->fd[0] != -1 || stream->fd[1] != -1 || stream->fd[2] != -1)
 					json_object_set_new(info, "age_ms", json_integer((now - stream->last_received) / 1000));
 				janus_mutex_lock(&source->rec_mutex);
@@ -7072,6 +7074,7 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 		stream->keyframe.temp_ts = 0;
 		janus_mutex_init(&stream->keyframe.mutex);
 	} else if(mtype == JANUS_STREAMING_MEDIA_DATA) {
+		stream->textdata = textdata;
 		stream->buffermsg = buffermsg;
 		stream->last_msg = NULL;
 		janus_mutex_init(&stream->buffermsg_mutex);
