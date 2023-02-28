@@ -159,9 +159,9 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Install modules
-      run: npm install --only=dev
+      run: npm install
     - name: Run ESLint
-      run: node_modules/.bin/eslint html/janus.js
+      run: node_modules/.bin/eslint html
   javascript-rollup:
     runs-on: ubuntu-22.04
     steps:
