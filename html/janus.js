@@ -2293,6 +2293,7 @@ function Janus(gatewayCallbacks) {
 			}
 		}
 		let answer = (callbacks.jsep ? true : false);
+		let desktopAudio = null;
 		for(let track of tracks) {
 			if(!track.type) {
 				Janus.warn('Missing track type:', track);
@@ -2332,6 +2333,8 @@ function Janus(gatewayCallbacks) {
 			let kind = track.type;
 			if(track.type === 'screen')
 				kind = 'video';	// FIXME
+			if(track.type === 'desktopAudio')
+				kind = 'audio'; // FIXME
 			let transceiver = null, sender = null;
 			if(track.mid) {
 				// Search by mid
@@ -2403,9 +2406,32 @@ function Janus(gatewayCallbacks) {
 						}
 					} else {
 						// Use getDisplayMedia
-						stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+						// Figure out if it is a video or audio capture request
+						if(track.type === 'screen') {
+
+							//double check if audio capture is required (messy way)
+							for(const othertrack of tracks) {
+								if(othertrack.type === 'desktopAudio' && othertrack.capture) {
+									constraints.audio = othertrack.capture;
+								}
+							}
+							stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+
+							desktopAudio = stream;
+						}
+						if(track.type === 'desktopAudio') {
+							stream = desktopAudio;
+						}
 					}
-					nt = (track.type === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]);
+					if(track.type === 'desktopAudio' && (desktopAudio == null || desktopAudio.getAudioTracks().length == 0) ) {
+						continue; //ignore no audio in screen capture as it is set at the moment of screen capture
+					}
+
+					nt = (track.type === 'audio' || track.type === 'desktopAudio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]);
+
+					if(track.type === 'desktopAudio') {
+						track.type = 'audio'; //overrulling from here
+					}
 				}
 				if(track.replace) {
 					// Replace the track
