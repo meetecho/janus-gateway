@@ -1411,6 +1411,41 @@ int janus_process_incoming_request(janus_request *request) {
 			}
 			json_t *jsep_e2ee = json_object_get(jsep, "e2ee");
 			gboolean e2ee = jsep_e2ee ? json_is_true(jsep_e2ee) : FALSE;
+			json_t *svc = json_object_get(jsep, "svc");
+			if(svc) {
+				/* SVC properties were passed as well, make sure the format is correct */
+				gboolean svc_valid = TRUE;
+				if(!json_is_array(svc) || json_array_size(svc) < 1) {
+					svc_valid = FALSE;
+				} else {
+					size_t i = 0;
+					for(i=0; i<json_array_size(svc); i++) {
+						json_t *s = json_array_get(svc, i);
+						if(!json_is_object(s)) {
+							svc_valid = FALSE;
+							break;
+						}
+						json_t *s_mindex = json_object_get(s, "mindex");
+						json_t *s_mid = json_object_get(s, "mid");
+						json_t *s_svc = json_object_get(s, "svc");
+						if(!s_mindex && !s_mid) {
+							svc_valid = FALSE;
+							break;
+						}
+						if((s_mindex && !json_is_integer(s_mindex)) ||
+								(s_mid && !json_is_string(s_mid)) ||
+								!s_svc || !json_is_string(s_svc)) {
+							svc_valid = FALSE;
+							break;
+						}
+					}
+				}
+				if(!svc_valid) {
+					svc = NULL;
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Invalid 'svc' value, ignoring\n", handle->handle_id);
+					json_object_del(jsep, "svc");
+				}
+			}
 			/* Are we still cleaning up from a previous media session? */
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still cleaning up from a previous media session, let's wait a bit...\n", handle->handle_id);
@@ -1747,6 +1782,11 @@ int janus_process_incoming_request(janus_request *request) {
 			janus_mutex_unlock(&handle->mutex);
 			if(simulcast)
 				json_object_set_new(body_jsep, "simulcast", simulcast);
+			json_t *svc = json_object_get(jsep, "svc");
+			if(svc) {
+				json_incref(svc);
+				json_object_set_new(body_jsep, "svc", svc);
+			}
 			/* Check if this is a renegotiation or update */
 			if(renegotiation)
 				json_object_set_new(body_jsep, "update", json_true());

@@ -979,6 +979,23 @@ static void *janus_echotest_handler(void *data) {
 				break;
 			}
 		}
+		json_t *msg_svc = json_object_get(msg->jsep, "svc");
+		if(msg_svc && json_array_size(msg_svc) > 0) {
+			size_t i = 0;
+			for(i=0; i<json_array_size(msg_svc); i++) {
+				json_t *s = json_array_get(msg_svc, i);
+				int mindex = json_integer_value(json_object_get(s, "mindex"));
+				JANUS_LOG(LOG_VERB, "EchoTest client is going to do SVC (#%d)\n", mindex);
+				if(!session->svc) {
+					janus_rtp_svc_context_reset(&session->svc_context);
+					session->svc_context.spatial_target = 2;	/* FIXME Actually depends on the scalabilityMode */
+					session->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
+					session->svc = TRUE;
+				}
+				/* FIXME We're stopping at the first item, there may be more */
+				break;
+			}
+		}
 		json_t *msg_e2ee = json_object_get(msg->jsep, "e2ee");
 		if(json_is_true(msg_e2ee))
 			session->e2ee = TRUE;
@@ -999,7 +1016,6 @@ static void *janus_echotest_handler(void *data) {
 			g_snprintf(error_cause, 512, "Invalid value (temporal should be 0, 1 or 2)");
 			goto error;
 		}
-		json_t *svc = json_object_get(root, "svc");
 		json_t *spatial_layer = json_object_get(root, "spatial_layer");
 		if(spatial_layer && json_integer_value(spatial_layer) > 2) {
 			JANUS_LOG(LOG_ERR, "Invalid element (spatial_layer should be 0, 1 or 2)\n");
@@ -1085,15 +1101,6 @@ static void *janus_echotest_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Simulcasting temporal layer change, sending a PLI to kickstart it\n");
 				gateway->send_pli(session->handle);
 			}
-		}
-		if(svc) {
-			gboolean do_svc = json_is_true(svc);
-			if(do_svc && !session->svc) {
-				janus_rtp_svc_context_reset(&session->svc_context);
-				session->svc_context.spatial_target = 2;	/* FIXME Actually depends on the scalabilityMode */
-				session->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
-			}
-			session->svc = do_svc;
 		}
 		if(spatial_layer) {
 			session->svc_context.spatial_target = json_integer_value(spatial_layer);

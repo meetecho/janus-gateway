@@ -83,9 +83,6 @@ $(document).ready(function() {
 									// profile as well (e.g., ?vprofile=2 for VP9, or ?vprofile=42e01f for H.264)
 									if(vprofile)
 										body["videoprofile"] = vprofile;
-									// In case we want to use SVC, we tell the plugin that
-									if(doSvc && (vcodec === 'vp9' || vcodec === 'av1'))
-										body["svc"] = true;
 									// We can force RED for audio too, if supported by the browser
 									if(doOpusred)
 										body["opusred"] = true;
