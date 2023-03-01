@@ -1159,7 +1159,8 @@ static void *janus_echotest_handler(void *data) {
 		}
 
 		if(!audio && !video && !videocodec && !videoprofile && !opusred && !bitrate &&
-				!substream && !temporal && !fallback && !record && !min_delay && !max_delay && !msg_sdp) {
+				!substream && !temporal && !fallback && !spatial_layer && !temporal_layer &&
+				!record && !min_delay && !max_delay && !msg_sdp) {
 			JANUS_LOG(LOG_ERR, "No supported attributes found\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Message error: no supported attributes found");
