@@ -97,7 +97,7 @@ $(document).ready(function() {
 												{ type: 'video', capture: true, recv: true,
 													// We may need to enable simulcast or SVC on the video track
 													simulcast: doSimulcast,
-													// We only support SVC for VP9 and (in a tiny part) AV1
+													// We only support SVC for VP9 and (still WIP) AV1
 													svc: ((vcodec === 'vp9' || vcodec === 'av1') && doSvc) ? doSvc : null
 												},
 												{ type: 'data' },
@@ -494,7 +494,7 @@ function getQueryStringValue(name) {
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }
 
-// Helpers to create Simulcast-related UI, if enabled
+// Helpers to create Simulcast- or SVC-related UI, if enabled
 function addSimulcastSvcButtons(temporal) {
 	let what = (simulcastStarted ? 'simulcast' : 'SVC');
 	let layer = (simulcastStarted ? 'substream' : 'layer');

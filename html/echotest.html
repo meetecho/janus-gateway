@@ -58,12 +58,16 @@
 						back to you. You can also try and cap the bitrate: such control
 						will tell the server to manipulate the RTCP REMB packets passing
 						through, in order to simulate a bandwidth limitation. In case
-						you're interested in testing simulcasting, add the <code>?simulcast=true</code>
+						you're interested in testing simulcasting or SVC, add a
+						<code>?simulcast=true</code> (for simulcast) or <code>?svc=&lt;mode&gt;</code> (for SVC)
 						query string to the url of this page and reload it: buttons will appear
 						to allow you to try and switch between lower and higher quality
-						versions of the video you're capturing: notice that you may have
+						versions of the video you're capturing. Notice that you may have
 						to increase the bandwidth indicator to have the higher quality
-						versions appear, as the browser will not encode them otherwise.</p>
+						versions appear, as the browser will not encode them otherwise.
+						Besides, notice that simulcast will only work when using VP8 or H.264,
+						while SVC will only work if you're using VP9 on a browser that
+						supports setting the <code>scalabilityMode</code>.</p>
 						<p>Finally, this demo also includes Data Channels: whatever you
 						write in the text box under your local video, will be sent via
 						Data Channels to the plugins, modified by adding a fixed prefix,

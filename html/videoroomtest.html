@@ -61,17 +61,17 @@
 						<a href="mvideoroomtest.html">multistream VideoRoom demo</a>
 						instead. The two demos are interoperable, if you want to see how
 						different subscription mechanisms are used on the same sources.</div>
-						<p>If you're interested in testing how simulcasting can be used within
-						the context of a videoconferencing application, just pass the
-						<code>?simulcast=true</code> query string to the url of this page and
-						reload it. If you're using a browser that does support simulcasting
-						(Chrome or Firefox) and the room is configured to use VP8, you'll
-						send multiple qualities of the video you're capturing. Notice that
-						simulcasting will only occur if the browser thinks there is enough
-						bandwidth, so you'll have to play with the Bandwidth selector to
+						<p>If you're interested in testing how simulcasting or SVC can be used within
+						the context of a videoconferencing application, just pass a
+						<code>?simulcast=true</code> (for simulcast) or <code>?svc=&lt;mode&gt;</code>
+						(for SVC) query string to the url of this page and reload it. Notice that
+						simulcast will only work when using VP8 or H.264, while SVC will only work
+						if you're using VP9 on a browser that supports setting the <code>scalabilityMode</code>.
+						Besides, notice that simulcasting/SVC will only be sent if the browser thinks
+						there is enough bandwidth, so you may have to play with the Bandwidth selector to
 						increase it. New buttons to play with the feature will automatically
-						appear for viewers when receiving any simulcasted stream. Notice that
-						no simulcast support is needed for watching, only for publishing.</p>
+						appear for viewers when receiving any simulcast/SVC stream. Notice that
+						no simulcast/SVC support is needed for watching, only for publishing.</p>
 						<p>To use the demo, just insert a username to join the default room that
 						is configured. This will add you to the list of participants, and allow
 						you to automatically send your audio/video frames and receive the other

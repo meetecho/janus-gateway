@@ -89,7 +89,6 @@ room-<unique room ID>: {
 	h264_profile = H.264-specific profile to prefer (e.g., "42e01f" for "profile-level-id=42e01f")
 	opus_fec = true|false (whether inband FEC must be negotiated; only works for Opus, default=true)
 	opus_dtx = true|false (whether DTX must be negotiated; only works for Opus, default=false)
-	video_svc = true|false (whether SVC support must be enabled; only works for VP9, default=false)
 	audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must be
 		negotiated/used or not for new publishers, default=true)
 	audiolevel_event = true|false (whether to emit event to other users or not, default=false)
@@ -418,7 +417,6 @@ room-<unique room ID>: {
 			"videocodec" : "<comma separated list of allowed video codecs>",
 			"opus_fec": <true|false, whether inband FEC must be negotiated (note: only available for Opus) (optional)>,
 			"opus_dtx": <true|false, whether DTX must be negotiated (note: only available for Opus) (optional)>,
-			"video_svc": <true|false, whether SVC must be done for video (note: only available for VP9 right now) (optional)>,
 			"record" : <true|false, whether the room is being recorded>,
 			"rec_dir" : "<if recording, the path where the .mjr files are being saved>",
 			"lock_record" : <true|false, whether the room recording state can only be changed providing the secret>,
@@ -1613,7 +1611,6 @@ static struct janus_json_parameter create_parameters[] = {
 	{"h264_profile", JSON_STRING, 0},
 	{"opus_fec", JANUS_JSON_BOOL, 0},
 	{"opus_dtx", JANUS_JSON_BOOL, 0},
-	{"video_svc", JANUS_JSON_BOOL, 0},
 	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
 	{"audiolevel_event", JANUS_JSON_BOOL, 0},
 	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -2020,7 +2017,6 @@ typedef struct janus_videoroom {
 	char *h264_profile;			/* H.264 codec profile to prefer, if more are negotiated */
 	gboolean do_opusfec;		/* Whether inband FEC must be negotiated (note: only available for Opus) */
 	gboolean do_opusdtx;		/* Whether DTX must be negotiated (note: only available for Opus) */
-	gboolean do_svc;			/* Whether SVC must be done for video (note: only available for VP9 right now) */
 	gboolean audiolevel_ext;	/* Whether the ssrc-audio-level extension must be negotiated or not for new publishers */
 	gboolean audiolevel_event;	/* Whether to emit event to other users about audiolevel */
 	int audio_active_packets;	/* Amount of packets with audio level for checkup */
@@ -3135,8 +3131,6 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 			ps->h264_profile = g_strdup(room->h264_profile);
 		else if(ps->vcodec == JANUS_VIDEOCODEC_VP9 && ps->vp9_profile == NULL && room->vp9_profile != NULL)
 			ps->vp9_profile = g_strdup(room->vp9_profile);
-		if(ps->vcodec == JANUS_VIDEOCODEC_VP9 && room->do_svc)
-			ps->svc = TRUE;	/* FIXME */
 		ps->min_delay = -1;
 		ps->max_delay = -1;
 		g_atomic_int_set(&ps->destroyed, 0);
@@ -3213,8 +3207,6 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(
 	stream->sim_context.substream_target = 2;
 	stream->sim_context.templayer_target = 2;
 	janus_vp8_simulcast_context_reset(&stream->vp8_context);
-	/* This stream may belong to a room where VP9 SVC has been enabled,
-	 * let's assume we're interested in all layers for the time being */
 	janus_rtp_svc_context_reset(&stream->svc_context);
 	stream->svc_context.spatial_target = 2;	/* FIXME Actually depends on the scalabilityMode */
 	stream->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
@@ -3274,10 +3266,8 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_
 				}
 				janus_vp8_simulcast_context_reset(&stream->vp8_context);
 				if(ps->svc) {
-					/* This stream belongs to a room where VP9 SVC has been enabled,
-					 * let's assume we're interested in all layers for the time being */
 					janus_rtp_svc_context_reset(&stream->svc_context);
-					stream->svc_context.spatial_target = 2;	/* FIXME Actually depends on the scalabilityMode */
+					stream->svc_context.spatial_target = 2;		/* FIXME Actually depends on the scalabilityMode */
 					stream->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
 				}
 				janus_mutex_lock(&ps->subscribers_mutex);
@@ -3587,7 +3577,6 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *h264profile = janus_config_get(config, cat, janus_config_type_item, "h264_profile");
 			janus_config_item *fec = janus_config_get(config, cat, janus_config_type_item, "opus_fec");
 			janus_config_item *dtx = janus_config_get(config, cat, janus_config_type_item, "opus_dtx");
-			janus_config_item *svc = janus_config_get(config, cat, janus_config_type_item, "video_svc");
 			janus_config_item *audiolevel_ext = janus_config_get(config, cat, janus_config_type_item, "audiolevel_ext");
 			janus_config_item *audiolevel_event = janus_config_get(config, cat, janus_config_type_item, "audiolevel_event");
 			janus_config_item *audio_active_packets = janus_config_get(config, cat, janus_config_type_item, "audio_active_packets");
@@ -3758,17 +3747,6 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 						videoroom->acodec[4] != JANUS_AUDIOCODEC_OPUS) {
 					videoroom->do_opusdtx = FALSE;
 					JANUS_LOG(LOG_WARN, "DTX is only supported for rooms that allow Opus: disabling it...\n");
-				}
-			}
-			if(svc && svc->value && janus_is_true(svc->value)) {
-				if(videoroom->vcodec[0] == JANUS_VIDEOCODEC_VP9 &&
-						videoroom->vcodec[1] == JANUS_VIDEOCODEC_NONE &&
-						videoroom->vcodec[2] == JANUS_VIDEOCODEC_NONE &&
-						videoroom->vcodec[3] == JANUS_VIDEOCODEC_NONE &&
-						videoroom->vcodec[4] == JANUS_VIDEOCODEC_NONE) {
-					videoroom->do_svc = TRUE;
-				} else {
-					JANUS_LOG(LOG_WARN, "SVC is only supported, in an experimental way, for VP9 only rooms: disabling it...\n");
 				}
 			}
 			videoroom->audiolevel_ext = TRUE;
@@ -4637,7 +4615,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *h264profile = json_object_get(root, "h264_profile");
 		json_t *fec = json_object_get(root, "opus_fec");
 		json_t *dtx = json_object_get(root, "opus_dtx");
-		json_t *svc = json_object_get(root, "video_svc");
 		json_t *audiolevel_ext = json_object_get(root, "audiolevel_ext");
 		json_t *audiolevel_event = json_object_get(root, "audiolevel_event");
 		json_t *audio_active_packets = json_object_get(root, "audio_active_packets");
@@ -4858,17 +4835,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				JANUS_LOG(LOG_WARN, "DTX is only supported for rooms that allow Opus: disabling it...\n");
 			}
 		}
-		if(svc && json_is_true(svc)) {
-			if(videoroom->vcodec[0] == JANUS_VIDEOCODEC_VP9 &&
-					videoroom->vcodec[1] == JANUS_VIDEOCODEC_NONE &&
-					videoroom->vcodec[2] == JANUS_VIDEOCODEC_NONE &&
-					videoroom->vcodec[3] == JANUS_VIDEOCODEC_NONE &&
-					videoroom->vcodec[4] == JANUS_VIDEOCODEC_NONE) {
-				videoroom->do_svc = TRUE;
-			} else {
-				JANUS_LOG(LOG_WARN, "SVC is only supported, in an experimental way, for VP9 only rooms: disabling it...\n");
-			}
-		}
 		videoroom->audiolevel_ext = audiolevel_ext ? json_is_true(audiolevel_ext) : TRUE;
 		videoroom->audiolevel_event = audiolevel_event ? json_is_true(audiolevel_event) : FALSE;
 		if(videoroom->audiolevel_event) {
@@ -5015,8 +4981,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				janus_config_add(config, c, janus_config_item_create("opus_fec", "yes"));
 			if(videoroom->do_opusdtx)
 				janus_config_add(config, c, janus_config_item_create("opus_dtx", "yes"));
-			if(videoroom->do_svc)
-				janus_config_add(config, c, janus_config_item_create("video_svc", "yes"));
 			if(videoroom->room_secret)
 				janus_config_add(config, c, janus_config_item_create("secret", videoroom->room_secret));
 			if(videoroom->room_pin)
@@ -5210,8 +5174,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				janus_config_add(config, c, janus_config_item_create("opus_fec", "yes"));
 			if(videoroom->do_opusdtx)
 				janus_config_add(config, c, janus_config_item_create("opus_dtx", "yes"));
-			if(videoroom->do_svc)
-				janus_config_add(config, c, janus_config_item_create("video_svc", "yes"));
 			if(videoroom->room_secret)
 				janus_config_add(config, c, janus_config_item_create("secret", videoroom->room_secret));
 			if(videoroom->room_pin)
@@ -5415,8 +5377,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					json_object_set_new(rl, "opus_fec", json_true());
 				if(room->do_opusdtx)
 					json_object_set_new(rl, "opus_dtx", json_true());
-				if(room->do_svc)
-					json_object_set_new(rl, "video_svc", json_true());
 				json_object_set_new(rl, "record", room->record ? json_true() : json_false());
 				json_object_set_new(rl, "rec_dir", json_string(room->rec_dir));
 				json_object_set_new(rl, "lock_record", room->lock_record ? json_true() : json_false());
@@ -11682,7 +11642,7 @@ static void *janus_videoroom_handler(void *data) {
 					stream->sim_context.templayer_target = 2;
 					janus_vp8_simulcast_context_reset(&stream->vp8_context);
 					janus_rtp_svc_context_reset(&stream->svc_context);
-					stream->svc_context.spatial_target = 2;	/* FIXME Actually depends on the scalabilityMode */
+					stream->svc_context.spatial_target = 2;		/* FIXME Actually depends on the scalabilityMode */
 					stream->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
 					janus_mutex_unlock(&ps->subscribers_mutex);
 					janus_videoroom_reqpli(ps, "Subscriber switch");
@@ -11792,6 +11752,7 @@ static void *janus_videoroom_handler(void *data) {
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
 		json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
+		json_t *msg_svc = json_object_get(msg->jsep, "svc");
 		gboolean e2ee = json_is_true(json_object_get(msg->jsep, "e2ee"));
 		if(!msg_sdp) {
 			/* No SDP to send */
@@ -12135,7 +12096,7 @@ static void *janus_videoroom_handler(void *data) {
 									}
 								}
 							}
-							/* Check if simulcast is in place */
+							/* Check if simulcast or SVC is in place */
 							if(msg_simulcast != NULL && json_array_size(msg_simulcast) > 0 &&
 									(ps->vcodec == JANUS_VIDEOCODEC_VP8 || ps->vcodec == JANUS_VIDEOCODEC_H264)) {
 								size_t i = 0;
@@ -12154,9 +12115,18 @@ static void *janus_videoroom_handler(void *data) {
 										ps->vssrc, ps->rid);
 									janus_mutex_unlock(&ps->rid_mutex);
 								}
+							} else if(msg_svc != NULL && json_array_size(msg_svc) > 0 &&
+									ps->vcodec == JANUS_VIDEOCODEC_VP9) {
+								size_t i = 0;
+								for(i=0; i<json_array_size(msg_svc); i++) {
+									json_t *s = json_array_get(msg_svc, i);
+									int mindex = json_integer_value(json_object_get(s, "mindex"));
+									if(mindex != ps->mindex)
+										continue;
+									JANUS_LOG(LOG_WARN, "Publisher stream is going to do SVC (#%d, %s)\n", ps->mindex, ps->mid);
+									ps->svc = TRUE;
+								}
 							}
-							if(ps->vcodec == JANUS_VIDEOCODEC_VP9 && videoroom->do_svc)
-								ps->svc = TRUE;	/* FIXME */
 							mdir = (ps->vcodec != JANUS_VIDEOCODEC_NONE ? JANUS_SDP_RECVONLY : JANUS_SDP_INACTIVE);
 						} else if(m->type == JANUS_SDP_APPLICATION) {
 							mdir = JANUS_SDP_RECVONLY;
