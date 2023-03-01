@@ -459,7 +459,7 @@ function publishOwnFeed(useAudio) {
 		simulcast: doSimulcast,
 		// We only support SVC for VP9 and (still WIP) AV1
 		svc: ((vcodec === 'vp9' || vcodec === 'av1') && doSvc) ? doSvc : null
-	 });
+	});
 	//~ tracks.push({ type: 'data' });
 
 	sfutest.createOffer(
