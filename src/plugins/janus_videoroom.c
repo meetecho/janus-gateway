@@ -2316,11 +2316,8 @@ typedef struct janus_videoroom_subscriber_stream {
 	janus_rtp_switching_context context;
 	janus_rtp_simulcasting_context sim_context;
 	janus_vp8_simulcast_context vp8_context;
-	/* The following are only relevant if we're doing VP9 SVC, and are not to be confused with plain
-	 * simulcast, which has similar info (substream/templayer) but in a completely different context */
-	int spatial_layer, target_spatial_layer;
-	gint64 last_spatial_layer[3];
-	int temporal_layer, target_temporal_layer;
+	/* SVC context */
+	janus_rtp_svc_context svc_context;
 	/* Playout delays to enforce when relaying this stream, if the extension has been negotiated */
 	int16_t min_delay, max_delay;
 	volatile gint ready, destroyed;
@@ -3218,10 +3215,9 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(
 	janus_vp8_simulcast_context_reset(&stream->vp8_context);
 	/* This stream may belong to a room where VP9 SVC has been enabled,
 	 * let's assume we're interested in all layers for the time being */
-	stream->spatial_layer = -1;
-	stream->target_spatial_layer = 1;		/* FIXME Chrome sends 0 and 1 */
-	stream->temporal_layer = -1;
-	stream->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
+	janus_rtp_svc_context_reset(&stream->svc_context);
+	stream->svc_context.spatial_target = 2;	/* FIXME Actually depends on the scalabilityMode */
+	stream->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
 	janus_mutex_lock(&ps->subscribers_mutex);
 	ps->subscribers = g_slist_append(ps->subscribers, stream);
 	/* The two streams reference each other */
@@ -3280,10 +3276,9 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_
 				if(ps->svc) {
 					/* This stream belongs to a room where VP9 SVC has been enabled,
 					 * let's assume we're interested in all layers for the time being */
-					stream->spatial_layer = -1;
-					stream->target_spatial_layer = 1;		/* FIXME Chrome sends 0 and 1 */
-					stream->temporal_layer = -1;
-					stream->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
+					janus_rtp_svc_context_reset(&stream->svc_context);
+					stream->svc_context.spatial_target = 2;	/* FIXME Actually depends on the scalabilityMode */
+					stream->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
 				}
 				janus_mutex_lock(&ps->subscribers_mutex);
 				if(g_slist_find(ps->subscribers, stream) == NULL && g_slist_find(stream->publisher_streams, ps) == NULL) {
@@ -3418,10 +3413,10 @@ static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscr
 			}
 			if(ps->svc) {
 				json_t *svc = json_object();
-				json_object_set_new(svc, "spatial-layer", json_integer(stream->spatial_layer));
-				json_object_set_new(svc, "target-spatial-layer", json_integer(stream->target_spatial_layer));
-				json_object_set_new(svc, "temporal-layer", json_integer(stream->temporal_layer));
-				json_object_set_new(svc, "target-temporal-layer", json_integer(stream->target_temporal_layer));
+				json_object_set_new(svc, "spatial-layer", json_integer(stream->svc_context.spatial));
+				json_object_set_new(svc, "target-spatial-layer", json_integer(stream->svc_context.spatial_target));
+				json_object_set_new(svc, "temporal-layer", json_integer(stream->svc_context.temporal));
+				json_object_set_new(svc, "target-temporal-layer", json_integer(stream->svc_context.temporal_target));
 				json_object_set_new(m, "svc", svc);
 			}
 		}
@@ -9874,9 +9869,9 @@ static void *janus_videoroom_handler(void *data) {
 							if(sc_fallback)
 								stream->sim_context.drop_trigger = json_integer_value(sc_fallback);
 							if(spatial)
-								stream->target_spatial_layer = json_integer_value(spatial);
+								stream->svc_context.spatial_target = json_integer_value(spatial);
 							if(temporal)
-								stream->target_temporal_layer = json_integer_value(temporal);
+								stream->svc_context.temporal_target = json_integer_value(temporal);
 						}
 						if(stream && ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 							/* Override the playout-delay properties */
@@ -9937,9 +9932,9 @@ static void *janus_videoroom_handler(void *data) {
 								if(sc_temporal)
 									stream->sim_context.templayer_target = json_integer_value(sc_temporal);
 								if(spatial)
-									stream->target_spatial_layer = json_integer_value(spatial);
+									stream->svc_context.spatial_target = json_integer_value(spatial);
 								if(temporal)
-									stream->target_temporal_layer = json_integer_value(temporal);
+									stream->svc_context.temporal_target = json_integer_value(temporal);
 							}
 							if(stream && ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 								/* Override the playout-delay properties */
@@ -10876,9 +10871,9 @@ static void *janus_videoroom_handler(void *data) {
 									if(sc_fallback)
 										stream->sim_context.drop_trigger = json_integer_value(sc_fallback);
 									if(spatial)
-										stream->target_spatial_layer = json_integer_value(spatial);
+										stream->svc_context.spatial_target = json_integer_value(spatial);
 									if(temporal)
-										stream->target_temporal_layer = json_integer_value(temporal);
+										stream->svc_context.temporal_target = json_integer_value(temporal);
 								}
 								if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 									/* Override the playout-delay properties */
@@ -10930,9 +10925,9 @@ static void *janus_videoroom_handler(void *data) {
 										if(sc_fallback)
 											stream->sim_context.drop_trigger = json_integer_value(sc_fallback);
 										if(spatial)
-											stream->target_spatial_layer = json_integer_value(spatial);
+											stream->svc_context.spatial_target = json_integer_value(spatial);
 										if(temporal)
-											stream->target_temporal_layer = json_integer_value(temporal);
+											stream->svc_context.temporal_target = json_integer_value(temporal);
 									}
 									if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 										/* Override the playout-delay properties */
@@ -11288,42 +11283,39 @@ static void *janus_videoroom_handler(void *data) {
 							/* Also check if the viewer is trying to configure a layer change */
 							if(spatial) {
 								int spatial_layer = json_integer_value(spatial);
-								if(spatial_layer > 1) {
-									JANUS_LOG(LOG_WARN, "Spatial layer higher than 1, will probably be ignored\n");
-								}
-								if(spatial_layer == stream->spatial_layer) {
+								if(spatial_layer == stream->svc_context.spatial) {
 									/* No need to do anything, we're already getting the right spatial layer, so notify the user */
 									json_t *event = json_object();
 									json_object_set_new(event, "videoroom", json_string("event"));
 									json_object_set_new(event, "room", string_ids ?
 										json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 									json_object_set_new(event, "mid", json_string(stream->mid));
-									json_object_set_new(event, "spatial_layer", json_integer(stream->spatial_layer));
+									json_object_set_new(event, "spatial_layer", json_integer(stream->svc_context.spatial));
 									gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
 									json_decref(event);
-								} else if(spatial_layer != stream->target_spatial_layer) {
+								} else if(spatial_layer != stream->svc_context.spatial_target) {
 									/* Send a PLI to the new RTP forward publisher */
 									janus_videoroom_reqpli(ps, "Need to downscale spatially");
 								}
-								stream->target_spatial_layer = spatial_layer;
+								stream->svc_context.spatial_target = spatial_layer;
 							}
 							if(temporal) {
 								int temporal_layer = json_integer_value(temporal);
 								if(temporal_layer > 2) {
 									JANUS_LOG(LOG_WARN, "Temporal layer higher than 2, will probably be ignored\n");
 								}
-								if(temporal_layer == stream->temporal_layer) {
+								if(temporal_layer == stream->svc_context.temporal) {
 									/* No need to do anything, we're already getting the right temporal layer, so notify the user */
 									json_t *event = json_object();
 									json_object_set_new(event, "videoroom", json_string("event"));
 									json_object_set_new(event, "room", string_ids ?
 										json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 									json_object_set_new(event, "mid", json_string(stream->mid));
-									json_object_set_new(event, "temporal_layer", json_integer(stream->temporal_layer));
+									json_object_set_new(event, "temporal_layer", json_integer(stream->svc_context.temporal_target));
 									gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
 									json_decref(event);
 								}
-								stream->target_temporal_layer = temporal_layer;
+								stream->svc_context.temporal_target = temporal_layer;
 							}
 						}
 						if(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
@@ -11689,10 +11681,9 @@ static void *janus_videoroom_handler(void *data) {
 					stream->sim_context.substream_target = 2;
 					stream->sim_context.templayer_target = 2;
 					janus_vp8_simulcast_context_reset(&stream->vp8_context);
-					stream->spatial_layer = -1;
-					stream->target_spatial_layer = 1;		/* FIXME Chrome sends 0 and 1 */
-					stream->temporal_layer = -1;
-					stream->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
+					janus_rtp_svc_context_reset(&stream->svc_context);
+					stream->svc_context.spatial_target = 2;	/* FIXME Actually depends on the scalabilityMode */
+					stream->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
 					janus_mutex_unlock(&ps->subscribers_mutex);
 					janus_videoroom_reqpli(ps, "Subscriber switch");
 					if(unref)
@@ -12482,142 +12473,47 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 	if(packet->is_video) {
 		/* Check if there's any SVC info to take into account */
 		if(packet->svc) {
-			/* There is: check if this is a layer that can be dropped for this viewer
-			 * Note: Following core inspired by the excellent job done by Sergio Garcia Murillo here:
-			 * https://github.com/medooze/media-server/blob/master/src/vp9/VP9LayerSelector.cpp */
+			/* Handle SVC: make sure we have a payload to work with */
 			int plen = 0;
 			char *payload = janus_rtp_payload((char *)packet->data, packet->length, &plen);
-			gboolean keyframe = janus_vp9_is_keyframe((const char *)payload, plen);
-			gboolean override_mark_bit = FALSE, has_marker_bit = packet->data->markerbit;
-			int spatial_layer = stream->spatial_layer;
-			gint64 now = janus_get_monotonic_time();
-			if(packet->svc_info.spatial_layer >= 0 && packet->svc_info.spatial_layer <= 2)
-				stream->last_spatial_layer[packet->svc_info.spatial_layer] = now;
-			if(stream->target_spatial_layer > stream->spatial_layer) {
-				JANUS_LOG(LOG_HUGE, "We need to upscale spatially: (%d < %d)\n",
-					stream->spatial_layer, stream->target_spatial_layer);
-				/* We need to upscale: wait for a keyframe */
-				if(keyframe) {
-					int new_spatial_layer = stream->target_spatial_layer;
-					while(new_spatial_layer > stream->spatial_layer && new_spatial_layer > 0) {
-						if(now - stream->last_spatial_layer[new_spatial_layer] >= 250000) {
-							/* We haven't received packets from this layer for a while, try a lower layer */
-							JANUS_LOG(LOG_HUGE, "Haven't received packets from layer %d for a while, trying %d instead...\n",
-								new_spatial_layer, new_spatial_layer-1);
-							new_spatial_layer--;
-						} else {
-							break;
-						}
-					}
-					if(new_spatial_layer > stream->spatial_layer) {
-						JANUS_LOG(LOG_HUGE, "  -- Upscaling spatial layer: %d --> %d (need %d)\n",
-							stream->spatial_layer, new_spatial_layer, stream->target_spatial_layer);
-						stream->spatial_layer = new_spatial_layer;
-						spatial_layer = stream->spatial_layer;
-						/* Notify the viewer */
-						json_t *event = json_object();
-						json_object_set_new(event, "videoroom", json_string("event"));
-						json_object_set_new(event, "room", string_ids ? json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-						json_object_set_new(event, "mid", json_string(stream->mid));
-						json_object_set_new(event, "spatial_layer", json_integer(stream->spatial_layer));
-						if(stream->temporal_layer == -1) {
-							/* We just started: initialize the temporal layer and notify that too */
-							stream->temporal_layer = 0;
-							json_object_set_new(event, "temporal_layer", json_integer(stream->temporal_layer));
-						}
-						gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
-						json_decref(event);
-					}
-				}
-			} else if(stream->target_spatial_layer < stream->spatial_layer) {
-				/* We need to downscale */
-				JANUS_LOG(LOG_HUGE, "We need to downscale spatially: (%d > %d)\n",
-					stream->spatial_layer, stream->target_spatial_layer);
-				gboolean downscaled = FALSE;
-				if(!packet->svc_info.fbit && keyframe) {
-					/* Non-flexible mode: wait for a keyframe */
-					downscaled = TRUE;
-				} else if(packet->svc_info.fbit && packet->svc_info.ebit) {
-					/* Flexible mode: check the E bit */
-					downscaled = TRUE;
-				}
-				if(downscaled) {
-					JANUS_LOG(LOG_HUGE, "  -- Downscaling spatial layer: %d --> %d\n",
-						stream->spatial_layer, stream->target_spatial_layer);
-					stream->spatial_layer = stream->target_spatial_layer;
-					/* Notify the viewer */
-					json_t *event = json_object();
-					json_object_set_new(event, "videoroom", json_string("event"));
-					json_object_set_new(event, "room", string_ids ? json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-					json_object_set_new(event, "mid", json_string(stream->mid));
-					json_object_set_new(event, "spatial_layer", json_integer(stream->spatial_layer));
-					gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
-					json_decref(event);
-				}
-			}
-			if(spatial_layer < packet->svc_info.spatial_layer) {
-				/* Drop the packet: update the context to make sure sequence number is increased normally later */
-				JANUS_LOG(LOG_HUGE, "Dropping packet (spatial layer %d < %d)\n", spatial_layer, packet->svc_info.spatial_layer);
-				stream->context.base_seq++;
+			if(payload == NULL)
 				return;
-			} else if(packet->svc_info.ebit && spatial_layer == packet->svc_info.spatial_layer) {
-				/* If we stop at layer 0, we need a marker bit now, as the one from layer 1 will not be received */
-				override_mark_bit = TRUE;
+			/* Process this packet: don't relay if it's not the layer we wanted to handle */
+			janus_rtp_header rtp = *(packet->data);
+			gboolean relay = janus_rtp_svc_context_process_rtp(&stream->svc_context,
+				(char *)packet->data, packet->length, ps->vcodec, &packet->svc_info, &stream->context);
+			if(stream->svc_context.need_pli) {
+				/* Send a PLI */
+				JANUS_LOG(LOG_VERB, "We need a PLI for the SVC context\n");
+				janus_videoroom_reqpli(ps, "SVC change");
 			}
-			int temporal_layer = stream->temporal_layer;
-			if(stream->target_temporal_layer > stream->temporal_layer) {
-				/* We need to upscale */
-				JANUS_LOG(LOG_HUGE, "We need to upscale temporally: (%d < %d)\n",
-					stream->temporal_layer, stream->target_temporal_layer);
-				if(packet->svc_info.ubit && packet->svc_info.bbit &&
-						packet->svc_info.temporal_layer > stream->temporal_layer &&
-						packet->svc_info.temporal_layer <= stream->target_temporal_layer) {
-					JANUS_LOG(LOG_HUGE, "  -- Upscaling temporal layer: %d --> %d (want %d)\n",
-						stream->temporal_layer, packet->svc_info.temporal_layer, stream->target_temporal_layer);
-					stream->temporal_layer = packet->svc_info.temporal_layer;
-					temporal_layer = stream->temporal_layer;
-					/* Notify the viewer */
-					json_t *event = json_object();
-					json_object_set_new(event, "videoroom", json_string("event"));
-					json_object_set_new(event, "room", string_ids ? json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-					json_object_set_new(event, "mid", json_string(stream->mid));
-					json_object_set_new(event, "temporal_layer", json_integer(stream->temporal_layer));
-					gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
-					json_decref(event);
-				}
-			} else if(stream->target_temporal_layer < stream->temporal_layer) {
-				/* We need to downscale */
-				JANUS_LOG(LOG_HUGE, "We need to downscale temporally: (%d > %d)\n",
-					stream->temporal_layer, stream->target_temporal_layer);
-				if(packet->svc_info.ebit && packet->svc_info.temporal_layer == stream->target_temporal_layer) {
-					JANUS_LOG(LOG_HUGE, "  -- Downscaling temporal layer: %d --> %d\n",
-						stream->temporal_layer, stream->target_temporal_layer);
-					stream->temporal_layer = stream->target_temporal_layer;
-					/* Notify the viewer */
-					json_t *event = json_object();
-					json_object_set_new(event, "videoroom", json_string("event"));
-					json_object_set_new(event, "room", string_ids ? json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-					json_object_set_new(event, "mid", json_string(stream->mid));
-					json_object_set_new(event, "temporal_layer", json_integer(stream->temporal_layer));
-					gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
-					json_decref(event);
-				}
-			}
-			if(temporal_layer < packet->svc_info.temporal_layer) {
-				/* Drop the packet: update the context to make sure sequence number is increased normally later */
-				JANUS_LOG(LOG_HUGE, "Dropping packet (temporal layer %d < %d)\n", temporal_layer, packet->svc_info.temporal_layer);
-				stream->context.base_seq++;
+			/* Do we need to drop this? */
+			if(!relay)
 				return;
+			/* Any event we should notify? */
+			if(stream->svc_context.changed_spatial) {
+				/* Notify the user about the spatial layer change */
+				json_t *event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "room", string_ids ? json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
+				json_object_set_new(event, "mid", json_string(stream->mid));
+				json_object_set_new(event, "spatial_layer", json_integer(stream->svc_context.spatial));
+				gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
+				json_decref(event);
 			}
-			/* If we got here, we can send the frame: this doesn't necessarily mean it's
-			 * one of the layers the user wants, as there may be dependencies involved */
-			JANUS_LOG(LOG_HUGE, "Sending packet (spatial=%d, temporal=%d)\n",
-				packet->svc_info.spatial_layer, packet->svc_info.temporal_layer);
-			/* Fix sequence number and timestamp (publisher switching may be involved) */
+			if(stream->svc_context.changed_temporal) {
+				/* Notify the user about the temporal layer change */
+				json_t *event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "room", string_ids ? json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
+				json_object_set_new(event, "mid", json_string(stream->mid));
+				json_object_set_new(event, "temporal_layer", json_integer(stream->svc_context.temporal));
+				gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
+				json_decref(event);
+			}
+			/* If we got here, update the RTP header and send the packet */
 			janus_rtp_header_update(packet->data, &stream->context, TRUE, 0);
-			if(override_mark_bit && !has_marker_bit) {
-				packet->data->markerbit = 1;
-			}
+			/* Send the packet */
 			if(gateway != NULL) {
 				janus_plugin_rtp rtp = { .mindex = stream->mindex, .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length,
 					.extensions = packet->extensions };
@@ -12627,12 +12523,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				}
 				gateway->relay_rtp(session->handle, &rtp);
 			}
-			if(override_mark_bit && !has_marker_bit) {
-				packet->data->markerbit = 0;
-			}
 			/* Restore the timestamp and sequence number to what the publisher set them to */
-			packet->data->timestamp = htonl(packet->timestamp);
-			packet->data->seq_number = htons(packet->seq_number);
+			*(packet->data) = rtp;
 		} else if(packet->simulcast) {
 			/* Handle simulcast: make sure we have a payload to work with */
 			int plen = 0;

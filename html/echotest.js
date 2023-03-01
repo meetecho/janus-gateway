@@ -83,6 +83,9 @@ $(document).ready(function() {
 									// profile as well (e.g., ?vprofile=2 for VP9, or ?vprofile=42e01f for H.264)
 									if(vprofile)
 										body["videoprofile"] = vprofile;
+									// In case we want to use SVC, we tell the plugin that
+									if(doSvc && (vcodec === 'vp9' || vcodec === 'av1'))
+										body["svc"] = true;
 									// We can force RED for audio too, if supported by the browser
 									if(doOpusred)
 										body["opusred"] = true;
@@ -96,7 +99,10 @@ $(document).ready(function() {
 												{ type: 'audio', capture: true, recv: true },
 												{ type: 'video', capture: true, recv: true,
 													// We may need to enable simulcast or SVC on the video track
-													simulcast: doSimulcast, svc: (vcodec === 'av1' && doSvc) ? doSvc : null },
+													simulcast: doSimulcast,
+													// We only support SVC for VP9 and (in a tiny part) AV1
+													svc: ((vcodec === 'vp9' || vcodec === 'av1') && doSvc) ? doSvc : null
+												},
 												{ type: 'data' },
 											],
 											customizeSdp: function(jsep) {
