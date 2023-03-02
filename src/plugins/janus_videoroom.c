@@ -10067,6 +10067,9 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Error pushing event to new subscriber\n");
 					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
 					g_snprintf(error_cause, 512, "Error pushing event");
+					janus_mutex_lock(&session->mutex)
+					session->participant = NULL;
+					janus_mutex_unlock(&session->mutex)
 					janus_videoroom_subscriber_destroy(subscriber);
 					janus_refcount_decrease(&subscriber->ref);
 					goto error;
