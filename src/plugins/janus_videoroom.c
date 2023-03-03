@@ -10070,6 +10070,19 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_lock(&session->mutex)
 					session->participant = NULL;
 					janus_mutex_unlock(&session->mutex)
+					/* Get rid of streams */
+					janus_mutex_lock(&subscriber->streams_mutex);
+					GList *temp = subscriber->streams;
+					while(temp) {
+						janus_videoroom_subscriber_stream *s = (janus_videoroom_subscriber_stream *)temp->data;
+						janus_videoroom_subscriber_stream_remove(s, NULL, TRUE);
+						temp = temp->next;
+					}
+					g_list_free(subscriber->streams);
+					subscriber->streams = NULL;
+					g_hash_table_remove_all(subscriber->streams_byid);
+					g_hash_table_remove_all(subscriber->streams_bymid);
+					janus_mutex_unlock(&subscriber->streams_mutex);
 					janus_videoroom_subscriber_destroy(subscriber);
 					janus_refcount_decrease(&subscriber->ref);
 					goto error;
