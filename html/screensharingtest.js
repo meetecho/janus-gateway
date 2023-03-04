@@ -147,7 +147,7 @@ $(document).ready(function() {
 														{
 															// We want sendonly audio and screensharing
 															tracks: [
-																{ type: 'desktopAudio', capture: true, recv: false },
+																{ type: 'audio', capture: true, recv: false },
 																{ type: 'screen', capture: true, recv: false }
 															],
 															success: function(jsep) {

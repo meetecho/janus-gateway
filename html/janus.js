@@ -2269,11 +2269,12 @@ function Janus(gatewayCallbacks) {
 		let groups = {};
 		for(let track of tracks) {
 			delete track.gumGroup;
-			if(!track.type || !['audio', 'video'].includes(track.type))
+			if(!track.type || !['audio', 'video', 'screen'].includes(track.type))
 				continue;
 			if(!track.capture || track.capture instanceof MediaStreamTrack)
 				continue;
-			let group = track.group ? track.group : 'default';
+			// Avoid assigning regular default group if it is a screen capture
+			let group = track.group ? track.group : track.type=='screen'?'sharescreendefault':'default';
 			if(!groups[group])
 				groups[group] = {};
 			if(groups[group][track.type])
@@ -2284,16 +2285,17 @@ function Janus(gatewayCallbacks) {
 		let keys = Object.keys(groups);
 		for(let key of keys) {
 			let group = groups[key];
-			if(!group.audio || !group.video) {
+			if(!group.audio || (!group.video && !group.screen)) {
 				if(group.audio)
 					delete group.audio.gumGroup;
 				if(group.video)
 					delete group.video.gumGroup;
+				if(group.screen)
+					delete group.screen.gumGroup;
 				delete groups[key];
 			}
 		}
 		let answer = (callbacks.jsep ? true : false);
-		let desktopAudio = null;
 		for(let track of tracks) {
 			if(!track.type) {
 				Janus.warn('Missing track type:', track);
@@ -2333,8 +2335,6 @@ function Janus(gatewayCallbacks) {
 			let kind = track.type;
 			if(track.type === 'screen')
 				kind = 'video';	// FIXME
-			if(track.type === 'desktopAudio')
-				kind = 'audio'; // FIXME
 			let transceiver = null, sender = null;
 			if(track.mid) {
 				// Search by mid
@@ -2372,7 +2372,7 @@ function Janus(gatewayCallbacks) {
 				await sender.replaceTrack(null);
 			} else if(track.capture) {
 				if(track.gumGroup && groups[track.gumGroup] && groups[track.gumGroup].stream) {
-					// We did a getUserMedia before already
+					// We did a getUserMedia/getDisplayMedia before already
 					let stream = groups[track.gumGroup].stream;
 					nt = (track.type === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]);
 					delete groups[track.gumGroup].stream;
@@ -2387,51 +2387,37 @@ function Janus(gatewayCallbacks) {
 						pluginHandle.consentDialog(true);
 					}
 					let constraints = Janus.trackConstraints(track), stream = null;
-					if(track.type === 'audio' || track.type === 'video') {
+					if(track.type === 'audio' || track.type === 'video' || track.type === 'screen') {
+						// Set if User Media should be used of if it should be Display Media
+						let captureUserMedia = track.type !== 'screen';
 						// Use getUserMedia: check if we need to group audio and video together
 						if(track.gumGroup) {
 							let otherType = (track.type === 'audio' ? 'video' : 'audio');
 							if(groups[track.gumGroup] && groups[track.gumGroup][otherType]) {
 								let otherTrack = groups[track.gumGroup][otherType];
+								if(!otherTrack && otherType === 'video') {
+									// If there other track is not video, then it is screen and should be a Display Media capture
+									otherType = 'screen'
+									otherTrack = groups[track.gumGroup]['screen'];
+									captureUserMedia = false;
+								}
 								let otherConstraints = Janus.trackConstraints(otherTrack);
 								constraints[otherType] = otherConstraints[otherType];
 							}
 						}
-						stream = await navigator.mediaDevices.getUserMedia(constraints);
+						if(captureUserMedia) {
+							stream = await navigator.mediaDevices.getUserMedia(constraints);
+						} else {
+							stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+						}
 						if(track.gumGroup && constraints.audio && constraints.video) {
-							// We just performed a grouped getUserMedia, keep track of the
+							// We just performed a grouped getUserMedia/getDisplayMedia, keep track of the
 							// stream so that we can immediately assign the track later
 							groups[track.gumGroup].stream = stream;
 							delete track.gumGroup;
 						}
-					} else {
-						// Use getDisplayMedia
-						// Figure out if it is a video or audio capture request
-						if(track.type === 'screen') {
-
-							//double check if audio capture is required (messy way)
-							for(const othertrack of tracks) {
-								if(othertrack.type === 'desktopAudio' && othertrack.capture) {
-									constraints.audio = othertrack.capture;
-								}
-							}
-							stream = await navigator.mediaDevices.getDisplayMedia(constraints);
-
-							desktopAudio = stream;
-						}
-						if(track.type === 'desktopAudio') {
-							stream = desktopAudio;
-						}
 					}
-					if(track.type === 'desktopAudio' && (desktopAudio == null || desktopAudio.getAudioTracks().length == 0) ) {
-						continue; //ignore no audio in screen capture as it is set at the moment of screen capture
-					}
-
-					nt = (track.type === 'audio' || track.type === 'desktopAudio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]);
-
-					if(track.type === 'desktopAudio') {
-						track.type = 'audio'; //overrulling from here
-					}
+					nt = (track.type === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]);
 				}
 				if(track.replace) {
 					// Replace the track
