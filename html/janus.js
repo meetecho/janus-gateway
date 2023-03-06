@@ -1494,6 +1494,33 @@ function Janus(gatewayCallbacks) {
 				request.jsep.rid_order = jsep.rid_order;
 			if(jsep.force_relay)
 				request.jsep.force_relay = true;
+			// Check if there's SVC video streams to tell Janus about
+			let svc = null;
+			let config = pluginHandle.webrtcStuff;
+			if(config.pc) {
+				let transceivers = config.pc.getTransceivers();
+				if(transceivers && transceivers.length > 0) {
+					for(let mindex in transceivers) {
+						let tr = transceivers[mindex];
+						if(tr && tr.sender && tr.sender.track && tr.sender.track.kind === 'video') {
+							let params = tr.sender.getParameters();
+							if(params && params.encodings && params.encodings[0] &&
+									params.encodings[0].scalabilityMode) {
+								// This video stream uses SVC
+								if(!svc)
+									svc = [];
+								svc.push({
+									mindex: parseInt(mindex),
+									mid: tr.mid,
+									svc: params.encodings[0].scalabilityMode
+								});
+							}
+						}
+					}
+				}
+			}
+			if(svc)
+				request.jsep.svc = svc;
 		}
 		Janus.debug("Sending message to plugin (handle=" + handleId + "):");
 		Janus.debug(request);

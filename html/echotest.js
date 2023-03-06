@@ -29,7 +29,7 @@ if(getQueryStringValue("stereo") !== "")
 	stereo = (getQueryStringValue("stereo") === "true");
 var doDtx = (getQueryStringValue("dtx") === "yes" || getQueryStringValue("dtx") === "true");
 var doOpusred = (getQueryStringValue("opusred") === "yes" || getQueryStringValue("opusred") === "true");
-var simulcastStarted = false;
+var simulcastStarted = false, svcStarted = false;
 
 // By default we talk to the "regular" EchoTest plugin
 var echotestPluginBackend = "janus.plugin.echotest";
@@ -96,7 +96,10 @@ $(document).ready(function() {
 												{ type: 'audio', capture: true, recv: true },
 												{ type: 'video', capture: true, recv: true,
 													// We may need to enable simulcast or SVC on the video track
-													simulcast: doSimulcast, svc: (vcodec === 'av1' && doSvc) ? doSvc : null },
+													simulcast: doSimulcast,
+													// We only support SVC for VP9 and (still WIP) AV1
+													svc: ((vcodec === 'vp9' || vcodec === 'av1') && doSvc) ? doSvc : null
+												},
 												{ type: 'data' },
 											],
 											customizeSdp: function(jsep) {
@@ -200,10 +203,21 @@ $(document).ready(function() {
 									if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 										if(!simulcastStarted) {
 											simulcastStarted = true;
-											addSimulcastButtons(msg["videocodec"] === "vp8");
+											addSimulcastSvcButtons(msg["videocodec"] === "vp8");
 										}
 										// We just received notice that there's been a switch, update the buttons
-										updateSimulcastButtons(substream, temporal);
+										updateSimulcastSvcButtons(substream, temporal);
+									}
+									// Or maybe SVC?
+									let spatial = msg["spatial_layer"];
+									temporal = msg["temporal_layer"];
+									if((spatial !== null && spatial !== undefined) || (temporal !== null && temporal !== undefined)) {
+										if(!svcStarted) {
+											svcStarted = true;
+											addSimulcastSvcButtons(true);
+										}
+										// We just received notice that there's been a switch, update the buttons
+										updateSimulcastSvcButtons(spatial, temporal);
 									}
 								},
 								onlocaltrack: function(track, on) {
@@ -480,8 +494,10 @@ function getQueryStringValue(name) {
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }
 
-// Helpers to create Simulcast-related UI, if enabled
-function addSimulcastButtons(temporal) {
+// Helpers to create Simulcast- or SVC-related UI, if enabled
+function addSimulcastSvcButtons(temporal) {
+	let what = (simulcastStarted ? 'simulcast' : 'SVC');
+	let layer = (simulcastStarted ? 'substream' : 'layer');
 	$('#curres').parent().append(
 		'<div id="simulcast" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
 		'	<div class"row">' +
@@ -499,8 +515,8 @@ function addSimulcastButtons(temporal) {
 		'		</div>' +
 		'	</div>' +
 		'</div>');
-	if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
-		// Chromium-based browsers only have two temporal layers
+	if(simulcastStarted && Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
+		// Chromium-based browsers only have two temporal layers, when doing simulcast
 		$('#tl-2').remove();
 		$('#tl-1').css('width', '50%');
 		$('#tl-0').css('width', '50%');
@@ -508,100 +524,120 @@ function addSimulcastButtons(temporal) {
 	// Enable the simulcast selection buttons
 	$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Switching simulcast substream, wait for it... (lower quality)", null, {timeOut: 2000});
+			toastr.info("Switching " + what + " " + layer + ", wait for it... (lower quality)", null, {timeOut: 2000});
 			if(!$('#sl-2').hasClass('btn-success'))
 				$('#sl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl-1').hasClass('btn-success'))
 				$('#sl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			echotest.send({ message: { substream: 0 }});
+			if(simulcastStarted)
+				echotest.send({ message: { substream: 0 }});
+			else
+				echotest.send({ message: { spatial_layer: 0 }});
 		});
 	$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Switching simulcast substream, wait for it... (normal quality)", null, {timeOut: 2000});
+			toastr.info("Switching " + what + " " + layer + ", wait for it... (normal quality)", null, {timeOut: 2000});
 			if(!$('#sl-2').hasClass('btn-success'))
 				$('#sl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#sl-0').hasClass('btn-success'))
 				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			echotest.send({ message: { substream: 1 }});
+			if(simulcastStarted)
+				echotest.send({ message: { substream: 1 }});
+			else
+				echotest.send({ message: { spatial_layer: 1 }});
 		});
 	$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Switching simulcast substream, wait for it... (higher quality)", null, {timeOut: 2000});
+			toastr.info("Switching " + what + " " + layer + ", wait for it... (higher quality)", null, {timeOut: 2000});
 			$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#sl-1').hasClass('btn-success'))
 				$('#sl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl-0').hasClass('btn-success'))
 				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			echotest.send({ message: { substream: 2 }});
+			if(simulcastStarted)
+				echotest.send({ message: { substream: 2 }});
+			else
+				echotest.send({ message: { spatial_layer: 2 }});
 		});
 	if(!temporal)	// No temporal layer support
 		return;
 	$('#tl-0').parent().removeClass('hide');
 	$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Capping simulcast temporal layer, wait for it... (lowest FPS)", null, {timeOut: 2000});
+			toastr.info("Capping " + what + " temporal layer, wait for it... (lowest FPS)", null, {timeOut: 2000});
 			if(!$('#tl-2').hasClass('btn-success'))
 				$('#tl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#tl-1').hasClass('btn-success'))
 				$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#tl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			echotest.send({ message: { temporal: 0 }});
+			if(simulcastStarted)
+				echotest.send({ message: { temporal: 0 }});
+			else
+				echotest.send({ message: { temporal_layer: 0 }});
 		});
 	$('#tl-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Capping simulcast temporal layer, wait for it... (medium FPS)", null, {timeOut: 2000});
+			toastr.info("Capping " + what + " temporal layer, wait for it... (medium FPS)", null, {timeOut: 2000});
 			if(!$('#tl-2').hasClass('btn-success'))
 				$('#tl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-info');
 			if(!$('#tl-0').hasClass('btn-success'))
 				$('#tl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			echotest.send({ message: { temporal: 1 }});
+			if(simulcastStarted)
+				echotest.send({ message: { temporal: 1 }});
+			else
+				echotest.send({ message: { temporal_layer: 1 }});
 		});
 	$('#tl-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Capping simulcast temporal layer, wait for it... (highest FPS)", null, {timeOut: 2000});
+			toastr.info("Capping " + what + " temporal layer, wait for it... (highest FPS)", null, {timeOut: 2000});
 			$('#tl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#tl-1').hasClass('btn-success'))
 				$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#tl-0').hasClass('btn-success'))
 				$('#tl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			echotest.send({ message: { temporal: 2 }});
+			if(simulcastStarted)
+				echotest.send({ message: { temporal: 2 }});
+			else
+				echotest.send({ message: { temporal_layer: 2 }});
 		});
 }
 
-function updateSimulcastButtons(substream, temporal) {
+function updateSimulcastSvcButtons(substream, temporal) {
 	// Check the substream
+	let what = (simulcastStarted ? 'simulcast' : 'SVC');
+	let layer = (simulcastStarted ? 'substream' : 'layer');
 	if(substream === 0) {
-		toastr.success("Switched simulcast substream! (lower quality)", null, {timeOut: 2000});
+		toastr.success("Switched " + what + " " + layer + "! (lower quality)", null, {timeOut: 2000});
 		$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 	} else if(substream === 1) {
-		toastr.success("Switched simulcast substream! (normal quality)", null, {timeOut: 2000});
+		toastr.success("Switched " + what + " " + layer + "! (normal quality)", null, {timeOut: 2000});
 		$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 		$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 	} else if(substream === 2) {
-		toastr.success("Switched simulcast substream! (higher quality)", null, {timeOut: 2000});
+		toastr.success("Switched " + what + " " + layer + "! (higher quality)", null, {timeOut: 2000});
 		$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 		$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 	}
 	// Check the temporal layer
 	if(temporal === 0) {
-		toastr.success("Capped simulcast temporal layer! (lowest FPS)", null, {timeOut: 2000});
+		toastr.success("Capped " + what + " temporal layer! (lowest FPS)", null, {timeOut: 2000});
 		$('#tl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#tl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#tl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 	} else if(temporal === 1) {
-		toastr.success("Capped simulcast temporal layer! (medium FPS)", null, {timeOut: 2000});
+		toastr.success("Capped " + what + " temporal layer! (medium FPS)", null, {timeOut: 2000});
 		$('#tl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#tl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 		$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 	} else if(temporal === 2) {
-		toastr.success("Capped simulcast temporal layer! (highest FPS)", null, {timeOut: 2000});
+		toastr.success("Capped " + what + " temporal layer! (highest FPS)", null, {timeOut: 2000});
 		$('#tl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 		$('#tl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary');

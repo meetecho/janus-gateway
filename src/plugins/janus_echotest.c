@@ -44,7 +44,10 @@
 	"record" : true|false,
 	"filename" : <base path/filename to use for the recording>,
 	"substream" : <substream to receive (0-2), in case simulcasting is enabled>,
-	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled>
+	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled>,
+	"svc" : true|false,
+	"spatial_layer" : <spatial layer to receive (0-2), in case SVC is enabled>,
+	"temporal_layer" : <temporal layers to receive (0-2), in case SVC is enabled>
 }
 \endverbatim
  *
@@ -65,7 +68,9 @@
  * path/filename to use for the files (-audio.mjr, -video.mjr and -data.mjr
  * are automatically appended); finally, in case the session uses
  * simulcasting, \c substream and \c temporal can be used to manually
- * pick which substream and/or temporal layer should be received back.
+ * pick which substream and/or temporal layer should be received back,
+ * while \c spatial_layer and \c temporal_layer provide the same
+ * functionality but within the context of SVC.
  *
  * A JSEP offer can be sent along any request to negotiate a PeerConnection:
  * in that case, a JSEP answer will be provided with the asynchronous
@@ -198,6 +203,9 @@ static struct janus_json_parameter request_parameters[] = {
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"fallback", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"svc", JANUS_JSON_BOOL, 0},
+	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
 	{"audiocodec", JSON_STRING, 0},
@@ -243,6 +251,8 @@ typedef struct janus_echotest_session {
 	janus_mutex rid_mutex;	/* Mutex to protect access to the rid array */
 	janus_rtp_simulcasting_context sim_context;
 	janus_vp8_simulcast_context vp8_context;
+	gboolean svc;
+	janus_rtp_svc_context svc_context;
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *drc;	/* The Janus recorder instance for this user's data, if enabled */
@@ -437,6 +447,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
+	janus_rtp_svc_context_reset(&session->svc_context);
 	janus_mutex_init(&session->rid_mutex);
 	session->min_delay = -1;
 	session->max_delay = -1;
@@ -506,6 +517,13 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "temporal-layer-target", json_integer(session->sim_context.templayer_target));
 		if(session->sim_context.drop_trigger > 0)
 			json_object_set_new(info, "fallback", json_integer(session->sim_context.drop_trigger));
+	}
+	if(session->svc) {
+		json_object_set_new(info, "svc", json_true());
+		json_object_set_new(info, "spatial-layer", json_integer(session->svc_context.spatial));
+		json_object_set_new(info, "spatial-layer-target", json_integer(session->svc_context.spatial_target));
+		json_object_set_new(info, "temporal-layer", json_integer(session->svc_context.temporal));
+		json_object_set_new(info, "temporal-layer-target", json_integer(session->svc_context.temporal_target));
 	}
 	if(session->arc || session->vrc || session->drc) {
 		json_t *recording = json_object();
@@ -595,16 +613,24 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 			packet->extensions.min_delay = session->min_delay;
 			packet->extensions.max_delay = session->max_delay;
 		}
-		if(video && session->video_active && (session->ssrc[0] != 0 || session->rid[0] != NULL)) {
-			/* Handle simulcast: backup the header information first */
+		gboolean simulcast = (session->ssrc[0] != 0 || session->rid[0] != NULL);
+		if(video && session->video_active && (simulcast || session->svc)) {
+			/* Handle simulcast or SVC: backup the header information first */
 			janus_rtp_header *header = (janus_rtp_header *)buf;
 			uint32_t seq_number = ntohs(header->seq_number);
 			uint32_t timestamp = ntohl(header->timestamp);
 			uint32_t ssrc = ntohl(header->ssrc);
-			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
-			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
-				buf, len, session->ssrc, session->rid, session->vcodec, &session->context, &session->rid_mutex);
-			if(session->sim_context.need_pli) {
+			gboolean relay = FALSE;
+			if(simulcast) {
+				/* Process this simulcast packet: don't relay if it's not the SSRC/layer we wanted to handle */
+				relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
+					buf, len, session->ssrc, session->rid, session->vcodec, &session->context, &session->rid_mutex);
+			} else {
+				/* Process this SVC packet: don't relay if it's not the layer we wanted to handle */
+				relay = janus_rtp_svc_context_process_rtp(&session->svc_context,
+					buf, len, session->vcodec, NULL, &session->context);
+			}
+			if(session->sim_context.need_pli || session->svc_context.need_pli) {
 				/* Send a PLI */
 				gateway->send_pli(handle);
 			}
@@ -612,7 +638,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 			if(!relay)
 				return;
 			/* Any event we should notify? */
-			if(session->sim_context.changed_substream) {
+			if(simulcast && session->sim_context.changed_substream) {
 				/* Notify the user about the substream change */
 				json_t *event = json_object();
 				json_object_set_new(event, "echotest", json_string("event"));
@@ -621,12 +647,30 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 				gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
 				json_decref(event);
 			}
-			if(session->sim_context.changed_temporal) {
+			if(simulcast && session->sim_context.changed_temporal) {
 				/* Notify the user about the temporal layer change */
 				json_t *event = json_object();
 				json_object_set_new(event, "echotest", json_string("event"));
 				json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
 				json_object_set_new(event, "temporal", json_integer(session->sim_context.templayer));
+				gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
+				json_decref(event);
+			}
+			if(session->svc && session->svc_context.changed_spatial) {
+				/* Notify the user about the spatial layer change */
+				json_t *event = json_object();
+				json_object_set_new(event, "echotest", json_string("event"));
+				json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
+				json_object_set_new(event, "spatial_layer", json_integer(session->svc_context.spatial));
+				gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
+				json_decref(event);
+			}
+			if(session->svc && session->svc_context.changed_temporal) {
+				/* Notify the user about the temporal layer change */
+				json_t *event = json_object();
+				json_object_set_new(event, "echotest", json_string("event"));
+				json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
+				json_object_set_new(event, "temporal_layer", json_integer(session->svc_context.temporal));
 				gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
 				json_decref(event);
 			}
@@ -935,6 +979,23 @@ static void *janus_echotest_handler(void *data) {
 				break;
 			}
 		}
+		json_t *msg_svc = json_object_get(msg->jsep, "svc");
+		if(msg_svc && json_array_size(msg_svc) > 0) {
+			size_t i = 0;
+			for(i=0; i<json_array_size(msg_svc); i++) {
+				json_t *s = json_array_get(msg_svc, i);
+				int mindex = json_integer_value(json_object_get(s, "mindex"));
+				JANUS_LOG(LOG_VERB, "EchoTest client is going to do SVC (#%d)\n", mindex);
+				if(!session->svc) {
+					janus_rtp_svc_context_reset(&session->svc_context);
+					session->svc_context.spatial_target = 2;	/* FIXME Actually depends on the scalabilityMode */
+					session->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
+					session->svc = TRUE;
+				}
+				/* FIXME We're stopping at the first item, there may be more */
+				break;
+			}
+		}
 		json_t *msg_e2ee = json_object_get(msg->jsep, "e2ee");
 		if(json_is_true(msg_e2ee))
 			session->e2ee = TRUE;
@@ -953,6 +1014,20 @@ static void *janus_echotest_handler(void *data) {
 			JANUS_LOG(LOG_ERR, "Invalid element (temporal should be 0, 1 or 2)\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Invalid value (temporal should be 0, 1 or 2)");
+			goto error;
+		}
+		json_t *spatial_layer = json_object_get(root, "spatial_layer");
+		if(spatial_layer && json_integer_value(spatial_layer) > 2) {
+			JANUS_LOG(LOG_ERR, "Invalid element (spatial_layer should be 0, 1 or 2)\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (spatial_layer should be 0, 1 or 2)");
+			goto error;
+		}
+		json_t *temporal_layer = json_object_get(root, "temporal_layer");
+		if(temporal_layer && json_integer_value(temporal_layer) > 2) {
+			JANUS_LOG(LOG_ERR, "Invalid element (temporal_layer should be 0, 1 or 2)\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (temporal_layer should be 0, 1 or 2)");
 			goto error;
 		}
 		json_t *fallback = json_object_get(root, "fallback");
@@ -1027,6 +1102,38 @@ static void *janus_echotest_handler(void *data) {
 				gateway->send_pli(session->handle);
 			}
 		}
+		if(spatial_layer) {
+			session->svc_context.spatial_target = json_integer_value(spatial_layer);
+			if(session->svc_context.spatial_target == session->svc_context.spatial) {
+				/* No need to do anything, we're already getting the right spatial layer, so notify the user */
+				json_t *event = json_object();
+				json_object_set_new(event, "echotest", json_string("event"));
+				json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
+				json_object_set_new(event, "spatial_layer", json_integer(session->svc_context.spatial));
+				gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
+				json_decref(event);
+			} else {
+				/* We need to change spatial layer, send a PLI */
+				JANUS_LOG(LOG_VERB, "SVC spatial layer change, sending a PLI to kickstart it\n");
+				gateway->send_pli(session->handle);
+			}
+		}
+		if(temporal_layer) {
+			session->svc_context.temporal_target = json_integer_value(temporal_layer);
+			if(session->svc_context.temporal_target == session->svc_context.temporal) {
+				/* No need to do anything, we're already getting the right temporal layer, so notify the user */
+				json_t *event = json_object();
+				json_object_set_new(event, "echotest", json_string("event"));
+				json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
+				json_object_set_new(event, "temporal_layer", json_integer(session->svc_context.temporal));
+				gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
+				json_decref(event);
+			} else {
+				/* We need to change temporal layer, send a PLI */
+				JANUS_LOG(LOG_VERB, "SVC temporal layer change, sending a PLI to kickstart it\n");
+				gateway->send_pli(session->handle);
+			}
+		}
 		if(min_delay) {
 			int16_t md = json_integer_value(min_delay);
 			if(md < 0) {
@@ -1059,7 +1166,8 @@ static void *janus_echotest_handler(void *data) {
 		}
 
 		if(!audio && !video && !videocodec && !videoprofile && !opusred && !bitrate &&
-				!substream && !temporal && !fallback && !record && !min_delay && !max_delay && !msg_sdp) {
+				!substream && !temporal && !fallback && !spatial_layer && !temporal_layer &&
+				!record && !min_delay && !max_delay && !msg_sdp) {
 			JANUS_LOG(LOG_ERR, "No supported attributes found\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Message error: no supported attributes found");
