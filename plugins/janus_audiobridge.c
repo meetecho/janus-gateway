@@ -3793,17 +3793,16 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&audiobridge->mutex);
 		/* Set MJR recording status */
-		gboolean room_prev_mjrs_active = mjrs_active;
-		if(mjrs_active && mjrsdir) {
+		if(mjrsdir) {
 			/* Update the path where to save the MJR files */
 			char *old_mjrs_dir = audiobridge->mjrs_dir;
 			char *new_mjrs_dir = g_strdup(json_string_value(mjrsdir));
 			audiobridge->mjrs_dir = new_mjrs_dir;
 			g_free(old_mjrs_dir);
 		}
-		if(room_prev_mjrs_active != audiobridge->mjrs) {
+		if(mjrs_active != audiobridge->mjrs) {
 			/* Room recording state has changed */
-			audiobridge->mjrs = room_prev_mjrs_active;
+			audiobridge->mjrs = mjrs_active;
 			/* Iterate over all participants */
 			gpointer value;
 			GHashTableIter iter;
