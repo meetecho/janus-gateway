@@ -1138,6 +1138,8 @@ char *janus_sdp_write(janus_sdp *imported) {
 	janus_strlcat_fast(sdp, buffer, sdplen, &offset);
 	/* c= */
 	if(imported->c_addr != NULL) {
+		if(imported->c_ipv4 && imported->c_addr && strstr(imported->c_addr, ":"))
+			imported->c_ipv4 = FALSE;
 		g_snprintf(buffer, sizeof(buffer), "c=IN %s %s\r\n",
 			imported->c_ipv4 ? "IP4" : "IP6", imported->c_addr);
 		janus_strlcat_fast(sdp, buffer, sdplen, &offset);
