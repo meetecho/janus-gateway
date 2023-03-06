@@ -686,40 +686,36 @@ static gboolean janus_check_sessions(gpointer user_data) {
 		g_hash_table_iter_init(&iter, sessions);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_session *session = (janus_session *) value;
-			if (!session || g_atomic_int_get(&session->destroyed)) {
+			if(!session || g_atomic_int_get(&session->destroyed))
 				continue;
-			}
 			gint64 now = janus_get_monotonic_time();
-
 			/* Use either session-specific timeout or global. */
 			gint64 timeout = (gint64)session->timeout;
-			if (timeout == -1) timeout = (gint64)global_session_timeout;
-
-			if ((timeout > 0 && (now - session->last_activity >= timeout * G_USEC_PER_SEC) &&
-					!g_atomic_int_compare_and_exchange(&session->timedout, 0, 1)) ||
-					((g_atomic_int_get(&session->transport_gone) && now - session->last_activity >= (gint64)reclaim_session_timeout * G_USEC_PER_SEC) &&
-							!g_atomic_int_compare_and_exchange(&session->timedout, 0, 1))) {
-				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
-				/* Mark the session as over, we'll deal with it later */
-				janus_session_handles_clear(session);
-				/* Notify the transport */
-				janus_request *source = janus_session_get_request(session);
-				if(source) {
-					json_t *event = janus_create_message("timeout", session->session_id, NULL);
-					/* Send this to the transport client and notify the session's over */
-					source->transport->send_message(source->instance, NULL, FALSE, event);
-					source->transport->session_over(source->instance, session->session_id, TRUE, FALSE);
+			if(timeout == -1)
+				timeout = (gint64)global_session_timeout;
+			if((timeout > 0 && (now - session->last_activity >= timeout * G_USEC_PER_SEC)) ||
+					((g_atomic_int_get(&session->transport_gone) && now - session->last_activity >= (gint64)reclaim_session_timeout * G_USEC_PER_SEC))) {
+				if(g_atomic_int_compare_and_exchange(&session->timedout, 0, 1)) {
+					JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
+					/* Mark the session as over, we'll deal with it later */
+					janus_session_handles_clear(session);
+					/* Notify the transport */
+					janus_request *source = janus_session_get_request(session);
+					if(source) {
+						json_t *event = janus_create_message("timeout", session->session_id, NULL);
+						/* Send this to the transport client and notify the session's over */
+						source->transport->send_message(source->instance, NULL, FALSE, event);
+						source->transport->session_over(source->instance, session->session_id, TRUE, FALSE);
+					}
+					janus_request_unref(source);
+					/* Notify event handlers as well */
+					if(janus_events_is_enabled())
+						janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, JANUS_EVENT_SUBTYPE_NONE,
+							session->session_id, "timeout", NULL);
+					/* FIXME Is this safe? apparently it causes hash table errors on the console */
+					g_hash_table_iter_remove(&iter);
+					janus_session_destroy(session);
 				}
-				janus_request_unref(source);
-				/* Notify event handlers as well */
-				if(janus_events_is_enabled())
-					janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, JANUS_EVENT_SUBTYPE_NONE,
-						session->session_id, "timeout", NULL);
-
-				/* FIXME Is this safe? apparently it causes hash table errors on the console */
-				g_hash_table_iter_remove(&iter);
-
-				janus_session_destroy(session);
 			}
 		}
 	}
