@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 
-## [v1.1.3] - 2023-03-06
+## [v0.13.3] - 2023-03-06
 
 - Added configurable cap to number of queued events when reconnecting WebSocket event handler [[PR-3148](https://github.com/meetecho/janus-gateway/pull/3148)]
 - Add option to manually insert SPS/PPS RTP packets for H.264 mountpoints [[PR-3149](https://github.com/meetecho/janus-gateway/pull/3149)]
