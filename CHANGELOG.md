@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.1.3] - 2023-03-06
+
+- Added configurable cap to number of queued events when reconnecting WebSocket event handler [[PR-3148](https://github.com/meetecho/janus-gateway/pull/3148)]
+- Add option to manually insert SPS/PPS RTP packets for H.264 mountpoints [[PR-3149](https://github.com/meetecho/janus-gateway/pull/3149)]
+- Fixed From/To checks when getting a SIP INVITE [[Issue-3164](https://github.com/meetecho/janus-gateway/issues/3164)]
+- Allow changing mjrs dir also when stopping recordings in AudioBridge [[Issue-3171](https://github.com/meetecho/janus-gateway/issues/3171)]
+- Allow Lua and Duktape plugins to relay extensions when relaying RTP packets [[PR-3162](https://github.com/meetecho/janus-gateway/pull/3162)]
+- Optionally support X-Forwarded-For in both HTTP and WebSocket transports [[PR-3160](https://github.com/meetecho/janus-gateway/pull/3160)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.13.2] - 2023-01-17
 
 - Consider RTCP feedback messages when evaluating receiver SSRC
