@@ -2274,7 +2274,7 @@ function Janus(gatewayCallbacks) {
 			if(!track.capture || track.capture instanceof MediaStreamTrack)
 				continue;
 			// Avoid assigning regular default group if it is a screen capture
-			let group = track.group ? track.group : track.type=='screen'?'sharescreendefault':'default';
+			let group = track.group ? track.group : (track.type === 'screen' ? 'screendefault' : 'default');
 			if(!groups[group])
 				groups[group] = {};
 			if(groups[group][track.type])
@@ -2387,16 +2387,16 @@ function Janus(gatewayCallbacks) {
 						pluginHandle.consentDialog(true);
 					}
 					let constraints = Janus.trackConstraints(track), stream = null;
-					if(track.type === 'audio' || track.type === 'video' || track.type === 'screen') {
-						// Set if User Media should be used of if it should be Display Media
+					if(track.type === 'audio' || (track.type === 'video' || track.type === 'screen') ) {
+						// Set if getUserMedia should be used or if it should be getDisplayMedia
 						let captureUserMedia = track.type !== 'screen';
-						// Use getUserMedia: check if we need to group audio and video together
+						// Check if we need to group audio and video together
 						if(track.gumGroup) {
 							let otherType = (track.type === 'audio' ? 'video' : 'audio');
 							if(groups[track.gumGroup] && groups[track.gumGroup][otherType]) {
 								let otherTrack = groups[track.gumGroup][otherType];
 								if(!otherTrack && otherType === 'video') {
-									// If there other track is not video, then it is screen and should be a Display Media capture
+									// If there other track is not video, then it is screen and should be a getDisplayMedia capture
 									otherType = 'screen'
 									otherTrack = groups[track.gumGroup]['screen'];
 									captureUserMedia = false;
