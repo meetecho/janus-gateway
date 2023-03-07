@@ -3417,9 +3417,8 @@ ldd janus | grep asan
  * libraries and bindings in other languages (that is tools that you find
  * helpful to interact with Janus outside of the context of the \c janus.js
  * JavaScript library we provide) and so on. It is not a complete list,
- * but just a summary of the material that has been shared so far on the
- * <a href="https://groups.google.com/forum/#!forum/meetecho-janus">meetecho-janus</a>
- * Google group.
+ * but just a summary of the material that has been shared so far by the
+ * <a href="https://janus.discourse.group/">community</a>.
  *
  * If you've developed anything related to Janus and you're willing to share
  * it with the community, or you know any such effort that is not listed
@@ -3908,8 +3907,7 @@ ldd janus | grep asan
 
 /*! \page FAQ Frequently Asked Questions
  * This page contains a list of FAQ as gathered on the
- * <a href="https://groups.google.com/forum/?pli=1#!forum/meetecho-janus">meetecho-janus</a>
- * Google group and the
+ * <a href="https://janus.discourse.group/">Community</a> and the
  * <a href="https://github.com/meetecho/janus-gateway/issues">Issues</a>
  * page on GitHub. It obviously also includes things we're being asked all the
  * time in general! If your question is not listed here or not available
@@ -4450,8 +4448,8 @@ ldd janus | grep asan
  *    That's great! The first obvious suggestion is of course to carefully
  *    read the documentation here: we worked hard on it and are constantly
  *    expanding it, so it should always be the first source of information
- *    whenever in doubt. We have a great Google group as well where the
- *    <a href="https://groups.google.com/forum/#!forum/meetecho-janus">community</a>
+ *    whenever in doubt. We have a great Discourse as well where the
+ *    <a href="https://janus.discourse.group/">community</a>
  *    shares questions, data and more everyday, so make sure you join too! \n\n
  *    We also provide training on Janus and WebRTC in general, so if interested
  *    just <a href="https://janus.conf.meetecho.com/support">contact us</a>.\n\n
