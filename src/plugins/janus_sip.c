@@ -850,6 +850,7 @@ static struct janus_json_parameter sipmessage_parameters[] = {
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
+static gboolean ipv6_disabled = FALSE;
 static janus_callbacks *gateway = NULL;
 
 static char *local_ip = NULL, *sdp_ip = NULL, *local_media_ip = NULL;
@@ -2018,6 +2019,21 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	messages = g_async_queue_new_full((GDestroyNotify) janus_sip_message_free);
 	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
+
+	/* Finally, let's check if IPv6 is disabled, as we may need to know for RTP/RTCP sockets */
+	int fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+	if(fd <= 0) {
+		ipv6_disabled = TRUE;
+	} else {
+		int v6only = 0;
+		if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)
+			ipv6_disabled = TRUE;
+	}
+	if(fd > 0)
+		close(fd);
+	if(ipv6_disabled) {
+		JANUS_LOG(LOG_WARN, "IPv6 disabled, will only use IPv4 for RTP/RTCP sockets (SIP)\n");
+	}
 
 	g_atomic_int_set(&initialized, 1);
 
@@ -6608,14 +6624,15 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 	int attempts = 100;	/* FIXME Don't retry forever */
 	if(session->media.has_audio) {
 		JANUS_LOG(LOG_VERB, "Allocating audio ports:\n");
-		struct sockaddr_in6 audio_rtp_address, audio_rtcp_address;
+		struct sockaddr_storage audio_rtp_address, audio_rtcp_address;
 		while(session->media.local_audio_rtp_port == 0 || session->media.local_audio_rtcp_port == 0) {
 			if(attempts == 0)	/* Too many failures */
 				return -1;
 			if(session->media.audio_rtp_fd == -1) {
-				session->media.audio_rtp_fd = socket(AF_INET6, SOCK_DGRAM, 0);
+				session->media.audio_rtp_fd = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
 				int v6only = 0;
-				if(session->media.audio_rtp_fd != -1 && setsockopt(session->media.audio_rtp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+				if(!ipv6_disabled && session->media.audio_rtp_fd != -1 &&
+						setsockopt(session->media.audio_rtp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 					JANUS_LOG(LOG_WARN, "Error setting v6only to false on audio RTP socket (error=%s)\n",
 						g_strerror(errno));
 				}
@@ -6630,9 +6647,10 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 				}
 			}
 			if(session->media.audio_rtcp_fd == -1) {
-				session->media.audio_rtcp_fd = socket(AF_INET6, SOCK_DGRAM, 0);
+				session->media.audio_rtcp_fd = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
 				int v6only = 0;
-				if(session->media.audio_rtcp_fd != -1 && setsockopt(session->media.audio_rtcp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+				if(!ipv6_disabled && session->media.audio_rtcp_fd != -1 &&
+						setsockopt(session->media.audio_rtcp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 					JANUS_LOG(LOG_WARN, "Error setting v6only to false on audio RTCP socket (error=%s)\n",
 						g_strerror(errno));
 				}
@@ -6644,9 +6662,17 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			int rtp_port = g_random_int_range(rtp_range_min, rtp_range_max);
 			if(rtp_port % 2)
 				rtp_port++;	/* Pick an even port for RTP */
-			audio_rtp_address.sin6_family = AF_INET6;
-			audio_rtp_address.sin6_port = htons(rtp_port);
-			audio_rtp_address.sin6_addr = in6addr_any;
+			if(!ipv6_disabled) {
+				struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&audio_rtp_address;
+				addr->sin6_family = AF_INET6;
+				addr->sin6_port = htons(rtp_port);
+				addr->sin6_addr = in6addr_any;
+			} else {
+				struct sockaddr_in *addr = (struct sockaddr_in *)&audio_rtp_address;
+				addr->sin_family = AF_INET;
+				addr->sin_port = htons(rtp_port);
+				addr->sin_addr.s_addr = INADDR_ANY;
+			}
 			if(bind(session->media.audio_rtp_fd, (struct sockaddr *)(&audio_rtp_address), sizeof(audio_rtp_address)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for audio RTP (port %d), trying a different one...\n", rtp_port);
 				close(session->media.audio_rtp_fd);
@@ -6656,9 +6682,17 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			}
 			JANUS_LOG(LOG_VERB, "Audio RTP listener bound to %s:%d(%d)\n", (local_media_ip ? local_media_ip : local_ip), rtp_port, session->media.audio_rtp_fd);
 			int rtcp_port = rtp_port+1;
-			audio_rtcp_address.sin6_family = AF_INET6;
-			audio_rtcp_address.sin6_port = htons(rtcp_port);
-			audio_rtcp_address.sin6_addr = in6addr_any;
+			if(!ipv6_disabled) {
+				struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&audio_rtcp_address;
+				addr->sin6_family = AF_INET6;
+				addr->sin6_port = htons(rtcp_port);
+				addr->sin6_addr = in6addr_any;
+			} else {
+				struct sockaddr_in *addr = (struct sockaddr_in *)&audio_rtcp_address;
+				addr->sin_family = AF_INET;
+				addr->sin_port = htons(rtcp_port);
+				addr->sin_addr.s_addr = INADDR_ANY;
+			}
 			if(bind(session->media.audio_rtcp_fd, (struct sockaddr *)(&audio_rtcp_address), sizeof(audio_rtcp_address)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for audio RTCP (port %d), trying a different one...\n", rtcp_port);
 				/* RTP socket is not valid anymore, reset it */
@@ -6681,9 +6715,10 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			if(attempts == 0)	/* Too many failures */
 				return -1;
 			if(session->media.video_rtp_fd == -1) {
-				session->media.video_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+				session->media.video_rtp_fd = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
 				int v6only = 0;
-				if(session->media.video_rtp_fd != -1 && setsockopt(session->media.video_rtp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+				if(!ipv6_disabled && session->media.video_rtp_fd != -1 &&
+						setsockopt(session->media.video_rtp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 					JANUS_LOG(LOG_WARN, "Error setting v6only to false on video RTP socket (error=%s)\n",
 						g_strerror(errno));
 				}
@@ -6698,9 +6733,10 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 				}
 			}
 			if(session->media.video_rtcp_fd == -1) {
-				session->media.video_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+				session->media.video_rtcp_fd = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
 				int v6only = 0;
-				if(session->media.video_rtcp_fd != -1 && setsockopt(session->media.video_rtcp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+				if(!ipv6_disabled && session->media.video_rtcp_fd != -1 &&
+						setsockopt(session->media.video_rtcp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 					JANUS_LOG(LOG_WARN, "Error setting v6only to false on video RTCP socket (error=%s)\n",
 						g_strerror(errno));
 				}
@@ -6712,9 +6748,17 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			int rtp_port = g_random_int_range(rtp_range_min, rtp_range_max);
 			if(rtp_port % 2)
 				rtp_port++;	/* Pick an even port for RTP */
-			video_rtp_address.sin6_family = AF_INET6;
-			video_rtp_address.sin6_port = htons(rtp_port);
-			video_rtp_address.sin6_addr = in6addr_any;
+			if(!ipv6_disabled) {
+				struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&video_rtp_address;
+				addr->sin6_family = AF_INET6;
+				addr->sin6_port = htons(rtp_port);
+				addr->sin6_addr = in6addr_any;
+			} else {
+				struct sockaddr_in *addr = (struct sockaddr_in *)&video_rtp_address;
+				addr->sin_family = AF_INET;
+				addr->sin_port = htons(rtp_port);
+				addr->sin_addr.s_addr = INADDR_ANY;
+			}
 			if(bind(session->media.video_rtp_fd, (struct sockaddr *)(&video_rtp_address), sizeof(video_rtp_address)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for video RTP (port %d), trying a different one...\n", rtp_port);
 				close(session->media.video_rtp_fd);
@@ -6724,9 +6768,17 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			}
 			JANUS_LOG(LOG_VERB, "Video RTP listener bound to %s:%d(%d)\n", (local_media_ip ? local_media_ip : local_ip), rtp_port, session->media.video_rtp_fd);
 			int rtcp_port = rtp_port+1;
-			video_rtcp_address.sin6_family = AF_INET;
-			video_rtcp_address.sin6_port = htons(rtcp_port);
-			video_rtcp_address.sin6_addr = in6addr_any;
+			if(!ipv6_disabled) {
+				struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&video_rtcp_address;
+				addr->sin6_family = AF_INET6;
+				addr->sin6_port = htons(rtcp_port);
+				addr->sin6_addr = in6addr_any;
+			} else {
+				struct sockaddr_in *addr = (struct sockaddr_in *)&video_rtcp_address;
+				addr->sin_family = AF_INET;
+				addr->sin_port = htons(rtcp_port);
+				addr->sin_addr.s_addr = INADDR_ANY;
+			}
 			if(bind(session->media.video_rtcp_fd, (struct sockaddr *)(&video_rtcp_address), sizeof(video_rtcp_address)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for video RTCP (port %d), trying a different one...\n", rtcp_port);
 				/* RTP socket is not valid anymore, reset it */

@@ -8607,13 +8607,13 @@ static int janus_audiobridge_plainrtp_allocate_port(janus_audiobridge_plainrtp_m
 			break;
 		}
 		if(rtp_fd == -1)
-			rtp_fd = socket(AF_INET6, SOCK_DGRAM, 0);
+			rtp_fd = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
 		if(rtp_fd == -1) {
 			JANUS_LOG(LOG_ERR, "Error creating socket... %d (%s)\n", errno, g_strerror(errno));
 			break;
 		}
 		int v6only = 0;
-		if(setsockopt(rtp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+		if(!ipv6_disabled && setsockopt(rtp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 			JANUS_LOG(LOG_ERR, "setsockopt on socket failed... %d (%s)\n", errno, g_strerror(errno));
 			break;
 		}
@@ -8625,10 +8625,18 @@ static int janus_audiobridge_plainrtp_allocate_port(janus_audiobridge_plainrtp_m
 			rtp_port_next = rtp_range_min;
 			rtp_port_wrap = TRUE;
 		}
-		struct sockaddr_in6 rtp_address = { 0 };
-		rtp_address.sin6_family = AF_INET6;
-		rtp_address.sin6_port = htons(rtp_port);
-		rtp_address.sin6_addr = in6addr_any;
+		struct sockaddr_storage rtp_address = { 0 };
+		if(!ipv6_disabled) {
+			struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&rtp_address;
+			addr->sin6_family = AF_INET6;
+			addr->sin6_port = htons(rtp_port);
+			addr->sin6_addr = in6addr_any;
+		} else {
+			struct sockaddr_in *addr = (struct sockaddr_in *)&rtp_address;
+			addr->sin_family = AF_INET;
+			addr->sin_port = htons(rtp_port);
+			addr->sin_addr.s_addr = INADDR_ANY;
+		}
 		if(bind(rtp_fd, (struct sockaddr *)(&rtp_address), sizeof(rtp_address)) < 0) {
 			/* rtp_fd still unbound, reuse it in the next iteration */
 		} else {

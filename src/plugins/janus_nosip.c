@@ -260,6 +260,7 @@ static struct janus_json_parameter recording_parameters[] = {
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
+static gboolean ipv6_disabled = FALSE;
 static janus_callbacks *gateway = NULL;
 
 static char *local_ip = NULL, *sdp_ip = NULL;
@@ -792,6 +793,21 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 	messages = g_async_queue_new_full((GDestroyNotify) janus_nosip_message_free);
 	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
+
+	/* Finally, let's check if IPv6 is disabled, as we may need to know for RTP/RTCP sockets */
+	int fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+	if(fd <= 0) {
+		ipv6_disabled = TRUE;
+	} else {
+		int v6only = 0;
+		if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)
+			ipv6_disabled = TRUE;
+	}
+	if(fd > 0)
+		close(fd);
+	if(ipv6_disabled) {
+		JANUS_LOG(LOG_WARN, "IPv6 disabled, will only use IPv4 for RTP/RTCP sockets (NoSIP)\n");
+	}
 
 	g_atomic_int_set(&initialized, 1);
 
@@ -1982,10 +1998,18 @@ char *janus_nosip_sdp_manipulate(janus_nosip_session *session, janus_sdp *sdp, g
 }
 
 static int janus_nosip_bind_socket(int fd, int port) {
-	struct sockaddr_in6 rtp_address = { 0 };
-	rtp_address.sin6_family = AF_INET6;
-	rtp_address.sin6_port = htons(port);
-	rtp_address.sin6_addr = in6addr_any;
+	struct sockaddr_storage rtp_address = { 0 };
+	if(!ipv6_disabled) {
+		struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&rtp_address;
+		addr->sin6_family = AF_INET6;
+		addr->sin6_port = htons(port);
+		addr->sin6_addr = in6addr_any;
+	} else {
+		struct sockaddr_in *addr = (struct sockaddr_in *)&rtp_address;
+		addr->sin_family = AF_INET;
+		addr->sin_port = htons(port);
+		addr->sin_addr.s_addr = INADDR_ANY;
+	}
 	if(bind(fd, (struct sockaddr *)(&rtp_address), sizeof(rtp_address)) < 0) {
 		JANUS_LOG(LOG_ERR, "Bind failed (port %d)\n", port);
 		return -1;
@@ -2007,9 +2031,9 @@ static int janus_nosip_allocate_port_pair(gboolean video, int fds[2], int ports[
 			break;
 		}
 		if(rtp_fd == -1) {
-			rtp_fd = socket(AF_INET6, SOCK_DGRAM, 0);
+			rtp_fd = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
 			int v6only = 0;
-			if(rtp_fd != -1 && setsockopt(rtp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+			if(!ipv6_disabled && rtp_fd != -1 && setsockopt(rtp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 				JANUS_LOG(LOG_WARN, "Error setting v6only to false on RTP socket (error=%s)\n",
 					g_strerror(errno));
 			}
@@ -2032,8 +2056,8 @@ static int janus_nosip_allocate_port_pair(gboolean video, int fds[2], int ports[
 		}
 		if(rtcp_fd == -1) {
 			int v6only = 0;
-			rtcp_fd = socket(AF_INET6, SOCK_DGRAM, 0);
-			if(rtcp_fd != -1 && setsockopt(rtcp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+			rtcp_fd = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
+			if(!ipv6_disabled && rtcp_fd != -1 && setsockopt(rtcp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 				JANUS_LOG(LOG_WARN, "Error setting v6only to false on RTP socket (error=%s)\n",
 					g_strerror(errno));
 			}
