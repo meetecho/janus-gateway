@@ -41,6 +41,7 @@ room-<unique room ID>: {
 	default_prebuffering = number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)
 	default_expectedloss = percent of packets we expect participants may miss, to help with FEC (default=0, max=20; automatically used for forwarders too)
 	default_bitrate = default bitrate in bps to use for the all participants (default=0, which means libopus decides; automatically used for forwarders too)
+	denoise = true|false (whether denoising via RNNoise should be performed for each participant by default)
 	record = true|false (whether this room should be recorded, default=false)
 	record_file = /path/to/recording.wav (where to save the recording)
 	record_dir = /path/to/ (path to save the recording to, makes record_file a relative path if provided)
@@ -144,6 +145,7 @@ room-<unique room ID>: {
 	"default_prebuffering" : <number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)>,
 	"default_expectedloss" : <percent of packets we expect participants may miss, to help with FEC (default=0, max=20; automatically used for forwarders too)>,
 	"default_bitrate" : <bitrate in bps to use for the all participants (default=0, which means libopus decides; automatically used for forwarders too)>,
+	"denoise" : <true|false, whether denoising via RNNoise should be performed for each participant by default, default=false>,
 	"record" : <true|false, whether to record the room or not, default=false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
 	"record_dir" : "</path/to/, optional; makes record_file a relative path, if provided>",
@@ -745,6 +747,7 @@ room-<unique room ID>: {
 	"expected_loss" : <0-20, a percentage of the expected loss (capped at 20%), only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>,
 	"volume" : <percent value, <100 reduces volume, >100 increases volume; optional, default is 100 (no volume change)>,
 	"spatial_position" : <in case spatial audio is enabled for the room, panning of this participant (0=left, 50=center, 100=right)>,
+	"denoise" : <true|false, whether denoising via RNNoise should be performed for this participant (default=room value)>,
 	"secret" : "<room management password; optional, if provided the user is an admin and can't be globally muted with mute_room>",
 	"audio_level_average" : "<if provided, overrides the room audio_level_average for this user; optional>",
 	"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>",
@@ -833,6 +836,7 @@ room-<unique room ID>: {
 	"expected_loss" : <new value for the expected loss (see "join" for more info)>
 	"volume" : <new volume percent value (see "join" for more info)>,
 	"spatial_position" : <in case spatial audio is enabled for the room, new panning of this participant (0=left, 50=center, 100=right)>,
+	"denoise" : <true|false, whether denoising via RNNoise should be performed for this participant (default=room value)>,
 	"record": <true|false, whether to record this user's contribution to a .mjr file (mixer not involved),
 	"filename": "<basename of the file to record to, -audio.mjr will be added by the plugin; will be relative to mjrs_dir, if configured in the room>",
 	"group" : "<new group to assign to this participant, if enabled in the room (for forwarding purposes)>"
@@ -1034,6 +1038,10 @@ room-<unique room ID>: {
 #ifdef HAVE_LIBOGG
 #include <ogg/ogg.h>
 #endif
+#ifdef HAVE_RNNOISE
+#include <rnnoise.h>
+#endif
+
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <sys/socket.h>
@@ -1056,8 +1064,8 @@ room-<unique room ID>: {
 
 
 /* Plugin information */
-#define JANUS_AUDIOBRIDGE_VERSION			12
-#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.12"
+#define JANUS_AUDIOBRIDGE_VERSION			13
+#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.13"
 #define JANUS_AUDIOBRIDGE_DESCRIPTION		"This is a plugin implementing an audio conference bridge for Janus, mixing Opus streams."
 #define JANUS_AUDIOBRIDGE_NAME				"JANUS AudioBridge plugin"
 #define JANUS_AUDIOBRIDGE_AUTHOR			"Meetecho s.r.l."
@@ -1177,6 +1185,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"default_prebuffering", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"default_expectedloss", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"default_bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"denoise", JANUS_JSON_BOOL, 0},
 	{"groups", JSON_ARRAY, 0}
 };
 static struct janus_json_parameter edit_parameters[] = {
@@ -1214,6 +1223,7 @@ static struct janus_json_parameter join_parameters[] = {
 	{"spatial_position", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_level_average", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"denoise", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
 	{"generate_offer", JANUS_JSON_BOOL, 0},
@@ -1245,6 +1255,7 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"group", JSON_STRING, 0},
 	{"spatial_position", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"denoise", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
 	{"display", JSON_STRING, 0},
@@ -1334,6 +1345,9 @@ typedef struct janus_audiobridge_room {
 	int32_t default_bitrate;	/* Default bitrate to use for all Opus streams when encoding */
 	int audio_active_packets;	/* Amount of packets with audio level for checkup */
 	int audio_level_average;	/* Average audio level */
+#ifdef HAVE_RNNOISE
+	gboolean denoise;			/* Whether we should denoise participants by default */
+#endif
 	volatile gint record;		/* Whether this room has to be recorded or not */
 	gchar *record_file;			/* Path of the recording file (absolute or relative, depending on record_dir) */
 	gchar *record_dir;			/* Folder to save the recording file to */
@@ -1570,6 +1584,10 @@ typedef struct janus_audiobridge_participant {
 	int opus_complexity;	/* Complexity to use in the encoder (by default, DEFAULT_COMPLEXITY) */
 	gboolean stereo;		/* Whether stereo will be used for spatial audio */
 	int spatial_position;	/* Panning of this participant in the mix */
+#ifdef HAVE_RNNOISE
+	gboolean denoise;		/* Whether we should denoise this participant */
+	DenoiseState *rnnoise;	/* RNNoise state*/
+#endif
 	/* RTP stuff */
 	GList *inbuf;			/* Incoming audio from this participant, as an ordered list of packets */
 	GAsyncQueue *outbuf;	/* Mixed audio for this participant */
@@ -1662,6 +1680,10 @@ static void janus_audiobridge_participant_free(const janus_refcount *participant
 		}
 		g_async_queue_unref(participant->outbuf);
 	}
+#ifdef HAVE_RNNOISE
+	if(participant->rnnoise)
+		rnnoise_destroy(participant->rnnoise);
+#endif
 	g_free(participant->mjr_base);
 #ifdef HAVE_LIBOGG
 	janus_audiobridge_file_free(participant->annc);
@@ -2272,6 +2294,12 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
+#ifdef HAVE_RNNOISE
+	JANUS_LOG(LOG_INFO, "Denoising via RNNoise supported (%d)\n", rnnoise_get_frame_size());
+#else
+	JANUS_LOG(LOG_WARN, "Denoising via RNNoise NOT supported\n");
+#endif
+
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
 		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
@@ -2387,6 +2415,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *default_prebuffering = janus_config_get(config, cat, janus_config_type_item, "default_prebuffering");
 			janus_config_item *default_expectedloss = janus_config_get(config, cat, janus_config_type_item, "default_expectedloss");
 			janus_config_item *default_bitrate = janus_config_get(config, cat, janus_config_type_item, "default_bitrate");
+			janus_config_item *denoise = janus_config_get(config, cat, janus_config_type_item, "denoise");
 			janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
 			janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
 			janus_config_array *groups = janus_config_get(config, cat, janus_config_type_array, "groups");
@@ -2510,6 +2539,13 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 					audiobridge->default_bitrate = 0;
 				}
 			}
+#ifdef HAVE_RNNOISE
+			audiobridge->denoise = denoise && denoise->value && janus_is_true(denoise->value);
+#else
+			if(denoise && denoise->value && janus_is_true(denoise->value)) {
+				JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
+			}
+#endif
 			audiobridge->room_ssrc = janus_random_uint32();
 			if(secret != NULL && secret->value != NULL) {
 				audiobridge->room_secret = g_strdup(secret->value);
@@ -2838,6 +2874,10 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 			json_object_set_new(info, "last-drop", json_integer(participant->last_drop));
 		if(participant->stereo)
 			json_object_set_new(info, "spatial_position", json_integer(participant->spatial_position));
+#ifdef HAVE_RNNOISE
+		if(participant->denoise)
+			json_object_set_new(info, "denoise", json_true());
+#endif
 		if(participant->arc && participant->arc->filename)
 			json_object_set_new(info, "audio-recording", json_string(participant->arc->filename));
 		if(participant->extmap_id > 0) {
@@ -2975,6 +3015,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_t *default_prebuffering = json_object_get(root, "default_prebuffering");
 		json_t *default_expectedloss = json_object_get(root, "default_expectedloss");
 		json_t *default_bitrate = json_object_get(root, "default_bitrate");
+		json_t *denoise = json_object_get(root, "denoise");
 		json_t *groups = json_object_get(root, "groups");
 		json_t *record = json_object_get(root, "record");
 		json_t *recfile = json_object_get(root, "record_file");
@@ -3149,6 +3190,13 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				audiobridge->default_bitrate = 0;
 			}
 		}
+#ifdef HAVE_RNNOISE
+		audiobridge->denoise = denoise ? json_is_true(denoise) : FALSE;
+#else
+		if(denoise && json_is_true(denoise)) {
+			JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
+		}
+#endif
 		switch(audiobridge->sampling_rate) {
 			case 8000:
 			case 12000:
@@ -4250,6 +4298,108 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_refcount_decrease(&audiobridge->ref);
 		goto prepare_response;
+#ifdef HAVE_RNNOISE
+	} else if(!strcasecmp(request_text, "denoise_enable") || !strcasecmp(request_text, "denoise_disable")) {
+		gboolean denoise = (!strcasecmp(request_text, "denoise_enable"));
+		JANUS_LOG(LOG_VERB, "Attempt to %s denoising for a participant in an existing AudioBridge room\n",
+			denoise ? "enable" : "disable");
+		JANUS_VALIDATE_JSON_OBJECT(root, secret_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, idstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		json_t *room = json_object_get(root, "room");
+		json_t *id = json_object_get(root, "id");
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
+		janus_mutex_lock(&rooms_mutex);
+		janus_audiobridge_room *audiobridge = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
+		if(audiobridge == NULL) {
+			janus_mutex_unlock(&rooms_mutex);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&audiobridge->ref);
+		janus_mutex_lock(&audiobridge->mutex);
+		janus_mutex_unlock(&rooms_mutex);
+
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&audiobridge->mutex);
+			janus_refcount_decrease(&audiobridge->ref);
+			goto prepare_response;
+		}
+
+		guint64 user_id = 0;
+		char user_id_num[30], *user_id_str = NULL;
+		if(!string_ids) {
+			user_id = json_integer_value(id);
+			g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, user_id);
+			user_id_str = user_id_num;
+		} else {
+			user_id_str = (char *)json_string_value(id);
+		}
+		janus_audiobridge_participant *participant = g_hash_table_lookup(audiobridge->participants,
+			string_ids ? (gpointer)user_id_str : (gpointer)&user_id);
+		if(participant == NULL) {
+			janus_mutex_unlock(&audiobridge->mutex);
+			janus_refcount_decrease(&audiobridge->ref);
+			JANUS_LOG(LOG_ERR, "No such user %s in room %s\n", user_id_str, room_id_str);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_USER;
+			g_snprintf(error_cause, 512, "No such user %s in room %s", user_id_str, room_id_str);
+			goto prepare_response;
+		}
+
+		participant->denoise = denoise;
+		if(participant->denoise && participant->rnnoise == NULL) {
+			/* Create RNNoise context */
+			participant->rnnoise = rnnoise_create(NULL);
+		}
+
+		/* Prepare response */
+		response = json_object();
+		json_object_set_new(response, "audiobridge", json_string("success"));
+		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
+
+		/* Done */
+		janus_mutex_unlock(&audiobridge->mutex);
+		janus_refcount_decrease(&audiobridge->ref);
+		goto prepare_response;
+#endif
 	} else if(!strcasecmp(request_text, "kick")) {
 		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing AudioBridge room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, secret_parameters,
@@ -5795,6 +5945,62 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 			g_free(pkt);
 			return;
 		}
+#ifdef HAVE_RNNOISE
+		/* Check if we need to denoise this packet */
+		if(participant->rnnoise && participant->denoise) {
+			/* We do: copy the samples in a float buffer, as that's what RNNoise needs */
+			opus_int16 *encoded = (opus_int16 *)pkt->data;
+			float denoised[480];
+			int i = 0, offset = 0, total = pkt->length;
+			if(!participant->stereo) {
+				/* Mono */
+				while(total > 0) {
+					/* Denoise this audio chunk */
+					for(i=0; i<480; i++) {
+						if((offset + i) < pkt->length)
+							denoised[i] = *(encoded + offset + i);
+						else
+							denoised[i] = 0;
+					}
+					/* Denoise */
+					rnnoise_process_frame(participant->rnnoise, denoised, denoised);
+					/* Replace the audio data with the one we just denoised */
+					for(i=0; i<480; i++) {
+						if((offset + i) < pkt->length)
+							*(encoded + offset + i) = denoised[i];
+					}
+					total -= 480;
+					offset += 480;
+				}
+			} else {
+				/* Stereo (interleaved) */
+				int step = 0;
+				while(step < 2) {
+					/* Denoise this audio chunk */
+					for(i=0; i<480; i++) {
+						if((offset + i*2 + step) < pkt->length)
+							denoised[i] = *(encoded + offset + i*2 + step);
+						else
+							denoised[i] = 0;
+					}
+					/* Denoise */
+					rnnoise_process_frame(participant->rnnoise, denoised, denoised);
+					/* Replace the audio data with the one we just denoised */
+					for(i=0; i<480; i++) {
+						if((offset + i*2 + step) < pkt->length)
+							*(encoded + offset + i*2 + step) = denoised[i];
+					}
+					total -= 960;
+					offset += 960;
+					if(total <= 0) {
+						total = pkt->length;
+						offset = 0;
+						step++;
+					}
+				}
+			}
+		}
+#endif
 		/* Enqueue the decoded frame */
 		janus_mutex_lock(&participant->qmutex);
 		/* Insert packets sorting by sequence number */
@@ -6225,6 +6431,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *acodec = json_object_get(root, "codec");
 			json_t *user_audio_level_average = json_object_get(root, "audio_level_average");
 			json_t *user_audio_active_packets = json_object_get(root, "audio_active_packets");
+			json_t *denoise = json_object_get(root, "denoise");
 			json_t *record = json_object_get(root, "record");
 			json_t *recfile = json_object_get(root, "filename");
 			json_t *gen_offer = json_object_get(root, "generate_offer");
@@ -6368,6 +6575,17 @@ static void *janus_audiobridge_handler(void *data) {
 					spatial_position = 100;
 				participant->spatial_position = spatial_position;
 			}
+#ifdef HAVE_RNNOISE
+			participant->denoise = denoise ? json_is_true(denoise) : audiobridge->denoise;
+			if(participant->denoise && participant->rnnoise == NULL) {
+				/* Create RNNoise context */
+				participant->rnnoise = rnnoise_create(NULL);
+			}
+#else
+			if(denoise && json_is_true(denoise)) {
+				JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
+			}
+#endif
 			participant->user_audio_active_packets = json_integer_value(user_audio_active_packets);
 			participant->user_audio_level_average = json_integer_value(user_audio_level_average);
 			if(participant->outbuf == NULL)
@@ -6692,6 +6910,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *exploss = json_object_get(root, "expected_loss");
 			json_t *gain = json_object_get(root, "volume");
 			json_t *spatial = json_object_get(root, "spatial_position");
+			json_t *denoise = json_object_get(root, "denoise");
 			json_t *record = json_object_get(root, "record");
 			json_t *recfile = json_object_get(root, "filename");
 			json_t *display = json_object_get(root, "display");
@@ -6809,6 +7028,18 @@ static void *janus_audiobridge_handler(void *data) {
 						spatial_position = 100;
 					participant->spatial_position = spatial_position;
 				}
+#ifdef HAVE_RNNOISE
+				if(denoise)
+					participant->denoise = json_is_true(denoise);
+				if(participant->denoise && participant->rnnoise == NULL) {
+					/* Create RNNoise context */
+					participant->rnnoise = rnnoise_create(NULL);
+				}
+#else
+				if(denoise && json_is_true(denoise)) {
+					JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
+				}
+#endif
 				/* Notify all other participants */
 				janus_mutex_lock(&rooms_mutex);
 				janus_audiobridge_room *audiobridge = participant->room;
