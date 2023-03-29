@@ -1266,7 +1266,7 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 	return 0;
 }
 
-int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method, uint api_timeout) {
+int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method, uint api_timeout, gboolean api_https_verify_host) {
 #ifndef HAVE_TURNRESTAPI
 	JANUS_LOG(LOG_ERR, "Janus has been built with no libcurl support, TURN REST API unavailable\n");
 	return -1;
@@ -1276,7 +1276,7 @@ int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_me
 		JANUS_LOG(LOG_ERR, "Invalid TURN REST API backend: not an HTTP address\n");
 		return -1;
 	}
-	janus_turnrest_set_backend(api_server, api_key, api_method, api_timeout);
+	janus_turnrest_set_backend(api_server, api_key, api_method, api_timeout, api_https_verify_host);
 	JANUS_LOG(LOG_INFO, "TURN REST API backend: %s\n", api_server ? api_server : "(disabled)");
 #endif
 	return 0;
