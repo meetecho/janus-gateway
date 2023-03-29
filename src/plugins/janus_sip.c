@@ -6710,7 +6710,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 	}
 	if(session->media.has_video) {
 		JANUS_LOG(LOG_VERB, "Allocating video ports:\n");
-		struct sockaddr_in6 video_rtp_address, video_rtcp_address;
+		struct sockaddr_storage video_rtp_address, video_rtcp_address;
 		while(session->media.local_video_rtp_port == 0 || session->media.local_video_rtcp_port == 0) {
 			if(attempts == 0)	/* Too many failures */
 				return -1;
