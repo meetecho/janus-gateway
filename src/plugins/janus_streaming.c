@@ -6364,7 +6364,7 @@ done:
 						}
 						int pt = -1;
 						const char *codec = NULL;
-						if(stream->type != JANUS_STREAMING_MEDIA_AUDIO) {
+						if(stream->type != JANUS_STREAMING_MEDIA_DATA) {
 							codec = (stream->type == JANUS_STREAMING_MEDIA_AUDIO ?
 								janus_audiocodec_name(stream->codecs.audio_codec) : janus_videocodec_name(stream->codecs.video_codec));
 							pt = janus_sdp_get_codec_pt(parsed_sdp, m->index, codec);
