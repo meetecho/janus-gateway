@@ -7277,9 +7277,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			/* Something went wrong */
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
+			janus_videoroom_publisher_destroy(publisher);
 			janus_refcount_decrease(&publisher->ref);
 			janus_refcount_decrease(&publisher->session->ref);
-			janus_videoroom_publisher_destroy(publisher);
 			JANUS_LOG(LOG_ERR, "Could not spawn thread for remote publisher, %d (%s)\n",
 				errno, g_strerror(errno));
 			error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
@@ -8712,6 +8712,7 @@ static void *janus_videoroom_handler(void *data) {
 			}
 			janus_refcount_increase(&videoroom->ref);
 			janus_mutex_unlock(&rooms_mutex);
+			janus_mutex_lock(&sessions_mutex);
 			janus_mutex_lock(&videoroom->mutex);
 			json_t *ptype = json_object_get(root, "ptype");
 			const char *ptype_text = json_string_value(ptype);
@@ -8722,6 +8723,7 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0) {
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_mutex_unlock(&sessions_mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
@@ -8736,6 +8738,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				if(error_code != 0) {
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_mutex_unlock(&sessions_mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
@@ -8749,6 +8752,7 @@ static void *janus_videoroom_handler(void *data) {
 							JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 						if(error_code != 0) {
 							janus_mutex_unlock(&videoroom->mutex);
+							janus_mutex_unlock(&sessions_mutex);
 							janus_refcount_decrease(&videoroom->ref);
 							goto error;
 
@@ -8761,6 +8765,7 @@ static void *janus_videoroom_handler(void *data) {
 					const char *token_text = token ? json_string_value(token) : NULL;
 					if(token_text == NULL || g_hash_table_lookup(videoroom->allowed, token_text) == NULL) {
 						janus_mutex_unlock(&videoroom->mutex);
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						JANUS_LOG(LOG_ERR, "Unauthorized (not in the allowed list)\n");
 						error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
@@ -8786,6 +8791,7 @@ static void *janus_videoroom_handler(void *data) {
 							string_ids ? (gpointer)user_id_str : (gpointer)&user_id) != NULL) {
 						/* User ID already taken */
 						janus_mutex_unlock(&videoroom->mutex);
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						error_code = JANUS_VIDEOROOM_ERROR_ID_EXISTS;
 						JANUS_LOG(LOG_ERR, "User ID %s already exists\n", user_id_str);
@@ -8890,6 +8896,7 @@ static void *janus_videoroom_handler(void *data) {
 						JANUS_LOG(LOG_ERR, "Participant asked for audio codec '%s', but it's not allowed (room %s, user %s)\n",
 							json_string_value(audiocodec), publisher->room_id_str, publisher->user_id_str);
 						janus_mutex_unlock(&publisher->room->mutex);
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&publisher->room->ref);
 						janus_refcount_decrease(&publisher->ref);
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
@@ -8912,6 +8919,7 @@ static void *janus_videoroom_handler(void *data) {
 						JANUS_LOG(LOG_ERR, "Participant asked for video codec '%s', but it's not allowed (room %s, user %s)\n",
 							json_string_value(videocodec), publisher->room_id_str, publisher->user_id_str);
 						janus_mutex_unlock(&publisher->room->mutex);
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&publisher->room->ref);
 						janus_refcount_decrease(&publisher->ref);
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
@@ -8953,6 +8961,7 @@ static void *janus_videoroom_handler(void *data) {
 				if(g_atomic_int_get(&session->destroyed)) {
 					janus_mutex_unlock(&session->mutex);
 					janus_mutex_unlock(&publisher->room->mutex);
+					janus_mutex_unlock(&sessions_mutex);
 					janus_refcount_decrease(&publisher->room->ref);
 					janus_videoroom_publisher_destroy(publisher);
 					JANUS_LOG(LOG_ERR, "Session destroyed, invalidating new publisher\n");
@@ -9096,6 +9105,7 @@ static void *janus_videoroom_handler(void *data) {
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 				}
 				janus_mutex_unlock(&publisher->room->mutex);
+				janus_mutex_unlock(&sessions_mutex);
 				if(user_id_allocated)
 					g_free(user_id_str);
 			} else if(!strcasecmp(ptype_text, "subscriber")) {
@@ -9106,27 +9116,26 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0) {
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_mutex_unlock(&sessions_mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
-				janus_mutex_lock(&sessions_mutex);
 				session = janus_videoroom_lookup_session(msg->handle);
 				if(!session) {
-					janus_mutex_unlock(&sessions_mutex);
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_mutex_unlock(&sessions_mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 					janus_videoroom_message_free(msg);
 					continue;
 				}
 				if(g_atomic_int_get(&session->destroyed)) {
-					janus_mutex_unlock(&sessions_mutex);
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_mutex_unlock(&sessions_mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					janus_videoroom_message_free(msg);
 					continue;
 				}
-				janus_mutex_unlock(&sessions_mutex);
 				/* Who does this subscription belong to? */
 				guint64 feed_id = 0;
 				char feed_id_num[30], *feed_id_str = NULL;
@@ -9149,6 +9158,7 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					if(error_code != 0) {
 						janus_mutex_unlock(&videoroom->mutex);
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9158,6 +9168,7 @@ static void *janus_videoroom_handler(void *data) {
 						error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
 						g_snprintf(error_cause, 512, "At least one between 'streams' and 'feed' must be specified");
 						janus_mutex_unlock(&videoroom->mutex);
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9199,6 +9210,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9220,6 +9232,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9246,6 +9259,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9266,6 +9280,7 @@ static void *janus_videoroom_handler(void *data) {
 								janus_refcount_decrease(&publisher->ref);
 								publishers = g_list_remove(publishers, publisher);
 							}
+							janus_mutex_unlock(&sessions_mutex);
 							janus_refcount_decrease(&videoroom->ref);
 							goto error;
 						}
@@ -9286,6 +9301,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9304,6 +9320,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9333,6 +9350,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9545,11 +9563,12 @@ static void *janus_videoroom_handler(void *data) {
 						janus_refcount_decrease(&publisher->ref);
 						publishers = g_list_remove(publishers, publisher);
 					}
+					janus_mutex_unlock(&sessions_mutex);
 					JANUS_LOG(LOG_ERR, "Can't offer an SDP with no stream\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP;
 					g_snprintf(error_cause, 512, "Can't offer an SDP with no stream");
-					janus_refcount_decrease(&subscriber->ref);
 					janus_videoroom_subscriber_destroy(subscriber);
+					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
 				session->participant = subscriber;
@@ -9558,9 +9577,6 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_lock(&owner->subscribers_mutex);
 					owner->subscriptions = g_slist_append(owner->subscriptions, subscriber);
 					janus_mutex_unlock(&owner->subscribers_mutex);
-					/* Done adding the subscription, owner is safe to be released */
-					janus_refcount_decrease(&owner->session->ref);
-					janus_refcount_decrease(&owner->ref);
 				}
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("attached"));
@@ -9582,6 +9598,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* Negotiate by crafting a new SDP matching the subscriptions */
 				json_t *jsep = janus_videoroom_subscriber_offer(subscriber);
 				janus_mutex_unlock(&subscriber->streams_mutex);
+				janus_mutex_unlock(&sessions_mutex);
 				/* How long will the Janus core take to push the event? */
 				g_atomic_int_set(&session->hangingup, 0);
 				gint64 start = janus_get_monotonic_time();
@@ -9589,6 +9606,46 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
 				json_decref(event);
 				json_decref(jsep);
+				if(res < 0) {
+					/* Soemthing went wrong, get rid of the subscription */
+					if(media_event)
+						json_decref(media_event);
+					if(owner) {
+						janus_mutex_lock(&owner->subscribers_mutex);
+						owner->subscriptions = g_slist_remove(owner->subscriptions, subscriber);
+						janus_mutex_unlock(&owner->subscribers_mutex);
+						janus_refcount_decrease(&owner->session->ref);
+						janus_refcount_decrease(&owner->ref);
+					}
+					while(publishers) {
+						janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
+						janus_refcount_decrease(&publisher->session->ref);
+						janus_refcount_decrease(&publisher->ref);
+						publishers = g_list_remove(publishers, publisher);
+					}
+					JANUS_LOG(LOG_ERR, "Error pushing event to new subscriber\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Error pushing event");
+					janus_mutex_lock(&session->mutex)
+					session->participant = NULL;
+					janus_mutex_unlock(&session->mutex)
+					/* Get rid of streams */
+					janus_mutex_lock(&subscriber->streams_mutex);
+					GList *temp = subscriber->streams;
+					while(temp) {
+						janus_videoroom_subscriber_stream *s = (janus_videoroom_subscriber_stream *)temp->data;
+						janus_videoroom_subscriber_stream_remove(s, NULL, TRUE);
+						temp = temp->next;
+					}
+					g_list_free(subscriber->streams);
+					subscriber->streams = NULL;
+					g_hash_table_remove_all(subscriber->streams_byid);
+					g_hash_table_remove_all(subscriber->streams_bymid);
+					janus_mutex_unlock(&subscriber->streams_mutex);
+					janus_videoroom_subscriber_destroy(subscriber);
+					janus_refcount_decrease(&subscriber->ref);
+					goto error;
+				}
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
@@ -9605,6 +9662,11 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&publisher->session->ref);
 					janus_refcount_decrease(&publisher->ref);
 					publishers = g_list_remove(publishers, publisher);
+				}
+				if(owner) {
+					/* Done adding the subscription, owner is safe to be released */
+					janus_refcount_decrease(&owner->session->ref);
+					janus_refcount_decrease(&owner->ref);
 				}
 				janus_refcount_decrease(&subscriber->ref);
 				janus_videoroom_message_free(msg);
