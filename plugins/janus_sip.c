@@ -1618,9 +1618,10 @@ static void janus_sip_parse_custom_headers(json_t *root, char *custom_headers, s
 					continue;
 				}
 				char h[255];
-				g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
+				g_snprintf(h, 255, "%s: %s", key, json_string_value(value));
 				JANUS_LOG(LOG_VERB, "Adding custom header, %s\n", h);
-				janus_strlcat(custom_headers, h, size);
+				janus_strlcat(custom_headers, h, size - 2);
+				janus_strlcat(custom_headers, "\r\n", size);
 				iter = json_object_iter_next(headers, iter);
 			}
 		}
