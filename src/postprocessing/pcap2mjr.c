@@ -88,13 +88,14 @@ static void janus_p2m_handle_signal(int signum) {
 }
 
 /* Supported command-line arguments */
+static int64_t ssrc64 = 0;
 static uint32_t ssrc = 0;
 static const char *codec = NULL;
 static gboolean show_warnings = FALSE;
 static const char **paths = NULL;
 static GOptionEntry opt_entries[] = {
 	{ "codec", 'c', 0, G_OPTION_ARG_STRING, &codec, "Codec the recording will contain (e.g., opus, vp8, etc.)", NULL },
-	{ "ssrc", 's', 0, G_OPTION_ARG_INT, &ssrc, "SSRC of the packets in the pcap file to save (pass 0 to autodetect)", NULL },
+	{ "ssrc", 's', 0, G_OPTION_ARG_INT64, &ssrc64, "SSRC of the packets in the pcap file to save (pass 0 to autodetect)", NULL },
 	{ "warnings", 'w', 0, G_OPTION_ARG_NONE, &show_warnings, "Show warnings for skipped packets (e.g., not RTP or wrong SSRC)", NULL },
 	{ G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &paths, NULL, NULL },
 	{ NULL },
@@ -155,6 +156,7 @@ int main(int argc, char *argv[]) {
 		g_option_context_free(opts);
 		exit(1);
 	}
+	ssrc = (uint32_t)ssrc64;
 	JANUS_LOG(LOG_INFO, "[%s/%"SCNu32"] %s --> %s\n", codec, ssrc, source, destination);
 	if(ssrc == 0)
 		JANUS_LOG(LOG_WARN, "No SSRC provided, will try to autodetect an RTP stream\n");

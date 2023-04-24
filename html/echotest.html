@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server (multistream): Echo Test</title>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.0/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.2/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
@@ -31,7 +31,7 @@
 </head>
 <body>
 
-<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="https://s3.amazonaws.com/github/ribbons/forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
 
 <nav class="navbar navbar-default navbar-static-top">
 </nav>
@@ -58,12 +58,16 @@
 						back to you. You can also try and cap the bitrate: such control
 						will tell the server to manipulate the RTCP REMB packets passing
 						through, in order to simulate a bandwidth limitation. In case
-						you're interested in testing simulcasting, add the <code>?simulcast=true</code>
+						you're interested in testing simulcasting or SVC, add a
+						<code>?simulcast=true</code> (for simulcast) or <code>?svc=&lt;mode&gt;</code> (for SVC)
 						query string to the url of this page and reload it: buttons will appear
 						to allow you to try and switch between lower and higher quality
-						versions of the video you're capturing: notice that you may have
+						versions of the video you're capturing. Notice that you may have
 						to increase the bandwidth indicator to have the higher quality
-						versions appear, as the browser will not encode them otherwise.</p>
+						versions appear, as the browser will not encode them otherwise.
+						Besides, notice that simulcast will only work when using VP8 or H.264,
+						while SVC will only work if you're using VP9 on a browser that
+						supports setting the <code>scalabilityMode</code>.</p>
 						<p>Finally, this demo also includes Data Channels: whatever you
 						write in the text box under your local video, will be sent via
 						Data Channels to the plugins, modified by adding a fixed prefix,

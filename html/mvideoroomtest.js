@@ -3,6 +3,8 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+
 var janus = null;
 var sfutest = null;
 var opaqueId = "videoroomtest-"+Janus.randomString(12);
@@ -19,9 +21,12 @@ var mypvtid = null;
 var remoteFeed = null;
 var feeds = {}, feedStreams = {}, subStreams = {}, slots = {}, mids = {}, subscriptions = {};
 var localTracks = {}, localVideos = 0, remoteTracks = {};
-var bitrateTimer = [], simulcastStarted = {};
+var bitrateTimer = [], simulcastStarted = {}, svcStarted = {};
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
+var doSvc = getQueryStringValue("svc");
+if(doSvc === "")
+	doSvc = null;
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var subscriber_mode = (getQueryStringValue("subscriber-mode") === "yes" || getQueryStringValue("subscriber-mode") === "true");
@@ -343,7 +348,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										localVideos++;
 										$('#videolocal .no-video-container').remove();
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										localTracks[trackId] = stream;
 										Janus.log("Created local stream:", stream);
 										Janus.log(stream.getTracks());
@@ -363,6 +368,7 @@ $(document).ready(function() {
 										});
 									}
 								},
+								// eslint-disable-next-line no-unused-vars
 								onremotetrack: function(track, mid, on) {
 									// The publisher stream is sendonly, we don't expect anything here
 								},
@@ -394,6 +400,7 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(field, event) {
 	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
@@ -450,7 +457,12 @@ function publishOwnFeed(useAudio) {
 	let tracks = [];
 	if(useAudio)
 		tracks.push({ type: 'audio', capture: true, recv: false });
-	tracks.push({ type: 'video', capture: true, recv: false, simulcast: doSimulcast });
+	tracks.push({ type: 'video', capture: true, recv: false,
+		// We may need to enable simulcast or SVC on the video track
+		simulcast: doSimulcast,
+		// We only support SVC for VP9 and (still WIP) AV1
+		svc: ((vcodec === 'vp9' || vcodec === 'av1') && doSvc) ? doSvc : null
+	});
 	//~ tracks.push({ type: 'data' });
 
 	sfutest.createOffer(
@@ -479,7 +491,7 @@ function publishOwnFeed(useAudio) {
 			error: function(error) {
 				Janus.error("WebRTC error:", error);
 				if (useAudio) {
-					 publishOwnFeed(false);
+					publishOwnFeed(false);
 				} else {
 					bootbox.alert("WebRTC error... " + error.message);
 					$('#publish').removeAttr('disabled').click(function() { publishOwnFeed(true); });
@@ -688,16 +700,27 @@ function subscribeTo(sources) {
 						let temporal = msg["temporal"];
 						if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 							// Check which this feed this refers to
-							let sub = subStreams[mid];
-							let feed = feedStreams[sub.feed_id];
 							let slot = slots[mid];
 							if(!simulcastStarted[slot]) {
 								simulcastStarted[slot] = true;
 								// Add some new buttons
-								addSimulcastButtons(slot, true);
+								addSimulcastSvcButtons(slot, true);
 							}
 							// We just received notice that there's been a switch, update the buttons
-							updateSimulcastButtons(slot, substream, temporal);
+							updateSimulcastSvcButtons(slot, substream, temporal);
+						}
+						// Or maybe SVC?
+						let spatial = msg["spatial_layer"];
+						temporal = msg["temporal_layer"];
+						if((spatial !== null && spatial !== undefined) || (temporal !== null && temporal !== undefined)) {
+							let slot = slots[mid];
+							if(!svcStarted[slot]) {
+								svcStarted[slot] = true;
+								// Add some new buttons
+								addSimulcastSvcButtons(slot, true);
+							}
+							// We just received notice that there's been a switch, update the buttons
+							updateSimulcastSvcButtons(slot, spatial, temporal);
 						}
 					} else {
 						// What has just happened?
@@ -741,11 +764,16 @@ function subscribeTo(sources) {
 						});
 				}
 			},
+			// eslint-disable-next-line no-unused-vars
 			onlocaltrack: function(track, on) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
-			onremotetrack: function(track, mid, on) {
-				Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+			onremotetrack: function(track, mid, on, metadata) {
+				Janus.debug(
+					"Remote track (mid=" + mid + ") " +
+					(on ? "added" : "removed") +
+					(metadata ? " (" + metadata.reason + ") ": "") + ":", track
+				);
 				// Which publisher are we getting on this mid?
 				let sub = subStreams[mid];
 				let feed = feedStreams[sub.feed_id];
@@ -787,7 +815,7 @@ function subscribeTo(sources) {
 					return;
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteTracks[mid] = stream;
 					Janus.log("Created remote audio stream:", stream);
 					$('#videoremote' + slot).append('<audio class="hide" id="remotevideo' + slot + '-' + mid + '" autoplay playsinline/>');
@@ -806,7 +834,7 @@ function subscribeTo(sources) {
 					// New video track: create a stream out of it
 					feed.remoteVideos++;
 					$('#videoremote' + slot + ' .no-video-container').remove();
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
 					$('#videoremote' + slot).append('<video class="rounded centered" id="remotevideo' + slot + '-' + mid + '" width=100% autoplay playsinline/>');
@@ -826,8 +854,14 @@ function subscribeTo(sources) {
 							// Check if the resolution changed too
 							let width = $("#videoremote" + slot + ' video').get(0).videoWidth;
 							let height = $("#videoremote" + slot + ' video').get(0).videoHeight;
-							if(width > 0 && height > 0)
-								$('#curres' + slot).removeClass('hide').text(width+'x'+height).show();
+							if(width > 0 && height > 0) {
+								let res = width + 'x' + height;
+								if(simulcastStarted[slot])
+									res += ' (simulcast)';
+								else if(svcStarted[slot])
+									res += ' (SVC)';
+								$('#curres' + slot).removeClass('hide').text(res).show();
+							}
 						}, 1000);
 					}
 				}
@@ -840,6 +874,7 @@ function subscribeTo(sources) {
 						clearInterval(bitrateTimer[i]);
 					bitrateTimer[i] = null;
 					feedStreams[i].simulcastStarted = false;
+					feedStreams[i].svcStarted = false;
 					feedStreams[i].remoteVideos = 0;
 					$('#simulcast'+i).remove();
 				}
@@ -860,6 +895,7 @@ function unsubscribeFrom(id) {
 	$('#remote' + feed.slot).empty().hide();
 	$('#videoremote' + feed.slot).empty();
 	delete simulcastStarted[feed.slot];
+	delete svcStarted[feed.slot];
 	$('#simulcast' + feed.slot).remove();
 	delete feeds[feed.slot];
 	feeds.slot = 0;
@@ -891,9 +927,12 @@ function escapeXmlTags(value) {
 	}
 }
 
-// Helpers to create Simulcast-related UI, if enabled
-function addSimulcastButtons(feed, temporal) {
+// Helpers to create Simulcast- or SVC-related UI, if enabled
+function addSimulcastSvcButtons(feed, temporal) {
 	let index = feed;
+	let simulcast = simulcastStarted[index];
+	let what = (simulcast ? 'simulcast' : 'SVC');
+	let layer = (simulcast ? 'substream' : 'layer');
 	$('#remote'+index).parent().append(
 		'<div id="simulcast'+index+'" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
 		'	<div class"row">' +
@@ -916,35 +955,44 @@ function addSimulcastButtons(feed, temporal) {
 	$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			let index = $(this).attr('id').split('sl')[1].split('-')[0];
-			toastr.info("Switching simulcast substream (mid=" + mids[index] + "), wait for it... (lower quality)", null, {timeOut: 2000});
+			toastr.info("Switching " + what + " " + layer + " (mid=" + mids[index] + "), wait for it... (lower quality)", null, {timeOut: 2000});
 			if(!$('#sl' + index + '-2').hasClass('btn-success'))
 				$('#sl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl' + index + '-1').hasClass('btn-success'))
 				$('#sl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			remoteFeed.send({ message: { request: "configure", mid: mids[index], substream: 0 }});
+			if(simulcastStarted[index])
+				remoteFeed.send({ message: { request: "configure", mid: mids[index], substream: 0 }});
+			else
+				remoteFeed.send({ message: { request: "configure", mid: mids[index], spatial_layer: 0 }});
 		});
 	$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			let index = $(this).attr('id').split('sl')[1].split('-')[0];
-			toastr.info("Switching simulcast substream (mid=" + mids[index] + "), wait for it... (normal quality)", null, {timeOut: 2000});
+			toastr.info("Switching " + what + " " + layer + " (mid=" + mids[index] + "), wait for it... (normal quality)", null, {timeOut: 2000});
 			if(!$('#sl' + index + '-2').hasClass('btn-success'))
 				$('#sl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#sl' + index + '-0').hasClass('btn-success'))
 				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			remoteFeed.send({ message: { request: "configure", mid: mids[index], substream: 1 }});
+			if(simulcastStarted[index])
+				remoteFeed.send({ message: { request: "configure", mid: mids[index], substream: 1 }});
+			else
+				remoteFeed.send({ message: { request: "configure", mid: mids[index], spatial_layer: 1 }});
 		});
 	$('#sl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			let index = $(this).attr('id').split('sl')[1].split('-')[0];
-			toastr.info("Switching simulcast substream (mid=" + mids[index] + "), wait for it... (higher quality)", null, {timeOut: 2000});
+			toastr.info("Switching " + what + " " + layer + " (mid=" + mids[index] + "), wait for it... (higher quality)", null, {timeOut: 2000});
 			$('#sl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#sl' + index + '-1').hasClass('btn-success'))
 				$('#sl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl' + index + '-0').hasClass('btn-success'))
 				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			remoteFeed.send({ message: { request: "configure", mid: mids[index], substream: 2 }});
+			if(simulcastStarted[index])
+				remoteFeed.send({ message: { request: "configure", mid: mids[index], substream: 2 }});
+			else
+				remoteFeed.send({ message: { request: "configure", mid: mids[index], spatial_layer: 2 }});
 		});
 	if(!temporal)	// No temporal layer support
 		return;
@@ -952,70 +1000,82 @@ function addSimulcastButtons(feed, temporal) {
 	$('#tl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			let index = $(this).attr('id').split('tl')[1].split('-')[0];
-			toastr.info("Capping simulcast temporal layer (mid=" + mids[index] + "), wait for it... (lowest FPS)", null, {timeOut: 2000});
+			toastr.info("Capping " + what + " temporal layer (mid=" + mids[index] + "), wait for it... (lowest FPS)", null, {timeOut: 2000});
 			if(!$('#tl' + index + '-2').hasClass('btn-success'))
 				$('#tl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#tl' + index + '-1').hasClass('btn-success'))
 				$('#tl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#tl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			remoteFeed.send({ message: { request: "configure", mid: mids[index], temporal: 0 }});
+			if(simulcastStarted[index])
+				remoteFeed.send({ message: { request: "configure", mid: mids[index], temporal: 0 }});
+			else
+				remoteFeed.send({ message: { request: "configure", mid: mids[index], temporal_layer: 0 }});
 		});
 	$('#tl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			let index = $(this).attr('id').split('tl')[1].split('-')[0];
-			toastr.info("Capping simulcast temporal layer (mid=" + mids[index] + "), wait for it... (medium FPS)", null, {timeOut: 2000});
+			toastr.info("Capping " + what + " temporal layer (mid=" + mids[index] + "), wait for it... (medium FPS)", null, {timeOut: 2000});
 			if(!$('#tl' + index + '-2').hasClass('btn-success'))
 				$('#tl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#tl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-info');
 			if(!$('#tl' + index + '-0').hasClass('btn-success'))
 				$('#tl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			remoteFeed.send({ message: { request: "configure", mid: mids[index], temporal: 1 }});
+			if(simulcastStarted[index])
+				remoteFeed.send({ message: { request: "configure", mid: mids[index], temporal: 1 }});
+			else
+				remoteFeed.send({ message: { request: "configure", mid: mids[index], temporal_layer: 1 }});
 		});
 	$('#tl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			let index = $(this).attr('id').split('tl')[1].split('-')[0];
-			toastr.info("Capping simulcast temporal layer (mid=" + mids[index] + "), wait for it... (highest FPS)", null, {timeOut: 2000});
+			toastr.info("Capping " + what + " temporal layer (mid=" + mids[index] + "), wait for it... (highest FPS)", null, {timeOut: 2000});
 			$('#tl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#tl' + index + '-1').hasClass('btn-success'))
 				$('#tl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#tl' + index + '-0').hasClass('btn-success'))
 				$('#tl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			remoteFeed.send({ message: { request: "configure", mid: mids[index], temporal: 2 }});
+			if(simulcastStarted[index])
+				remoteFeed.send({ message: { request: "configure", mid: mids[index], temporal: 2 }});
+			else
+				remoteFeed.send({ message: { request: "configure", mid: mids[index], temporal_layer: 2 }});
 		});
 }
 
-function updateSimulcastButtons(feed, substream, temporal) {
+function updateSimulcastSvcButtons(feed, substream, temporal) {
 	// Check the substream
 	let index = feed;
+	let simulcast = simulcastStarted[index];
+	let what = (simulcast ? 'simulcast' : 'SVC');
+	let layer = (simulcast ? 'substream' : 'layer');
 	if(substream === 0) {
-		toastr.success("Switched simulcast substream! (lower quality)", null, {timeOut: 2000});
+		toastr.success("Switched " + what + " " + layer + "! (lower quality)", null, {timeOut: 2000});
 		$('#sl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 	} else if(substream === 1) {
-		toastr.success("Switched simulcast substream! (normal quality)", null, {timeOut: 2000});
+		toastr.success("Switched " + what + " " + layer + "! (normal quality)", null, {timeOut: 2000});
 		$('#sl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 		$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 	} else if(substream === 2) {
-		toastr.success("Switched simulcast substream! (higher quality)", null, {timeOut: 2000});
+		toastr.success("Switched " + what + " " + layer + "! (higher quality)", null, {timeOut: 2000});
 		$('#sl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 		$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 	}
 	// Check the temporal layer
 	if(temporal === 0) {
-		toastr.success("Capped simulcast temporal layer! (lowest FPS)", null, {timeOut: 2000});
+		toastr.success("Capped " + what + " temporal layer! (lowest FPS)", null, {timeOut: 2000});
 		$('#tl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#tl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#tl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 	} else if(temporal === 1) {
-		toastr.success("Capped simulcast temporal layer! (medium FPS)", null, {timeOut: 2000});
+		toastr.success("Capped " + what + " temporal layer! (medium FPS)", null, {timeOut: 2000});
 		$('#tl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#tl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 		$('#tl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 	} else if(temporal === 2) {
-		toastr.success("Capped simulcast temporal layer! (highest FPS)", null, {timeOut: 2000});
+		toastr.success("Capped " + what + " temporal layer! (highest FPS)", null, {timeOut: 2000});
 		$('#tl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 		$('#tl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#tl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');

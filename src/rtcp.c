@@ -138,6 +138,13 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len) {
 				}
 				break;
 			}
+			case RTCP_RTPFB: {
+				/* RTPFB, Transport layer FB message (rfc4585) */
+				if (!janus_rtcp_check_fci(rtcp, total, 4))
+					break;
+				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
+				return ntohl(rtcpfb->media);
+			}
 			default:
 				break;
 		}
@@ -404,6 +411,9 @@ static void janus_rtcp_incoming_rr(janus_rtcp_context *ctx, janus_rtcp_rr *rr) {
 		tv.tv_sec = rtt_msw;
 		tv.tv_usec = (rtt_lsw * 15625) >> 10;
 		ctx->rtt = tv.tv_sec*1000 + tv.tv_usec/1000;	/* We need milliseconds */
+		ctx->rtt_ntp = a;
+		ctx->rtt_lsr = lsr;
+		ctx->rtt_dlsr = dlsr;
 		JANUS_LOG(LOG_HUGE, "rtt=%"SCNu32"\n", ctx->rtt);
 	}
 }

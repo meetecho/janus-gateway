@@ -444,6 +444,8 @@ function JANUSSDP.generateAnswer(offer, options)
 						answer[#answer+1] = { type = "a", name = a.name, value = value }
 					elseif options.disableTwcc ~= true and a.value:find("draft-holmer-rmcat-transport-wide-cc-extensions-01", 1, true) then
 						answer[#answer+1] = { type = "a", name = a.name, value = value }
+					elseif options.enableAudioLevel ~= false and a.value:find("urn:ietf:params:rtp-hdrext:ssrc-audio-level", 1, true) then
+						answer[#answer+1] = a
 					end
 				end
 			else

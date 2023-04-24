@@ -254,6 +254,8 @@ typedef struct rtcp_context
 
 	/* Estimated round-trip time */
 	uint32_t rtt;
+	/* Fields that led to RTT calculation (for stats) */
+	uint32_t rtt_ntp, rtt_lsr, rtt_dlsr;
 
 	/* RFC 3550 A.3 */
 	uint32_t received;

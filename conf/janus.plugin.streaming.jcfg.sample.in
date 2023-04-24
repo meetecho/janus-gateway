@@ -44,6 +44,9 @@
 # videoskew = true|false (whether the plugin should perform skew
 #		analisys and compensation on incoming video RTP stream, EXPERIMENTAL)
 # videosvc = true|false (whether the video will have SVC support; works only for VP9-SVC, default=false)
+# h264sps = if using H.264 as a video codec, value of the sprop-parameter-sets
+#		that would normally be sent via SDP, but that we'll use to instead
+#		manually ingest SPS and PPS packets via RTP for streams that miss it
 # collision = in case of collision (more than one SSRC hitting the same port), the plugin
 #		will discard incoming RTP packets with a new SSRC unless this many milliseconds
 #		passed, which would then change the current SSRC (0=disabled)

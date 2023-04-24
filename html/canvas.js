@@ -3,6 +3,8 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+
 var janus = null;
 var echotest = null;
 var opaqueId = "canvas-"+Janus.randomString(12);
@@ -14,11 +16,13 @@ var spinner = null;
 var audioenabled = false;
 var videoenabled = false;
 
-var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
 var simulcastStarted = false;
+
+var stream = null;
+var canvasStream = null;
 
 // We'll try to do 15 frames per second: should be relatively fluid, and
 // most important should be doable in JavaScript on lower end machines too
@@ -27,12 +31,12 @@ var fps = 15;
 var myText = "Hi there!";
 var myColor = "white";
 var myFont = "20pt Calibri";
-var myX = 15, myY = 223;
+var myX = 15, myY = 460;
 // As the "watermark", we'll use a smaller version of the Janus logo
 var logoUrl = "./janus-logo-small.png";
 var logoW = 340, logoH = 110;
 var logoS = 0.4;
-var logoX = 432 - logoW*logoS - 5, logoY = 5;
+var logoX = 640 - logoW*logoS - 15, logoY = 15;
 
 
 $(document).ready(function() {
@@ -119,7 +123,7 @@ $(document).ready(function() {
 										Janus.debug("Handling SDP as well...", jsep);
 										echotest.handleRemoteJsep({ jsep: jsep });
 									}
-									var result = msg["result"];
+									let result = msg["result"];
 									if(result) {
 										if(result === "done") {
 											// The plugin closed the echo test
@@ -138,14 +142,14 @@ $(document).ready(function() {
 											return;
 										}
 										// Any loss?
-										var status = result["status"];
+										let status = result["status"];
 										if(status === "slow_link") {
 											toastr.warning("Janus apparently missed many packets we sent, maybe we should reduce the bitrate", "Packet loss?", {timeOut: 2000});
 										}
 									}
 									// Is simulcast in place?
-									var substream = msg["substream"];
-									var temporal = msg["temporal"];
+									let substream = msg["substream"];
+									let temporal = msg["temporal"];
 									if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 										if(!simulcastStarted) {
 											simulcastStarted = true;
@@ -155,6 +159,7 @@ $(document).ready(function() {
 										updateSimulcastButtons(substream, temporal);
 									}
 								},
+								// eslint-disable-next-line no-unused-vars
 								onlocaltrack: function(track, on) {
 									// We ignore the stream we got here, we're using the canvas to render it
 									if(echotest.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -169,8 +174,12 @@ $(document).ready(function() {
 										});
 									}
 								},
-								onremotetrack: function(track, mid, on) {
-									Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+								onremotetrack: function(track, mid, on, metadata) {
+									Janus.debug(
+										"Remote track (mid=" + mid + ") " +
+										(on ? "added" : "removed") +
+										(metadata? " (" + metadata.reason + ") " : "") + ":", track
+									);
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
 										$('#peervideo' + mid).remove();
@@ -191,7 +200,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
-									var addButtons = false;
+									let addButtons = false;
 									if($('#videoright audio').length === 0 && $('#videoright video').length === 0) {
 										addButtons = true;
 										$('#videos').removeClass('hide').show();
@@ -231,12 +240,12 @@ $(document).ready(function() {
 												if(!$("#peervideo" + mid).get(0))
 													return;
 												// Display updated bitrate, if supported
-												var bitrate = echotest.getBitrate();
+												let bitrate = echotest.getBitrate();
 												//~ Janus.debug("Current bitrate is " + echotest.getBitrate());
 												$('#curbitrate').text(bitrate);
 												// Check if the resolution changed too
-												var width = $("#peervideo" + mid).get(0).videoWidth;
-												var height = $("#peervideo" + mid).get(0).videoHeight;
+												let width = $("#peervideo" + mid).get(0).videoWidth;
+												let height = $("#peervideo" + mid).get(0).videoHeight;
 												if(width > 0 && height > 0)
 													$('#curres').removeClass('hide').text(width+'x'+height).show();
 											}, 1000);
@@ -267,8 +276,8 @@ $(document).ready(function() {
 										});
 									$('#toggleaudio').parent().removeClass('hide').show();
 									$('#bitrate a').click(function() {
-										var id = $(this).attr("id");
-										var bitrate = parseInt(id)*1000;
+										let id = $(this).attr("id");
+										let bitrate = parseInt(id)*1000;
 										if(bitrate === 0) {
 											Janus.log("Not limiting bandwidth via REMB");
 										} else {
@@ -317,8 +326,9 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		updateCanvas();
 		return false;
@@ -340,22 +350,22 @@ function createCanvas() {
 		{
 			audio: true,
 			video: {
-				width: { ideal: 432 },
-				height: { ideal: 240 }
+				width: { ideal: 640 },
+				height: { ideal: 480 }
 			}
 		})
 		.then(function(stream) {
 			// We have our video
 			Janus.debug(stream);
-			Janus.attachMediaStream($('#myvideo').get(0), stream);
-			$('#myvideo').get(0).muted = "muted";
-			$('#myvideo').get(0).play();
+			Janus.attachMediaStream($('#canvasvideo').get(0), stream);
+			$('#canvasvideo').get(0).muted = "muted";
+			$('#canvasvideo').get(0).play();
 			// Let's setup the canvas, now
-			$('#myvideo').get(0).addEventListener('play', function () {
-				var myvideo = this;
-				var canvas = document.getElementById('canvas');
-				var context = canvas.getContext('2d');
-				var logo = new Image();
+			$('#canvasvideo').get(0).addEventListener('play', function () {
+				let myvideo = this;
+				let canvas = document.getElementById('canvas');
+				let context = canvas.getContext('2d');
+				let logo = new Image();
 				logo.onload = function() {
 					(function loop() {
 						if(!myvideo.paused && !myvideo.ended) {
@@ -367,7 +377,7 @@ function createCanvas() {
 								logoX, logoY, logoW*logoS, logoH*logoS);
 							// Add some text
 							context.fillStyle = 'rgba(0,0,0,0.5)';
-							context.fillRect(0, 190, 432,240);
+							context.fillRect(0, 420, 640, 480);
 							context.font = myFont;
 							context.fillStyle = myColor;
 							context.fillText(myText, myX, myY);
@@ -380,8 +390,12 @@ function createCanvas() {
 				// Capture the canvas as a local MediaStream
 				canvasStream = canvas.captureStream();
 				canvasStream.addTrack(stream.getAudioTracks()[0]);
+				Janus.attachMediaStream($('#myvideo').get(0), canvasStream);
+				$('#myvideo').get(0).muted = "muted";
+				$('#myvideo').get(0).play();
+				$('#myvideo').removeClass('hide');
 				// Now that the stream is ready, we can create the PeerConnection
-				var body = { audio: true, video: true };
+				let body = { audio: true, video: true };
 				// We can try and force a specific codec, by telling the plugin what we'd prefer
 				// For simplicity, you can set it via a query string (e.g., ?vcodec=vp9)
 				if(acodec)
@@ -435,7 +449,7 @@ function updateCanvas() {
 // Helper to parse query string
 function getQueryStringValue(name) {
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
-	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }

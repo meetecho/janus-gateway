@@ -3,6 +3,8 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+
 var janus = null;
 var screentest = null;
 var opaqueId = "screensharingtest-"+Janus.randomString(12);
@@ -18,19 +20,6 @@ var source = null;
 var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
 var spinner = null;
-
-
-// Just an helper to generate random usernames
-function randomString(len, charSet) {
-    charSet = charSet || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    var randomString = '';
-    for (var i = 0; i < len; i++) {
-    	var randomPoz = Math.floor(Math.random() * charSet.length);
-    	randomString += charSet.substring(randomPoz,randomPoz+1);
-    }
-    return randomString;
-}
-
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -120,7 +109,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::", msg);
-									var event = msg["videoroom"];
+									let event = msg["videoroom"];
 									Janus.debug("Event: " + event);
 									if(event) {
 										if(event === "joined") {
@@ -143,7 +132,7 @@ $(document).ready(function() {
 																],
 																success: function(jsep) {
 																	Janus.debug("Got publisher SDP!", jsep);
-																	var publish = { request: "configure", audio: true, video: true };
+																	let publish = { request: "configure", audio: true, video: true };
 																	screentest.send({ message: publish, jsep: jsep });
 																},
 																error: function(error) {
@@ -163,7 +152,7 @@ $(document).ready(function() {
 															],
 															success: function(jsep) {
 																Janus.debug("Got publisher SDP!", jsep);
-																var publish = { request: "configure", audio: true, video: true };
+																let publish = { request: "configure", audio: true, video: true };
 																screentest.send({ message: publish, jsep: jsep });
 															},
 															error: function(error) {
@@ -175,13 +164,13 @@ $(document).ready(function() {
 											} else {
 												// We're just watching a session, any feed to attach to?
 												if(msg["publishers"]) {
-													var list = msg["publishers"];
+													let list = msg["publishers"];
 													Janus.debug("Got a list of available publishers/feeds:", list);
-													for(var f in list) {
+													for(let f in list) {
 														if(list[f]["dummy"])
 															continue;
-														var id = list[f]["id"];
-														var display = list[f]["display"];
+														let id = list[f]["id"];
+														let display = list[f]["display"];
 														Janus.debug("  >> [" + id + "] " + display);
 														newRemoteFeed(id, display)
 													}
@@ -190,19 +179,19 @@ $(document).ready(function() {
 										} else if(event === "event") {
 											// Any feed to attach to?
 											if(role === "listener" && msg["publishers"]) {
-												var list = msg["publishers"];
+												let list = msg["publishers"];
 												Janus.debug("Got a list of available publishers/feeds:", list);
-												for(var f in list) {
+												for(let f in list) {
 													if(list[f]["dummy"])
 														continue;
-													var id = list[f]["id"];
-													var display = list[f]["display"];
+													let id = list[f]["id"];
+													let display = list[f]["display"];
 													Janus.debug("  >> [" + id + "] " + display);
 													newRemoteFeed(id, display)
 												}
 											} else if(msg["leaving"]) {
 												// One of the publishers has gone away?
-												var leaving = msg["leaving"];
+												let leaving = msg["leaving"];
 												Janus.log("Publisher left: " + leaving);
 												if(role === "listener" && msg["leaving"] === source) {
 													bootbox.alert("The screen sharing session is over, the publisher left", function() {
@@ -222,15 +211,15 @@ $(document).ready(function() {
 								onlocaltrack: function(track, on) {
 									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
 									// We use the track ID as name of the element, but it may contain invalid characters
-									var trackId = track.id.replace(/[{}]/g, "");
+									let trackId = track.id.replace(/[{}]/g, "");
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
-										var stream = localTracks[trackId];
+										let stream = localTracks[trackId];
 										if(stream) {
 											try {
-												var tracks = stream.getTracks();
-												for(var i in tracks) {
-													var mst = tracks[i];
+												let tracks = stream.getTracks();
+												for(let i in tracks) {
+													let mst = tracks[i];
 													if(mst)
 														mst.stop();
 												}
@@ -254,7 +243,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
-									var stream = localTracks[trackId];
+									let stream = localTracks[trackId];
 									if(stream) {
 										// We've been here already
 										return;
@@ -277,7 +266,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										localVideos++;
 										$('#screencapture .no-video-container').remove();
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										localTracks[trackId] = stream;
 										Janus.log("Created local stream:", stream);
 										$('#screencapture').append('<video class="rounded centered" id="screenvideo' + trackId + '" width=100% autoplay playsinline muted="muted"/>');
@@ -295,6 +284,7 @@ $(document).ready(function() {
 										});
 									}
 								},
+								// eslint-disable-next-line no-unused-vars
 								onremotetrack: function(track, mid, on) {
 									// The publisher stream is sendonly, we don't expect anything here
 								},
@@ -322,8 +312,9 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnterShare(field, event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		preShareScreen();
 		return false;
@@ -334,7 +325,7 @@ function checkEnterShare(field, event) {
 
 function preShareScreen() {
 	if(!Janus.isExtensionEnabled()) {
-		bootbox.alert("You're using Chrome but don't have the screensharing extension installed: click <b><a href='https://chrome.google.com/webstore/detail/janus-webrtc-screensharin/hapfgfdkleiggjjpfpenajgdnfckjpaj' target='_blank'>here</a></b> to do so", function() {
+		bootbox.alert("This browser doesn't support screensharing (getDisplayMedia unavailable)", function() {
 			window.location.reload();
 		});
 		return;
@@ -358,23 +349,27 @@ function preShareScreen() {
 
 function shareScreen() {
 	// Create a new room
-	var desc = $('#desc').val();
+	let desc = $('#desc').val();
 	role = "publisher";
-	var create = {
+	let create = {
 		request: "create",
 		description: desc,
 		bitrate: 500000,
 		publishers: 1
 	};
 	screentest.send({ message: create, success: function(result) {
-		var event = result["videoroom"];
+		if(result["error"]) {
+			bootbox.alert("Couldn't create room: " + result["error"]);
+			return;
+		}
+		let event = result["videoroom"];
 		Janus.debug("Event: " + event);
 		if(event) {
 			// Our own screen sharing session has been created, join it
 			room = result["room"];
 			Janus.log("Screen sharing session created: " + room);
-			myusername = randomString(12);
-			var register = {
+			myusername = Janus.randomString(12);
+			let register = {
 				request: "join",
 				room: room,
 				ptype: "publisher",
@@ -385,8 +380,9 @@ function shareScreen() {
 	}});
 }
 
+// eslint-disable-next-line no-unused-vars
 function checkEnterJoin(field, event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		joinScreen();
 		return false;
@@ -401,7 +397,7 @@ function joinScreen() {
 	$('#create').attr('disabled', true).unbind('click');
 	$('#roomid').attr('disabled', true);
 	$('#join').attr('disabled', true).unbind('click');
-	var roomid = $('#roomid').val();
+	let roomid = $('#roomid').val();
 	if(isNaN(roomid)) {
 		bootbox.alert("Session identifiers are numeric only");
 		$('#desc').removeAttr('disabled', true);
@@ -412,8 +408,8 @@ function joinScreen() {
 	}
 	room = parseInt(roomid);
 	role = "listener";
-	myusername = randomString(12);
-	var register = {
+	myusername = Janus.randomString(12);
+	let register = {
 		request: "join",
 		room: room,
 		ptype: "publisher",
@@ -425,7 +421,7 @@ function joinScreen() {
 function newRemoteFeed(id, display) {
 	// A new feed has been published, create a new plugin handle and attach to it as a listener
 	source = id;
-	var remoteFeed = null;
+	let remoteFeed = null;
 	janus.attach(
 		{
 			plugin: "janus.plugin.videoroom",
@@ -437,7 +433,7 @@ function newRemoteFeed(id, display) {
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
-				var listen = {
+				let listen = {
 					request: "join",
 					room: room,
 					ptype: "subscriber",
@@ -461,13 +457,13 @@ function newRemoteFeed(id, display) {
 			},
 			onmessage: function(msg, jsep) {
 				Janus.debug(" ::: Got a message (listener) :::", msg);
-				var event = msg["videoroom"];
+				let event = msg["videoroom"];
 				Janus.debug("Event: " + event);
 				if(event) {
 					if(event === "attached") {
 						// Subscriber created and attached
 						if(!spinner) {
-							var target = document.getElementById('#screencapture');
+							let target = document.getElementById('#screencapture');
 							spinner = new Spinner({top:100}).spin(target);
 						} else {
 							spinner.spin();
@@ -494,7 +490,7 @@ function newRemoteFeed(id, display) {
 							],
 							success: function(jsep) {
 								Janus.debug("Got SDP!", jsep);
-								var body = { request: "start", room: room };
+								let body = { request: "start", room: room };
 								remoteFeed.send({ message: body, jsep: jsep });
 							},
 							error: function(error) {
@@ -504,11 +500,23 @@ function newRemoteFeed(id, display) {
 						});
 				}
 			},
+			// eslint-disable-next-line no-unused-vars
 			onlocaltrack: function(track, on) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
-			onremotetrack: function(track, mid, on) {
-				Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+			onremotetrack: function(track, mid, on, metadata) {
+				Janus.debug(
+					"Remote track (mid=" + mid + ") " +
+					(on ? "added" : "removed") +
+					(metadata? " (" + metadata.reason + ") " : "") + ":", track
+				);
+				// Screen sharing tracks are sometimes muted/unmuted by browser
+				// when data is not flowing fast enough; this can make streams blink.
+				// We can ignore these.
+				if(track.kind === "video" && metadata && (metadata.reason === "mute" || metadata.reason === "unmute")) {
+					Janus.log("Ignoring mute/unmute on screen-sharing track.")
+					return
+				}
 				if(!on) {
 					// Track removed, get rid of the stream and the rendering
 					$('#screenvideo' + mid).remove();
@@ -535,7 +543,7 @@ function newRemoteFeed(id, display) {
 				}
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteTracks[mid] = stream;
 					Janus.log("Created remote audio stream:", stream);
 					$('#screencapture').append('<audio class="hide" id="screenvideo' + mid + '" playsinline/>');
@@ -557,7 +565,7 @@ function newRemoteFeed(id, display) {
 					// New video track: create a stream out of it
 					remoteVideos++;
 					$('#screencapture .no-video-container').remove();
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteFeed.remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
 					$('#screencapture').append('<video class="rounded centered" id="screenvideo' + mid + '" width=100% playsinline/>');
@@ -582,7 +590,7 @@ function newRemoteFeed(id, display) {
 // Helper to escape XML tags
 function escapeXmlTags(value) {
 	if(value) {
-		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		let escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
 		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
 		return escapedValue;
 	}

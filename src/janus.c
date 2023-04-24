@@ -39,6 +39,7 @@
 #include "debug.h"
 #include "ip-utils.h"
 #include "rtcp.h"
+#include "rtpfwd.h"
 #include "auth.h"
 #include "record.h"
 #include "events.h"
@@ -686,40 +687,36 @@ static gboolean janus_check_sessions(gpointer user_data) {
 		g_hash_table_iter_init(&iter, sessions);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_session *session = (janus_session *) value;
-			if (!session || g_atomic_int_get(&session->destroyed)) {
+			if(!session || g_atomic_int_get(&session->destroyed))
 				continue;
-			}
 			gint64 now = janus_get_monotonic_time();
-
 			/* Use either session-specific timeout or global. */
 			gint64 timeout = (gint64)session->timeout;
-			if (timeout == -1) timeout = (gint64)global_session_timeout;
-
-			if ((timeout > 0 && (now - session->last_activity >= timeout * G_USEC_PER_SEC) &&
-					!g_atomic_int_compare_and_exchange(&session->timedout, 0, 1)) ||
-					((g_atomic_int_get(&session->transport_gone) && now - session->last_activity >= (gint64)reclaim_session_timeout * G_USEC_PER_SEC) &&
-							!g_atomic_int_compare_and_exchange(&session->timedout, 0, 1))) {
-				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
-				/* Mark the session as over, we'll deal with it later */
-				janus_session_handles_clear(session);
-				/* Notify the transport */
-				janus_request *source = janus_session_get_request(session);
-				if(source) {
-					json_t *event = janus_create_message("timeout", session->session_id, NULL);
-					/* Send this to the transport client and notify the session's over */
-					source->transport->send_message(source->instance, NULL, FALSE, event);
-					source->transport->session_over(source->instance, session->session_id, TRUE, FALSE);
+			if(timeout == -1)
+				timeout = (gint64)global_session_timeout;
+			if((timeout > 0 && (now - session->last_activity >= timeout * G_USEC_PER_SEC)) ||
+					((g_atomic_int_get(&session->transport_gone) && now - session->last_activity >= (gint64)reclaim_session_timeout * G_USEC_PER_SEC))) {
+				if(g_atomic_int_compare_and_exchange(&session->timedout, 0, 1)) {
+					JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
+					/* Mark the session as over, we'll deal with it later */
+					janus_session_handles_clear(session);
+					/* Notify the transport */
+					janus_request *source = janus_session_get_request(session);
+					if(source) {
+						json_t *event = janus_create_message("timeout", session->session_id, NULL);
+						/* Send this to the transport client and notify the session's over */
+						source->transport->send_message(source->instance, NULL, FALSE, event);
+						source->transport->session_over(source->instance, session->session_id, TRUE, FALSE);
+					}
+					janus_request_unref(source);
+					/* Notify event handlers as well */
+					if(janus_events_is_enabled())
+						janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, JANUS_EVENT_SUBTYPE_NONE,
+							session->session_id, "timeout", NULL);
+					/* FIXME Is this safe? apparently it causes hash table errors on the console */
+					g_hash_table_iter_remove(&iter);
+					janus_session_destroy(session);
 				}
-				janus_request_unref(source);
-				/* Notify event handlers as well */
-				if(janus_events_is_enabled())
-					janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, JANUS_EVENT_SUBTYPE_NONE,
-						session->session_id, "timeout", NULL);
-
-				/* FIXME Is this safe? apparently it causes hash table errors on the console */
-				g_hash_table_iter_remove(&iter);
-
-				janus_session_destroy(session);
 			}
 		}
 	}
@@ -899,13 +896,18 @@ static void janus_request_free(const janus_refcount *request_ref) {
 		janus_refcount_decrease(&request->instance->ref);
 	request->instance = NULL;
 	request->request_id = NULL;
-	if(request->message)
+	if(request->message) {
 		json_decref(request->message);
-	request->message = NULL;
+		request->message = NULL;
+	}
+	if(request->error) {
+		g_free(request->error);
+		request->error = NULL;
+	}
 	g_free(request);
 }
 
-janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message) {
+janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message, json_error_t *error) {
 	janus_request *request = g_malloc(sizeof(janus_request));
 	request->transport = transport;
 	request->instance = instance;
@@ -913,6 +915,12 @@ janus_request *janus_request_new(janus_transport *transport, janus_transport_ses
 	request->request_id = request_id;
 	request->admin = admin;
 	request->message = message;
+	if(error) {
+		request->error = (json_error_t*)g_malloc(sizeof(json_error_t));
+		*request->error = *error;
+	} else {
+		request->error = NULL;
+	}
 	g_atomic_int_set(&request->destroyed, 0);
 	janus_refcount_init(&request->ref, janus_request_free);
 	return request;
@@ -1021,9 +1029,17 @@ int janus_process_incoming_request(janus_request *request) {
 		JANUS_LOG(LOG_ERR, "Missing request or payload to process, giving up...\n");
 		return ret;
 	}
-	int error_code = 0;
-	char error_cause[100];
 	json_t *root = request->message;
+	if(root == NULL) {
+		json_error_t *error = request->error;
+		if(error != NULL) {
+			ret = janus_process_error(request, 0, NULL, JANUS_ERROR_INVALID_JSON,
+				"Invalid Janus API request - %s(%d,%d): %s", error->source, error->line, error->column, error->text);
+		} else {
+			ret = janus_process_error_string(request, 0, NULL, JANUS_ERROR_INVALID_JSON, (char *)"Invalid Janus API request");
+		}
+		return ret;
+	}
 	/* Ok, let's start with the ids */
 	guint64 session_id = 0, handle_id = 0;
 	json_t *s = json_object_get(root, "session_id");
@@ -1040,6 +1056,8 @@ int janus_process_incoming_request(janus_request *request) {
 	janus_session *session = NULL;
 	janus_ice_handle *handle = NULL;
 
+	int error_code = 0;
+	char error_cause[100];
 	/* Get transaction and message request */
 	JANUS_VALIDATE_JSON_OBJECT(root, incoming_request_parameters,
 		error_code, error_cause, FALSE,
@@ -1102,7 +1120,7 @@ int janus_process_incoming_request(janus_request *request) {
 		/* We increase the counter as this request is using the session */
 		janus_refcount_increase(&session->ref);
 		/* Take note of the request source that originated this session (HTTP, WebSockets, RabbitMQ?) */
-		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
+		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL, NULL);
 		/* Notify the source that a new session has been created */
 		request->transport->session_created(request->instance, session->session_id);
 		/* Notify event handlers */
@@ -1317,7 +1335,7 @@ int janus_process_incoming_request(janus_request *request) {
 			janus_request_destroy(session->source);
 			session->source = NULL;
 		}
-		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
+		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL, NULL);
 		/* Notify the new transport that it has claimed a session */
 		session->source->transport->session_claimed(session->source->instance, session->session_id);
 		/* Previous transport may be gone, clear flag */
@@ -1390,6 +1408,41 @@ int janus_process_incoming_request(janus_request *request) {
 			}
 			json_t *jsep_e2ee = json_object_get(jsep, "e2ee");
 			gboolean e2ee = jsep_e2ee ? json_is_true(jsep_e2ee) : FALSE;
+			json_t *svc = json_object_get(jsep, "svc");
+			if(svc) {
+				/* SVC properties were passed as well, make sure the format is correct */
+				gboolean svc_valid = TRUE;
+				if(!json_is_array(svc) || json_array_size(svc) < 1) {
+					svc_valid = FALSE;
+				} else {
+					size_t i = 0;
+					for(i=0; i<json_array_size(svc); i++) {
+						json_t *s = json_array_get(svc, i);
+						if(!json_is_object(s)) {
+							svc_valid = FALSE;
+							break;
+						}
+						json_t *s_mindex = json_object_get(s, "mindex");
+						json_t *s_mid = json_object_get(s, "mid");
+						json_t *s_svc = json_object_get(s, "svc");
+						if(!s_mindex && !s_mid) {
+							svc_valid = FALSE;
+							break;
+						}
+						if((s_mindex && !json_is_integer(s_mindex)) ||
+								(s_mid && !json_is_string(s_mid)) ||
+								!s_svc || !json_is_string(s_svc)) {
+							svc_valid = FALSE;
+							break;
+						}
+					}
+				}
+				if(!svc_valid) {
+					svc = NULL;
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Invalid 'svc' value, ignoring\n", handle->handle_id);
+					json_object_del(jsep, "svc");
+				}
+			}
 			/* Are we still cleaning up from a previous media session? */
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still cleaning up from a previous media session, let's wait a bit...\n", handle->handle_id);
@@ -1726,6 +1779,11 @@ int janus_process_incoming_request(janus_request *request) {
 			janus_mutex_unlock(&handle->mutex);
 			if(simulcast)
 				json_object_set_new(body_jsep, "simulcast", simulcast);
+			json_t *svc = json_object_get(jsep, "svc");
+			if(svc) {
+				json_incref(svc);
+				json_object_set_new(body_jsep, "svc", svc);
+			}
 			/* Check if this is a renegotiation or update */
 			if(renegotiation)
 				json_object_set_new(body_jsep, "update", json_true());
@@ -3379,7 +3437,7 @@ void janus_transportso_close(gpointer key, gpointer value, gpointer user_data) {
 void janus_transport_incoming_request(janus_transport *plugin, janus_transport_session *transport, void *request_id, gboolean admin, json_t *message, json_error_t *error) {
 	JANUS_LOG(LOG_VERB, "Got %s API request from %s (%p)\n", admin ? "an admin" : "a Janus", plugin->get_package(), transport);
 	/* Create a janus_request instance to handle the request */
-	janus_request *request = janus_request_new(plugin, transport, request_id, admin, message);
+	janus_request *request = janus_request_new(plugin, transport, request_id, admin, message, message ? NULL : error);
 	/* Enqueue the request, the thread will pick it up */
 	g_async_queue_push(requests, request);
 }
@@ -5318,6 +5376,12 @@ gint main(int argc, char *argv[]) {
 	JANUS_LOG(LOG_WARN, "Data Channels support not compiled\n");
 #endif
 
+	/* Initialize the RTP forwarders functionality */
+	if(janus_rtp_forwarders_init() < 0) {
+		janus_options_destroy();
+		exit(1);
+	}
+
 	/* Sessions */
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	janus_mutex_init(&sessions_mutex);
@@ -5866,6 +5930,7 @@ gint main(int argc, char *argv[]) {
 	JANUS_LOG(LOG_INFO, "De-initializing SCTP...\n");
 	janus_sctp_deinit();
 #endif
+	janus_rtp_forwarders_deinit();
 	janus_auth_deinit();
 
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");

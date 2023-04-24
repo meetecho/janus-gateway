@@ -14,7 +14,6 @@
 #include "rtp.h"
 #include "rtpsrtp.h"
 #include "debug.h"
-#include "utils.h"
 
 gboolean janus_is_rtp(char *buf, guint len) {
 	if (len < 12)
@@ -873,6 +872,8 @@ const char *janus_srtp_error_str(int error) {
 #define PCMU_PT		0
 #define PCMA_PT		8
 #define G722_PT		9
+#define L16_48_PT	105
+#define L16_PT		106
 #define VP8_PT		96
 #define VP9_PT		101
 #define H264_PT		107
@@ -898,6 +899,10 @@ const char *janus_audiocodec_name(janus_audiocodec acodec) {
 			return "isac32";
 		case JANUS_AUDIOCODEC_ISAC_16K:
 			return "isac16";
+		case JANUS_AUDIOCODEC_L16_48K:
+			return "l16-48";
+		case JANUS_AUDIOCODEC_L16_16K:
+			return "l16";
 		default:
 			/* Shouldn't happen */
 			return "opus";
@@ -922,6 +927,10 @@ janus_audiocodec janus_audiocodec_from_name(const char *name) {
 		return JANUS_AUDIOCODEC_PCMA;
 	else if(!strcasecmp(name, "g722"))
 		return JANUS_AUDIOCODEC_G722;
+	else if(!strcasecmp(name, "l16-48"))
+		return JANUS_AUDIOCODEC_L16_48K;
+	else if(!strcasecmp(name, "l16"))
+		return JANUS_AUDIOCODEC_L16_16K;
 	JANUS_LOG(LOG_WARN, "Unsupported audio codec '%s'\n", name);
 	return JANUS_AUDIOCODEC_NONE;
 }
@@ -945,6 +954,10 @@ int janus_audiocodec_pt(janus_audiocodec acodec) {
 			return PCMA_PT;
 		case JANUS_AUDIOCODEC_G722:
 			return G722_PT;
+		case JANUS_AUDIOCODEC_L16_48K:
+			return L16_48_PT;
+		case JANUS_AUDIOCODEC_L16_16K:
+			return L16_PT;
 		default:
 			/* Shouldn't happen */
 			return OPUS_PT;
@@ -1196,12 +1209,13 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 	/* Temporal layers are only available for VP8, so don't do anything else for other codecs */
 	if(vcodec == JANUS_VIDEOCODEC_VP8) {
 		/* Check if there's any temporal scalability to take into account */
+		gboolean m = FALSE;
 		uint16_t picid = 0;
 		uint8_t tlzi = 0;
 		uint8_t tid = 0;
 		uint8_t ybit = 0;
 		uint8_t keyidx = 0;
-		if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
+		if(janus_vp8_parse_descriptor(payload, plen, &m, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
 			//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
 			if(context->templayer != context->templayer_target && tid == context->templayer_target) {
 				/* FIXME We should be smarter in deciding when to switch */
@@ -1223,6 +1237,149 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 	return TRUE;
 }
 
+/* VP9 SVC */
+void janus_rtp_svc_context_reset(janus_rtp_svc_context *context) {
+	if(context == NULL)
+		return;
+	/* Reset the context values */
+	memset(context, 0, sizeof(*context));
+	context->spatial = -1;
+	context->temporal = -1;
+}
+
+gboolean janus_rtp_svc_context_process_rtp(janus_rtp_svc_context *context, char *buf, int len,
+		janus_videocodec vcodec, janus_vp9_svc_info *info, janus_rtp_switching_context *sc) {
+	if(!context || !buf || len < 1 || vcodec != JANUS_VIDEOCODEC_VP9)
+		return FALSE;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
+	/* Reset the flags */
+	context->changed_spatial = FALSE;
+	context->changed_temporal = FALSE;
+	context->need_pli = FALSE;
+	gint64 now = janus_get_monotonic_time();
+	/* Access the packet payload */
+	int plen = 0;
+	char *payload = janus_rtp_payload(buf, len, &plen);
+	if(payload == NULL)
+		return FALSE;
+	/* If we don't have any info parsed from the VP9 payload header, get it now */
+	janus_vp9_svc_info svc_info = { 0 };
+	if(!info) {
+		gboolean found = FALSE;
+		if(janus_vp9_parse_svc(payload, plen, &found, &svc_info) < 0) {
+			/* Error parsing, relay as it is */
+			return TRUE;
+		}
+		if(!found) {
+			/* No SVC info, maybe a generic VP9 payload? Relay as it is */
+			return TRUE;
+		}
+	} else {
+		svc_info = *info;
+	}
+	/* Note: Following code inspired by the excellent job done by Sergio Garcia Murillo here:
+	 * https://github.com/medooze/media-server/blob/master/src/vp9/VP9LayerSelector.cpp */
+	gboolean keyframe = janus_vp9_is_keyframe((const char *)payload, plen);
+	gboolean override_mark_bit = FALSE, has_marker_bit = header->markerbit;
+	int spatial_layer = context->spatial;
+	if(svc_info.spatial_layer >= 0 && svc_info.spatial_layer <= 2)
+		context->last_spatial_layer[svc_info.spatial_layer] = now;
+	if(context->spatial_target > context->spatial) {
+		JANUS_LOG(LOG_HUGE, "We need to upscale spatially: (%d < %d)\n",
+			context->spatial, context->spatial_target);
+		/* We need to upscale: wait for a keyframe */
+		if(keyframe) {
+			int new_spatial_layer = context->spatial_target;
+			while(new_spatial_layer > context->spatial && new_spatial_layer > 0) {
+				if(now - context->last_spatial_layer[new_spatial_layer] >= (context->drop_trigger ? context->drop_trigger : 250000)) {
+					/* We haven't received packets from this layer for a while, try a lower layer */
+					JANUS_LOG(LOG_HUGE, "Haven't received packets from layer %d for a while, trying %d instead...\n",
+						new_spatial_layer, new_spatial_layer-1);
+					new_spatial_layer--;
+				} else {
+					break;
+				}
+			}
+			if(new_spatial_layer > context->spatial) {
+				JANUS_LOG(LOG_HUGE, "  -- Upscaling spatial layer: %d --> %d (need %d)\n",
+					context->spatial, new_spatial_layer, context->spatial_target);
+				context->spatial = new_spatial_layer;
+				spatial_layer = context->spatial;
+				context->changed_spatial = TRUE;
+			}
+		}
+	} else if(context->spatial_target < context->spatial) {
+		/* We need to downscale */
+		JANUS_LOG(LOG_HUGE, "We need to downscale spatially: (%d > %d)\n",
+			context->spatial, context->spatial_target);
+		gboolean downscaled = FALSE;
+		if(!svc_info.fbit && keyframe) {
+			/* Non-flexible mode: wait for a keyframe */
+			downscaled = TRUE;
+		} else if(svc_info.fbit && svc_info.ebit) {
+			/* Flexible mode: check the E bit */
+			downscaled = TRUE;
+		}
+		if(downscaled) {
+			JANUS_LOG(LOG_HUGE, "  -- Downscaling spatial layer: %d --> %d\n",
+				context->spatial, context->spatial_target);
+			context->spatial = context->spatial_target;
+			context->changed_spatial = TRUE;
+		}
+	}
+	if(spatial_layer < svc_info.spatial_layer) {
+		/* Drop the packet: update the context to make sure sequence number is increased normally later */
+		JANUS_LOG(LOG_HUGE, "Dropping packet (spatial layer %d < %d)\n", spatial_layer, svc_info.spatial_layer);
+		if(sc)
+			sc->base_seq++;
+		return FALSE;
+	} else if(svc_info.ebit && spatial_layer == svc_info.spatial_layer) {
+		/* If we stop at layer 0, we need a marker bit now, as the one from layer 1 will not be received */
+		override_mark_bit = TRUE;
+	}
+	int temporal_layer = context->temporal;
+	if(context->temporal_target > context->temporal) {
+		/* We need to upscale */
+		JANUS_LOG(LOG_HUGE, "We need to upscale temporally: (%d < %d)\n",
+			context->temporal, context->temporal_target);
+		if(svc_info.ubit && svc_info.bbit &&
+				svc_info.temporal_layer > context->temporal &&
+				svc_info.temporal_layer <= context->temporal_target) {
+			JANUS_LOG(LOG_HUGE, "  -- Upscaling temporal layer: %d --> %d (want %d)\n",
+				context->temporal, svc_info.temporal_layer, context->temporal_target);
+			context->temporal = svc_info.temporal_layer;
+			temporal_layer = context->temporal;
+			context->changed_temporal = TRUE;
+		}
+	} else if(context->temporal_target < context->temporal) {
+		/* We need to downscale */
+		JANUS_LOG(LOG_HUGE, "We need to downscale temporally: (%d > %d)\n",
+			context->temporal, context->temporal_target);
+		if(svc_info.ebit && svc_info.temporal_layer == context->temporal_target) {
+			JANUS_LOG(LOG_HUGE, "  -- Downscaling temporal layer: %d --> %d\n",
+				context->temporal, context->temporal_target);
+			context->temporal = context->temporal_target;
+			context->changed_temporal = TRUE;
+		}
+	}
+	if(temporal_layer < svc_info.temporal_layer) {
+		/* Drop the packet: update the context to make sure sequence number is increased normally later */
+		JANUS_LOG(LOG_HUGE, "Dropping packet (temporal layer %d < %d)\n", temporal_layer, svc_info.temporal_layer);
+		if(sc)
+			sc->base_seq++;
+		return FALSE;
+	}
+	/* If we got here, we can send the frame: this doesn't necessarily mean it's
+	 * one of the layers the user wants, as there may be dependencies involved */
+	JANUS_LOG(LOG_HUGE, "Sending packet (spatial=%d, temporal=%d)\n",
+		svc_info.spatial_layer, svc_info.temporal_layer);
+	if(override_mark_bit && !has_marker_bit)
+		header->markerbit = 1;
+	/* If we got here, the packet can be relayed */
+	return TRUE;
+}
+
+/* AV1 SVC (still WIP) */
 void janus_av1_svc_context_reset(janus_av1_svc_context *context) {
 	if(context == NULL)
 		return;

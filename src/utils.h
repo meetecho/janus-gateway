@@ -326,10 +326,26 @@ gboolean janus_vp8_is_keyframe(const char *buffer, int len);
 gboolean janus_vp9_is_keyframe(const char *buffer, int len);
 
 /*! \brief Helper method to check if an H.264 frame is a keyframe or not
+ * @note This checks the presence of an SPS NAL (7), nor an I-Frame (5),
+ * since SPS/PPS are what's needed for a browser to actually be able to
+ * decode a stream. If for some reason you want to check for I-Frames
+ * instead, use the janus_h264_is_i_frame() function
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
  * @returns TRUE if it's a keyframe, FALSE otherwise */
 gboolean janus_h264_is_keyframe(const char *buffer, int len);
+
+/*! \brief Helper method to check if an H.264 frame contains an I-Frame or not
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's an I-Frame, FALSE otherwise */
+gboolean janus_h264_is_i_frame(const char *buffer, int len);
+
+/*! \brief Helper method to check if an H.264 frame contains a B-Frame or not
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a B-Frame, FALSE otherwise */
+gboolean janus_h264_is_b_frame(const char *buffer, int len);
 
 /*! \brief Helper method to check if an AV1 frame is a keyframe or not
  * @param[in] buffer The RTP payload to process
@@ -356,6 +372,7 @@ void janus_vp8_simulcast_context_reset(janus_vp8_simulcast_context *context);
 /*! \brief Helper method to parse a VP8 payload descriptor for useful info (e.g., when simulcasting)
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
+ * @param[out] m Whether the Picture ID is 15 bit or 7 bit
  * @param[out] picid The Picture ID
  * @param[out] tl0picidx Temporal level zero index
  * @param[out] tid Temporal-layer index
@@ -363,7 +380,7 @@ void janus_vp8_simulcast_context_reset(janus_vp8_simulcast_context *context);
  * @param[out] keyidx Temporal key frame index
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_vp8_parse_descriptor(char *buffer, int len,
-		uint16_t *picid, uint8_t *tl0picidx, uint8_t *tid, uint8_t *y, uint8_t *keyidx);
+		gboolean *m, uint16_t *picid, uint8_t *tl0picidx, uint8_t *tid, uint8_t *y, uint8_t *keyidx);
 
 /*! \brief Use the context info to update the RTP header of a packet, if needed
  * @param[in] buffer The RTP payload to process

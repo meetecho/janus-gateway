@@ -430,18 +430,18 @@ Janus.init = function(options) {
 				config = { audio: true, video: true };
 			if(Janus.isGetUserMediaAvailable()) {
 				navigator.mediaDevices.getUserMedia(config)
-				.then(function(stream) {
-					navigator.mediaDevices.enumerateDevices().then(function(devices) {
-						Janus.debug(devices);
-						callback(devices);
-						// Get rid of the now useless stream
-						Janus.stopAllTracks(stream)
+					.then(function(stream) {
+						navigator.mediaDevices.enumerateDevices().then(function(devices) {
+							Janus.debug(devices);
+							callback(devices);
+							// Get rid of the now useless stream
+							Janus.stopAllTracks(stream)
+						});
+					})
+					.catch(function(err) {
+						Janus.error(err);
+						callback([]);
 					});
-				})
-				.catch(function(err) {
-					Janus.error(err);
-					callback([]);
-				});
 			} else {
 				Janus.warn("navigator.mediaDevices unavailable");
 				callback([]);
@@ -1494,6 +1494,33 @@ function Janus(gatewayCallbacks) {
 				request.jsep.rid_order = jsep.rid_order;
 			if(jsep.force_relay)
 				request.jsep.force_relay = true;
+			// Check if there's SVC video streams to tell Janus about
+			let svc = null;
+			let config = pluginHandle.webrtcStuff;
+			if(config.pc) {
+				let transceivers = config.pc.getTransceivers();
+				if(transceivers && transceivers.length > 0) {
+					for(let mindex in transceivers) {
+						let tr = transceivers[mindex];
+						if(tr && tr.sender && tr.sender.track && tr.sender.track.kind === 'video') {
+							let params = tr.sender.getParameters();
+							if(params && params.encodings && params.encodings[0] &&
+									params.encodings[0].scalabilityMode) {
+								// This video stream uses SVC
+								if(!svc)
+									svc = [];
+								svc.push({
+									mindex: parseInt(mindex),
+									mid: tr.mid,
+									svc: params.encodings[0].scalabilityMode
+								});
+							}
+						}
+					}
+				}
+			}
+			if(svc)
+				request.jsep.svc = svc;
 		}
 		Janus.debug("Sending message to plugin (handle=" + handleId + "):");
 		Janus.debug(request);
@@ -1913,7 +1940,7 @@ function Janus(gatewayCallbacks) {
 			// Notify about the new track event
 			let mid = event.transceiver ? event.transceiver.mid : event.track.id;
 			try {
-				pluginHandle.onremotetrack(event.track, mid, true);
+				pluginHandle.onremotetrack(event.track, mid, true, { reason: 'created' });
 			} catch(e) {
 				Janus.error("Error calling onremotetrack", e);
 			}
@@ -1930,7 +1957,7 @@ function Janus(gatewayCallbacks) {
 					t => t.receiver.track === ev.target) : null;
 				let mid = transceiver ? transceiver.mid : ev.target.id;
 				try {
-					pluginHandle.onremotetrack(ev.target, mid, false);
+					pluginHandle.onremotetrack(ev.target, mid, false, { reason: 'ended' });
 				} catch(e) {
 					Janus.error("Error calling onremotetrack on removal", e);
 				}
@@ -1946,7 +1973,7 @@ function Janus(gatewayCallbacks) {
 							t => t.receiver.track === ev.target) : null;
 						let mid = transceiver ? transceiver.mid : ev.target.id;
 						try {
-							pluginHandle.onremotetrack(ev.target, mid, false);
+							pluginHandle.onremotetrack(ev.target, mid, false, { reason: 'mute' } );
 						} catch(e) {
 							Janus.error("Error calling onremotetrack on mute", e);
 						}
@@ -1968,7 +1995,7 @@ function Janus(gatewayCallbacks) {
 						let transceiver = transceivers ? transceivers.find(
 							t => t.receiver.track === ev.target) : null;
 						let mid = transceiver ? transceiver.mid : ev.target.id;
-						pluginHandle.onremotetrack(ev.target, mid, true);
+						pluginHandle.onremotetrack(ev.target, mid, true, { reason: 'unmute' });
 					} catch(e) {
 						Janus.error("Error calling onremotetrack on unmute", e);
 					}
@@ -2527,7 +2554,7 @@ function Janus(gatewayCallbacks) {
 							}
 						}
 					}
-					// FIXME Check if insertable streams are involved
+					// Check if insertable streams are involved
 					if(track.transforms) {
 						if(sender && track.transforms.sender) {
 							// There's a sender transform, set it on the transceiver sender
@@ -2583,6 +2610,59 @@ function Janus(gatewayCallbacks) {
 				}
 				if(nt && track.dontStop === true)
 					nt.dontStop = true;
+			} else if(track.recv && !transceiver) {
+				// Maybe a new recvonly track
+				transceiver = config.pc.addTransceiver(kind);
+				if(transceiver) {
+					// Check if we need to override some settings
+					if(track.codec) {
+						if(Janus.webRTCAdapter.browserDetails.browser === 'firefox') {
+							Janus.warn('setCodecPreferences not supported in Firefox, ignoring codec for track:', track);
+						} else if(typeof track.codec !== 'string') {
+							Janus.warn('Invalid codec value, ignoring for track:', track);
+						} else {
+							let mimeType = kind + '/' + track.codec.toLowerCase();
+							let codecs = RTCRtpReceiver.getCapabilities(kind).codecs.filter(function(codec) {
+								return codec.mimeType.toLowerCase() === mimeType;
+							});
+							if(!codecs || codecs.length === 0) {
+								Janus.warn('Codec not supported in this browser for this track, ignoring:', track);
+							} else {
+								try {
+									transceiver.setCodecPreferences(codecs);
+								} catch(err) {
+									Janus.warn('Failed enforcing codec for this ' + kind + ' track:', err);
+								}
+							}
+						}
+					}
+					// Check if insertable streams are involved
+					if(transceiver.receiver && track.transforms && track.transforms.receiver) {
+						// There's a receiver transform, set it on the transceiver receiver
+						let receiverStreams = null;
+						if(RTCRtpReceiver.prototype.createEncodedStreams) {
+							receiverStreams = transceiver.receiver.createEncodedStreams();
+						} else if(RTCRtpReceiver.prototype.createAudioEncodedStreams || RTCRtpReceiver.prototype.createEncodedVideoStreams) {
+							if(kind === 'audio') {
+								receiverStreams = transceiver.receiver.createEncodedAudioStreams();
+							} else if(kind === 'video') {
+								receiverStreams = transceiver.receiver.createEncodedVideoStreams();
+							}
+						}
+						if(receiverStreams) {
+							console.log('Insertable Streams receiver transform:', receiverStreams);
+							if(receiverStreams.readableStream && receiverStreams.writableStream) {
+								receiverStreams.readableStream
+									.pipeThrough(track.transforms.receiver)
+									.pipeTo(receiverStreams.writableStream);
+							} else if(receiverStreams.readable && receiverStreams.writable) {
+								receiverStreams.readable
+									.pipeThrough(track.transforms.receiver)
+									.pipeTo(receiverStreams.writable);
+							}
+						}
+					}
+				}
 			}
 			// Get rid of the old track
 			// FIXME We should probably do this *before* capturing the new
