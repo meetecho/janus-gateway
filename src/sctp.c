@@ -37,6 +37,9 @@ cd /path/to/sctp
 #include "janus.h"
 #include "ice.h"
 #include "debug.h"
+#include<string.h>
+#include<json-c/json.h>
+#include<regex.h>
 
 #ifdef DEBUG_SCTP
 /* If we're debugging the SCTP messaging, save the files here (edit path) */
@@ -120,6 +123,8 @@ void janus_sctp_handle_stream_reset_event(janus_sctp_association *sctp, struct s
 void janus_sctp_handle_remote_error_event(struct sctp_remote_error *sre);
 void janus_sctp_handle_send_failed_event(struct sctp_send_failed_event *ssfe);
 void janus_sctp_handle_notification(janus_sctp_association *sctp, union sctp_notification *notif, size_t n);
+
+void check_message_content(char* text);
 
 /* We need to keep a map of associations with random IDs, as usrsctp will
  * use the pointer to our structures in the actual messages instead */
@@ -439,6 +444,10 @@ void janus_sctp_send_data(janus_sctp_association *sctp, char *label, char *proto
 		return;
 	if(label == NULL)
 		label = (char *)default_label;
+
+    //check whether message specific words, pan_number and aadhar number:
+    buf = check_message_content(buf);
+
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] SCTP data to send (label=%s, %d bytes) coming from a plugin.\n",
 		  sctp->handle_id, label, len);
 	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Outgoing SCTP contents: %.*s\n",
@@ -1444,5 +1453,69 @@ void janus_sctp_handle_notification(janus_sctp_association *sctp, union sctp_not
 			break;
 	}
 }
+
+
+char* check_message(char* text) {	
+	char *words[] = {"hey","hello","word"};
+	char *hint;
+	const char *pan_regex = "^[A-Z]{5}[0-9]{4}[A-Z]$";
+	const char *aadhar_regex = "^[2-9]{1}[0-9]{3}[0-9]{4}[0-9]{4}$";
+
+	int len = sizeof(words)/sizeof(words[0]);
+	
+	struct json_object *parsed;
+	struct json_object *type;
+	struct json_object *msg;
+
+	parsed = json_tokener_parse(text);
+
+	json_object_object_get_ex(parsed,"type",&type);
+	json_object_object_get_ex(parsed,"msg",&msg);
+
+	if(json_object_get_string(type) == "file"){
+		return text;
+	}
+
+	for(int i=0;i<len;i++) {
+		if(strcmp(json_object_get_string(msg), words[i]) == 0) {
+			hint = "matching_word";
+			break;
+		}
+	}
+	
+	// Check for PAN card number
+    regex_t pan_regex_obj;
+    int ret = regcomp(&pan_regex_obj, pan_regex, REG_EXTENDED);
+    if (ret != 0) {
+        return text;
+    }
+
+    ret = regexec(&pan_regex_obj, json_object_get_string(msg), 0, NULL, 0);
+    if (ret == 0) {
+        hint = "pan_number";	
+    }
+
+    regfree(&pan_regex_obj);
+
+	//check for aadhar 
+	regex_t aadhar_regex_obj;
+    ret = regcomp(&aadhar_regex_obj, aadhar_regex, REG_EXTENDED);
+    if (ret != 0) {
+        return text;
+    }
+
+    ret = regexec(&aadhar_regex_obj, json_object_get_string(msg), 0, NULL, 0);
+    if (ret == 0) {
+        hint = "aadhar_number";
+    }	
+
+    regfree(&aadhar_regex_obj);
+
+	struct json_object *val = json_object_new_string(hint);
+	json_object_object_add(parsed,"hint",val);
+	return json_object_to_json_string(parsed);
+
+}
+
 
 #endif
