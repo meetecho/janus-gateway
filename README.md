@@ -24,7 +24,7 @@ To install it, you'll need to satisfy the following dependencies:
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v2.x suggested)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you are interested in Data Channels)
 * [libmicrohttpd](https://www.gnu.org/software/libmicrohttpd/) (at least v0.9.59; only needed if you are interested in REST support for the Janus API)
-* [libwebsockets](https://libwebsockets.org/) (only needed if you are interested in WebSockets support for the Janus API)
+* [libwebsockets](https://libwebsockets.org/) (at least v4.x suggested; only needed if you are interested in WebSockets support for the Janus API)
 * [cmake](https://www.cmake.org/) (only needed if you are interested in WebSockets and/or BoringSSL support, as they make use of it)
 * [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if you are interested in RabbitMQ support for the Janus API or events)
 * [paho.mqtt.c](https://eclipse.org/paho/clients/c) (only needed if you are interested in MQTT support for the Janus API or events)
