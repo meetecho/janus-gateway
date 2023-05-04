@@ -58,7 +58,7 @@ Notice that you may have to `yum install epel-release` as well if you're attempt
 On Ubuntu or Debian, it would require something like this:
 
 	aptitude install libmicrohttpd-dev libjansson-dev \
-		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
+		libssl-dev libsrtp2-dev libsofia-sip-ua-dev libglib2.0-dev \
 		libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev \
 		libconfig-dev pkg-config libtool automake
 
