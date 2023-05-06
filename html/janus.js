@@ -2387,9 +2387,9 @@ function Janus(gatewayCallbacks) {
 						pluginHandle.consentDialog(true);
 					}
 					let constraints = Janus.trackConstraints(track), stream = null;
-					if(track.type === 'audio' || (track.type === 'video' || track.type === 'screen') ) {
+					if(track.type === 'audio' || track.type === 'video' || track.type === 'screen') {
 						// Set if getUserMedia should be used or if it should be getDisplayMedia
-						let captureUserMedia = track.type !== 'screen';
+						let captureUserMedia = (track.type !== 'screen');
 						// Check if we need to group audio and video together
 						if(track.gumGroup) {
 							let otherType = (track.type === 'audio' ? 'video' : 'audio');
