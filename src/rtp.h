@@ -28,6 +28,7 @@
 #include <jansson.h>
 
 #include "plugins/plugin.h"
+#include "utils.h"
 
 #define RTP_HEADER_SIZE	12
 
@@ -358,7 +359,50 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 	janus_videocodec vcodec, janus_rtp_switching_context *sc, janus_mutex *rid_mutex);
 ///@}
 
-/** @name Janus AV1-SVC processing methods
+/** @name Janus SVC processing methods
+ */
+///@{
+/*! \brief Helper struct for processing and tracking VP9-SVC streams */
+typedef struct janus_rtp_svc_context {
+	/*! \brief Which SVC spatial layer we should forward back */
+	int spatial;
+	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */
+	int spatial_target;
+	/*! \brief Which SVC temporal layer we should forward back */
+	int temporal;
+	/*! \brief As above, but to handle transitions (e.g., wait for keyframe) */
+	int temporal_target;
+	/*! \brief How much time (in us, default 250000) without receiving packets will make us drop to the substream below */
+	guint32 drop_trigger;
+	/*! \brief When we relayed the last packet (used to detect when layers become unavailable) */
+	gint64 last_spatial_layer[3];
+	/*! \brief Whether the spatial layer has changed after processing a packet */
+	gboolean changed_spatial;
+	/*! \brief Whether the temporal layer has changed after processing a packet */
+	gboolean changed_temporal;
+	/*! \brief Whether we need to send the user a keyframe request (PLI) */
+	gboolean need_pli;
+} janus_rtp_svc_context;
+
+/*! \brief Set (or reset) the context fields to their default values
+ * @param[in] context The context to (re)set */
+void janus_rtp_svc_context_reset(janus_rtp_svc_context *context);
+
+/*! \brief Process an RTP packet, and decide whether this should be relayed or not, updating the context accordingly
+ * \note Calling this method resets the \c changed_spatial , \c changed_temporal and \c need_pli
+ * properties, and updates them according to the decisions made after processing the packet
+ * @param[in] context The VP9 SVC context to use
+ * @param[in] buf The RTP packet to process
+ * @param[in] len The length of the RTP packet (header, extension and payload)
+ * @param[in] vcodec Video codec of the RTP payload
+ * @param[in] info Parsed info on VP9-SVC, if any
+ * @param[in] sc RTP switching context to refer to, if any
+ * @returns TRUE if the packet should be relayed, FALSE if it should be dropped instead */
+gboolean janus_rtp_svc_context_process_rtp(janus_rtp_svc_context *context, char *buf, int len,
+	janus_videocodec vcodec, janus_vp9_svc_info *info, janus_rtp_switching_context *sc);
+///@}
+
+/** @name Janus AV1-SVC processing methods (still WIP)
  */
 ///@{
 /*! \brief Helper struct for processing and tracking AV1-SVC streams */

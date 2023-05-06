@@ -21,7 +21,6 @@
 # h264_profile = H.264-specific profile to prefer (e.g., "42e01f" for "profile-level-id=42e01f")
 # opus_fec = true|false (whether inband FEC must be negotiated; only works for Opus, default=true)
 # opus_dtx = true|false (whether DTX must be negotiated; only works for Opus, default=false)
-# video_svc = true|false (whether SVC support must be enabled; only works for VP9, default=false)
 # audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must
 #		be negotiated/used or not for new publishers, default=true)
 # audiolevel_event = true|false (whether to emit event to other users or not, default=false)
@@ -71,25 +70,10 @@ room-1234: {
 	description = "Demo Room"
 	secret = "adminpwd"
 	publishers = 6
-	bitrate = 128000
+	bitrate = 128000	# This is a low cap, increase if you want to use simulcast or SVC
 	fir_freq = 10
 	#audiocodec = "opus"
 	#videocodec = "vp8"
 	record = false
 	#rec_dir = "/path/to/recordings-folder"
-}
-
-# This other demo room here is only there in case you want to play with
-# the VP9 SVC support. Notice that you'll need a Chrome launched with
-# the flag that enables that support, or otherwise you'll be using just
-# plain VP9 (which is good if you want to test how this indeed affect
-# what receivers will get, whether they're encoding SVC or not).
-room-5678: {
-	description = "VP9-SVC Demo Room"
-	secret = "adminpwd"
-	publishers = 6
-	bitrate = 0		# No limit, to give room for all layers
-	fir_freq = 10
-	videocodec = "vp9"
-	video_svc = true
 }

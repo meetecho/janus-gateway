@@ -321,3 +321,49 @@ char *janus_network_detect_local_ip_as_string(janus_network_query_options addr_t
 		return NULL;
 	return g_strdup(janus_network_address_string_from_buffer(&buf));
 }
+
+int janus_network_resolve_address(const char *host, struct sockaddr_storage *address) {
+	if(!host || !address)
+		return -EINVAL;
+	/* Check whether we need to resolve the address*/
+	gboolean resolved = FALSE;
+	if(strstr(host, ":")) {
+		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)address;
+		addr6->sin6_family = AF_INET6;
+		if(inet_pton(AF_INET6, host, &addr6->sin6_addr) == 1) {
+			/* Numeric IPv6 address */
+			resolved = TRUE;
+		}
+	} else {
+		struct sockaddr_in *addr = (struct sockaddr_in *)address;
+		addr->sin_family = AF_INET;
+		if(inet_pton(AF_INET, host, &addr->sin_addr) == 1) {
+			/* Numeric IPv4 address */
+			resolved = TRUE;
+		}
+	}
+	if(!resolved) {
+		/* Perform a getaddrinfo on the address */
+		struct addrinfo *result = NULL;
+		int res = getaddrinfo(host, NULL, NULL, &result);
+		if(res == 0) {
+			/* Address resolved */
+			struct addrinfo *temp = result;
+			while(temp && !resolved) {
+				if(result->ai_family == AF_INET6) {
+					resolved = TRUE;
+					struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)address;
+					memcpy(&addr6->sin6_addr, result->ai_addr, sizeof(*addr6));
+				} else if(result->ai_family == AF_INET) {
+					resolved = TRUE;
+					struct sockaddr_in *addr = (struct sockaddr_in *)address;
+					memcpy(&addr->sin_addr, result->ai_addr, sizeof(*addr));
+				}
+				temp = temp->ai_next;
+			}
+			freeaddrinfo(result);
+		}
+	}
+	/* Done */
+	return resolved ? 0 : -1;
+}

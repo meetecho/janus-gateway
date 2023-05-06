@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[1.1.3],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[1.1.4],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -70,11 +70,11 @@ cc*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=1103
+JANUS_VERSION=1104
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="1.1.3"
+JANUS_VERSION_STRING="1.1.4"
 AC_SUBST(JANUS_VERSION_STRING)
-JANUS_VERSION_SO="2:3:1"
+JANUS_VERSION_SO="2:4:1"
 AC_SUBST(JANUS_VERSION_SO)
 
 case "$host_os" in
@@ -185,8 +185,6 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_videocall=no])
                AS_IF([test "x$enable_plugin_videoroom" != "xyes"],
                      [enable_plugin_videoroom=no])
-               AS_IF([test "x$enable_plugin_voicemail" != "xyes"],
-                     [enable_plugin_voicemail=no])
               ],
               [])
 
@@ -770,13 +768,6 @@ AC_ARG_ENABLE([plugin-videoroom],
                      [enable_plugin_videoroom=no])],
               [enable_plugin_videoroom=yes])
 
-AC_ARG_ENABLE([plugin-voicemail],
-              [AS_HELP_STRING([--disable-plugin-voicemail],
-                              [Disable voicemail plugin])],
-              [AS_IF([test "x$enable_plugin_voicemail" != "xyes"],
-                     [enable_plugin_voicemail=no])],
-              [enable_plugin_voicemail=maybe])
-
 PKG_CHECK_MODULES([SOFIA],
                   [sofia-sip-ua],
                   [
@@ -807,12 +798,8 @@ PKG_CHECK_MODULES([OGG],
                   [ogg],
                   [
                     AC_DEFINE(HAVE_LIBOGG)
-                    AS_IF([test "x$enable_plugin_voicemail" = "xmaybe"],
-                          [enable_plugin_voicemail=yes])
                   ],
                   [
-                    AS_IF([test "x$enable_plugin_voicemail" = "xyes"],
-                          [AC_MSG_ERROR([libogg not found. See README.md for installation instructions or use --disable-plugin-voicemail])])
                   ])
 AC_SUBST([OGG_CFLAGS])
 AC_SUBST([OGG_LIBS])
@@ -860,7 +847,6 @@ AM_CONDITIONAL([ENABLE_PLUGIN_NOSIP], [test "x$enable_plugin_nosip" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_STREAMING], [test "x$enable_plugin_streaming" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "xyes"])
-AM_CONDITIONAL([ENABLE_PLUGIN_VOICEMAIL], [test "x$enable_plugin_voicemail" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xyes"])
 
 
@@ -1065,9 +1051,6 @@ AM_COND_IF([ENABLE_PLUGIN_AUDIOBRIDGE],
 AM_COND_IF([ENABLE_PLUGIN_VIDEOROOM],
 	[echo "    Video Room:            yes"],
 	[echo "    Video Room:            no"])
-AM_COND_IF([ENABLE_PLUGIN_VOICEMAIL],
-	[echo "    Voice Mail:            yes"],
-	[echo "    Voice Mail:            no"])
 AM_COND_IF([ENABLE_PLUGIN_RECORDPLAY],
 	[echo "    Record&Play:           yes"],
 	[echo "    Record&Play:           no"])

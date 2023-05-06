@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-- name: 💬 Janus Community (Google Group)
-  url: https://groups.google.com/g/meetecho-janus
-  about: Please ask questions or discuss runtime problems on the group, not GitHub 
+- name: 💬 Janus Community (Discourse)
+  url: https://janus.discourse.group/
+  about: Please ask questions or discuss runtime problems on the group, not GitHub

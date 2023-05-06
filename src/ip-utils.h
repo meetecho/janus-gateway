@@ -215,7 +215,7 @@ int janus_network_string_is_valid_address(janus_network_query_options addr_type,
  * janus_network_query_options_ipv6 or janus_network_query_options_any_ip)
  * \param user_value The IP address string to check
  * \param result Pointer to a valid janus_network_address instance that will contain the result
- * \return 0 in case of success, -EINVAL otherwise otherwise
+ * \return 0 in case of success, -EINVAL otherwise
  */
 int janus_network_string_to_address(janus_network_query_options addr_type, const char *user_value, janus_network_address *result);
 
@@ -224,7 +224,7 @@ int janus_network_string_to_address(janus_network_query_options addr_type, const
  * \param ifas The list of interfaces to look into (e.g., as returned from getifaddrs)
  * \param iface The interface name or IP address to look for
  * \param result Pointer to a valid janus_network_address instance that will contain the result
- * \return 0 in case of success, -EINVAL otherwise otherwise
+ * \return 0 in case of success, -EINVAL otherwise
  */
 int janus_network_lookup_interface(const struct ifaddrs *ifas, const char *iface, janus_network_address *result);
 
@@ -233,7 +233,7 @@ int janus_network_lookup_interface(const struct ifaddrs *ifas, const char *iface
  * \param addr_type The type of address you're interested in (janus_network_query_options_ipv4,
  * janus_network_query_options_ipv6 or janus_network_query_options_any_ip)
  * \param result Pointer to a valid janus_network_address instance that will contain the result
- * \return 0 in case of success, -EINVAL otherwise otherwise
+ * \return 0 in case of success, -EINVAL otherwise
  */
 int janus_network_detect_local_ip(janus_network_query_options addr_type, janus_network_address *result);
 
@@ -242,9 +242,23 @@ int janus_network_detect_local_ip(janus_network_query_options addr_type, janus_n
  * \note The string is allocated with g_strdup and so needs to be freed by the caller
  * \param addr_type The type of address you're interested in (janus_network_query_options_ipv4,
  * janus_network_query_options_ipv6 or janus_network_query_options_any_ip)
- * \return 0 in case of success, -EINVAL otherwise otherwise
+ * \return 0 in case of success, -EINVAL otherwise
  */
 char *janus_network_detect_local_ip_as_string(janus_network_query_options addr_type);
+///@}
+
+/** @name Janus helper methods to resolve external addresses
+ */
+/*!
+ * \brief Wrapper inet_pton or getaddrinfo to fill a struct sockaddr_storage structure from an address
+ * \note The method will only do inet_pton if it detects a numeric address, and will perform
+ * a getaddrinfo otherwise. Notice that, since the request is synchronous, it may have to wait
+ * for a DNS response to that request.
+ * \param host The address to resolve
+ * \param address A pointer to the struct sockaddr_storage to write the result to
+ * \return 0 in case of success, a negative integer otherwise
+ */
+int janus_network_resolve_address(const char *host, struct sockaddr_storage *address);
 ///@}
 
 #endif

@@ -401,7 +401,7 @@ nat: {
 # names to identify the plugins to disable. By default all available
 # plugins are enabled and loaded at startup.
 plugins: {
-	#disable = "libjanus_voicemail.so,libjanus_recordplay.so"
+	#disable = "libjanus_echotest.so,libjanus_recordplay.so"
 }
 
 # You can choose which of the available transports should be enabled or

@@ -1494,6 +1494,33 @@ function Janus(gatewayCallbacks) {
 				request.jsep.rid_order = jsep.rid_order;
 			if(jsep.force_relay)
 				request.jsep.force_relay = true;
+			// Check if there's SVC video streams to tell Janus about
+			let svc = null;
+			let config = pluginHandle.webrtcStuff;
+			if(config.pc) {
+				let transceivers = config.pc.getTransceivers();
+				if(transceivers && transceivers.length > 0) {
+					for(let mindex in transceivers) {
+						let tr = transceivers[mindex];
+						if(tr && tr.sender && tr.sender.track && tr.sender.track.kind === 'video') {
+							let params = tr.sender.getParameters();
+							if(params && params.encodings && params.encodings[0] &&
+									params.encodings[0].scalabilityMode) {
+								// This video stream uses SVC
+								if(!svc)
+									svc = [];
+								svc.push({
+									mindex: parseInt(mindex),
+									mid: tr.mid,
+									svc: params.encodings[0].scalabilityMode
+								});
+							}
+						}
+					}
+				}
+			}
+			if(svc)
+				request.jsep.svc = svc;
 		}
 		Janus.debug("Sending message to plugin (handle=" + handleId + "):");
 		Janus.debug(request);
@@ -2366,11 +2393,46 @@ function Janus(gatewayCallbacks) {
 			}
 			// Capture the new track, if we need to
 			let nt = null, trackId = null;
-			if(track.remove) {
+			if(track.remove || track.replace) {
 				Janus.log('Removing track from PeerConnection', track);
 				trackId = sender.track ? sender.track.id : null;
 				await sender.replaceTrack(null);
-			} else if(track.capture) {
+				// Get rid of the old track
+				if(trackId && config.myStream) {
+					let rt = null;
+					if(kind === 'audio' && config.myStream.getAudioTracks() && config.myStream.getAudioTracks().length) {
+						for(let t of config.myStream.getAudioTracks()) {
+							if(t.id === trackId) {
+								rt = t;
+								Janus.log('Removing audio track:', rt);
+							}
+						}
+					} else if(kind === 'video' && config.myStream.getVideoTracks() && config.myStream.getVideoTracks().length) {
+						for(let t of config.myStream.getVideoTracks()) {
+							if(t.id === trackId) {
+								rt = t;
+								Janus.log('Removing video track:', rt);
+							}
+						}
+					}
+					if(rt) {
+						// Remove the track and notify the application
+						try {
+							config.myStream.removeTrack(rt);
+							pluginHandle.onlocaltrack(rt, false);
+						} catch(e) {
+							Janus.error("Error calling onlocaltrack on removal for renegotiation", e);
+						}
+						// Close the old track (unless we've been asked not to)
+						if(rt.dontStop !== true) {
+							try {
+								rt.stop();
+							} catch(e) {}
+						}
+					}
+				}
+			}
+			if(track.capture) {
 				if(track.gumGroup && groups[track.gumGroup] && groups[track.gumGroup].stream) {
 					// We did a getUserMedia/getDisplayMedia before already
 					let stream = groups[track.gumGroup].stream;
@@ -2646,50 +2708,6 @@ function Janus(gatewayCallbacks) {
 									.pipeTo(receiverStreams.writable);
 							}
 						}
-					}
-				}
-			}
-			// Get rid of the old track
-			// FIXME We should probably do this *before* capturing the new
-			// track, since this prevents, for instance, just changing the
-			// resolution of the same webcam we're capturing already (the
-			// existing resolution would be returned, or an overconstrained
-			// error). On the other end, closing the track before we capture
-			// the new device means we'd end up with a period of time where
-			// no video is sent (changing device takes some time), and
-			// media would be stopped entirely in case capturing the new
-			// device results in an error. To keep things simpler, we're
-			// doing it after: we can make this configurable in the future.
-			if(trackId && config.myStream) {
-				let rt = null;
-				if(kind === 'audio' && config.myStream.getAudioTracks() && config.myStream.getAudioTracks().length) {
-					for(let t of config.myStream.getAudioTracks()) {
-						if(t.id === trackId) {
-							rt = t;
-							Janus.log('Removing audio track:', rt);
-						}
-					}
-				} else if(kind === 'video' && config.myStream.getVideoTracks() && config.myStream.getVideoTracks().length) {
-					for(let t of config.myStream.getVideoTracks()) {
-						if(t.id === trackId) {
-							rt = t;
-							Janus.log('Removing video track:', rt);
-						}
-					}
-				}
-				if(rt) {
-					// Remove the track and notify the application
-					try {
-						config.myStream.removeTrack(rt);
-						pluginHandle.onlocaltrack(rt, false);
-					} catch(e) {
-						Janus.error("Error calling onlocaltrack on removal for renegotiation", e);
-					}
-					// Close the old track (unless we've been asked not to)
-					if(rt.dontStop !== true) {
-						try {
-							rt.stop();
-						} catch(e) {}
 					}
 				}
 			}

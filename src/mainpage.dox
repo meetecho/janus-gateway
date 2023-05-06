@@ -101,13 +101,13 @@
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v2.x suggested)
  * - \b usrsctp: https://github.com/sctplab/usrsctp (\c optional, Data Channels)
  * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, v0.9.59, Web server)
- * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
+ * - \b libwebsockets: https://libwebsockets.org/ (\c optional, at least v4.x suggested, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
  * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0 for MQTT v3.1 & v3.1.1 or v1.3.0 for MQTT v5)
  * - \b nanomsg: https://nanomsg.org/ (\c optional, Nanomsg)
  * - \b Sofia-SIP: https://github.com/freeswitch/sofia-sip (\c optional, only needed for the SIP plugin)
- * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
- * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
+ * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the AudioBridge plugin)
+ * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the AudioBridge and Streaming plugins)
  * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
  * RTSP support in the Streaming plugin and the sample Event Handler plugin)
  * - \b zlib: https://zlib.net/ (gzip compression utility)
@@ -3190,7 +3190,6 @@ ldd janus | grep asan
  * - \ref videoroom
  * - \ref textroom
  * - \ref recordplay
- * - \ref voicemail
  * - \ref lua
  * - \ref duktape
  */
@@ -3453,9 +3452,8 @@ ldd janus | grep asan
  * libraries and bindings in other languages (that is tools that you find
  * helpful to interact with Janus outside of the context of the \c janus.js
  * JavaScript library we provide) and so on. It is not a complete list,
- * but just a summary of the material that has been shared so far on the
- * <a href="https://groups.google.com/forum/#!forum/meetecho-janus">meetecho-janus</a>
- * Google group.
+ * but just a summary of the material that has been shared so far by the
+ * <a href="https://janus.discourse.group/">Community</a>.
  *
  * If you've developed anything related to Janus and you're willing to share
  * it with the community, or you know any such effort that is not listed
@@ -3878,13 +3876,13 @@ ldd janus | grep asan
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v2.x suggested)
  * - \b usrsctp: https://github.com/sctplab/usrsctp (\c optional, Data Channels)
  * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server, at least v0.9.59)
- * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
+ * - \b libwebsockets: https://libwebsockets.org/ (\c optional, at least v4.x suggested, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
  * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0 for MQTT v3.1 & v3.1.1 or v1.3.0 for MQTT v5)
  * - \b nanomsg: https://nanomsg.org/ (\c optional, Nanomsg)
  * - \b Sofia-SIP: https://github.com/freeswitch/sofia-sip (\c optional, only needed for the SIP plugin)
- * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
- * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
+ * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the AudioBridge plugin)
+ * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the AudioBridge and Streaming plugins)
  * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
  * RTSP support in the Streaming plugin and the sample Event Handler plugin)
  * - \b zlib: https://zlib.net/ (gzip compression utility)
@@ -3934,8 +3932,7 @@ ldd janus | grep asan
 
 /*! \page FAQ Frequently Asked Questions
  * This page contains a list of FAQ as gathered on the
- * <a href="https://groups.google.com/forum/?pli=1#!forum/meetecho-janus">meetecho-janus</a>
- * Google group and the
+ * <a href="https://janus.discourse.group/">Community</a> and the
  * <a href="https://github.com/meetecho/janus-gateway/issues">Issues</a>
  * page on GitHub. It obviously also includes things we're being asked all the
  * time in general! If your question is not listed here or not available
@@ -4476,8 +4473,8 @@ ldd janus | grep asan
  *    That's great! The first obvious suggestion is of course to carefully
  *    read the documentation here: we worked hard on it and are constantly
  *    expanding it, so it should always be the first source of information
- *    whenever in doubt. We have a great Google group as well where the
- *    <a href="https://groups.google.com/forum/#!forum/meetecho-janus">community</a>
+ *    whenever in doubt. We have a great Discourse as well where the
+ *    <a href="https://janus.discourse.group/">community</a>
  *    shares questions, data and more everyday, so make sure you join too! \n\n
  *    We also provide training on Janus and WebRTC in general, so if interested
  *    just <a href="https://janus.conf.meetecho.com/support">contact us</a>.\n\n

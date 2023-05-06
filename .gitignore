@@ -46,7 +46,6 @@ p2m-cmdline.h
 /conf/janus.plugin.lua.cfg.sample
 /conf/janus.plugin.recordplay.cfg.sample
 /conf/janus.plugin.streaming.cfg.sample
-/conf/janus.plugin.voicemail.cfg.sample
 /conf/janus.transport.http.cfg.sample
 /conf/janus.transport.websockets.cfg.sample
 /conf/janus.jcfg.sample
@@ -54,7 +53,6 @@ p2m-cmdline.h
 /conf/janus.plugin.lua.jcfg.sample
 /conf/janus.plugin.recordplay.jcfg.sample
 /conf/janus.plugin.streaming.jcfg.sample
-/conf/janus.plugin.voicemail.jcfg.sample
 
 .deps
 .dirstamp

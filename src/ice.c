@@ -4323,8 +4323,17 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 							if(medium->codec)
 								json_object_set_new(info, "codec", json_string(medium->codec));
 							json_object_set_new(info, "base", json_integer(medium->rtcp_ctx[vindex]->tb));
-							if(vindex == 0)
-								json_object_set_new(info, "rtt", json_integer(janus_rtcp_context_get_rtt(medium->rtcp_ctx[vindex])));
+							if(vindex == 0) {
+								uint32_t rtt = janus_rtcp_context_get_rtt(medium->rtcp_ctx[vindex]);
+								json_object_set_new(info, "rtt", json_integer(rtt));
+								if(rtt > 0 && medium->rtcp_ctx[vindex]) {
+									json_t *rtt_vals = json_object();
+									json_object_set_new(rtt_vals, "ntp", json_integer(medium->rtcp_ctx[vindex]->rtt_ntp));
+									json_object_set_new(rtt_vals, "lsr", json_integer(medium->rtcp_ctx[vindex]->rtt_lsr));
+									json_object_set_new(rtt_vals, "dlsr", json_integer(medium->rtcp_ctx[vindex]->rtt_dlsr));
+									json_object_set_new(info, "rtt-values", rtt_vals);
+								}
+							}
 							json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(medium->rtcp_ctx[vindex], FALSE)));
 							json_object_set_new(info, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(medium->rtcp_ctx[vindex], TRUE)));
 							json_object_set_new(info, "jitter-local", json_integer(janus_rtcp_context_get_jitter(medium->rtcp_ctx[vindex], FALSE)));

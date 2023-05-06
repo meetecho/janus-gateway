@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server (multistream): Video Room Demo</title>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.0/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.2/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
@@ -31,7 +31,7 @@
 </head>
 <body>
 
-<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="https://s3.amazonaws.com/github/ribbons/forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
 
 <nav class="navbar navbar-default navbar-static-top">
 </nav>
@@ -61,17 +61,17 @@
 						<a href="mvideoroomtest.html">multistream VideoRoom demo</a>
 						instead. The two demos are interoperable, if you want to see how
 						different subscription mechanisms are used on the same sources.</div>
-						<p>If you're interested in testing how simulcasting can be used within
-						the context of a videoconferencing application, just pass the
-						<code>?simulcast=true</code> query string to the url of this page and
-						reload it. If you're using a browser that does support simulcasting
-						(Chrome or Firefox) and the room is configured to use VP8, you'll
-						send multiple qualities of the video you're capturing. Notice that
-						simulcasting will only occur if the browser thinks there is enough
-						bandwidth, so you'll have to play with the Bandwidth selector to
+						<p>If you're interested in testing how simulcasting or SVC can be used within
+						the context of a videoconferencing application, just pass a
+						<code>?simulcast=true</code> (for simulcast) or <code>?svc=&lt;mode&gt;</code>
+						(for SVC) query string to the url of this page and reload it. Notice that
+						simulcast will only work when using VP8 or H.264, while SVC will only work
+						if you're using VP9 on a browser that supports setting the <code>scalabilityMode</code>.
+						Besides, notice that simulcasting/SVC will only be sent if the browser thinks
+						there is enough bandwidth, so you may have to play with the Bandwidth selector to
 						increase it. New buttons to play with the feature will automatically
-						appear for viewers when receiving any simulcasted stream. Notice that
-						no simulcast support is needed for watching, only for publishing.</p>
+						appear for viewers when receiving any simulcast/SVC stream. Notice that
+						no simulcast/SVC support is needed for watching, only for publishing.</p>
 						<p>To use the demo, just insert a username to join the default room that
 						is configured. This will add you to the list of participants, and allow
 						you to automatically send your audio/video frames and receive the other

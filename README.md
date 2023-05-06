@@ -11,21 +11,21 @@ For some online demos and documentations, make sure you pay the [project website
 
 > **Note well:** this is the main branch for the `multistream` version of Janus, which is the new version. If you want to check the legacy version of Janus instead (i.e., `0.x`, a.k.a. "legacy") click [here](https://github.com/meetecho/janus-gateway/tree/0.x) instead.
 
-If you have questions on Janus, or wish to discuss Janus with us and other users, please join our [meetecho-janus](https://groups.google.com/forum/#!forum/meetecho-janus) Google Group. If you encounter bugs, please submit an issue on [GitHub](https://github.com/meetecho/janus-gateway/issues): make sure you read the [guidelines](.github/CONTRIBUTING.md) before opening an issue or a pull request, though.
+If you have questions on Janus, or wish to discuss Janus with us and other users, please join our [Community](https://janus.discourse.group/). If you encounter bugs, please submit an issue on [GitHub](https://github.com/meetecho/janus-gateway/issues): make sure you read the [guidelines](.github/CONTRIBUTING.md) before opening an issue or a pull request, though.
 
 
 ## Dependencies
 To install it, you'll need to satisfy the following dependencies:
 
-* [Jansson](http://www.digip.org/jansson/)
+* [Jansson](https://github.com/akheron/jansson)
 * [libconfig](https://hyperrealm.github.io/libconfig/)
 * [libnice](https://libnice.freedesktop.org/) (at least v0.1.16 suggested, v0.1.18 recommended)
-* [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
+* [OpenSSL](https://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v2.x suggested)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you are interested in Data Channels)
-* [libmicrohttpd](http://www.gnu.org/software/libmicrohttpd/) (at least v0.9.59; only needed if you are interested in REST support for the Janus API)
-* [libwebsockets](https://libwebsockets.org/) (only needed if you are interested in WebSockets support for the Janus API)
-* [cmake](http://www.cmake.org/) (only needed if you are interested in WebSockets and/or BoringSSL support, as they make use of it)
+* [libmicrohttpd](https://www.gnu.org/software/libmicrohttpd/) (at least v0.9.59; only needed if you are interested in REST support for the Janus API)
+* [libwebsockets](https://libwebsockets.org/) (at least v4.x suggested; only needed if you are interested in WebSockets support for the Janus API)
+* [cmake](https://www.cmake.org/) (only needed if you are interested in WebSockets and/or BoringSSL support, as they make use of it)
 * [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if you are interested in RabbitMQ support for the Janus API or events)
 * [paho.mqtt.c](https://eclipse.org/paho/clients/c) (only needed if you are interested in MQTT support for the Janus API or events)
 * [nanomsg](https://nanomsg.org/) (only needed if you are interested in Nanomsg support for the Janus API)
@@ -34,17 +34,17 @@ To install it, you'll need to satisfy the following dependencies:
 A couple of plugins depend on a few more libraries:
 
 * [Sofia-SIP](https://github.com/freeswitch/sofia-sip) (only needed for the SIP plugin)
-* [libopus](http://opus-codec.org/) (only needed for the AudioBridge plugin)
-* [libogg](http://xiph.org/ogg/) (needed for the VoiceMail plugin and/or post-processor, and optionally AudioBridge and Streaming plugins)
+* [libopus](https://opus-codec.org/) (only needed for the AudioBridge plugin)
+* [libogg](https://xiph.org/ogg/) (needed for the VoiceMail plugin and/or post-processor, and optionally AudioBridge and Streaming plugins)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are interested in RTSP support in the Streaming plugin or in the sample Event Handler plugin)
 * [Lua](https://www.lua.org/download.html) (only needed for the Lua plugin)
 * [Duktape](https://duktape.org/) (only needed for the Duktape plugin)
 
 Additionally, you'll need the following libraries and tools:
 
-* [GLib](http://library.gnome.org/devel/glib/)
+* [GLib](https://docs.gtk.org/glib/)
 * [zlib](https://zlib.net/)
-* [pkg-config](http://www.freedesktop.org/wiki/Software/pkg-config/)
+* [pkg-config](https://www.freedesktop.org/wiki/Software/pkg-config/)
 
 All of those libraries are usually available on most of the most common distributions. Installing these libraries on a recent Fedora, for instance, is very simple:
 
@@ -62,7 +62,7 @@ On Ubuntu or Debian, it would require something like this:
 		libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev \
 		libconfig-dev pkg-config libtool automake
 
-* *Note:* please notice that libopus may not be available out of the box on your distro. In that case, you'll have to [install it manually](http://www.opus-codec.org).
+* *Note:* please notice that libopus may not be available out of the box on your distro. In that case, you'll have to [install it manually](https://www.opus-codec.org).
 
 While `libnice` is typically available in most distros as a package, the version available out of the box in Ubuntu is known to cause problems. As such, we always recommend manually compiling and installing the master version of libnice.
 To build libnice, you need Python 3, Meson and Ninja:
@@ -163,8 +163,8 @@ Finally, the same can be said for rabbitmq-c as well, which is needed for the op
 
 To conclude, should you be interested in building the Janus documentation as well, you'll need some additional tools too:
 
-* [Doxygen](http://www.doxygen.org)
-* [Graphviz](http://www.graphviz.org/)
+* [Doxygen](https://www.doxygen.org)
+* [Graphviz](https://www.graphviz.org/)
 
 On Fedora:
 

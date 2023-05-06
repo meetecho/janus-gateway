@@ -97,6 +97,8 @@ janus_SOURCES = \
 	rtcp.h \
 	rtp.c \
 	rtp.h \
+	rtpfwd.c \
+	rtpfwd.h \
 	rtpsrtp.h \
 	sctp.c \
 	sctp.h \
@@ -487,17 +489,6 @@ plugins_libjanus_videoroom_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_videoroom_la_LIBADD = $(plugins_libadd)
 conf_DATA += ../conf/janus.plugin.videoroom.jcfg.sample
 EXTRA_DIST += ../conf/janus.plugin.videoroom.jcfg.sample
-endif
-
-if ENABLE_PLUGIN_VOICEMAIL
-plugin_LTLIBRARIES += plugins/libjanus_voicemail.la
-plugins_libjanus_voicemail_la_SOURCES = plugins/janus_voicemail.c
-plugins_libjanus_voicemail_la_CFLAGS = $(plugins_cflags)
-plugins_libjanus_voicemail_la_LDFLAGS = $(plugins_ldflags) -logg
-plugins_libjanus_voicemail_la_LIBADD = $(plugins_libadd)
-conf_DATA += ../conf/janus.plugin.voicemail.jcfg.sample
-EXTRA_DIST += ../conf/janus.plugin.voicemail.jcfg.sample.in
-CLEANFILES += ../conf/janus.plugin.voicemail.jcfg.sample
 endif
 
 if ENABLE_PLUGIN_TEXTROOM
