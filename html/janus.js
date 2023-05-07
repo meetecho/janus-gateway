@@ -25,7 +25,7 @@
  */
 
 // List of sessions
-Janus.sessions = {};
+Janus.sessions = new Map();
 
 Janus.isExtensionEnabled = function() {
 	if(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
@@ -478,10 +478,10 @@ Janus.init = function(options) {
 		let oldOBF = window["on" + eventName];
 		window.addEventListener(eventName, function() {
 			Janus.log("Closing window");
-			for(let s in Janus.sessions) {
-				if(Janus.sessions[s] && Janus.sessions[s].destroyOnUnload) {
-					Janus.log("Destroying session " + s);
-					Janus.sessions[s].destroy({unload: true, notifyDestroyed: false});
+			for(const [sessionId, session] of Janus.sessions) {
+				if(session && session.destroyOnUnload) {
+					Janus.log("Destroying session " + sessionId);
+					session.destroy({unload: true, notifyDestroyed: false});
 				}
 			}
 			if(oldOBF && typeof oldOBF == "function") {
@@ -1014,7 +1014,7 @@ function Janus(gatewayCallbacks) {
 						} else {
 							Janus.log("Created session: " + sessionId);
 						}
-						Janus.sessions[sessionId] = that;
+						Janus.sessions.set(sessionId, that);
 						callbacks.success();
 					});
 					ws.send(JSON.stringify(request));
@@ -1058,7 +1058,7 @@ function Janus(gatewayCallbacks) {
 				} else {
 					Janus.log("Created session: " + sessionId);
 				}
-				Janus.sessions[sessionId] = that;
+				Janus.sessions.set(sessionId, that);
 				eventHandler();
 				callbacks.success();
 			},
