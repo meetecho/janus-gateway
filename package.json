@@ -18,6 +18,10 @@
     "webrtc-adapter": "8.2.2"
   },
   "devDependencies": {
-    "eslint": "8.35.0"
+    "eslint": "8.39.0",
+    "eslint-plugin-html": "7.1.0"
+  },
+  "scripts": {
+    "lint": "eslint html --ext .js,.html"
   }
 }
