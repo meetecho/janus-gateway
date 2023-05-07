@@ -2339,9 +2339,9 @@ function Janus(gatewayCallbacks) {
 				};
 				continue;
 			}
-			if((typeof track.add === 'undefined' && track.add === null) &&
-					(typeof track.remove === 'undefined' && track.remove === null) &&
-					(typeof track.replace === 'undefined' && track.replace === null)) {
+			if((typeof track.add === 'undefined' || track.add === null) &&
+					(typeof track.remove === 'undefined' || track.remove === null) &&
+					(typeof track.replace === 'undefined' || track.replace === null)) {
 				// Let's default to 'add'
 				track.add = true;
 			}
