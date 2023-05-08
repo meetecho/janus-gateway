@@ -1878,7 +1878,10 @@ static struct janus_json_parameter switch_parameters[] = {
 static struct janus_json_parameter switch_update_parameters[] = {
 	//~ {"feed", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"sub_mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"sub_mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	/* For VP8 (or H.264) simulcast */
+	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter publish_remotely_parameters[] = {
 	{"secret", JSON_STRING, 0},
@@ -11302,9 +11305,24 @@ static void *janus_videoroom_handler(void *data) {
 					stream->sim_context.rid_ext_id = ps->rid_extmap_id;
 					janus_mutex_unlock(&ps->rid_mutex);
 					stream->send = TRUE;
-					stream->sim_context.substream_target = 2;
-					stream->sim_context.templayer_target = 2;
-					janus_vp8_simulcast_context_reset(&stream->vp8_context);
+					json_t *substream = json_object_get(s, "substream");
+					int substream_target = substream ? json_integer_value(substream) : 2;
+					if(substream_target >= 0 && substream_target <= 2) {
+						/* Override substream_target if valid */
+						stream->sim_context.substream_target = substream_target;
+					} else {
+						/* Reset sustream_target to 2 */
+						stream->sim_context.substream_target = 2;
+					}
+					json_t *temporal = json_object_get(s, "temporal");
+					int templayer_target = temporal ? json_integer_value(temporal) : 2;
+					if(templayer_target >= 0 && templayer_target <= 2) {
+						/* Override templayer_target if valid */
+						stream->sim_context.templayer_target = templayer_target;
+					} else {
+						/* Reset templayer_target to 2 */
+						stream->sim_context.templayer_target = 2;
+					}
 					janus_rtp_svc_context_reset(&stream->svc_context);
 					stream->svc_context.spatial_target = 2;		/* FIXME Actually depends on the scalabilityMode */
 					stream->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
