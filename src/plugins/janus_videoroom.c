@@ -1432,6 +1432,7 @@ room-<unique room ID>: {
 			"feed" : <unique ID of the publisher the new source is from>,
 			"mid" : "<unique mid of the source we want to switch to>",
 			"sub_mid" : "<unique mid of the stream we want to pipe the new source to>"
+			.. other properties, e.g., substream, temporal, etc.
 		},
 		{
 			// Other updates, if any
@@ -1849,13 +1850,9 @@ static struct janus_json_parameter subscriber_stream_parameters[] = {
 	/* For VP8 (or H.264) simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"substream", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"temporal", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* For VP9 SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"spatial_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"temporal_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* For the playout-delay RTP extension, if negotiated */
 	{"min_delay", JSON_INTEGER, 0},
 	{"max_delay", JSON_INTEGER, 0}
@@ -1881,7 +1878,10 @@ static struct janus_json_parameter switch_update_parameters[] = {
 	{"sub_mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	/* For VP8 (or H.264) simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	/* For VP9 SVC */
+	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter publish_remotely_parameters[] = {
 	{"secret", JSON_STRING, 0},
@@ -11324,8 +11324,24 @@ static void *janus_videoroom_handler(void *data) {
 						stream->sim_context.templayer_target = 2;
 					}
 					janus_rtp_svc_context_reset(&stream->svc_context);
-					stream->svc_context.spatial_target = 2;		/* FIXME Actually depends on the scalabilityMode */
-					stream->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
+					json_t *spatial = json_object_get(s, "spatial_layer");
+					int spatial_target = spatial ? json_integer_value(spatial) : 2;
+					if(spatial_target >= 0 && spatial_target <= 2) {
+						/* Override spatial_target if valid */
+						stream->svc_context.spatial_target = spatial_target;
+					} else {
+						/* Reset sustream_target to 2 */
+						stream->svc_context.spatial_target = 2;
+					}
+					temporal = json_object_get(s, "temporal_layer");
+					templayer_target = temporal ? json_integer_value(temporal) : 2;
+					if(templayer_target >= 0 && templayer_target <= 2) {
+						/* Override templayer_target if valid */
+						stream->svc_context.temporal_target = templayer_target;
+					} else {
+						/* Reset templayer_target to 2 */
+						stream->svc_context.temporal_target = 2;
+					}
 					janus_mutex_unlock(&ps->subscribers_mutex);
 					janus_videoroom_reqpli(ps, "Subscriber switch");
 					if(unref)
