@@ -1,4 +1,4 @@
-// eslint-disable-next-line no-undef
+/* global module */
 module.exports = {
 	"env": {
 		"browser": true,
@@ -8,6 +8,9 @@ module.exports = {
 	"parserOptions": {
 		"ecmaVersion": 2017
 	},
+	"plugins": [
+		"html"
+	],
 	"extends": "eslint:recommended",
 	"rules": {
 		"no-console": "off",
