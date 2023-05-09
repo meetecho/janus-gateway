@@ -6286,17 +6286,20 @@ auth_failed:
 }
 
 void janus_sip_save_reason(sip_t const *sip, janus_sip_session *session) {
-	if (!sip || !session)
+	if(!sip || !session)
 		return;
 
-	if (sip->sip_reason && sip->sip_reason->re_text) {
+	if(sip->sip_reason && sip->sip_reason->re_text) {
+		g_free(session->hangup_reason_header);
 		session->hangup_reason_header = g_strdup(sip->sip_reason->re_text);
 		janus_sip_remove_quotes(session->hangup_reason_header);
 	}
-	if (sip->sip_reason && sip->sip_reason->re_protocol) {
+	if(sip->sip_reason && sip->sip_reason->re_protocol) {
+		g_free(session->hangup_reason_header_protocol);
 		session->hangup_reason_header_protocol = g_strdup(sip->sip_reason->re_protocol);
 	}
-	if (sip->sip_reason && sip->sip_reason->re_cause) {
+	if(sip->sip_reason && sip->sip_reason->re_cause) {
+		g_free(session->hangup_reason_header_cause);
 		session->hangup_reason_header_cause = g_strdup(sip->sip_reason->re_cause);
 	}
 }
