@@ -1347,6 +1347,9 @@ static int janus_websockets_common_callback(
 					incoming_curr += error.position;
 					JANUS_LOG(LOG_HUGE, "[%s-%p] Parsed JSON message - consumed %zu/%zu bytes\n",
 						log_prefix, wsi, (size_t)(incoming_curr - ws_client->incoming), incoming_length);
+					/* Trailing whitespace after the last message results in invalid JSON error */
+					while (incoming_curr < incoming_end && isspace(*incoming_curr))
+						incoming_curr++;
 					if(incoming_curr == incoming_end) {
 						/* Process messages in order */
 						json_t **msg = message_buffer;
