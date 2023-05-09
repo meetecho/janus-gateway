@@ -1504,6 +1504,7 @@ static void janus_sip_media_reset(janus_sip_session *session) {
 gpointer janus_sip_sofia_thread(gpointer user_data);
 /* Sofia callbacks */
 void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase, nua_t *nua, nua_magic_t *magic, nua_handle_t *nh, nua_hmagic_t *hmagic, sip_t const *sip, tagi_t tags[]);
+void janus_sip_save_reason(sip_t const *sip, janus_sip_session *session);
 /* SDP parsing and manipulation */
 void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean answer, gboolean update, gboolean *changed);
 char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gboolean answer);
@@ -5121,30 +5122,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_i_bye: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-			if(sip->sip_reason && sip->sip_reason->re_text) {
-				session->hangup_reason_header = g_strdup(sip->sip_reason->re_text);
-				janus_sip_remove_quotes(session->hangup_reason_header);
-			}
-			if(sip->sip_reason && sip->sip_reason->re_protocol) {
-				session->hangup_reason_header_protocol = g_strdup(sip->sip_reason->re_protocol);
-			}
-			if(sip->sip_reason && sip->sip_reason->re_cause) {
-				session->hangup_reason_header_cause = g_strdup(sip->sip_reason->re_cause);
-			}
+			janus_sip_save_reason(sip, session);
 			break;
 		}
 		case nua_i_cancel: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-			if(sip->sip_reason && sip->sip_reason->re_text) {
-				session->hangup_reason_header = g_strdup(sip->sip_reason->re_text);
-				janus_sip_remove_quotes(session->hangup_reason_header);
-			}
-			if(sip->sip_reason && sip->sip_reason->re_protocol) {
-				session->hangup_reason_header_protocol = g_strdup(sip->sip_reason->re_protocol);
-			}
-			if(sip->sip_reason && sip->sip_reason->re_cause) {
-				session->hangup_reason_header_cause = g_strdup(sip->sip_reason->re_cause);
-			}
+			janus_sip_save_reason(sip, session);
 			break;
 		}
 		case nua_i_invite: {
@@ -5788,6 +5771,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					break;
 				}
 			} else if(status == 401 || status == 407) {
+				janus_sip_save_reason(sip, session);
 				const char *scheme = NULL;
 				const char *realm = NULL;
 				if(status == 401) {
@@ -5846,6 +5830,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			} else if(status == 700) {
 				JANUS_LOG(LOG_VERB, "Handling SDP answer in ACK\n");
 			} else if(status >= 400 && status != 700) {
+				janus_sip_save_reason(sip, session);
 				break;
 			}
 			if(ssip == NULL) {
@@ -6297,6 +6282,22 @@ auth_failed:
 			/* unknown event -> print out error message */
 			JANUS_LOG(LOG_ERR, "Unknown event %d (%s)\n", event, nua_event_name(event));
 			break;
+	}
+}
+
+void janus_sip_save_reason(sip_t const *sip, janus_sip_session *session) {
+	if (!sip || !session)
+		return;
+
+	if (sip->sip_reason && sip->sip_reason->re_text) {
+		session->hangup_reason_header = g_strdup(sip->sip_reason->re_text);
+		janus_sip_remove_quotes(session->hangup_reason_header);
+	}
+	if (sip->sip_reason && sip->sip_reason->re_protocol) {
+		session->hangup_reason_header_protocol = g_strdup(sip->sip_reason->re_protocol);
+	}
+	if (sip->sip_reason && sip->sip_reason->re_cause) {
+		session->hangup_reason_header_cause = g_strdup(sip->sip_reason->re_cause);
 	}
 }
 
