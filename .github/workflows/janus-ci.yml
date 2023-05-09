@@ -161,7 +161,7 @@ jobs:
     - name: Install modules
       run: npm install
     - name: Run ESLint
-      run: node_modules/.bin/eslint html
+      run: npm run lint
   javascript-rollup:
     runs-on: ubuntu-22.04
     steps:
