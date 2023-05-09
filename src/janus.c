@@ -50,7 +50,7 @@
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
 #ifdef __MACH__
-#define SHLIB_EXT "0.dylib"
+#define SHLIB_EXT "1.dylib"
 #else
 #define SHLIB_EXT ".so"
 #endif
