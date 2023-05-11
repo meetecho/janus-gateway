@@ -253,6 +253,7 @@ typedef struct janus_echotest_session {
 	janus_vp8_simulcast_context vp8_context;
 	gboolean svc;
 	janus_rtp_svc_context svc_context;
+	janus_av1_svc_context av1_context[3];	/* Dependency Descriptors can be used in VP9/AV1 simulcast too */
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *drc;	/* The Janus recorder instance for this user's data, if enabled */
@@ -280,6 +281,9 @@ static void janus_echotest_session_free(const janus_refcount *session_ref) {
 	g_free(session->vfmtp);
 	janus_mutex_destroy(&session->rid_mutex);
 	janus_mutex_destroy(&session->rec_mutex);
+	janus_av1_svc_context_reset(&session->av1_context[0]);
+	janus_av1_svc_context_reset(&session->av1_context[1]);
+	janus_av1_svc_context_reset(&session->av1_context[2]);
 	janus_rtp_simulcasting_cleanup(NULL, NULL, session->rid, NULL);
 	g_free(session);
 }
@@ -448,6 +452,9 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
 	janus_rtp_svc_context_reset(&session->svc_context);
+	janus_av1_svc_context_reset(&session->av1_context[0]);
+	janus_av1_svc_context_reset(&session->av1_context[1]);
+	janus_av1_svc_context_reset(&session->av1_context[2]);
 	janus_mutex_init(&session->rid_mutex);
 	session->min_delay = -1;
 	session->max_delay = -1;
@@ -625,6 +632,41 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 				/* Process this simulcast packet: don't relay if it's not the SSRC/layer we wanted to handle */
 				relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
 					buf, len, session->ssrc, session->rid, session->vcodec, &session->context, &session->rid_mutex);
+				if(relay && session->vcodec == JANUS_VIDEOCODEC_AV1 && packet->extensions.dd_len > 0) {
+					/* Use the Dependency Descriptor to check temporal layers */
+					janus_av1_svc_context *av1ctx = NULL;
+					if(session->sim_context.substream >= 0 && session->sim_context.substream <= 2)
+						av1ctx = &session->av1_context[session->sim_context.substream];
+					uint8_t template = 0;
+					if(janus_av1_svc_context_process_dd(av1ctx, packet->extensions.dd_content,
+							packet->extensions.dd_len, &template)) {
+						janus_av1_svc_template *t = g_hash_table_lookup(av1ctx->templates, GUINT_TO_POINTER(template));
+						if(t) {
+							int temporal_layer = session->sim_context.templayer;
+							if(session->sim_context.templayer_target > session->sim_context.templayer) {
+								/* We need to upscale */
+								if(t->temporal > session->sim_context.templayer && t->temporal <= session->sim_context.templayer_target) {
+									session->sim_context.templayer = t->temporal;
+									temporal_layer = session->sim_context.templayer;
+									session->sim_context.changed_temporal = TRUE;
+								}
+							} else if(session->sim_context.templayer_target < session->sim_context.templayer) {
+								/* We need to downscale */
+								if(t->temporal == session->sim_context.templayer_target) {
+									session->sim_context.templayer = session->sim_context.templayer_target;
+									session->sim_context.changed_temporal = TRUE;
+								}
+							}
+							if(temporal_layer < t->temporal) {
+								JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+									t->temporal, session->sim_context.templayer);
+								/* We increase the base sequence number, or there will be gaps when delivering later */
+								session->context.base_seq++;
+								relay = FALSE;
+							}
+						}
+					}
+				}
 			} else {
 				/* Process this SVC packet: don't relay if it's not the layer we wanted to handle */
 				relay = janus_rtp_svc_context_process_rtp(&session->svc_context,
@@ -973,6 +1015,9 @@ static void *janus_echotest_handler(void *data) {
 				janus_rtp_simulcasting_prepare(s, &rid_ext_id, session->ssrc, session->rid);
 				session->sim_context.rid_ext_id = rid_ext_id;
 				janus_mutex_unlock(&session->rid_mutex);
+				janus_av1_svc_context_reset(&session->av1_context[0]);
+				janus_av1_svc_context_reset(&session->av1_context[1]);
+				janus_av1_svc_context_reset(&session->av1_context[2]);
 				session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
 				session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
 				/* FIXME We're stopping at the first item, there may be more */
@@ -990,6 +1035,9 @@ static void *janus_echotest_handler(void *data) {
 					janus_rtp_svc_context_reset(&session->svc_context);
 					session->svc_context.spatial_target = 2;	/* FIXME Actually depends on the scalabilityMode */
 					session->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
+					janus_av1_svc_context_reset(&session->av1_context[0]);
+					janus_av1_svc_context_reset(&session->av1_context[1]);
+					janus_av1_svc_context_reset(&session->av1_context[2]);
 					session->svc = TRUE;
 				}
 				/* FIXME We're stopping at the first item, there may be more */

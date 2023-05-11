@@ -1437,7 +1437,7 @@ gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
 	uint8_t end = janus_bitstream_getbit(dd, offset++);
 	uint8_t template = janus_bitstream_getbits(dd, 6, &offset);
 	uint16_t frame = janus_bitstream_getbits(dd, 16, &offset);
-	JANUS_LOG(LOG_WARN, "  -- s=%u, e=%u, t=%u, f=%u\n",
+	JANUS_LOG(LOG_HUGE, "  -- s=%u, e=%u, t=%u, f=%u\n",
 		start, end, template, frame);
 	if(blen > 24) {
 		/* extended_descriptor_fields() */
@@ -1469,7 +1469,7 @@ gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
 				}
 				t->spatial = spatial_layers;
 				t->temporal = temporal_layers;
-				JANUS_LOG(LOG_WARN, "  -- -- -- [%u] spatial=%u, temporal=%u\n",
+				JANUS_LOG(LOG_HUGE, "  -- -- -- [%u] spatial=%u, temporal=%u\n",
 					tcnt, t->spatial, t->temporal);
 				if(nlidc == 1) {
 					temporal_layers++;
@@ -1493,14 +1493,14 @@ gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
 	}
 	/* frame_dependency_definition() */
 	uint8_t tindex = (template + 64 - context->tioff) % 64;
-	janus_av1_svc_template *t = g_hash_table_lookup(context->templates,
-		GUINT_TO_POINTER(tindex));
+	janus_av1_svc_template *t = context->templates ? g_hash_table_lookup(context->templates,
+		GUINT_TO_POINTER(tindex)) : NULL;
 	if(t == NULL) {
 		JANUS_LOG(LOG_WARN, "Invalid template ID '%u' (count is %u), ignoring packet...\n",
 			tindex, context->tcnt);
 		return FALSE;
 	}
-	JANUS_LOG(LOG_WARN, "  -- spatial=%u, temporal=%u (tindex %u)\n",
+	JANUS_LOG(LOG_HUGE, "  -- spatial=%u, temporal=%u (tindex %u)\n",
 		t->spatial, t->temporal, t->id);
 	/* FIXME We currently don't care about the other fields */
 
