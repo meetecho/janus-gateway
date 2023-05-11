@@ -1210,7 +1210,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		return FALSE;
 	}
 	context->last_relayed = janus_get_monotonic_time();
-	/* Temporal layers are only available for VP8, so don't do anything else for other codecs */
+	/* Temporal layers are only easily available for some codecs */
 	if(vcodec == JANUS_VIDEOCODEC_VP8) {
 		/* Check if there's any temporal scalability to take into account */
 		gboolean m = FALSE;
@@ -1230,6 +1230,37 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 			if(context->templayer != -1 && tid > context->templayer) {
 				JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
 					tid, context->templayer);
+				/* We increase the base sequence number, or there will be gaps when delivering later */
+				if(sc)
+					sc->base_seq++;
+				return FALSE;
+			}
+		}
+	} else if(vcodec == JANUS_VIDEOCODEC_VP9) {
+		/* We use the VP9 SVC parser to extract info on temporal layers */
+		gboolean found = FALSE;
+		janus_vp9_svc_info svc_info = { 0 };
+		if(janus_vp9_parse_svc(payload, plen, &found, &svc_info) == 0 && found) {
+			int temporal_layer = context->templayer;
+			if(context->templayer_target > context->templayer) {
+				/* We need to upscale */
+				if(svc_info.ubit && svc_info.bbit &&
+						svc_info.temporal_layer > context->templayer &&
+						svc_info.temporal_layer <= context->templayer_target) {
+					context->templayer = svc_info.temporal_layer;
+					temporal_layer = context->templayer;
+					context->changed_temporal = TRUE;
+				}
+			} else if(context->templayer_target < context->templayer) {
+				/* We need to downscale */
+				if(svc_info.ebit && svc_info.temporal_layer == context->templayer_target) {
+					context->templayer = context->templayer_target;
+					context->changed_temporal = TRUE;
+				}
+			}
+			if(temporal_layer < svc_info.temporal_layer) {
+				JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+					svc_info.temporal_layer, context->templayer);
 				/* We increase the base sequence number, or there will be gaps when delivering later */
 				if(sc)
 					sc->base_seq++;
