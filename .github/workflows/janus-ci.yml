@@ -173,7 +173,7 @@ jobs:
         cd npm
         npm install
     - name: Make dist files
-      run: npm run prepare
+      run: npm run prerelease
     - uses: actions/upload-artifact@v3
       with:
         name: janus.es.js
