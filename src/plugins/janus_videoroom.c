@@ -12149,7 +12149,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* Process this packet: don't relay if it's not the layer we wanted to handle */
 			janus_rtp_header rtp = *(packet->data);
 			gboolean relay = janus_rtp_svc_context_process_rtp(&stream->svc_context,
-				(char *)packet->data, packet->length, ps->vcodec, &packet->svc_info, &stream->context);
+				(char *)packet->data, packet->length, NULL, NULL, ps->vcodec, &packet->svc_info, &stream->context);
 			if(stream->svc_context.need_pli) {
 				/* Send a PLI */
 				JANUS_LOG(LOG_VERB, "We need a PLI for the SVC context\n");

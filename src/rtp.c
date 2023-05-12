@@ -1277,14 +1277,16 @@ void janus_rtp_svc_context_reset(janus_rtp_svc_context *context) {
 	if(context == NULL)
 		return;
 	/* Reset the context values */
+	janus_av1_svc_context_reset(&context->dd_context);
 	memset(context, 0, sizeof(*context));
 	context->spatial = -1;
 	context->temporal = -1;
 }
 
-gboolean janus_rtp_svc_context_process_rtp(janus_rtp_svc_context *context, char *buf, int len,
+gboolean janus_rtp_svc_context_process_rtp(janus_rtp_svc_context *context,
+		char *buf, int len, uint8_t *dd_content, int dd_len,
 		janus_videocodec vcodec, janus_vp9_svc_info *info, janus_rtp_switching_context *sc) {
-	if(!context || !buf || len < 1 || vcodec != JANUS_VIDEOCODEC_VP9)
+	if(!context || !buf || len < 1 || (vcodec != JANUS_VIDEOCODEC_VP9 && vcodec != JANUS_VIDEOCODEC_AV1))
 		return FALSE;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	/* Reset the flags */
@@ -1297,7 +1299,106 @@ gboolean janus_rtp_svc_context_process_rtp(janus_rtp_svc_context *context, char 
 	char *payload = janus_rtp_payload(buf, len, &plen);
 	if(payload == NULL)
 		return FALSE;
-	/* If we don't have any info parsed from the VP9 payload header, get it now */
+	/* Check if we should use the Dependency Descriptor */
+	if(vcodec == JANUS_VIDEOCODEC_AV1) {
+		/* We do, make sure the data is there */
+		if(dd_content == NULL || dd_len < 1)
+			return FALSE;
+		uint8_t template = 0, ebit = 0;
+		if(!janus_av1_svc_context_process_dd(&context->dd_context, dd_content, dd_len, &template, &ebit)) {
+			/* We couldn't parse the Dependency Descriptor, relay as it is */
+			return TRUE;
+		}
+		janus_av1_svc_template *t = g_hash_table_lookup(context->dd_context.templates, GUINT_TO_POINTER(template));
+		if(t == NULL) {
+			/* We couldn't find the template, relay as it is */
+			return TRUE;
+		}
+		/* Now let's check if we should let the packet through or not */
+		gboolean keyframe = janus_av1_is_keyframe((const char *)payload, plen);
+		gboolean override_mark_bit = FALSE, has_marker_bit = header->markerbit;
+		int spatial_layer = context->spatial;
+		if(t->spatial >= 0 && t->spatial <= 2)
+			context->last_spatial_layer[t->spatial] = now;
+		if(context->spatial_target > context->spatial) {
+			JANUS_LOG(LOG_HUGE, "We need to upscale spatially: (%d < %d)\n",
+				context->spatial, context->spatial_target);
+			/* We need to upscale: wait for a keyframe */
+			if(keyframe) {
+				int new_spatial_layer = context->spatial_target;
+				while(new_spatial_layer > context->spatial && new_spatial_layer > 0) {
+					if(now - context->last_spatial_layer[new_spatial_layer] >= (context->drop_trigger ? context->drop_trigger : 250000)) {
+						/* We haven't received packets from this layer for a while, try a lower layer */
+						JANUS_LOG(LOG_HUGE, "Haven't received packets from layer %d for a while, trying %d instead...\n",
+							new_spatial_layer, new_spatial_layer-1);
+						new_spatial_layer--;
+					} else {
+						break;
+					}
+				}
+				if(new_spatial_layer > context->spatial) {
+					JANUS_LOG(LOG_HUGE, "  -- Upscaling spatial layer: %d --> %d (need %d)\n",
+						context->spatial, new_spatial_layer, context->spatial_target);
+					context->spatial = new_spatial_layer;
+					spatial_layer = context->spatial;
+					context->changed_spatial = TRUE;
+				}
+			}
+		} else if(context->spatial_target < context->spatial) {
+			/* We need to scale: wait for a keyframe */
+			JANUS_LOG(LOG_HUGE, "We need to downscale spatially: (%d > %d)\n",
+				context->spatial, context->spatial_target);
+			/* Check the E bit to see if this is an end-of-frame */
+			if(ebit) {
+				JANUS_LOG(LOG_HUGE, "  -- Downscaling spatial layer: %d --> %d\n",
+					context->spatial, context->spatial_target);
+				context->spatial = context->spatial_target;
+				context->changed_spatial = TRUE;
+			}
+		}
+		if(spatial_layer < t->spatial) {
+			/* Drop the packet: update the context to make sure sequence number is increased normally later */
+			JANUS_LOG(LOG_HUGE, "Dropping packet (spatial layer %d < %d)\n", spatial_layer, t->spatial);
+			if(sc)
+				sc->base_seq++;
+			return FALSE;
+		} else if(ebit && spatial_layer == t->spatial) {
+			/* If we stop at layer 0, we need a marker bit now, as the one from layer 1 will not be received */
+			override_mark_bit = TRUE;
+		}
+		int temporal = context->temporal;
+		if(context->temporal_target > context->temporal) {
+			/* We need to upscale */
+			if(t->temporal > context->temporal && t->temporal <= context->temporal_target) {
+				context->temporal = t->temporal;
+				temporal = context->temporal;
+				context->changed_temporal = TRUE;
+			}
+		} else if(context->temporal_target < context->temporal) {
+			/* We need to downscale */
+			if(t->temporal == context->temporal_target) {
+				context->temporal = context->temporal_target;
+				context->changed_temporal = TRUE;
+			}
+		}
+		if(temporal < t->temporal) {
+			JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+				t->temporal, context->temporal);
+			/* We increase the base sequence number, or there will be gaps when delivering later */
+			if(sc)
+				sc->base_seq++;
+			return FALSE;
+		}
+		/* If we got here, we can send the frame: this doesn't necessarily mean it's
+		 * one of the layers the user wants, as there may be dependencies involved */
+		JANUS_LOG(LOG_HUGE, "Sending packet (spatial=%d, temporal=%d)\n",
+			t->spatial, t->temporal);
+		if(override_mark_bit && !has_marker_bit)
+			header->markerbit = 1;
+		return TRUE;
+	}
+	/* If we got here, it's VP9, for which we parse the payload manually:
+	 * if we don't have any info parsed from the VP9 payload header, get it now */
 	janus_vp9_svc_info svc_info = { 0 };
 	if(!info) {
 		gboolean found = FALSE;
@@ -1425,7 +1526,7 @@ void janus_av1_svc_context_reset(janus_av1_svc_context *context) {
 }
 
 gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
-		uint8_t *dd, int dd_len, uint8_t *template_id) {
+		uint8_t *dd, int dd_len, uint8_t *template_id, uint8_t *ebit) {
 	if(!context || !dd || dd_len < 3)
 		return FALSE;
 
@@ -1435,6 +1536,8 @@ gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
 	/* mandatory_descriptor_fields() */
 	uint8_t start = janus_bitstream_getbit(dd, offset++);
 	uint8_t end = janus_bitstream_getbit(dd, offset++);
+	if(ebit)
+		*ebit = end;
 	uint8_t template = janus_bitstream_getbits(dd, 6, &offset);
 	uint16_t frame = janus_bitstream_getbits(dd, 16, &offset);
 	JANUS_LOG(LOG_HUGE, "  -- s=%u, e=%u, t=%u, f=%u\n",

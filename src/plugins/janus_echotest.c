@@ -639,7 +639,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 						av1ctx = &session->av1_context[session->sim_context.substream];
 					uint8_t template = 0;
 					if(janus_av1_svc_context_process_dd(av1ctx, packet->extensions.dd_content,
-							packet->extensions.dd_len, &template)) {
+							packet->extensions.dd_len, &template, NULL)) {
 						janus_av1_svc_template *t = g_hash_table_lookup(av1ctx->templates, GUINT_TO_POINTER(template));
 						if(t) {
 							int temporal_layer = session->sim_context.templayer;
@@ -670,7 +670,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 			} else {
 				/* Process this SVC packet: don't relay if it's not the layer we wanted to handle */
 				relay = janus_rtp_svc_context_process_rtp(&session->svc_context,
-					buf, len, session->vcodec, NULL, &session->context);
+					buf, len, packet->extensions.dd_content, packet->extensions.dd_len, session->vcodec, NULL, &session->context);
 			}
 			if(session->sim_context.need_pli || session->svc_context.need_pli) {
 				/* Send a PLI */
@@ -1035,9 +1035,6 @@ static void *janus_echotest_handler(void *data) {
 					janus_rtp_svc_context_reset(&session->svc_context);
 					session->svc_context.spatial_target = 2;	/* FIXME Actually depends on the scalabilityMode */
 					session->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
-					janus_av1_svc_context_reset(&session->av1_context[0]);
-					janus_av1_svc_context_reset(&session->av1_context[1]);
-					janus_av1_svc_context_reset(&session->av1_context[2]);
 					session->svc = TRUE;
 				}
 				/* FIXME We're stopping at the first item, there may be more */
