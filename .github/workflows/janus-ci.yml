@@ -163,7 +163,9 @@ jobs:
         cd npm
         npm install
     - name: Run ESLint
-      run: npm run lint
+      run: |
+        cd npm
+        npm run lint
   javascript-dist:
     runs-on: ubuntu-22.04
     steps:
@@ -173,7 +175,9 @@ jobs:
         cd npm
         npm install
     - name: Make dist files
-      run: npm run prerelease
+      run: |
+        cd npm
+        npm run prerelease
     - uses: actions/upload-artifact@v3
       with:
         name: janus.es.js
