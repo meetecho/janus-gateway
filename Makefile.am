@@ -92,9 +92,9 @@ EXTRA_DIST += $(jsmodules_DATA)
 if ENABLE_JAVASCRIPT_MODULES
 
 npm/node_modules/rollup/bin/rollup: npm/package.json
-	cd npm && $(NPM) install && touch node_modules/rollup/bin/rollup
+	cd npm && $(NPM) install && touch node_modules/rollup/dist/bin/rollup
 
-npm/dist/janus.%.js: html/janus.js npm/node_modules/rollup/bin/rollup npm/rollup.config.mjs npm/module.js
+npm/dist/janus.%.js: html/janus.js npm/node_modules/rollup/dist/bin/rollup npm/rollup.config.mjs npm/module.js
 	cd npm && $(NPM) run rollup -- --o $(patsubst npm/%,%,$@) --f $*
 
 endif
