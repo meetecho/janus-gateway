@@ -547,10 +547,6 @@ static int janus_lua_method_pushevent(lua_State *s) {
 			janus_sdp_find_first_codec(parsed_sdp, JANUS_SDP_VIDEO, -1, &vcodec);
 			if(vcodec)
 				session->vcodec = janus_videocodec_from_name(vcodec);
-			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
-				/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-				janus_rtp_simulcasting_cleanup(&session->rid_extmap_id, session->ssrc, session->rid, &session->rid_mutex);
-			}
 		}
 		janus_sdp_destroy(parsed_sdp);
 		/* Send asynchronously */
@@ -1936,10 +1932,6 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 			janus_sdp_find_first_codec(parsed_sdp, JANUS_SDP_VIDEO, -1, &vcodec);
 			if(vcodec)
 				session->vcodec = janus_videocodec_from_name(vcodec);
-			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
-				/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-				janus_rtp_simulcasting_cleanup(&session->rid_extmap_id, session->ssrc, session->rid, &session->rid_mutex);
-			}
 			janus_sdp_destroy(parsed_sdp);
 		}
 		if(json_is_true(json_object_get(jsep, "e2ee")))
@@ -2127,7 +2119,7 @@ void janus_lua_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *rtp_
 	} else {
 		/* We're simulcasting, save the best video quality */
 		gboolean save = janus_rtp_simulcasting_context_process_rtp(&session->rec_simctx,
-			buf, len, session->ssrc, session->rid, session->vcodec, &session->rec_ctx, &session->rid_mutex);
+			buf, len, NULL, 0, session->ssrc, session->rid, session->vcodec, &session->rec_ctx, &session->rid_mutex);
 		if(save) {
 			uint32_t seq_number = ntohs(rtp->seq_number);
 			uint32_t timestamp = ntohl(rtp->timestamp);
@@ -2421,7 +2413,8 @@ static void janus_lua_relay_rtp_packet(gpointer data, gpointer user_data) {
 			return;
 		/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 		gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
-			(char *)packet->data, packet->length, packet->ssrc, NULL, sender->vcodec, &session->vrtpctx, NULL);
+			(char *)packet->data, packet->length, packet->extensions.dd_content, packet->extensions.dd_len,
+			packet->ssrc, NULL, sender->vcodec, &session->vrtpctx, NULL);
 		if(session->sim_context.need_pli && sender->handle) {
 			/* Send a PLI */
 			JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");

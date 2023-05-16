@@ -10030,7 +10030,8 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 					return;
 				/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 				gboolean relay = janus_rtp_simulcasting_context_process_rtp(&s->sim_context,
-					(char *)packet->data, packet->length, packet->ssrc, NULL, packet->codec, &s->context, NULL);
+					(char *)packet->data, packet->length, NULL, 0,
+					packet->ssrc, NULL, packet->codec, &s->context, NULL);
 				if(!relay) {
 					/* Did a lot of time pass before we could relay a packet? */
 					gint64 now = janus_get_monotonic_time();

@@ -1023,6 +1023,9 @@ void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *contex
 	if(context == NULL)
 		return;
 	/* Reset the context values */
+	janus_av1_svc_context_reset(&context->av1_context[0]);
+	janus_av1_svc_context_reset(&context->av1_context[1]);
+	janus_av1_svc_context_reset(&context->av1_context[2]);
 	memset(context, 0, sizeof(*context));
 	context->rid_ext_id = -1;
 	context->substream = -1;
@@ -1081,7 +1084,7 @@ void janus_rtp_simulcasting_cleanup(int *rid_ext_id, uint32_t *ssrcs, char **rid
 }
 
 gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
-		char *buf, int len, uint32_t *ssrcs, char **rids,
+		char *buf, int len, uint8_t *dd_content, int dd_len, uint32_t *ssrcs, char **rids,
 		janus_videocodec vcodec, janus_rtp_switching_context *sc, janus_mutex *rid_mutex) {
 	if(!context || !buf || len < 1)
 		return FALSE;
@@ -1267,6 +1270,42 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 				return FALSE;
 			}
 		}
+	} else if(vcodec == JANUS_VIDEOCODEC_AV1 && dd_content != NULL && dd_len > 0) {
+		/* Use the Dependency Descriptor to check temporal layers */
+		janus_av1_svc_context *av1ctx = NULL;
+		if(context->substream >= 0 && context->substream <= 2)
+			av1ctx = &context->av1_context[context->substream];
+		if(av1ctx != NULL) {
+			uint8_t template = 0;
+			if(janus_av1_svc_context_process_dd(av1ctx, dd_content, dd_len, &template, NULL)) {
+				janus_av1_svc_template *t = g_hash_table_lookup(av1ctx->templates, GUINT_TO_POINTER(template));
+				if(t) {
+					int temporal_layer = context->templayer;
+					if(context->templayer_target > context->templayer) {
+						/* We need to upscale */
+						if(t->temporal > context->templayer && t->temporal <= context->templayer_target) {
+							context->templayer = t->temporal;
+							temporal_layer = context->templayer;
+							context->changed_temporal = TRUE;
+						}
+					} else if(context->templayer_target < context->templayer) {
+						/* We need to downscale */
+						if(t->temporal == context->templayer_target) {
+							context->templayer = context->templayer_target;
+							context->changed_temporal = TRUE;
+						}
+					}
+					if(temporal_layer < t->temporal) {
+						JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+							t->temporal, context->templayer);
+						/* We increase the base sequence number, or there will be gaps when delivering later */
+						if(sc)
+							sc->base_seq++;
+						return FALSE;
+					}
+				}
+			}
+		}
 	}
 	/* If we got here, the packet can be relayed */
 	return TRUE;
@@ -1302,8 +1341,10 @@ gboolean janus_rtp_svc_context_process_rtp(janus_rtp_svc_context *context,
 	/* Check if we should use the Dependency Descriptor */
 	if(vcodec == JANUS_VIDEOCODEC_AV1) {
 		/* We do, make sure the data is there */
-		if(dd_content == NULL || dd_len < 1)
-			return FALSE;
+		if(dd_content == NULL || dd_len < 1) {
+			/* No Dependency Descriptor, relay as it is */
+			return TRUE;
+		}
 		uint8_t template = 0, ebit = 0;
 		if(!janus_av1_svc_context_process_dd(&context->dd_context, dd_content, dd_len, &template, &ebit)) {
 			/* We couldn't parse the Dependency Descriptor, relay as it is */
