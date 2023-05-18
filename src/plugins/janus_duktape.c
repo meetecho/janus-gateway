@@ -1604,8 +1604,8 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 		return -1;
 	}
 	fseek(f, 0, SEEK_END);
-	size_t len = ftell(f);
-	if(len < 1) {
+	long int fs = ftell(f);
+	if(fs < 1) {
 		JANUS_LOG(LOG_ERR, "Error loading JS script %s: empty file\n", duktape_file);
 		fclose(f);
 		duk_destroy_heap(duktape_ctx);
@@ -1613,9 +1613,17 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 		g_free(duktape_file);
 		return -1;
 	}
+	size_t len = fs;
 	char *buf = (char *)g_malloc0(len);
 	fseek(f, 0, SEEK_SET);
-	fread((void *)buf, 1, len, f);
+	if(fread((void *)buf, 1, len, f) < len) {
+		JANUS_LOG(LOG_ERR, "Error reading JS script %s: %s\n", duktape_file, g_strerror(errno));
+		fclose(f);
+		duk_destroy_heap(duktape_ctx);
+		g_free(duktape_folder);
+		g_free(duktape_file);
+		return -1;
+	}
 	fclose(f);
 	duk_push_lstring(duktape_ctx, (const char *)buf, (duk_size_t)len);
 	g_free(buf);
@@ -2173,6 +2181,7 @@ json_t *janus_duktape_query_session(janus_plugin_session *handle) {
 		duk_pop(t);
 		duk_pop(duktape_ctx);
 		janus_refcount_decrease(&session->ref);
+		janus_mutex_unlock(&duktape_mutex);
 		return json;
 	}
 	janus_refcount_decrease(&session->ref);

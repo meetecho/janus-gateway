@@ -353,11 +353,13 @@ int janus_network_resolve_address(const char *host, struct sockaddr_storage *add
 				if(result->ai_family == AF_INET6) {
 					resolved = TRUE;
 					struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)address;
-					memcpy(&addr6->sin6_addr, result->ai_addr, sizeof(*addr6));
+					struct sockaddr_in6 *remote = (struct sockaddr_in6 *)result->ai_addr;
+					memcpy(&addr6->sin6_addr, &remote->sin6_addr, sizeof(addr6->sin6_addr));
 				} else if(result->ai_family == AF_INET) {
 					resolved = TRUE;
 					struct sockaddr_in *addr = (struct sockaddr_in *)address;
-					memcpy(&addr->sin_addr, result->ai_addr, sizeof(*addr));
+					struct sockaddr_in *remote = (struct sockaddr_in *)result->ai_addr;
+					memcpy(&addr->sin_addr, &remote->sin_addr, sizeof(addr->sin_addr));
 				}
 				temp = temp->ai_next;
 			}
