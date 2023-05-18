@@ -9676,6 +9676,7 @@ static void *janus_videoroom_handler(void *data) {
 				continue;
 			} else {
 				janus_mutex_unlock(&videoroom->mutex);
+				janus_mutex_unlock(&sessions_mutex);
 				janus_refcount_decrease(&videoroom->ref);
 				JANUS_LOG(LOG_ERR, "Invalid element (ptype)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
