@@ -55,12 +55,20 @@ All of those libraries are usually available on most of the most common distribu
 
 Notice that you may have to `yum install epel-release` as well if you're attempting an installation on a CentOS machine instead.
 
-On Ubuntu or Debian, it would require something like this:
+On Ubuntu, it would require something like this:
 
 	aptitude install libmicrohttpd-dev libjansson-dev \
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
 		libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev \
 		libconfig-dev pkg-config libtool automake
+
+On Debian, it would require something like this:
+
+	apt install libmicrohttpd-dev libjansson-dev \
+		libssl-dev libsrtp2-dev libsofia-sip-ua-dev libglib2.0-dev \
+		libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev \
+		libconfig-dev pkg-config libtool automake
+
 
 * *Note:* please notice that libopus may not be available out of the box on your distro. In that case, you'll have to [install it manually](https://www.opus-codec.org).
 
