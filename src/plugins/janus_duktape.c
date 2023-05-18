@@ -1618,6 +1618,7 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 	fseek(f, 0, SEEK_SET);
 	if(fread((void *)buf, 1, len, f) < len) {
 		JANUS_LOG(LOG_ERR, "Error reading JS script %s: %s\n", duktape_file, g_strerror(errno));
+		g_free(buf);
 		fclose(f);
 		duk_destroy_heap(duktape_ctx);
 		g_free(duktape_folder);
