@@ -1414,7 +1414,7 @@ uint32_t janus_bitstream_getbits(uint8_t *base, uint8_t num, uint32_t *offset) {
 #ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compressed, size_t zlen) {
 	if(text == NULL || tlen < 1 || compressed == NULL || zlen < 1)
-		return -1;
+		return 0;
 	if(compression < 0 || compression > 9) {
 		JANUS_LOG(LOG_WARN, "Invalid compression factor %d, falling back to default compression...\n", compression);
 		compression = Z_DEFAULT_COMPRESSION;
