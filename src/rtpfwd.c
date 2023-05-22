@@ -354,7 +354,7 @@ void janus_rtp_forwarder_send_rtp_full(janus_rtp_forwarder *rf, char *buffer, in
 	if(rf->is_video && rf->simulcast) {
 		/* This is video and we're simulcasting, check if we need to forward this frame */
 		if(!janus_rtp_simulcasting_context_process_rtp(&rf->sim_context,
-				buffer, len, ssrcs, rids, vcodec, &rf->rtp_context, rid_mutex)) {
+				buffer, len, NULL, 0, ssrcs, rids, vcodec, &rf->rtp_context, rid_mutex)) {
 			/* There was an error processing simulcasting for this packet */
 			return;
 		}

@@ -2497,9 +2497,9 @@ function Janus(gatewayCallbacks) {
 								direction: 'sendrecv',
 								streams: [config.myStream],
 								sendEncodings: track.sendEncodings || [
-									{ rid: 'h', active: true, maxBitrate: maxBitrates.high },
-									{ rid: 'm', active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
-									{ rid: 'l', active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
+									{ rid: 'h', active: true, scalabilityMode: 'L1T2', maxBitrate: maxBitrates.high },
+									{ rid: 'm', active: true, scalabilityMode: 'L1T2', maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
+									{ rid: 'l', active: true, scalabilityMode: 'L1T2', maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
 								]
 							});
 						} else {
