@@ -205,6 +205,9 @@ void janus_ice_set_event_stats_period(int period);
 /*! \brief Method to get the current event handler statistics period (see above)
  * @returns The current event handler stats period */
 int janus_ice_get_event_stats_period(void);
+/*! \brief Method to get the number of active PeerConnection (for stats)
+ * @returns The current number of active PeerConnections */
+int janus_ice_get_peerconnection_num(void);
 
 /*! \brief Method to define wether the media stats shall be dispatched in one event (true) or in dedicated single events (false - default)
  * @param[in] combine_media_stats_to_one_event true to combine media statistics in on event or false to send dedicated events */
@@ -402,6 +405,8 @@ struct janus_ice_handle {
 	janus_text2pcap *text2pcap;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
+	/*! \brief Atomic flag to check whether a PeerConnection was established */
+	volatile gint has_pc;
 	/*! \brief Whether a close_pc was requested recently on the PeerConnection */
 	volatile gint closepc;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
