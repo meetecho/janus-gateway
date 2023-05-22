@@ -2362,7 +2362,12 @@ static void janus_videoroom_publisher_stream_free(const janus_refcount *ps_ref) 
 }
 
 static void janus_videoroom_publisher_dereference(janus_videoroom_publisher *p) {
-	/* This is used by g_pointer_clear and g_hash_table_new_full so that NULL is only possible if that was inserted into the hash table. */
+	/* This is used by g_hash_table_new_full so that NULL is only possible
+	 * if that was inserted into the hash table. Notice that this also
+	 * dereferences the session the participant is associated with, since
+	 * we add an extra ref to the session to when inserting in the table */
+	if(p->session)
+		janus_refcount_decrease(&p->session->ref);
 	janus_refcount_decrease(&p->ref);
 }
 
@@ -2845,6 +2850,7 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 	}
 	/* Done: add the dummy publisher to the list */
 	janus_refcount_increase(&publisher->ref);
+	janus_refcount_increase(&publisher->session->ref);
 	g_hash_table_insert(room->participants,
 		string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
 		publisher);
@@ -8981,6 +8987,7 @@ static void *janus_videoroom_handler(void *data) {
 				GHashTableIter iter;
 				gpointer value;
 				janus_refcount_increase(&publisher->ref);
+				janus_refcount_increase(&publisher->session->ref);
 				g_hash_table_insert(publisher->room->participants,
 					string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
 					publisher);
@@ -12628,6 +12635,7 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 
 	/* As the first thing, we add the remote publisher to the list */
 	janus_refcount_increase(&publisher->ref);
+	janus_refcount_increase(&publisher->session->ref);
 	janus_videoroom *videoroom = publisher->room;
 	janus_refcount_increase(&videoroom->ref);
 	g_hash_table_insert(videoroom->participants,
