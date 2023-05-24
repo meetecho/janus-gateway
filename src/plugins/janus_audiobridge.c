@@ -1585,8 +1585,8 @@ typedef struct janus_audiobridge_participant {
 	gboolean stereo;		/* Whether stereo will be used for spatial audio */
 	int spatial_position;	/* Panning of this participant in the mix */
 #ifdef HAVE_RNNOISE
-	gboolean denoise;		/* Whether we should denoise this participant */
-	DenoiseState *rnnoise;	/* RNNoise state*/
+	gboolean denoise;			/* Whether we should denoise this participant */
+	DenoiseState *rnnoise[2];	/* RNNoise states (we'll need two for stereo) */
 #endif
 	/* RTP stuff */
 	GList *inbuf;			/* Incoming audio from this participant, as an ordered list of packets */
@@ -1681,8 +1681,10 @@ static void janus_audiobridge_participant_free(const janus_refcount *participant
 		g_async_queue_unref(participant->outbuf);
 	}
 #ifdef HAVE_RNNOISE
-	if(participant->rnnoise)
-		rnnoise_destroy(participant->rnnoise);
+	if(participant->rnnoise[0])
+		rnnoise_destroy(participant->rnnoise[0]);
+	if(participant->rnnoise[1])
+		rnnoise_destroy(participant->rnnoise[1]);
 #endif
 	g_free(participant->mjr_base);
 #ifdef HAVE_LIBOGG
@@ -4385,9 +4387,11 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 
 		participant->denoise = denoise;
-		if(participant->denoise && participant->rnnoise == NULL) {
-			/* Create RNNoise context */
-			participant->rnnoise = rnnoise_create(NULL);
+		if(participant->denoise && participant->rnnoise[0] == NULL) {
+			/* Create RNNoise context(s) */
+			participant->rnnoise[0] = rnnoise_create(NULL);
+			if(participant->stereo)
+				participant->rnnoise[1] = rnnoise_create(NULL);
 		}
 
 		/* Prepare response */
@@ -5947,7 +5951,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 		}
 #ifdef HAVE_RNNOISE
 		/* Check if we need to denoise this packet */
-		if(participant->rnnoise && participant->denoise) {
+		if(participant->rnnoise[0] && participant->denoise) {
 			/* We do: copy the samples in a float buffer, as that's what RNNoise needs */
 			opus_int16 *encoded = (opus_int16 *)pkt->data;
 			float denoised[480];
@@ -5963,7 +5967,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 							denoised[i] = 0;
 					}
 					/* Denoise */
-					rnnoise_process_frame(participant->rnnoise, denoised, denoised);
+					rnnoise_process_frame(participant->rnnoise[0], denoised, denoised);
 					/* Replace the audio data with the one we just denoised */
 					for(i=0; i<480; i++) {
 						if((offset + i) < pkt->length)
@@ -5984,7 +5988,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 							denoised[i] = 0;
 					}
 					/* Denoise */
-					rnnoise_process_frame(participant->rnnoise, denoised, denoised);
+					rnnoise_process_frame(participant->rnnoise[step], denoised, denoised);
 					/* Replace the audio data with the one we just denoised */
 					for(i=0; i<480; i++) {
 						if((offset + i*2 + step) < pkt->length)
@@ -6577,9 +6581,11 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 #ifdef HAVE_RNNOISE
 			participant->denoise = denoise ? json_is_true(denoise) : audiobridge->denoise;
-			if(participant->denoise && participant->rnnoise == NULL) {
+			if(participant->denoise && participant->rnnoise[0] == NULL) {
 				/* Create RNNoise context */
-				participant->rnnoise = rnnoise_create(NULL);
+				participant->rnnoise[0] = rnnoise_create(NULL);
+				if(participant->stereo)
+					participant->rnnoise[1] = rnnoise_create(NULL);
 			}
 #else
 			if(denoise && json_is_true(denoise)) {
@@ -7031,9 +7037,11 @@ static void *janus_audiobridge_handler(void *data) {
 #ifdef HAVE_RNNOISE
 				if(denoise)
 					participant->denoise = json_is_true(denoise);
-				if(participant->denoise && participant->rnnoise == NULL) {
+				if(participant->denoise && participant->rnnoise[0] == NULL) {
 					/* Create RNNoise context */
-					participant->rnnoise = rnnoise_create(NULL);
+					participant->rnnoise[0] = rnnoise_create(NULL);
+					if(participant->stereo)
+						participant->rnnoise[1] = rnnoise_create(NULL);
 				}
 #else
 				if(denoise && json_is_true(denoise)) {
