@@ -619,10 +619,6 @@ static duk_ret_t janus_duktape_method_pushevent(duk_context *ctx) {
 			janus_sdp_find_first_codec(parsed_sdp, JANUS_SDP_VIDEO, -1, &vcodec);
 			if(vcodec)
 				session->vcodec = janus_videocodec_from_name(vcodec);
-			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
-				/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-				janus_rtp_simulcasting_cleanup(&session->rid_extmap_id, session->ssrc, session->rid, &session->rid_mutex);
-			}
 		}
 		janus_sdp_destroy(parsed_sdp);
 		/* Send asynchronously */
@@ -1604,8 +1600,8 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 		return -1;
 	}
 	fseek(f, 0, SEEK_END);
-	size_t len = ftell(f);
-	if(len < 1) {
+	long int fs = ftell(f);
+	if(fs < 1) {
 		JANUS_LOG(LOG_ERR, "Error loading JS script %s: empty file\n", duktape_file);
 		fclose(f);
 		duk_destroy_heap(duktape_ctx);
@@ -1613,9 +1609,18 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 		g_free(duktape_file);
 		return -1;
 	}
+	size_t len = fs;
 	char *buf = (char *)g_malloc0(len);
 	fseek(f, 0, SEEK_SET);
-	fread((void *)buf, 1, len, f);
+	if(fread((void *)buf, 1, len, f) < len) {
+		JANUS_LOG(LOG_ERR, "Error reading JS script %s: %s\n", duktape_file, g_strerror(errno));
+		g_free(buf);
+		fclose(f);
+		duk_destroy_heap(duktape_ctx);
+		g_free(duktape_folder);
+		g_free(duktape_file);
+		return -1;
+	}
 	fclose(f);
 	duk_push_lstring(duktape_ctx, (const char *)buf, (duk_size_t)len);
 	g_free(buf);
@@ -2173,6 +2178,7 @@ json_t *janus_duktape_query_session(janus_plugin_session *handle) {
 		duk_pop(t);
 		duk_pop(duktape_ctx);
 		janus_refcount_decrease(&session->ref);
+		janus_mutex_unlock(&duktape_mutex);
 		return json;
 	}
 	janus_refcount_decrease(&session->ref);
@@ -2240,10 +2246,6 @@ struct janus_plugin_result *janus_duktape_handle_message(janus_plugin_session *h
 			janus_sdp_find_first_codec(parsed_sdp, JANUS_SDP_VIDEO, -1, &vcodec);
 			if(vcodec)
 				session->vcodec = janus_videocodec_from_name(vcodec);
-			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
-				/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-				janus_rtp_simulcasting_cleanup(&session->rid_extmap_id, session->ssrc, session->rid, &session->rid_mutex);
-			}
 			janus_sdp_destroy(parsed_sdp);
 		}
 		if(json_is_true(json_object_get(jsep, "e2ee")))
@@ -2459,7 +2461,7 @@ void janus_duktape_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *
 	} else {
 		/* We're simulcasting, save the best video quality */
 		gboolean save = janus_rtp_simulcasting_context_process_rtp(&session->rec_simctx,
-			buf, len, session->ssrc, session->rid, session->vcodec, &session->rec_ctx, &session->rid_mutex);
+			buf, len, NULL, 0, session->ssrc, session->rid, session->vcodec, &session->rec_ctx, &session->rid_mutex);
 		if(save) {
 			uint32_t seq_number = ntohs(rtp->seq_number);
 			uint32_t timestamp = ntohl(rtp->timestamp);
@@ -2781,7 +2783,8 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 			return;
 		/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 		gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
-			(char *)packet->data, packet->length, packet->ssrc, NULL, sender->vcodec, &session->vrtpctx, NULL);
+			(char *)packet->data, packet->length, packet->extensions.dd_content, packet->extensions.dd_len,
+			packet->ssrc, NULL, sender->vcodec, &session->vrtpctx, NULL);
 		if(session->sim_context.need_pli && sender->handle) {
 			/* Send a PLI */
 			JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");

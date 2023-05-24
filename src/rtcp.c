@@ -1217,13 +1217,13 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 					for(i=0; i< nacks; i++) {
 						nack = (janus_rtcp_nack *)rtcpfb->fci + i;
 						pid = ntohs(nack->pid);
-						list = g_slist_append(list, GUINT_TO_POINTER(pid));
+						list = g_slist_prepend(list, GUINT_TO_POINTER(pid));
 						blp = ntohs(nack->blp);
 						memset(bitmask, 0, 20);
 						for(j=0; j<16; j++) {
 							bitmask[j] = (blp & ( 1 << j )) >> j ? '1' : '0';
 							if((blp & ( 1 << j )) >> j)
-								list = g_slist_append(list, GUINT_TO_POINTER(pid+j+1));
+								list = g_slist_prepend(list, GUINT_TO_POINTER(pid+j+1));
 						}
 						bitmask[16] = '\n';
 						JANUS_LOG(LOG_DBG, "[%d] %"SCNu16" / %s\n", i, pid, bitmask);
@@ -1245,6 +1245,7 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 		g_slist_free(list);
 		list = NULL;
 	}
+	list = g_slist_reverse(list);
 	return list;
 }
 

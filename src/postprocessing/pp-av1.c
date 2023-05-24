@@ -258,6 +258,10 @@ int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list, json_t *inf
 				/* Then the OBU size (leb128) */
 				size_t read = 0;
 				obusize = janus_pp_av1_lev128_decode((uint8_t *)payload, len, &read);
+				if(obusize == 0) {
+					JANUS_LOG(LOG_WARN, "  -- OBU size is 0, something's broken\n");
+					break;
+				}
 				JANUS_LOG(LOG_HUGE, "  -- OBU size: %"SCNu32"/%d (in %zu leb128 bytes)\n", obusize, len, read);
 				payload += read;
 				len -= read;
@@ -413,6 +417,10 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 					/* Read the OBU size (leb128) */
 					size_t read = 0;
 					obusize = janus_pp_av1_lev128_decode((uint8_t *)buffer, len, &read);
+					if(obusize == 0) {
+						JANUS_LOG(LOG_WARN, "  -- OBU size is 0, something's broken\n");
+						break;
+					}
 					buffer += read;
 					len -= read;
 				} else {

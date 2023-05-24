@@ -24,7 +24,7 @@ To install it, you'll need to satisfy the following dependencies:
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v2.x suggested)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you are interested in Data Channels)
 * [libmicrohttpd](https://www.gnu.org/software/libmicrohttpd/) (at least v0.9.59; only needed if you are interested in REST support for the Janus API)
-* [libwebsockets](https://libwebsockets.org/) (only needed if you are interested in WebSockets support for the Janus API)
+* [libwebsockets](https://libwebsockets.org/) (at least v4.x suggested; only needed if you are interested in WebSockets support for the Janus API)
 * [cmake](https://www.cmake.org/) (only needed if you are interested in WebSockets and/or BoringSSL support, as they make use of it)
 * [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if you are interested in RabbitMQ support for the Janus API or events)
 * [paho.mqtt.c](https://eclipse.org/paho/clients/c) (only needed if you are interested in MQTT support for the Janus API or events)
@@ -57,8 +57,8 @@ Notice that you may have to `yum install epel-release` as well if you're attempt
 
 On Ubuntu or Debian, it would require something like this:
 
-	aptitude install libmicrohttpd-dev libjansson-dev \
-		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
+	apt install libmicrohttpd-dev libjansson-dev \
+		libssl-dev libsofia-sip-ua-dev libglib2.0-dev \
 		libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev \
 		libconfig-dev pkg-config libtool automake
 
@@ -75,7 +75,7 @@ To build libnice, you need Python 3, Meson and Ninja:
 
 In case you're interested in compiling the sample Event Handler plugin, you'll need to install the development version of libcurl as well (usually `libcurl-devel` on Fedora/CentOS, `libcurl4-openssl-dev` on Ubuntu/Debian).
 
-If your distro ships a pre-1.5 version of libsrtp, you'll have to uninstall that version and [install 1.5.x, 1.6.x or 2.x manually](https://github.com/cisco/libsrtp/releases). In fact, 1.4.x is known to cause several issues with WebRTC. While 1.5.x is supported, we recommend installing 2.x instead Notice that the following steps are for version 2.2.0, but there may be more recent versions available:
+If your distro ships a pre-1.5 version of libsrtp, you'll have to uninstall that version and [install 1.5.x, 1.6.x or 2.x manually](https://github.com/cisco/libsrtp/releases). In fact, 1.4.x is known to cause several issues with WebRTC. While 1.5.x is supported, we recommend installing 2.x instead. Notice that the following steps are for version 2.2.0, but there may be more recent versions available:
 
 	wget https://github.com/cisco/libsrtp/archive/v2.2.0.tar.gz
 	tar xfv v2.2.0.tar.gz

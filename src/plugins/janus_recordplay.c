@@ -1304,7 +1304,8 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, janus_plugin_rt
 		uint32_t ssrc = ntohl(header->ssrc);
 		/* Process this packet: don't save if it's not the SSRC/layer we wanted to handle */
 		gboolean save = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
-			buf, len, session->ssrc, session->rid, session->recording->vcodec, &session->context, &session->rid_mutex);
+			buf, len, NULL, 0, session->ssrc, session->rid, session->recording->vcodec,
+			&session->context, &session->rid_mutex);
 		if(session->sim_context.need_pli) {
 			/* Send a PLI */
 			JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
@@ -1879,10 +1880,6 @@ recdone:
 					janus_mutex_unlock(&session->rid_mutex);
 					session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
 					session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
-					if(rec->vcodec != JANUS_VIDEOCODEC_VP8 && rec->vcodec != JANUS_VIDEOCODEC_H264) {
-						/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-						janus_rtp_simulcasting_cleanup(NULL, session->ssrc, session->rid, &session->rid_mutex);
-					}
 					/* FIXME We're stopping at the first item, there may be more */
 					break;
 				}
