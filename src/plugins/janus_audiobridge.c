@@ -1608,6 +1608,7 @@ typedef struct janus_audiobridge_participant {
 	janus_audiobridge_plainrtp_media plainrtp_media;
 	janus_mutex pmutex;
 	/* Opus stuff */
+	uint32_t sampling_rate;		/* Sampling rate to decode at */
 	OpusEncoder *encoder;		/* Opus encoder instance */
 	OpusDecoder *decoder;		/* Opus decoder instance */
 	gboolean fec;				/* Opus FEC status */
@@ -5960,18 +5961,58 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 				/* Mono */
 				while(total > 0) {
 					/* Denoise this audio chunk */
-					for(i=0; i<480; i++) {
-						if((offset + i) < pkt->length)
-							denoised[i] = *(encoded + offset + i);
-						else
-							denoised[i] = 0;
+					if(participant->sampling_rate == 8000) {
+						/* RNNoise needs 480 samples, resample */
+						memset(denoised, 0, sizeof(denoised));
+						for(i=0; i<160; i++) {
+							if((offset + i) < pkt->length) {
+								denoised[i*3] = encoded[offset + i];
+								denoised[i*3 + 1] = 0;
+								denoised[i*3 + 2] = 0;
+							}
+						}
+					} else if(participant->sampling_rate == 16000) {
+						/* RNNoise needs 480 samples, resample */
+						memset(denoised, 0, sizeof(denoised));
+						for(i=0; i<160; i++) {
+							if((offset + i*2) < pkt->length) {
+								denoised[i*3] = encoded[offset + i*2];
+								denoised[i*3 + 1] = encoded[offset + i*2 + 1];
+								denoised[i*3 + 2] = 0;
+							}
+						}
+					} else {
+						/* Just copy the samples */
+						for(i=0; i<480; i++) {
+							if((offset + i) < pkt->length)
+								denoised[i] = encoded[offset + i];
+							else
+								denoised[i] = 0;
+						}
 					}
 					/* Denoise */
 					rnnoise_process_frame(participant->rnnoise[0], denoised, denoised);
 					/* Replace the audio data with the one we just denoised */
-					for(i=0; i<480; i++) {
-						if((offset + i) < pkt->length)
-							*(encoded + offset + i) = denoised[i];
+					if(participant->sampling_rate == 8000) {
+						/* RNNoise generated 480 samples, resample */
+						for(i=0; i<160; i++) {
+							if((offset + i) < pkt->length)
+								encoded[offset + i] = denoised[i*3];
+						}
+					} else if(participant->sampling_rate == 16000) {
+						/* RNNoise generated 480 samples, resample */
+						for(i=0; i<160; i++) {
+							if((offset + i*2) < pkt->length) {
+								encoded[offset + i*2] = denoised[i*3];
+								encoded[offset + i*2 + 1] = denoised[i*3 + 1];
+							}
+						}
+					} else {
+						/* Just copy the denoised samples */
+						for(i=0; i<480; i++) {
+							if((offset + i) < pkt->length)
+								encoded[offset + i] = denoised[i];
+						}
 					}
 					total -= 480;
 					offset += 480;
@@ -5979,11 +6020,11 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 			} else {
 				/* Stereo (interleaved) */
 				int step = 0;
-				while(step < 2) {
+				while(total > 0 && step < 2) {
 					/* Denoise this audio chunk */
 					for(i=0; i<480; i++) {
 						if((offset + i*2 + step) < pkt->length)
-							denoised[i] = *(encoded + offset + i*2 + step);
+							denoised[i] = encoded[offset + i*2 + step];
 						else
 							denoised[i] = 0;
 					}
@@ -5992,10 +6033,10 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 					/* Replace the audio data with the one we just denoised */
 					for(i=0; i<480; i++) {
 						if((offset + i*2 + step) < pkt->length)
-							*(encoded + offset + i*2 + step) = denoised[i];
+							encoded[offset + i*2 + step] = denoised[i];
 					}
 					total -= 960;
-					offset += 960;
+					offset += 480;
 					if(total <= 0) {
 						total = pkt->length;
 						offset = 0;
@@ -6609,6 +6650,7 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Opus encoder */
 			int error = 0;
 			if(participant->encoder == NULL) {
+				participant->sampling_rate = audiobridge->sampling_rate;
 				participant->encoder = opus_encoder_create(audiobridge->sampling_rate,
 					audiobridge->spatial_audio ? 2 : 1, OPUS_APPLICATION_VOIP, &error);
 				if(error != OPUS_OK) {
@@ -7437,6 +7479,7 @@ static void *janus_audiobridge_handler(void *data) {
 				/* Destroy the previous encoder/decoder and update the references */
 				if(participant->encoder)
 					opus_encoder_destroy(participant->encoder);
+				participant->sampling_rate = audiobridge->sampling_rate;
 				participant->encoder = new_encoder;
 				if(participant->decoder)
 					opus_decoder_destroy(participant->decoder);
