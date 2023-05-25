@@ -5956,7 +5956,10 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 			/* We do: copy the samples in a float buffer, as that's what RNNoise needs */
 			opus_int16 *encoded = (opus_int16 *)pkt->data;
 			float denoised[480];
-			int i = 0, offset = 0, total = pkt->length;
+			int i = 0, offset = 0, read = pkt->length;
+			if(participant->stereo)
+				read *= 2;
+			int total = read;
 			if(!participant->stereo) {
 				/* Mono */
 				while(total > 0) {
@@ -5965,7 +5968,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 						/* RNNoise needs 480 samples, resample */
 						memset(denoised, 0, sizeof(denoised));
 						for(i=0; i<160; i++) {
-							if((offset + i) < pkt->length) {
+							if((offset + i) < read) {
 								denoised[i*3] = encoded[offset + i];
 								denoised[i*3 + 1] = 0;
 								denoised[i*3 + 2] = 0;
@@ -5975,7 +5978,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 						/* RNNoise needs 480 samples, resample */
 						memset(denoised, 0, sizeof(denoised));
 						for(i=0; i<160; i++) {
-							if((offset + i*2) < pkt->length) {
+							if((offset + i*2) < read) {
 								denoised[i*3] = encoded[offset + i*2];
 								denoised[i*3 + 1] = encoded[offset + i*2 + 1];
 								denoised[i*3 + 2] = 0;
@@ -5984,7 +5987,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 					} else {
 						/* Just copy the samples */
 						for(i=0; i<480; i++) {
-							if((offset + i) < pkt->length)
+							if((offset + i) < read)
 								denoised[i] = encoded[offset + i];
 							else
 								denoised[i] = 0;
@@ -5996,13 +5999,13 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 					if(participant->sampling_rate == 8000) {
 						/* RNNoise generated 480 samples, resample */
 						for(i=0; i<160; i++) {
-							if((offset + i) < pkt->length)
+							if((offset + i) < read)
 								encoded[offset + i] = denoised[i*3];
 						}
 					} else if(participant->sampling_rate == 16000) {
 						/* RNNoise generated 480 samples, resample */
 						for(i=0; i<160; i++) {
-							if((offset + i*2) < pkt->length) {
+							if((offset + i*2) < read) {
 								encoded[offset + i*2] = denoised[i*3];
 								encoded[offset + i*2 + 1] = denoised[i*3 + 1];
 							}
@@ -6010,7 +6013,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 					} else {
 						/* Just copy the denoised samples */
 						for(i=0; i<480; i++) {
-							if((offset + i) < pkt->length)
+							if((offset + i) < read)
 								encoded[offset + i] = denoised[i];
 						}
 					}
@@ -6022,23 +6025,63 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 				int step = 0;
 				while(total > 0 && step < 2) {
 					/* Denoise this audio chunk */
-					for(i=0; i<480; i++) {
-						if((offset + i*2 + step) < pkt->length)
-							denoised[i] = encoded[offset + i*2 + step];
-						else
-							denoised[i] = 0;
+					if(participant->sampling_rate == 8000) {
+						/* RNNoise needs 480 samples, resample */
+						memset(denoised, 0, sizeof(denoised));
+						for(i=0; i<160; i++) {
+							if((offset + i*2 + step) < read) {
+								denoised[i*3] = encoded[offset + i*2 + step];
+								denoised[i*3 + 1] = 0;
+								denoised[i*3 + 2] = 0;
+							}
+						}
+					} else if(participant->sampling_rate == 16000) {
+						/* RNNoise needs 480 samples, resample */
+						memset(denoised, 0, sizeof(denoised));
+						for(i=0; i<160; i++) {
+							if((offset + i*4 + step + 2) < read) {
+								denoised[i*3] = encoded[offset + i*4 + step];
+								denoised[i*3 + 1] = encoded[offset + i*4 + step + 2];
+								denoised[i*3 + 2] = 0;
+							}
+						}
+					} else {
+						/* Just copy the samples */
+						for(i=0; i<480; i++) {
+							if((offset + i*2 + step) < read)
+								denoised[i] = encoded[offset + i*2 + step];
+							else
+								denoised[i] = 0;
+						}
 					}
 					/* Denoise */
 					rnnoise_process_frame(participant->rnnoise[step], denoised, denoised);
 					/* Replace the audio data with the one we just denoised */
-					for(i=0; i<480; i++) {
-						if((offset + i*2 + step) < pkt->length)
-							encoded[offset + i*2 + step] = denoised[i];
+					if(participant->sampling_rate == 8000) {
+						/* RNNoise generated 480 samples, resample */
+						for(i=0; i<160; i++) {
+							if((offset + i*2 + step) < read)
+								encoded[offset + i*2 + step] = denoised[i*3];
+						}
+					} else if(participant->sampling_rate == 16000) {
+						/* RNNoise generated 480 samples, resample */
+						for(i=0; i<160; i++) {
+							if((offset + i*4 + step + 2) < read) {
+								encoded[offset + i*4 + step] = denoised[i*3];
+								encoded[offset + i*4 + step + 2] = denoised[i*3 + 1];
+							}
+						}
+					} else {
+						/* Just copy the denoised samples */
+						for(i=0; i<480; i++) {
+							if((offset + i*2 + step) < read)
+								encoded[offset + i*2 + step] = denoised[i];
+						}
 					}
 					total -= 960;
-					offset += 480;
+					offset += 960;
 					if(total <= 0) {
-						total = pkt->length;
+						total = read;
 						offset = 0;
 						step++;
 					}
