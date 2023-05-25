@@ -200,10 +200,21 @@ int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list, json_t *inf
 				len--;
 				obusize--;
 			}
-			if(type == 1) {
+
+			OBPOBUType obutype;
+			ptrdiff_t offset;
+			size_t obu_size;
+			int temporal_id;
+			int spatial_id;
+			OBPError err;
+
+			if (obp_get_next_obu((uint8_t *)payload, len, &obutype, &offset, &obu_size, &temporal_id, &spatial_id, &err) < 0) {
+				JANUS_LOG(LOG_ERR, "Failed to parse OBU header: %s\n", err.error);
+			}
+			if(obutype == OBP_OBU_SEQUENCE_HEADER) {
 				/* Sequence header */
 				uint16_t width = 0, height = 0;
-				janus_pp_av1_parse_sh(payload+1, obusize, &width, &height);
+				janus_pp_av1_parse_sh(payload+offset, obusize, &width, &height);
 				if(width*height > max_width*max_height) {
 					max_width = width;
 					max_height = height;
@@ -224,8 +235,8 @@ int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list, json_t *inf
 					json_array_append_new(resolutions, resolution);
 				}
 			}
-			payload += obusize;
-			len -= obusize;
+			payload += obusize + offset;
+			len -= obusize + offset;
 		}
 		if(tmp->drop) {
 			/* We marked this packet as one to drop, before */
