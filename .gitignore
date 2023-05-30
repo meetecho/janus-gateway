@@ -41,6 +41,9 @@ p2m-cmdline.c
 p2m-cmdline.h
 /fuzzers/out
 
+npm/dist
+npm/src
+
 /conf/janus.cfg.sample
 /conf/janus.plugin.duktape.cfg.sample
 /conf/janus.plugin.lua.cfg.sample
