@@ -262,7 +262,7 @@ typedef struct rtcp_context
 	uint32_t received_prior;
 	uint32_t expected;
 	uint32_t expected_prior;
-	uint32_t lost, lost_remote;
+	int32_t lost, lost_remote;
 
 	uint32_t retransmitted;
 	uint32_t retransmitted_prior;
@@ -304,7 +304,7 @@ uint32_t janus_rtcp_context_get_rtt(janus_rtcp_context *ctx);
  * @param[in] ctx The RTCP context to query
  * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
  * @returns The total number of lost packets */
-uint32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remote);
+int32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remote);
 /*! \brief Method to retrieve the jitter from an existing RTCP context
  * @param[in] ctx The RTCP context to query
  * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info

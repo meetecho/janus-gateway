@@ -351,7 +351,9 @@ static void janus_rtcp_rr_update_stats(rtcp_context *ctx, janus_report_block rb)
 		return;
 	}
 	int32_t total_lost = ntohl(rb.flcnpl) & 0x00FFFFFF;
-	if (ctx->rr_last_ehsnr != 0) {
+	/* Sign extend from 24 to 32 bits */
+	total_lost = (total_lost << 8) >> 8;
+	if(ctx->rr_last_ehsnr != 0) {
 		int32_t sent = g_atomic_int_get(&ctx->sent_packets_since_last_rr);
 		uint32_t expect = ntohl(rb.ehsnr) - ctx->rr_last_ehsnr;
 		int32_t nacks = g_atomic_int_get(&ctx->nack_count) - ctx->rr_last_nack_count;
@@ -396,8 +398,10 @@ static void janus_rtcp_incoming_rr(janus_rtcp_context *ctx, janus_rtcp_rr *rr) {
 	if(rr->header.rc > 0) {
 		double jitter = (double)ntohl(rr->rb[0].jitter);
 		uint32_t fraction = ntohl(rr->rb[0].flcnpl) >> 24;
-		uint32_t total = ntohl(rr->rb[0].flcnpl) & 0x00FFFFFF;
-		JANUS_LOG(LOG_HUGE, "jitter=%f, fraction=%"SCNu32", loss=%"SCNu32"\n", jitter, fraction, total);
+		int32_t total = ntohl(rr->rb[0].flcnpl) & 0x00FFFFFF;
+		/* Sign extend from 24 to 32 bits */
+		total = (total << 8) >> 8;
+		JANUS_LOG(LOG_HUGE, "jitter=%f, fraction=%"SCNu32", loss=%d\n", jitter, fraction, total);
 		ctx->lost_remote = total;
 		ctx->jitter_remote = jitter;
 		janus_rtcp_rr_update_stats(ctx, rr->rb[0]);
@@ -938,22 +942,24 @@ uint32_t janus_rtcp_context_get_out_media_link_quality(janus_rtcp_context *ctx) 
 	return ctx ? (uint32_t)(ctx->out_media_link_quality + 0.5) : 0;
 }
 
-uint32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remote) {
+int32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remote) {
 	if(ctx == NULL)
 		return 0;
 	return remote ? ctx->lost_remote : ctx->lost;
 }
 
-static uint32_t janus_rtcp_context_get_lost(janus_rtcp_context *ctx) {
+static int32_t janus_rtcp_context_get_lost(janus_rtcp_context *ctx) {
 	if(ctx == NULL)
 		return 0;
-	uint32_t lost;
+	int32_t lost;
 	if(ctx->lost > 0x7FFFFF) {
 		lost = 0x7FFFFF;
+	} else if(ctx->lost < -0x800000) {
+		lost = -0x800000;
 	} else {
 		lost = ctx->lost;
 	}
-	return lost;
+	return lost & 0x00FFFFFF;
 }
 
 static uint32_t janus_rtcp_context_get_lost_fraction(janus_rtcp_context *ctx) {
@@ -1013,7 +1019,7 @@ int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb) {
 		lost_interval = expected_interval - received_interval;
 	}
 	ctx->lost += lost_interval;
-	uint32_t reported_lost = janus_rtcp_context_get_lost(ctx);
+	int32_t reported_lost = janus_rtcp_context_get_lost(ctx);
 	uint32_t reported_fraction = janus_rtcp_context_get_lost_fraction(ctx);
 	janus_rtcp_estimate_in_link_quality(ctx);
 	ctx->expected_prior = ctx->expected;
