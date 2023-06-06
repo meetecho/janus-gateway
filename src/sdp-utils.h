@@ -64,6 +64,8 @@ typedef enum janus_sdp_mtype {
 	JANUS_SDP_VIDEO,
 	/*! \brief m=application */
 	JANUS_SDP_APPLICATION,
+	/*! \brief m=text (unused in WebRTC) */
+	JANUS_SDP_TEXT,
 	/*! \brief m=whatever (we don't care, unsupported) */
 	JANUS_SDP_OTHER
 } janus_sdp_mtype;
