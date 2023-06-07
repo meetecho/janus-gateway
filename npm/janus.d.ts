@@ -173,6 +173,31 @@ declare namespace JanusJS {
 		success?: (jsep: JSEP) => void;
 		error?: (error: Error) => void;
 		customizeSdp?: (jsep: JSEP) => void;
+
+		// @deprecated use tracks instead
+		media?: {
+			audioSend?: boolean;
+			audioRecv?: boolean;
+			videoSend?: boolean;
+			videoRecv?: boolean;
+			audio?: boolean | { deviceId: string };
+			video?:
+				| boolean
+				| { deviceId: string }
+				| 'lowres'
+				| 'lowres-16:9'
+				| 'stdres'
+				| 'stdres-16:9'
+				| 'hires'
+				| 'hires-16:9';
+			data?: boolean;
+			failIfNoAudio?: boolean;
+			failIfNoVideo?: boolean;
+			screenshareFrameRate?: number;
+		};
+		// @deprecated use tracks instead
+		stream?: MediaStream;
+
 	}
 
 	interface PluginMessage {
