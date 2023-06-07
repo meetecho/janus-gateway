@@ -167,30 +167,12 @@ declare namespace JanusJS {
 	}
 
 	interface OfferParams {
-		media?: {
-			audioSend?: boolean;
-			audioRecv?: boolean;
-			videoSend?: boolean;
-			videoRecv?: boolean;
-			audio?: boolean | { deviceId: string };
-			video?:
-				| boolean
-				| { deviceId: string }
-				| 'lowres'
-				| 'lowres-16:9'
-				| 'stdres'
-				| 'stdres-16:9'
-				| 'hires'
-				| 'hires-16:9';
-			data?: boolean;
-			failIfNoAudio?: boolean;
-			failIfNoVideo?: boolean;
-			screenshareFrameRate?: number;
-		};
+		tracks?: TrackOptions[];
 		trickle?: boolean;
-		stream?: MediaStream;
-		success: Function;
-		error: (error: any) => void;
+		iceRestart?: boolean;
+		success?: (jsep: JSEP) => void;
+		error?: (error: Error) => void;
+		customizeSdp?: (jsep: JSEP) => void;
 	}
 
 	interface PluginMessage {
@@ -267,27 +249,27 @@ declare namespace JanusJS {
 	}
 
 	type TrackOption = {
-		add: boolean;
-		replace: boolean;
-		remove: boolean;
+		add?: boolean;
+		replace?: boolean;
+		remove?: boolean;
 		type: 'video' | 'screen' | 'audio' | 'data';
-		mid: string;
+		mid?: string;
 		capture: boolean | MediaStreamTrack;
-		recv: boolean;
-		group: 'default' | string;
-		gumGroup: TrackOption['group'];
-		simulcast: boolean;
-		svc: string;
-		simulcastMaxBitrates: {
-			low: number,
-			medium: number,
-			high: number,
+		recv?: boolean;
+		group?: 'default' | string;
+		gumGroup?: TrackOption['group'];
+		simulcast?: boolean;
+		svc?: string;
+		simulcastMaxBitrates?: {
+			low: number;
+			medium: number;
+			high: number;
 		};
-		sendEncodings: RTCRtpEncodingParameters;
-		framerate: number;
-		bitrate: number;
-		dontStop: boolean;
-		transforms: {
+		sendEncodings?: RTCRtpEncodingParameters;
+		framerate?: number;
+		bitrate?: number;
+		dontStop?: boolean;
+		transforms?: {
 			sender: ReadableWritablePair;
 			receiver: ReadableWritablePair;
 		};
