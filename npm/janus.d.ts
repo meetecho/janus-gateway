@@ -195,9 +195,6 @@ declare namespace JanusJS {
 			failIfNoVideo?: boolean;
 			screenshareFrameRate?: number;
 		};
-		// @deprecated use tracks instead
-		stream?: MediaStream;
-
 	}
 
 	interface PluginMessage {
