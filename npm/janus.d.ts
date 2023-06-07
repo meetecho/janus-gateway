@@ -174,7 +174,7 @@ declare namespace JanusJS {
 		error?: (error: Error) => void;
 		customizeSdp?: (jsep: JSEP) => void;
 
-		// @deprecated use tracks instead
+		/** @deprecated use tracks instead */
 		media?: {
 			audioSend?: boolean;
 			audioRecv?: boolean;
