@@ -530,8 +530,8 @@ room-<unique room ID>: {
 					"codec" : "<codec used for published stream #1>",
 					"description" : "<text description of published stream #1, if any>",
 					"moderated" : <true if this stream audio has been moderated for this participant>,
-					"simulcast" : "<true if published stream #1 uses simulcast (VP8 and H.264 only)>",
-					"svc" : "<true if published stream #1 uses SVC (VP9 only)>",
+					"simulcast" : "<true if published stream #1 uses simulcast>",
+					"svc" : "<true if published stream #1 uses SVC (VP9 and AV1 only)>",
 					"talking" : <true|false, whether the publisher stream has audio activity or not (only if audio levels are used)>,
 				},
 				// Other streams, if any
@@ -675,8 +675,8 @@ room-<unique room ID>: {
 					"codec" : "<codec used for published stream #1>",
 					"description" : "<text description of published stream #1, if any>",
 					"moderated" : <true if this stream audio has been moderated for this participant>,
-					"simulcast" : "<true if published stream #1 uses simulcast (VP8 and H.264 only)>",
-					"svc" : "<true if published stream #1 uses SVC (VP9 only)>",
+					"simulcast" : "<true if published stream #1 uses simulcast>",
+					"svc" : "<true if published stream #1 uses SVC (VP9 and AV1 only)>",
 					"talking" : <true|false, whether the publisher stream has audio activity or not (only if audio levels are used)>,
 				},
 				// Other streams, if any
@@ -1365,8 +1365,8 @@ room-<unique room ID>: {
 			"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
 			"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
 			"fallback" : <How much time (in us, default 250000) without receiving packets will make us drop to the substream below; optional>,
-			"spatial_layer" : <spatial layer to receive (0-2), in case VP9-SVC is enabled; optional>,
-			"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>,
+			"spatial_layer" : <spatial layer to receive (0-2), in case SVC is enabled; optional>,
+			"temporal_layer" : <temporal layers to receive (0-2), in case SVC is enabled; optional>,
 			"audio_level_average" : "<if provided, overrides the room audio_level_average for this user; optional>",
 			"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>",
 			"min_delay" : <minimum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
@@ -1388,7 +1388,7 @@ room-<unique room ID>: {
  * that for them to work you'll have to specify the \c mid as well, as the same
  * subscription may be receiving simulcast stream from multiple publishers.
  * The \c spatial_layer and \c temporal_layer have exactly the same meaning,
- * but within the context of VP9-SVC publishers, and will have no effect
+ * but within the context of SVC publishers, and will have no effect
  * on subscriptions associated to regular publishers.
  *
  * As anticipated, \c configure is also the request you use when you want
@@ -1802,11 +1802,11 @@ static struct janus_json_parameter configure_stream_parameters[] = {
 	/* For talk detection */
 	{"audio_level_averge", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	/* For VP8 (or H.264) simulcast */
+	/* For simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"fallback", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	/* For VP9 SVC */
+	/* For SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* For the playout-delay RTP extension, if negotiated */
@@ -1835,11 +1835,11 @@ static struct janus_json_parameter subscriber_parameters[] = {
 	{"offer_audio", JANUS_JSON_BOOL, 0},
 	{"offer_video", JANUS_JSON_BOOL, 0},
 	{"offer_data", JANUS_JSON_BOOL, 0},
-	/* For VP8 (or H.264) simulcast */
+	/* For simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"fallback", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	/* For VP9 SVC */
+	/* For SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 };
@@ -1847,10 +1847,10 @@ static struct janus_json_parameter subscriber_stream_parameters[] = {
 	{"mid", JANUS_JSON_STRING, 0},
 	{"crossrefid", JANUS_JSON_STRING, 0},
 	{"send", JANUS_JSON_BOOL, 0},
-	/* For VP8 (or H.264) simulcast */
+	/* For simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	/* For VP9 SVC */
+	/* For SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* For the playout-delay RTP extension, if negotiated */
@@ -1876,10 +1876,10 @@ static struct janus_json_parameter switch_update_parameters[] = {
 	//~ {"feed", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"sub_mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	/* For VP8 (or H.264) simulcast */
+	/* For simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	/* For VP9 SVC */
+	/* For SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
@@ -2129,8 +2129,8 @@ typedef struct janus_videoroom_publisher_stream {
 	gboolean opusfec;						/* Whether this stream is sending inband Opus FEC */
 	gboolean opusdtx;						/* Whether this publisher is using Opus DTX (Discontinuous Transmission) */
 	gboolean opusstereo;					/* Whether this publisher is doing stereo Opus */
-	gboolean simulcast, svc;				/* Whether this stream uses simulcast or VP9 SVC */
-	uint32_t vssrc[3];						/* Only needed in case VP8 (or H.264) simulcasting is involved */
+	gboolean simulcast, svc;				/* Whether this stream uses simulcast or SVC */
+	uint32_t vssrc[3];						/* Only needed in case simulcasting is involved */
 	char *rid[3];							/* Only needed if simulcasting is rid-based */
 	int rid_extmap_id;						/* rid extmap ID */
 	janus_mutex rid_mutex;					/* Mutex to protect access to the rid array and the extmap ID */
@@ -2252,7 +2252,7 @@ typedef struct janus_videoroom_rtp_relay_packet {
 	janus_plugin_rtp_extensions extensions;
 	/* Whether simulcast is involved */
 	gboolean simulcast;
-	/* The following are only relevant if we're doing VP9 SVC*/
+	/* The following are only relevant if we're doing SVC*/
 	gboolean svc;
 	janus_vp9_svc_info svc_info;
 	/* The following is only relevant for datachannels */
@@ -2362,7 +2362,12 @@ static void janus_videoroom_publisher_stream_free(const janus_refcount *ps_ref) 
 }
 
 static void janus_videoroom_publisher_dereference(janus_videoroom_publisher *p) {
-	/* This is used by g_pointer_clear and g_hash_table_new_full so that NULL is only possible if that was inserted into the hash table. */
+	/* This is used by g_hash_table_new_full so that NULL is only possible
+	 * if that was inserted into the hash table. Notice that this also
+	 * dereferences the session the participant is associated with, since
+	 * we add an extra ref to the session to when inserting in the table */
+	if(p->session)
+		janus_refcount_decrease(&p->session->ref);
 	janus_refcount_decrease(&p->ref);
 }
 
@@ -2845,6 +2850,7 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 	}
 	/* Done: add the dummy publisher to the list */
 	janus_refcount_increase(&publisher->ref);
+	janus_refcount_increase(&publisher->session->ref);
 	g_hash_table_insert(room->participants,
 		string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
 		publisher);
@@ -4077,7 +4083,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 					if(ps->simulcast)
 						json_object_set_new(m, "simulcast", json_true());
 					if(ps->svc)
-						json_object_set_new(m, "vp9-svc", json_true());
+						json_object_set_new(m, "svc", json_true());
 					if(ps->rc && ps->rc->filename)
 						json_object_set_new(m, "recording", json_string(ps->rc->filename));
 					if(ps->audio_level_extmap_id > 0) {
@@ -7998,7 +8004,8 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 		} else {
 			/* We're simulcasting, save the best video quality */
 			gboolean save = janus_rtp_simulcasting_context_process_rtp(&ps->rec_simctx,
-				buf, len, ps->vssrc, ps->rid, ps->vcodec, &ps->rec_ctx, &ps->rid_mutex);
+				buf, len, pkt->extensions.dd_content, pkt->extensions.dd_len,
+				ps->vssrc, ps->rid, ps->vcodec, &ps->rec_ctx, &ps->rid_mutex);
 			if(save) {
 				uint32_t seq_number = ntohs(rtp->seq_number);
 				uint32_t timestamp = ntohl(rtp->timestamp);
@@ -8030,10 +8037,14 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 				janus_videoroom_publisher_dereference_nodebug(participant);
 				return;
 			}
-			gboolean found = FALSE;
-			memset(&packet.svc_info, 0, sizeof(packet.svc_info));
-			if(janus_vp9_parse_svc(payload, plen, &found, &packet.svc_info) == 0) {
-				packet.svc = found;
+			if(ps->vcodec == JANUS_VIDEOCODEC_VP9) {
+				gboolean found = FALSE;
+				memset(&packet.svc_info, 0, sizeof(packet.svc_info));
+				if(janus_vp9_parse_svc(payload, plen, &found, &packet.svc_info) == 0) {
+					packet.svc = found;
+				}
+			} else if(ps->vcodec == JANUS_VIDEOCODEC_AV1) {
+				packet.svc = (pkt->extensions.dd_len > 0);
 			}
 		}
 		if(video && ps->simulcast)
@@ -8981,6 +8992,7 @@ static void *janus_videoroom_handler(void *data) {
 				GHashTableIter iter;
 				gpointer value;
 				janus_refcount_increase(&publisher->ref);
+				janus_refcount_increase(&publisher->session->ref);
 				g_hash_table_insert(publisher->room->participants,
 					string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
 					publisher);
@@ -10885,7 +10897,7 @@ static void *janus_videoroom_handler(void *data) {
 									janus_videoroom_reqpli(ps, "Simulcasting substream change");
 								}
 							}
-							if(ps->vcodec == JANUS_VIDEOCODEC_VP8 && ps->simulcast && sc_temporal) {
+							if(ps->simulcast && sc_temporal) {
 								stream->sim_context.templayer_target = json_integer_value(sc_temporal);
 								JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
 									stream->sim_context.templayer_target, stream->sim_context.templayer);
@@ -11796,8 +11808,7 @@ static void *janus_videoroom_handler(void *data) {
 								}
 							}
 							/* Check if simulcast or SVC is in place */
-							if(msg_simulcast != NULL && json_array_size(msg_simulcast) > 0 &&
-									(ps->vcodec == JANUS_VIDEOCODEC_VP8 || ps->vcodec == JANUS_VIDEOCODEC_H264)) {
+							if(msg_simulcast != NULL && json_array_size(msg_simulcast) > 0) {
 								size_t i = 0;
 								for(i=0; i<json_array_size(msg_simulcast); i++) {
 									json_t *s = json_array_get(msg_simulcast, i);
@@ -11815,7 +11826,7 @@ static void *janus_videoroom_handler(void *data) {
 									janus_mutex_unlock(&ps->rid_mutex);
 								}
 							} else if(msg_svc != NULL && json_array_size(msg_svc) > 0 &&
-									ps->vcodec == JANUS_VIDEOCODEC_VP9) {
+									(ps->vcodec == JANUS_VIDEOCODEC_VP9 || ps->vcodec == JANUS_VIDEOCODEC_AV1)) {
 								size_t i = 0;
 								for(i=0; i<json_array_size(msg_svc); i++) {
 									json_t *s = json_array_get(msg_svc, i);
@@ -11878,6 +11889,7 @@ static void *janus_videoroom_handler(void *data) {
 								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_DEPENDENCY_DESC,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->videoorient_ext ? JANUS_RTP_EXTMAP_VIDEO_ORIENTATION : NULL,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->playoutdelay_ext ? JANUS_RTP_EXTMAP_PLAYOUT_DELAY : NULL,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->transport_wide_cc_ext ? JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC : NULL,
@@ -12150,7 +12162,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* Process this packet: don't relay if it's not the layer we wanted to handle */
 			janus_rtp_header rtp = *(packet->data);
 			gboolean relay = janus_rtp_svc_context_process_rtp(&stream->svc_context,
-				(char *)packet->data, packet->length, ps->vcodec, &packet->svc_info, &stream->context);
+				(char *)packet->data, packet->length, packet->extensions.dd_content, packet->extensions.dd_len,
+				ps->vcodec, &packet->svc_info, &stream->context);
 			if(stream->svc_context.need_pli) {
 				/* Send a PLI */
 				JANUS_LOG(LOG_VERB, "We need a PLI for the SVC context\n");
@@ -12202,7 +12215,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				return;
 			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&stream->sim_context,
-				(char *)packet->data, packet->length, packet->ssrc, NULL, ps->vcodec, &stream->context, &ps->rid_mutex);
+				(char *)packet->data, packet->length, packet->extensions.dd_content, packet->extensions.dd_len,
+				packet->ssrc, NULL, ps->vcodec, &stream->context, &ps->rid_mutex);
 			if(!relay) {
 				/* Did a lot of time pass before we could relay a packet? */
 				gint64 now = janus_get_monotonic_time();
@@ -12628,6 +12642,7 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 
 	/* As the first thing, we add the remote publisher to the list */
 	janus_refcount_increase(&publisher->ref);
+	janus_refcount_increase(&publisher->session->ref);
 	janus_videoroom *videoroom = publisher->room;
 	janus_refcount_increase(&videoroom->ref);
 	g_hash_table_insert(videoroom->participants,

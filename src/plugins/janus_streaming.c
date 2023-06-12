@@ -9080,8 +9080,8 @@ static void *janus_streaming_relay_thread(void *data) {
 		return NULL;
 	}
 	if(mountpoint->streaming_source != janus_streaming_source_rtp) {
-		janus_refcount_decrease(&mountpoint->ref);
 		JANUS_LOG(LOG_ERR, "[%s] Not an RTP source mountpoint!\n", mountpoint->name);
+		janus_refcount_decrease(&mountpoint->ref);
 		return NULL;
 	}
 	janus_streaming_rtp_source *source = mountpoint->source;
@@ -9090,6 +9090,24 @@ static void *janus_streaming_relay_thread(void *data) {
 		janus_refcount_decrease(&mountpoint->ref);
 		return NULL;
 	}
+
+	/* Check how many file descriptors we'll need to monitor */
+	int num = 0;
+	janus_streaming_rtp_source_stream *stream = NULL;
+	GList *temp = source->media;
+	while(temp) {
+		janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
+		if(stream->fd[0] != -1)
+			num++;
+		if(stream->fd[1] != -1)
+			num++;
+		if(stream->fd[2] != -1)
+			num++;
+		if(stream->rtcp_fd != -1)
+			num++;
+		temp = temp->next;
+	}
+	num++;	/* There's the pipe too */
 
 	/* Add a reference to the helper threads, if needed */
 	if(mountpoint->helper_threads > 0) {
@@ -9108,12 +9126,10 @@ static void *janus_streaming_relay_thread(void *data) {
 	socklen_t addrlen;
 	struct sockaddr_storage remote;
 	int resfd = 0, bytes = 0;
-	struct pollfd fds[50];		/* FIXME We should make this dynamic */
+	struct pollfd *fds = g_malloc(num * sizeof(struct pollfd));
 	char buffer[1500];
 	memset(buffer, 0, 1500);
 	/* We'll have a dynamic number of streams */
-	janus_streaming_rtp_source_stream *stream = NULL;
-	GList *temp = NULL;
 #ifdef HAVE_LIBCURL
 	/* In case this is an RTSP restreamer, we may have to send keep-alives from time to time */
 	gint64 now = janus_get_monotonic_time(), before = now, ka_timeout = 0;
@@ -9124,7 +9140,6 @@ static void *janus_streaming_relay_thread(void *data) {
 	gboolean connected = TRUE;
 #endif
 	/* Loop */
-	int num = 0;
 	janus_streaming_rtp_relay_packet packet;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&mountpoint->destroyed)) {
 #ifdef HAVE_LIBCURL
@@ -9778,6 +9793,7 @@ static void *janus_streaming_relay_thread(void *data) {
 		stream->rtcp_fd = -1;
 		temp = temp->next;
 	}
+	g_free(fds);
 
 	/* Notify users this mountpoint is done */
 	janus_mutex_lock(&mountpoint->mutex);
@@ -10030,7 +10046,8 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 					return;
 				/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 				gboolean relay = janus_rtp_simulcasting_context_process_rtp(&s->sim_context,
-					(char *)packet->data, packet->length, packet->ssrc, NULL, packet->codec, &s->context, NULL);
+					(char *)packet->data, packet->length, NULL, 0,
+					packet->ssrc, NULL, packet->codec, &s->context, NULL);
 				if(!relay) {
 					/* Did a lot of time pass before we could relay a packet? */
 					gint64 now = janus_get_monotonic_time();

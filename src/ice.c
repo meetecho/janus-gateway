@@ -396,6 +396,12 @@ gboolean janus_ice_event_get_combine_media_stats(void) {
 	return janus_ice_event_combine_media_stats;
 }
 
+/* Number of active PeerConnection (for stats) */
+static volatile gint pc_num = 0;
+int janus_ice_get_peerconnection_num(void) {
+	return g_atomic_int_get(&pc_num);
+}
+
 /* RTP/RTCP port range */
 static uint16_t rtp_range_min = 0;
 static uint16_t rtp_range_max = 0;
@@ -1617,6 +1623,8 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 #endif
 		g_main_context_wakeup(handle->mainctx);
 	}
+	if(g_atomic_int_dec_and_test(&handle->has_pc))
+		g_atomic_int_dec_and_test(&pc_num);
 }
 
 static void janus_ice_webrtc_free(janus_ice_handle *handle) {
@@ -5186,4 +5194,6 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle) {
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, JANUS_EVENT_SUBTYPE_WEBRTC_STATE,
 			session->session_id, handle->handle_id, handle->opaque_id, info);
 	}
+	g_atomic_int_set(&handle->has_pc, 1);
+	g_atomic_int_inc(&pc_num);
 }

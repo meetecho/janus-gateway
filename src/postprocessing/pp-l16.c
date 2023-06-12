@@ -18,6 +18,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include "pp-l16.h"
 #include "../debug.h"
