@@ -4412,7 +4412,8 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		janus_plugin_rtcp rtcp = { .video = FALSE, .buffer = rtcpbuf, .length = srlen+sdeslen };
 		janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
 		/* Check if we detected too many losses, and send a slowlink event in case */
-		guint lost = janus_rtcp_context_get_lost_all(rtcp_ctx, TRUE);
+		gint lost = janus_rtcp_context_get_lost_all(rtcp_ctx, TRUE);
+		lost = lost > 0 ? lost : 0;
 		janus_slow_link_update(stream->component, handle, FALSE, TRUE, lost);
 	}
 	if(stream && stream->audio_recv) {
@@ -4432,7 +4433,8 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		janus_plugin_rtcp rtcp = { .video = FALSE, .buffer = rtcpbuf, .length = 32 };
 		janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
 		/* Check if we detected too many losses, and send a slowlink event in case */
-		guint lost = janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, FALSE);
+		gint lost = janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, FALSE);
+		lost = lost > 0 ? lost : 0;
 		janus_slow_link_update(stream->component, handle, FALSE, FALSE, lost);
 	}
 	/* Now do the same for video */
