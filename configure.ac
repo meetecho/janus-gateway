@@ -424,6 +424,12 @@ AC_CHECK_LIB([nice],
              [AC_MSG_NOTICE([libnice version does not have nice_agent_new_full])]
              )
 
+AC_CHECK_LIB([nice],
+             [nice_agent_consent_lost],
+             [AC_DEFINE(HAVE_CONSENT_FRESHNESS)],
+             [AC_MSG_NOTICE([libnice version does not have nice_agent_consent_lost])]
+             )
+
 AC_CHECK_LIB([dl],
              [dlopen],
              [JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -ldl"],
