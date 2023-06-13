@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.13.4] - 2023-05-19
+
+- Moved discussions from Google Group to Discourse
+- Add support for receiving offers in Streaming plugin (for WHEP) [[PR-3199](https://github.com/meetecho/janus-gateway/pull/3199)]
+- Add newline for SIP headers that are overflown in length (thanks @zayim!) [[PR-3184](https://github.com/meetecho/janus-gateway/pull/3184)]
+- Save SIP reason state on multiple callbacks (thanks @kenangenjac!) [[PR-3210](https://github.com/meetecho/janus-gateway/pull/3210)]
+- Avoid parsing whitespace as invalid JSON when receiving WebSocket messages (thanks @htrendev!) [[PR-3209](https://github.com/meetecho/janus-gateway/pull/3209)]
+- Fixed some typos and added some tweaks to Admin API demo
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.13.3] - 2023-03-06
 
 - Added configurable cap to number of queued events when reconnecting WebSocket event handler [[PR-3148](https://github.com/meetecho/janus-gateway/pull/3148)]

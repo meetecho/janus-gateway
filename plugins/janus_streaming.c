@@ -5239,6 +5239,23 @@ done:
 			session->sim_context.substream_target = 2;
 			session->sim_context.templayer_target = 2;
 			janus_vp8_simulcast_context_reset(&session->vp8_context);
+			if(mp->streaming_type == janus_streaming_type_on_demand) {
+				/* Spawn a thread */
+				GError *error = NULL;
+				char tname[16];
+				g_snprintf(tname, sizeof(tname), "mp %s", mp->id_str);
+				janus_refcount_increase(&session->ref);
+				janus_refcount_increase(&mp->ref);
+				g_thread_try_new(tname, &janus_streaming_ondemand_thread, session, &error);
+				if(error != NULL) {
+					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the on-demand thread...\n",
+						error->code, error->message ? error->message : "??");
+					error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the on-demand thread",
+						error->code, error->message ? error->message : "??");
+					g_error_free(error);
+				}
+			}
 			/* Start preparing an answer */
 			char *audio_codec = NULL, *video_codec = NULL;
 			if(session->audio) {
