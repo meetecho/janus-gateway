@@ -352,7 +352,7 @@ static void janus_rtcp_rr_update_stats(rtcp_context *ctx, janus_report_block rb)
 	}
 	int32_t total_lost = ntohl(rb.flcnpl) & 0x00FFFFFF;
 	/* Sign extend from 24 to 32 bits */
-	total_lost = (total_lost << 8) >> 8;
+	total_lost = (int32_t)(((uint32_t)total_lost << 8)) >> 8;
 	if(ctx->rr_last_ehsnr != 0) {
 		int32_t sent = g_atomic_int_get(&ctx->sent_packets_since_last_rr);
 		uint32_t expect = ntohl(rb.ehsnr) - ctx->rr_last_ehsnr;
@@ -400,7 +400,7 @@ static void janus_rtcp_incoming_rr(janus_rtcp_context *ctx, janus_rtcp_rr *rr) {
 		uint32_t fraction = ntohl(rr->rb[0].flcnpl) >> 24;
 		int32_t total = ntohl(rr->rb[0].flcnpl) & 0x00FFFFFF;
 		/* Sign extend from 24 to 32 bits */
-		total = (total << 8) >> 8;
+		total = (int32_t)(((uint32_t)total << 8)) >> 8;
 		JANUS_LOG(LOG_HUGE, "jitter=%f, fraction=%"SCNu32", loss=%d\n", jitter, fraction, total);
 		ctx->lost_remote = total;
 		ctx->jitter_remote = jitter;
