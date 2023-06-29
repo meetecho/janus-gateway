@@ -539,7 +539,7 @@ function subscribeTo(sources) {
 				let stream = streams[i];
 				// If the publisher is VP8/VP9 and this is an older Safari, let's avoid video
 				if(stream.type === "video" && Janus.webRTCAdapter.browserDetails.browser === "safari" &&
-						(stream.codec === "vp9" || (stream.codec === "vp8" && !Janus.safariVp8))) {
+						((stream.codec === "vp9" && !Janus.safariVp9) || (stream.codec === "vp8" && !Janus.safariVp8))) {
 					toastr.warning("Publisher is using " + stream.codec.toUpperCase +
 						", but Safari doesn't support it: disabling video stream #" + stream.mindex);
 					continue;
@@ -619,7 +619,7 @@ function subscribeTo(sources) {
 						let stream = streams[i];
 						// If the publisher is VP8/VP9 and this is an older Safari, let's avoid video
 						if(stream.type === "video" && Janus.webRTCAdapter.browserDetails.browser === "safari" &&
-								(stream.codec === "vp9" || (stream.codec === "vp8" && !Janus.safariVp8))) {
+								((stream.codec === "vp9" && !Janus.safariVp9) || (stream.codec === "vp8" && !Janus.safariVp8))) {
 							toastr.warning("Publisher is using " + stream.codec.toUpperCase +
 								", but Safari doesn't support it: disabling video stream #" + stream.mindex);
 							continue;
