@@ -351,8 +351,9 @@ Janus.init = function(options) {
 				oldOBF();
 			}
 		});
-		// If this is a Safari Technology Preview, check if VP8 is supported
+		// If this is a Safari, check if VP8 or VP9 are supported
 		Janus.safariVp8 = false;
+		Janus.safariVp9 = false;
 		if(Janus.webRTCAdapter.browserDetails.browser === 'safari' &&
 				Janus.webRTCAdapter.browserDetails.version >= 605) {
 			// Let's see if RTCRtpSender.getCapabilities() is there
@@ -361,7 +362,8 @@ Janus.init = function(options) {
 				for(var codec of RTCRtpSender.getCapabilities("video").codecs) {
 					if(codec && codec.mimeType && codec.mimeType.toLowerCase() === "video/vp8") {
 						Janus.safariVp8 = true;
-						break;
+					} else if(codec && codec.mimeType && codec.mimeType.toLowerCase() === "video/vp9") {
+						Janus.safariVp9 = true;
 					}
 				}
 				if(Janus.safariVp8) {
@@ -376,6 +378,7 @@ Janus.init = function(options) {
 				var testpc = new RTCPeerConnection({});
 				testpc.createOffer({offerToReceiveVideo: true}).then(function(offer) {
 					Janus.safariVp8 = offer.sdp.indexOf("VP8") !== -1;
+					Janus.safariVp9 = offer.sdp.indexOf("VP9") !== -1;
 					if(Janus.safariVp8) {
 						Janus.log("This version of Safari supports VP8");
 					} else {
