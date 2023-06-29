@@ -1871,6 +1871,10 @@ janus_ice_peerconnection_medium *janus_ice_peerconnection_medium_create(janus_ic
 		}
 		medium->rtcp_ctx[0] = g_malloc0(sizeof(janus_rtcp_context));
 		medium->rtcp_ctx[0]->tb = (type == JANUS_MEDIA_VIDEO ? 90000 : 48000);	/* May change later */
+		medium->rtcp_ctx[0]->in_link_quality = 100;
+		medium->rtcp_ctx[0]->in_media_link_quality = 100;
+		medium->rtcp_ctx[0]->out_link_quality = 100;
+		medium->rtcp_ctx[0]->out_media_link_quality = 100;
 		/* We can address media by SSRC */
 		g_hash_table_insert(pc->media_byssrc, GINT_TO_POINTER(medium->ssrc), medium);
 		janus_refcount_increase(&medium->ref);
