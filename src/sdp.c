@@ -649,11 +649,15 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 						JANUS_LOG(LOG_INFO, "[%"SCNu64"] %s SSRC (#%d) on mline #%d changed: %"SCNu32" --> %"SCNu32"\n",
 							handle->handle_id, m->type == JANUS_SDP_VIDEO ? "Video" : "Audio",
 							vindex, m->index, medium->ssrc_peer[vindex], medium->ssrc_peer_new[vindex]);
-						/* FIXME Reset the RTCP context */
+						/* Reset the RTCP context */
 						janus_mutex_lock(&medium->mutex);
 						if(medium->rtcp_ctx[vindex]) {
 							memset(medium->rtcp_ctx[vindex], 0, sizeof(*medium->rtcp_ctx[vindex]));
 							medium->rtcp_ctx[vindex]->tb = (m->type == JANUS_SDP_VIDEO ? 90000 : 48000);	/* May change later */;
+							medium->rtcp_ctx[vindex]->in_link_quality = 100;
+							medium->rtcp_ctx[vindex]->in_media_link_quality = 100;
+							medium->rtcp_ctx[vindex]->out_link_quality = 100;
+							medium->rtcp_ctx[vindex]->out_media_link_quality = 100;
 						}
 						if(medium->last_seqs[vindex])
 							janus_seq_list_free(&medium->last_seqs[vindex]);
@@ -691,10 +695,18 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 				if((medium->ssrc_peer[1] || medium->rid[1] != NULL) && medium->rtcp_ctx[1] == NULL) {
 					medium->rtcp_ctx[1] = g_malloc0(sizeof(rtcp_context));
 					medium->rtcp_ctx[1]->tb = 90000;
+					medium->rtcp_ctx[1]->in_link_quality = 100;
+					medium->rtcp_ctx[1]->in_media_link_quality = 100;
+					medium->rtcp_ctx[1]->out_link_quality = 100;
+					medium->rtcp_ctx[1]->out_media_link_quality = 100;
 				}
 				if((medium->ssrc_peer[2] || medium->rid[rids_hml ? 2 : 0] != NULL) && medium->rtcp_ctx[2] == NULL) {
 					medium->rtcp_ctx[2] = g_malloc0(sizeof(rtcp_context));
 					medium->rtcp_ctx[2]->tb = 90000;
+					medium->rtcp_ctx[2]->in_link_quality = 100;
+					medium->rtcp_ctx[2]->in_media_link_quality = 100;
+					medium->rtcp_ctx[2]->out_link_quality = 100;
+					medium->rtcp_ctx[2]->out_media_link_quality = 100;
 				}
 			}
 			if(m->type == JANUS_SDP_VIDEO && medium->rtx_payload_types && m->ptypes) {
@@ -863,7 +875,7 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 			medium->mstid = NULL;
 		}
 		if(m->direction == JANUS_SDP_INACTIVE) {
-			/* FIXME Reset the local SSRCs and RTCP context */
+			/* Reset the local SSRCs and RTCP context */
 			if(medium->ssrc != 0)
 				g_hash_table_remove(pc->media_byssrc, GINT_TO_POINTER(medium->ssrc));
 			medium->ssrc = 0;
@@ -876,6 +888,10 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 					int tb = medium->rtcp_ctx[vindex]->tb;
 					memset(medium->rtcp_ctx[vindex], 0, sizeof(janus_rtcp_context));
 					medium->rtcp_ctx[vindex]->tb = tb;
+					medium->rtcp_ctx[vindex]->in_link_quality = 100;
+					medium->rtcp_ctx[vindex]->in_media_link_quality = 100;
+					medium->rtcp_ctx[vindex]->out_link_quality = 100;
+					medium->rtcp_ctx[vindex]->out_media_link_quality = 100;
 				}
 			}
 		} else if(m->type != JANUS_SDP_APPLICATION) {
