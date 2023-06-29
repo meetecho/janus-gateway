@@ -224,6 +224,10 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 					if(stream->audio_rtcp_ctx == NULL) {
 						stream->audio_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
 						stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
+						stream->audio_rtcp_ctx->in_link_quality = 100;
+						stream->audio_rtcp_ctx->in_media_link_quality = 100;
+						stream->audio_rtcp_ctx->out_link_quality = 100;
+						stream->audio_rtcp_ctx->out_media_link_quality = 100;
 					}
 				}
 				gboolean receiving = (stream->audio_recv == TRUE);
@@ -277,6 +281,10 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 					if(stream->video_rtcp_ctx[0] == NULL) {
 						stream->video_rtcp_ctx[0] = g_malloc0(sizeof(rtcp_context));
 						stream->video_rtcp_ctx[0]->tb = 90000;	/* May change later */
+						stream->video_rtcp_ctx[0]->in_link_quality = 100;
+						stream->video_rtcp_ctx[0]->in_media_link_quality = 100;
+						stream->video_rtcp_ctx[0]->out_link_quality = 100;
+						stream->video_rtcp_ctx[0]->out_media_link_quality = 100;
 					}
 				}
 				gboolean receiving = (stream->video_recv == TRUE);
@@ -695,6 +703,10 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 					if(stream->audio_rtcp_ctx) {
 						memset(stream->audio_rtcp_ctx, 0, sizeof(*stream->audio_rtcp_ctx));
 						stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
+						stream->audio_rtcp_ctx->in_link_quality = 100;
+						stream->audio_rtcp_ctx->in_media_link_quality = 100;
+						stream->audio_rtcp_ctx->out_link_quality = 100;
+						stream->audio_rtcp_ctx->out_media_link_quality = 100;
 					}
 					if(component->last_seqs_audio)
 						janus_seq_list_free(&component->last_seqs_audio);
@@ -717,6 +729,10 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 							if(stream->video_rtcp_ctx[vindex]) {
 								memset(stream->video_rtcp_ctx[vindex], 0, sizeof(*stream->video_rtcp_ctx[vindex]));
 								stream->video_rtcp_ctx[vindex]->tb = 90000;
+								stream->video_rtcp_ctx[vindex]->in_link_quality = 100;
+								stream->video_rtcp_ctx[vindex]->in_media_link_quality = 100;
+								stream->video_rtcp_ctx[vindex]->out_link_quality = 100;
+								stream->video_rtcp_ctx[vindex]->out_media_link_quality = 100;
 							}
 							if(component->last_seqs_video[vindex])
 								janus_seq_list_free(&component->last_seqs_video[vindex]);
@@ -741,10 +757,18 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml
 			if((stream->video_ssrc_peer[1] || stream->rid[1] != NULL) && stream->video_rtcp_ctx[1] == NULL) {
 				stream->video_rtcp_ctx[1] = g_malloc0(sizeof(rtcp_context));
 				stream->video_rtcp_ctx[1]->tb = 90000;
+				stream->video_rtcp_ctx[1]->in_link_quality = 100;
+				stream->video_rtcp_ctx[1]->in_media_link_quality = 100;
+				stream->video_rtcp_ctx[1]->out_link_quality = 100;
+				stream->video_rtcp_ctx[1]->out_media_link_quality = 100;
 			}
 			if((stream->video_ssrc_peer[2] || stream->rid[rids_hml ? 2 : 0] != NULL) && stream->video_rtcp_ctx[2] == NULL) {
 				stream->video_rtcp_ctx[2] = g_malloc0(sizeof(rtcp_context));
 				stream->video_rtcp_ctx[2]->tb = 90000;
+				stream->video_rtcp_ctx[2]->in_link_quality = 100;
+				stream->video_rtcp_ctx[2]->in_media_link_quality = 100;
+				stream->video_rtcp_ctx[2]->out_link_quality = 100;
+				stream->video_rtcp_ctx[2]->out_media_link_quality = 100;
 			}
 		}
 		temp = temp->next;

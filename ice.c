@@ -3940,6 +3940,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		stream->audio_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 		stream->audio_rtcp_ctx = g_malloc0(sizeof(janus_rtcp_context));
 		stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
+		stream->audio_rtcp_ctx->in_link_quality = 100;
+		stream->audio_rtcp_ctx->in_media_link_quality = 100;
+		stream->audio_rtcp_ctx->out_link_quality = 100;
+		stream->audio_rtcp_ctx->out_media_link_quality = 100;
 	}
 	if(video) {
 		stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
@@ -3949,6 +3953,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		}
 		stream->video_rtcp_ctx[0] = g_malloc0(sizeof(janus_rtcp_context));
 		stream->video_rtcp_ctx[0]->tb = 90000;
+		stream->video_rtcp_ctx[0]->in_link_quality = 100;
+		stream->video_rtcp_ctx[0]->in_media_link_quality = 100;
+		stream->video_rtcp_ctx[0]->out_link_quality = 100;
+		stream->video_rtcp_ctx[0]->out_media_link_quality = 100;
 	}
 	janus_mutex_init(&stream->mutex);
 	if(!have_turnrest_credentials) {
