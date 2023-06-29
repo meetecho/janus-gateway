@@ -793,15 +793,20 @@ multistream-test: {
 \verbatim
 {
 	"request" : "configure",
-	"mid" : <mid of the m-line to refer to for this configure request; optional>,
-	"send" : <true|false, depending on whether the media addressed by the above mid should be relayed or not; optional>,
-	"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
-	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
-	"fallback" : <How much time (in us, default 250000) without receiving packets will make us drop to the substream below>,
-	"spatial_layer" : <spatial layer to receive (0-1), in case VP9-SVC is enabled; optional>,
-	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>,
-	"min_delay" : <minimum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
-	"max_delay" : <maximum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>
+	"streams" : [
+		{
+			"mid" : <mid of the m-line to tweak>,
+			"send" : <true|false, depending on whether the media addressed by the above mid should be relayed or not; optional>,
+			"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
+			"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
+			"fallback" : <How much time (in us, default 250000) without receiving packets will make us drop to the substream below>,
+			"spatial_layer" : <spatial layer to receive (0-1), in case VP9-SVC is enabled; optional>,
+			"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>,
+			"min_delay" : <minimum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
+			"max_delay" : <maximum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>
+		},
+		// Other streams, if any
+	]
 }
 \endverbatim
  *
@@ -6655,7 +6660,6 @@ done:
 					/* Check which properties we need to tweak */
 					const char *mid = json_string_value(json_object_get(sconf, "mid"));
 					json_t *send = json_object_get(sconf, "send");
-
 					GList *temp = session->streams;
 					while(temp) {
 						janus_streaming_session_stream *s = (janus_streaming_session_stream *)temp->data;
@@ -6674,7 +6678,6 @@ done:
 						}
 						if(send)
 							s->send = json_is_true(send);
-						/* FIXME What if we're simulcasting or doing SVC on two different video streams? */
 						if(stream && stream->simulcast) {
 							/* Check if the viewer is requesting a different substream/temporal layer */
 							json_t *substream = json_object_get(sconf, "substream");
