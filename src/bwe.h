@@ -40,7 +40,9 @@ typedef enum janus_bwe_packet_type {
 typedef struct janus_bwe_twcc_inflight {
 	/*! \brief The TWCC sequence number */
 	uint16_t seq;
-	/*! \brief Delta (in us) since the delivery of the previous packet  */
+	/*! \brief Monotonic time this packet was delivered */
+	int64_t sent_ts;
+	/*! \brief Delta (in us) since the delivery of the previous packet */
 	int64_t delta_us;
 	/*! \brief Type of packet (e.g., regular or rtx) */
 	janus_bwe_packet_type type;
@@ -51,7 +53,7 @@ typedef struct janus_bwe_twcc_inflight {
 /*! \brief Bandwidth estimation context */
 typedef struct janus_bwe_context {
 	/*! \brief Monotonic timestamp of the last sent packet */
-	int64_t sent_ts;
+	int64_t last_sent_ts;
 	/*! \brief Map of in-flight packets */
 	GHashTable *packets;
 	/*! \brief Monotonic timestamp of when we last computed the bitrates */

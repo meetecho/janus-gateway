@@ -56,8 +56,9 @@ gboolean janus_bwe_context_add_inflight(janus_bwe_context *bwe,
 		return FALSE;
 	janus_bwe_twcc_inflight *stat = g_malloc(sizeof(janus_bwe_twcc_inflight));
 	stat->seq = seq;
-	stat->delta_us = bwe->sent_ts ? (sent - bwe->sent_ts) : 0;
-	bwe->sent_ts = sent;
+	stat->sent_ts = sent;
+	stat->delta_us = bwe->last_sent_ts ? (sent - bwe->last_sent_ts) : 0;
+	bwe->last_sent_ts = sent;
 	stat->type = type;
 	stat->size = size;
 	g_hash_table_insert(bwe->packets, GUINT_TO_POINTER(seq), stat);
