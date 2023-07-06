@@ -1820,7 +1820,7 @@ static void janus_streaming_rtcp_pli_send(janus_streaming_rtp_source_stream *str
 	char rtcp_buf[12];
 	int rtcp_len = 12;
 	janus_rtcp_pli((char *)&rtcp_buf, rtcp_len);
-	janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1, 1, stream->ssrc);
+	janus_rtcp_fix_ssrc(NULL, NULL, rtcp_buf, rtcp_len, 1, 1, stream->ssrc);
 	/* Send the packet */
 	socklen_t addrlen = stream->rtcp_addr.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
 	int sent = 0;
@@ -1843,7 +1843,7 @@ static void janus_streaming_rtcp_remb_send(janus_streaming_rtp_source *source, j
 	char rtcp_buf[24];
 	int rtcp_len = 24;
 	janus_rtcp_remb((char *)(&rtcp_buf), rtcp_len, source->lowest_bitrate);
-	janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1, 1, stream->ssrc);
+	janus_rtcp_fix_ssrc(NULL, NULL, rtcp_buf, rtcp_len, 1, 1, stream->ssrc);
 	JANUS_LOG(LOG_HUGE, "Sending REMB: %"SCNu32"\n", source->lowest_bitrate);
 	/* Reset the lowest bitrate */
 	source->lowest_bitrate = 0;
@@ -6110,6 +6110,7 @@ done:
 					JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_ABS_SEND_TIME, janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_SEND_TIME),
 					JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
 						(session->playoutdelay_ext ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_PLAYOUT_DELAY) : 0),
+					JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC, janus_rtp_extension_id(JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC),
 					JANUS_SDP_OA_DONE);
 			} else {
 				/* Iterate on all media streams */

@@ -3316,6 +3316,7 @@ json_t *janus_admin_peerconnection_medium_summary(janus_ice_peerconnection_mediu
 	if(medium->type != JANUS_MEDIA_DATA) {
 		json_object_set_new(m, "do_nacks", medium->do_nacks ? json_true() : json_false());
 		json_object_set_new(m, "nack-queue-ms", json_integer(medium->nack_queue_ms));
+		json_object_set_new(m, "do_twcc", medium->do_twcc ? json_true() : json_false());
 	}
 	if(medium->type != JANUS_MEDIA_DATA) {
 		json_t *ms = json_object();

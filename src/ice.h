@@ -28,6 +28,7 @@
 #include "dtls.h"
 #include "sctp.h"
 #include "rtcp.h"
+#include "bwe.h"
 #include "text2pcap.h"
 #include "utils.h"
 #include "ip-utils.h"
@@ -523,6 +524,8 @@ struct janus_ice_peerconnection {
 	GHashTable *rtx_payload_types_rev;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gboolean noerrorlog;
+	/*! Bandwidth estimation context */
+	janus_bwe_context *bwe;
 	/*! \brief Mutex to lock/unlock this stream */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
@@ -596,6 +599,8 @@ struct janus_ice_peerconnection_medium {
 	guint32 last_rtp_ts;
 	/*! \brief Whether we should do NACKs (in or out) for this medium */
 	gboolean do_nacks;
+	/*! \brief Whether we should do Transport Wide CC for this medium */
+	gboolean do_twcc;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
 	GQueue *retransmit_buffer;
 	/*! \brief HashTable of retransmittable sequence numbers, in case we receive NACKs */

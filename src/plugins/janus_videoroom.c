@@ -2576,7 +2576,7 @@ static void janus_videoroom_rtcp_pli_send(janus_videoroom_publisher_stream *ps) 
 	int rtcp_len = 12;
 	janus_rtcp_pli((char *)&rtcp_buf, rtcp_len);
 	uint32_t ssrc = REMOTE_PUBLISHER_BASE_SSRC + (ps->mindex*REMOTE_PUBLISHER_SSRC_STEP);
-	janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1, 1, ssrc);
+	janus_rtcp_fix_ssrc(NULL, NULL, rtcp_buf, rtcp_len, 1, 1, ssrc);
 	/* Send the packet */
 	socklen_t addrlen = publisher->rtcp_addr.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
 	int sent = 0;
@@ -3178,7 +3178,7 @@ static json_t *janus_videoroom_subscriber_offer(janus_videoroom_subscriber *subs
 			JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
 				(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO && (ps && ps->playout_delay_extmap_id > 0)) ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_PLAYOUT_DELAY) : 0,
 			JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
-				(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO && subscriber->room->transport_wide_cc_ext) ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC) : 0,
+				(subscriber->room->transport_wide_cc_ext) ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC) : 0,
 			JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_ABS_SEND_TIME,
 				(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO) ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_SEND_TIME) : 0,
 			/* TODO Add other properties from original SDP */

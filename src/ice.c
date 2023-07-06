@@ -462,6 +462,7 @@ typedef struct janus_ice_queued_packet {
 	gboolean control;
 	gboolean retransmission;
 	gboolean encrypted;
+	guint16 twcc_seq;
 	gint64 added;
 } janus_ice_queued_packet;
 /* A few static, fake, messages we use as a trigger: e.g., to start a
@@ -1844,6 +1845,7 @@ static void janus_ice_peerconnection_free(const janus_refcount *pc_ref) {
 	if(pc->rtx_payload_types_rev != NULL)
 		g_hash_table_destroy(pc->rtx_payload_types_rev);
 	pc->rtx_payload_types_rev = NULL;
+	janus_bwe_context_destroy(pc->bwe);
 	g_free(pc);
 	pc = NULL;
 }
@@ -3029,7 +3031,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					int res = janus_rtcp_nacks(nackbuf, sizeof(nackbuf), nacks);
 					if(res > 0) {
 						/* Set the right local and remote SSRC in the RTCP packet */
-						janus_rtcp_fix_ssrc(NULL, nackbuf, res, 1,
+						janus_rtcp_fix_ssrc(NULL, NULL, nackbuf, res, 1,
 							medium->ssrc, medium->ssrc_peer[vindex]);
 						janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = video, .buffer = nackbuf, .length = res };
 						janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
@@ -3108,7 +3110,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				/* Let's process this RTCP (compound?) packet, and update the RTCP context for this stream in case */
 				rtcp_context *rtcp_ctx = medium->rtcp_ctx[vindex];
 				uint32_t rtt = rtcp_ctx ? rtcp_ctx->rtt : 0;
-				if(janus_rtcp_parse(rtcp_ctx, buf, buflen) < 0) {
+				if(janus_rtcp_parse(rtcp_ctx, pc->bwe, buf, buflen) < 0) {
 					/* Drop the packet if the parsing function returns with an error */
 					return;
 				}
@@ -3176,6 +3178,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							pkt->retransmission = TRUE;
 							pkt->label = NULL;
 							pkt->protocol = NULL;
+							pkt->twcc_seq = 0;
 							pkt->added = janus_get_monotonic_time();
 							/* What to send and how depends on whether we're doing RFC4588 or not */
 							if(!video || !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
@@ -3730,6 +3733,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, gboolean offer, gboolean tri
 	pc->stream_id = handle->stream_id;
 	pc->handle = handle;
 	pc->dtls_role = dtls_role;
+	pc->bwe = janus_bwe_context_create();
 	janus_mutex_init(&pc->mutex);
 	if(!have_turnrest_credentials) {
 		/* No TURN REST API server and credentials, any static ones? */
@@ -3883,7 +3887,7 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 	/* Add core and plugin extensions, if any */
 	gboolean video = (packet->type == JANUS_ICE_PACKET_VIDEO);
 	if(handle->pc->mid_ext_id > 0 || (video && handle->pc->abs_send_time_ext_id > 0) ||
-			(video && handle->pc->transport_wide_cc_ext_id > 0) ||
+			(medium->do_twcc && handle->pc->transport_wide_cc_ext_id > 0) ||
 			(!video && packet->extensions.audio_level > -1 && handle->pc->audiolevel_ext_id > 0) ||
 			(video && packet->extensions.video_rotation > -1 && handle->pc->videoorientation_ext_id > 0) ||
 			(video && packet->extensions.min_delay > -1 && packet->extensions.max_delay > -1 && handle->pc->playoutdelay_ext_id > 0) ||
@@ -3920,9 +3924,10 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 			}
 		}
 		/* Check if we need to add the transport-wide CC extension */
-		if(video && handle->pc->transport_wide_cc_ext_id > 0) {
+		if(medium->do_twcc && handle->pc->transport_wide_cc_ext_id > 0) {
 			handle->pc->transport_wide_cc_out_seq_num++;
-			uint16_t transSeqNum = htons(handle->pc->transport_wide_cc_out_seq_num);
+			packet->twcc_seq = handle->pc->transport_wide_cc_out_seq_num;
+			uint16_t transSeqNum = htons(packet->twcc_seq);
 			if(!use_2byte) {
 				*index = (handle->pc->transport_wide_cc_ext_id << 4) + 1;
 				memcpy(index+1, &transSeqNum, 2);
@@ -4096,7 +4101,7 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 }
 
 static gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstpointer item2) {
-	return ((rtcp_transport_wide_cc_stats*)item1)->transport_seq_num - ((rtcp_transport_wide_cc_stats*)item2)->transport_seq_num;
+	return ((janus_rtcp_transport_wide_cc_stats *)item1)->transport_seq_num - ((janus_rtcp_transport_wide_cc_stats *)item2)->transport_seq_num;
 }
 static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
@@ -4838,6 +4843,11 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 						handle->handle_id, janus_srtp_error_str(res), pkt->length, protected, timestamp, seq);
 					janus_ice_free_rtp_packet(p);
 				} else {
+					/* Keep track of the packet if we're using TWCC */
+					if(medium->do_twcc && handle->pc->transport_wide_cc_ext_id > 0) {
+						janus_bwe_context_add_inflight(pc->bwe, pkt->twcc_seq, janus_get_monotonic_time(),
+							(pkt->retransmission ? janus_bwe_packet_type_rtx : janus_bwe_packet_type_regular), protected);
+					}
 					/* Shoot! */
 					int sent = nice_agent_send(handle->agent, pc->stream_id, pc->component_id, protected, pkt->data);
 					if(sent < protected) {
@@ -4991,6 +5001,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 	pkt->retransmission = FALSE;
 	pkt->label = NULL;
 	pkt->protocol = NULL;
+	pkt->twcc_seq = 0;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 }
@@ -5017,7 +5028,7 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_ice_peerconne
 		 * ones created by the core already have the right SSRCs in the right place */
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id,
 			medium->ssrc, medium->ssrc_peer[0]);
-		janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1,
+		janus_rtcp_fix_ssrc(NULL, NULL, rtcp_buf, rtcp_len, 1,
 			medium->ssrc, medium->ssrc_peer[0]);
 	}
 	/* Queue this packet */
@@ -5033,6 +5044,7 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_ice_peerconne
 	pkt->retransmission = FALSE;
 	pkt->label = NULL;
 	pkt->protocol = NULL;
+	pkt->twcc_seq = 0;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 	if(rtcp_buf != packet->buffer) {
@@ -5067,7 +5079,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, janus_plugin_rtcp *packet) {
 			char plibuf[12];
 			memset(plibuf, 0, 12);
 			janus_rtcp_pli((char *)&plibuf, 12);
-			janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
+			janus_rtcp_fix_ssrc(NULL, NULL, plibuf, sizeof(plibuf), 1,
 				medium->ssrc, medium->ssrc_peer[1]);
 			janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = TRUE, .buffer = plibuf, .length = sizeof(plibuf) };
 			janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
@@ -5076,7 +5088,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, janus_plugin_rtcp *packet) {
 			char plibuf[12];
 			memset(plibuf, 0, 12);
 			janus_rtcp_pli((char *)&plibuf, 12);
-			janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
+			janus_rtcp_fix_ssrc(NULL, NULL, plibuf, sizeof(plibuf), 1,
 				medium->ssrc, medium->ssrc_peer[2]);
 			janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = TRUE, .buffer = plibuf, .length = sizeof(plibuf) };
 			janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
@@ -5132,6 +5144,7 @@ void janus_ice_relay_data(janus_ice_handle *handle, janus_plugin_data *packet) {
 	pkt->retransmission = FALSE;
 	pkt->label = packet->label ? g_strdup(packet->label) : NULL;
 	pkt->protocol = packet->protocol ? g_strdup(packet->protocol) : NULL;
+	pkt->twcc_seq = 0;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 }
@@ -5159,6 +5172,7 @@ void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length) {
 	pkt->retransmission = FALSE;
 	pkt->label = NULL;
 	pkt->protocol = NULL;
+	pkt->twcc_seq = 0;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 #endif
