@@ -2648,9 +2648,10 @@ function Janus(gatewayCallbacks) {
 				}
 				if(nt && track.dontStop === true)
 					nt.dontStop = true;
-			} else if(track.recv && !transceiver) {
+			} else if(track.recv) {
 				// Maybe a new recvonly track
-				transceiver = config.pc.addTransceiver(kind);
+				if(!transceiver)
+					transceiver = config.pc.addTransceiver(kind);
 				if(transceiver) {
 					// Check if we need to override some settings
 					if(track.codec) {
