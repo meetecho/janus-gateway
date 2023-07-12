@@ -167,7 +167,7 @@ declare namespace JanusJS {
 	}
 
 	interface OfferParams {
-		tracks?: TrackOptions[];
+		tracks?: TrackOption[];
 		trickle?: boolean;
 		iceRestart?: boolean;
 		success?: (jsep: JSEP) => void;
@@ -253,7 +253,10 @@ declare namespace JanusJS {
 
 	type PluginCreateAnswerParam = {
 		jsep: JSEP;
-		media: { audioSend: any, videoSend: any };
+		tracks?: TrackOption[];
+
+		/** @deprecated use tracks instead */
+		media?: { audioSend: any, videoSend: any };
 		success?: (data: JSEP) => void;
 		error?: (error: string) => void;
 	}
