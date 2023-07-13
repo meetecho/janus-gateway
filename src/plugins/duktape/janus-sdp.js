@@ -399,6 +399,8 @@ JANUSSDP.generateAnswer = function(offer, options) {
 						answer.push({ type: "a", name: a.name, value: value });
 					} else if(options.enableAudioLevel !== false && a.value.indexOf("urn:ietf:params:rtp-hdrext:ssrc-audio-level") !== -1) {
 						answer.push({ type: "a", name: a.name, value: value });
+					} else if(options.enableAudioLevel !== false && a.value.indexOf("dependency-descriptor-rtp-header-extension") !== -1) {
+						answer.push({ type: "a", name: a.name, value: value });
 					}
 				}
 			} else {

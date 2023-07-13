@@ -18,6 +18,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include "pp-l16.h"
 #include "../debug.h"
@@ -175,12 +176,17 @@ void janus_pp_l16_close(void) {
 	if(wav_file != NULL) {
 		/* Update the header */
 		fseek(wav_file, 0, SEEK_END);
-		uint32_t size = ftell(wav_file) - 8;
-		fseek(wav_file, 4, SEEK_SET);
-		fwrite(&size, sizeof(uint32_t), 1, wav_file);
-		size += 8;
-		fseek(wav_file, 40, SEEK_SET);
-		fwrite(&size, sizeof(uint32_t), 1, wav_file);
+		long int fs = ftell(wav_file);
+		if(fs < 8) {
+			JANUS_LOG(LOG_ERR, "Error getting file position, wav file will be broken... %s\n", g_strerror(errno));
+		} else {
+			uint32_t size = fs - 8;
+			fseek(wav_file, 4, SEEK_SET);
+			fwrite(&size, sizeof(uint32_t), 1, wav_file);
+			size += 8;
+			fseek(wav_file, 40, SEEK_SET);
+			fwrite(&size, sizeof(uint32_t), 1, wav_file);
+		}
 		fflush(wav_file);
 		fclose(wav_file);
 	}

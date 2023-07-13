@@ -15,9 +15,6 @@ var localTracks = {}, localVideos = 0,
 var bitrateTimer = null;
 var spinner = null;
 
-var audioenabled = false;
-var videoenabled = false;
-
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
@@ -31,9 +28,15 @@ var canvasStream = null;
 var width = doSimulcast ? 1280 : 640,
 	height = doSimulcast ? 720 : 360;
 
-// We use this image as our virtual background
+// We can use a few different images as our virtual background
+var bg = 'synthwave';
+var images = {
+	'synthwave': './background/retro.webp',
+	'office': './background/office.jpeg',
+	'brickwall': './background/brick-wall.jpeg'
+};
 const image = new Image();
-image.src = './background/retro.webp';
+image.src = images[bg];
 
 $(document).ready(function() {
 	canvas = document.getElementById('canvas');
@@ -132,9 +135,7 @@ $(document).ready(function() {
 											$('video').remove();
 											$('#waitingvideo').remove();
 											$('#peervideo').remove();
-											$('#toggleaudio').attr('disabled', true);
-											$('#togglevideo').attr('disabled', true);
-											$('#bitrate').attr('disabled', true);
+											$('#background').attr('disabled', true);
 											$('#curbitrate').hide();
 											$('#curres').hide();
 											return;
@@ -312,38 +313,13 @@ $(document).ready(function() {
 									}
 									if(!addButtons)
 										return;
-									// Enable audio/video buttons and bitrate limiter
-									audioenabled = true;
-									videoenabled = true;
-									$('#toggleaudio').click(
-										function() {
-											audioenabled = !audioenabled;
-											if(audioenabled)
-												$('#toggleaudio').html("Disable audio").removeClass("btn-success").addClass("btn-danger");
-											else
-												$('#toggleaudio').html("Enable audio").removeClass("btn-danger").addClass("btn-success");
-											echotest.send({ message: { audio: audioenabled }});
-										});
-									$('#togglevideo').click(
-										function() {
-											videoenabled = !videoenabled;
-											if(videoenabled)
-												$('#togglevideo').html("Disable video").removeClass("btn-success").addClass("btn-danger");
-											else
-												$('#togglevideo').html("Enable video").removeClass("btn-danger").addClass("btn-success");
-											echotest.send({ message: { video: videoenabled }});
-										});
-									$('#toggleaudio').parent().removeClass('hide').show();
-									$('#bitrate a').click(function() {
-										let id = $(this).attr("id");
-										let bitrate = parseInt(id)*1000;
-										if(bitrate === 0) {
-											Janus.log("Not limiting bandwidth via REMB");
-										} else {
-											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
-										}
-										$('#bitrateset').html($(this).html() + '<span class="caret"></span>').parent().removeClass('open');
-										echotest.send({ message: { bitrate: bitrate }});
+									// Enable background image selector
+									$('#background').parent().parent().removeClass('hide').show();
+									$('#background a').click(function() {
+										bg = $(this).attr("id");
+										if(bg !== 'none')
+											image.src = images[bg];
+										$('#backgroundset').html($(this).html() + '<span class="caret"></span>').parent().removeClass('open');
 										return false;
 									});
 								},
@@ -359,9 +335,7 @@ $(document).ready(function() {
 									$('#waitingvideo').remove();
 									$("#videoleft").empty().parent().unblock();
 									$('#videoright').empty();
-									$('#toggleaudio').attr('disabled', true);
-									$('#togglevideo').attr('disabled', true);
-									$('#bitrate').attr('disabled', true);
+									$('#background').attr('disabled', true);
 									$('#curbitrate').hide();
 									$('#curres').hide();
 									remoteTracks = {};
@@ -397,9 +371,19 @@ function handleSegmentationResults(results) {
 	context.save();
 	context.clearRect(0, 0, canvas.width, canvas.height);
 	context.drawImage(results.segmentationMask, 0, 0, canvas.width, canvas.height);
-	// Draw the image as the new background, and the segmented video on top of that
-	context.globalCompositeOperation = 'source-out';
-	context.drawImage(image, 0, 0, image.width, image.height, 0, 0, canvas.width, canvas.height);
+	if(bg === 'none' || bg === 'blur') {
+		// No background selected, just draw the segmented background (and maybe blur)
+		if(bg === 'blur')
+			context.filter = 'blur(10px)';
+		context.globalCompositeOperation = 'source-out';
+		context.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+		if(bg === 'blur')
+			context.filter = 'blur(0px)';
+	} else {
+		// Draw the image as the new background, and the segmented video on top of that
+		context.globalCompositeOperation = 'source-out';
+		context.drawImage(image, 0, 0, image.width, image.height, 0, 0, canvas.width, canvas.height);
+	}
 	context.globalCompositeOperation = 'destination-atop';
 	context.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 	// Done
@@ -475,7 +459,7 @@ function createCanvas() {
 				if(canvasStream.getAudioTracks().length > 0)
 					canvasTracks.push({ type: 'audio', capture: canvasStream.getAudioTracks()[0], recv: true });
 				if(canvasStream.getVideoTracks().length > 0)
-					canvasTracks.push({ type: 'video', capture: canvasStream.getVideoTracks()[0], recv: true });
+					canvasTracks.push({ type: 'video', capture: canvasStream.getVideoTracks()[0], recv: true, simulcast: doSimulcast });
 				echotest.createOffer(
 					{
 						tracks: canvasTracks,

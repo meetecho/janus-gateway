@@ -350,28 +350,40 @@ static void janus_rtcp_rr_update_stats(rtcp_context *ctx, janus_report_block rb)
 	if(delta_t < 2*G_USEC_PER_SEC) {
 		return;
 	}
-	ctx->rr_last_ts = ts;
-	uint32_t total_lost = ntohl(rb.flcnpl) & 0x00FFFFFF;
-	if (ctx->rr_last_ehsnr != 0) {
+	int32_t total_lost = ntohl(rb.flcnpl) & 0x00FFFFFF;
+	/* Sign extend from 24 to 32 bits */
+	total_lost = (int32_t)(((uint32_t)total_lost << 8)) >> 8;
+	if(ctx->rr_last_ehsnr != 0) {
 		int32_t sent = g_atomic_int_get(&ctx->sent_packets_since_last_rr);
 		uint32_t expect = ntohl(rb.ehsnr) - ctx->rr_last_ehsnr;
 		int32_t nacks = g_atomic_int_get(&ctx->nack_count) - ctx->rr_last_nack_count;
-		/* In case the number of NACKs is higher than the number of sent packets,
-		 * we normalize it and set it to the same value instead, otherwise the
-		 * value of the out link quality will overflow: for details, see
-		 * https://github.com/meetecho/janus-gateway/issues/2579 */
-		if(sent && nacks > sent)
-			nacks = sent;
-		double link_q = !sent ? 0 : 100.0 - (100.0 * nacks / (double)sent);
+		double link_q;
+		/* Handle special cases separetely */
+		if(!nacks)
+			link_q = 100.0;
+		else if(!sent || nacks >= sent)
+			/* In case the number of NACKs is higher than the number of sent packets
+			 * set link quality to 0, otherwise the value will overflow, see:
+			 * https://github.com/meetecho/janus-gateway/issues/2579 */
+			link_q = 0.0;
+		else
+			link_q = 100.0 * (1.0 - ((double)nacks / (double)sent));
 		ctx->out_link_quality = janus_rtcp_link_quality_filter(ctx->out_link_quality, link_q);
 		int32_t lost = total_lost - ctx->rr_last_lost;
-		if(lost < 0) {
-			lost = 0;
-		}
-		double media_link_q = !expect ? 0 : 100.0 - (100.0 * lost / (double)expect);
+		double media_link_q;
+		/* Handle special cases separetely */
+		if(lost <= 0)
+			media_link_q = 100.0;
+		else if(!expect || (uint32_t)lost >= expect)
+			/* In case the number of reported losses is higher than the number of expected packets
+			 * set media link quality to 0, otherwise the value will overflow */
+			media_link_q = 0.0;
+		else
+			media_link_q = 100.0 * (1.0 - ((double)lost / (double)expect));
 		ctx->out_media_link_quality = janus_rtcp_link_quality_filter(ctx->out_media_link_quality, media_link_q);
 		JANUS_LOG(LOG_HUGE, "Out link quality=%"SCNu32", media link quality=%"SCNu32"\n", janus_rtcp_context_get_out_link_quality(ctx), janus_rtcp_context_get_out_media_link_quality(ctx));
 	}
+	ctx->rr_last_ts = ts;
 	ctx->rr_last_ehsnr = ntohl(rb.ehsnr);
 	ctx->rr_last_lost = total_lost;
 	ctx->rr_last_nack_count = g_atomic_int_get(&ctx->nack_count);
@@ -386,8 +398,10 @@ static void janus_rtcp_incoming_rr(janus_rtcp_context *ctx, janus_rtcp_rr *rr) {
 	if(rr->header.rc > 0) {
 		double jitter = (double)ntohl(rr->rb[0].jitter);
 		uint32_t fraction = ntohl(rr->rb[0].flcnpl) >> 24;
-		uint32_t total = ntohl(rr->rb[0].flcnpl) & 0x00FFFFFF;
-		JANUS_LOG(LOG_HUGE, "jitter=%f, fraction=%"SCNu32", loss=%"SCNu32"\n", jitter, fraction, total);
+		int32_t total = ntohl(rr->rb[0].flcnpl) & 0x00FFFFFF;
+		/* Sign extend from 24 to 32 bits */
+		total = (int32_t)(((uint32_t)total << 8)) >> 8;
+		JANUS_LOG(LOG_HUGE, "jitter=%f, fraction=%"SCNu32", loss=%d\n", jitter, fraction, total);
 		ctx->lost_remote = total;
 		ctx->jitter_remote = jitter;
 		janus_rtcp_rr_update_stats(ctx, rr->rb[0]);
@@ -928,22 +942,24 @@ uint32_t janus_rtcp_context_get_out_media_link_quality(janus_rtcp_context *ctx) 
 	return ctx ? (uint32_t)(ctx->out_media_link_quality + 0.5) : 0;
 }
 
-uint32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remote) {
+int32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remote) {
 	if(ctx == NULL)
 		return 0;
 	return remote ? ctx->lost_remote : ctx->lost;
 }
 
-static uint32_t janus_rtcp_context_get_lost(janus_rtcp_context *ctx) {
+static int32_t janus_rtcp_context_get_lost(janus_rtcp_context *ctx) {
 	if(ctx == NULL)
 		return 0;
-	uint32_t lost;
+	int32_t lost;
 	if(ctx->lost > 0x7FFFFF) {
 		lost = 0x7FFFFF;
+	} else if(ctx->lost < -0x800000) {
+		lost = -0x800000;
 	} else {
 		lost = ctx->lost;
 	}
-	return lost;
+	return lost & 0x00FFFFFF;
 }
 
 static uint32_t janus_rtcp_context_get_lost_fraction(janus_rtcp_context *ctx) {
@@ -1003,7 +1019,7 @@ int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb) {
 		lost_interval = expected_interval - received_interval;
 	}
 	ctx->lost += lost_interval;
-	uint32_t reported_lost = janus_rtcp_context_get_lost(ctx);
+	int32_t reported_lost = janus_rtcp_context_get_lost(ctx);
 	uint32_t reported_fraction = janus_rtcp_context_get_lost_fraction(ctx);
 	janus_rtcp_estimate_in_link_quality(ctx);
 	ctx->expected_prior = ctx->expected;
@@ -1217,13 +1233,13 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 					for(i=0; i< nacks; i++) {
 						nack = (janus_rtcp_nack *)rtcpfb->fci + i;
 						pid = ntohs(nack->pid);
-						list = g_slist_append(list, GUINT_TO_POINTER(pid));
+						list = g_slist_prepend(list, GUINT_TO_POINTER(pid));
 						blp = ntohs(nack->blp);
 						memset(bitmask, 0, 20);
 						for(j=0; j<16; j++) {
 							bitmask[j] = (blp & ( 1 << j )) >> j ? '1' : '0';
 							if((blp & ( 1 << j )) >> j)
-								list = g_slist_append(list, GUINT_TO_POINTER(pid+j+1));
+								list = g_slist_prepend(list, GUINT_TO_POINTER(pid+j+1));
 						}
 						bitmask[16] = '\n';
 						JANUS_LOG(LOG_DBG, "[%d] %"SCNu16" / %s\n", i, pid, bitmask);
@@ -1245,6 +1261,7 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 		g_slist_free(list);
 		list = NULL;
 	}
+	list = g_slist_reverse(list);
 	return list;
 }
 

@@ -624,11 +624,12 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 			if(simulcast) {
 				/* Process this simulcast packet: don't relay if it's not the SSRC/layer we wanted to handle */
 				relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
-					buf, len, session->ssrc, session->rid, session->vcodec, &session->context, &session->rid_mutex);
+					buf, len, packet->extensions.dd_content, packet->extensions.dd_len,
+					session->ssrc, session->rid, session->vcodec, &session->context, &session->rid_mutex);
 			} else {
 				/* Process this SVC packet: don't relay if it's not the layer we wanted to handle */
 				relay = janus_rtp_svc_context_process_rtp(&session->svc_context,
-					buf, len, session->vcodec, NULL, &session->context);
+					buf, len, packet->extensions.dd_content, packet->extensions.dd_len, session->vcodec, NULL, &session->context);
 			}
 			if(session->sim_context.need_pli || session->svc_context.need_pli) {
 				/* Send a PLI */
@@ -1088,7 +1089,7 @@ static void *janus_echotest_handler(void *data) {
 			session->sim_context.templayer_target = json_integer_value(temporal);
 			JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
 				session->sim_context.templayer_target, session->sim_context.templayer);
-			if(session->vcodec == JANUS_VIDEOCODEC_VP8 && session->sim_context.templayer_target == session->sim_context.templayer) {
+			if(session->sim_context.templayer_target == session->sim_context.templayer) {
 				/* No need to do anything, we're already getting the right temporal, so notify the user */
 				json_t *event = json_object();
 				json_object_set_new(event, "echotest", json_string("event"));
@@ -1280,10 +1281,6 @@ static void *janus_echotest_handler(void *data) {
 				session->vcodec = janus_videocodec_from_name(vcodec);
 			session->has_audio = session->acodec != JANUS_AUDIOCODEC_NONE;
 			session->has_video = session->vcodec != JANUS_VIDEOCODEC_NONE;
-			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
-				/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-				janus_rtp_simulcasting_cleanup(NULL, session->ssrc, session->rid, &session->rid_mutex);
-			}
 			g_free(session->vfmtp);
 			session->vfmtp = NULL;
 			if(session->has_video) {
