@@ -89,7 +89,6 @@ room-<unique room ID>: {
 	h264_profile = H.264-specific profile to prefer (e.g., "42e01f" for "profile-level-id=42e01f")
 	opus_fec = true|false (whether inband FEC must be negotiated; only works for Opus, default=true)
 	opus_dtx = true|false (whether DTX must be negotiated; only works for Opus, default=false)
-	video_svc = true|false (whether SVC support must be enabled; only works for VP9, default=false)
 	audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must be
 		negotiated/used or not for new publishers, default=true)
 	audiolevel_event = true|false (whether to emit event to other users or not, default=false)
@@ -418,7 +417,6 @@ room-<unique room ID>: {
 			"videocodec" : "<comma separated list of allowed video codecs>",
 			"opus_fec": <true|false, whether inband FEC must be negotiated (note: only available for Opus) (optional)>,
 			"opus_dtx": <true|false, whether DTX must be negotiated (note: only available for Opus) (optional)>,
-			"video_svc": <true|false, whether SVC must be done for video (note: only available for VP9 right now) (optional)>,
 			"record" : <true|false, whether the room is being recorded>,
 			"rec_dir" : "<if recording, the path where the .mjr files are being saved>",
 			"lock_record" : <true|false, whether the room recording state can only be changed providing the secret>,
@@ -532,8 +530,8 @@ room-<unique room ID>: {
 					"codec" : "<codec used for published stream #1>",
 					"description" : "<text description of published stream #1, if any>",
 					"moderated" : <true if this stream audio has been moderated for this participant>,
-					"simulcast" : "<true if published stream #1 uses simulcast (VP8 and H.264 only)>",
-					"svc" : "<true if published stream #1 uses SVC (VP9 only)>",
+					"simulcast" : "<true if published stream #1 uses simulcast>",
+					"svc" : "<true if published stream #1 uses SVC (VP9 and AV1 only)>",
 					"talking" : <true|false, whether the publisher stream has audio activity or not (only if audio levels are used)>,
 				},
 				// Other streams, if any
@@ -677,8 +675,8 @@ room-<unique room ID>: {
 					"codec" : "<codec used for published stream #1>",
 					"description" : "<text description of published stream #1, if any>",
 					"moderated" : <true if this stream audio has been moderated for this participant>,
-					"simulcast" : "<true if published stream #1 uses simulcast (VP8 and H.264 only)>",
-					"svc" : "<true if published stream #1 uses SVC (VP9 only)>",
+					"simulcast" : "<true if published stream #1 uses simulcast>",
+					"svc" : "<true if published stream #1 uses SVC (VP9 and AV1 only)>",
 					"talking" : <true|false, whether the publisher stream has audio activity or not (only if audio levels are used)>,
 				},
 				// Other streams, if any
@@ -1367,8 +1365,8 @@ room-<unique room ID>: {
 			"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
 			"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
 			"fallback" : <How much time (in us, default 250000) without receiving packets will make us drop to the substream below; optional>,
-			"spatial_layer" : <spatial layer to receive (0-2), in case VP9-SVC is enabled; optional>,
-			"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>,
+			"spatial_layer" : <spatial layer to receive (0-2), in case SVC is enabled; optional>,
+			"temporal_layer" : <temporal layers to receive (0-2), in case SVC is enabled; optional>,
 			"audio_level_average" : "<if provided, overrides the room audio_level_average for this user; optional>",
 			"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>",
 			"min_delay" : <minimum delay to enforce via the playout-delay RTP extension, in blocks of 10ms; optional>,
@@ -1390,7 +1388,7 @@ room-<unique room ID>: {
  * that for them to work you'll have to specify the \c mid as well, as the same
  * subscription may be receiving simulcast stream from multiple publishers.
  * The \c spatial_layer and \c temporal_layer have exactly the same meaning,
- * but within the context of VP9-SVC publishers, and will have no effect
+ * but within the context of SVC publishers, and will have no effect
  * on subscriptions associated to regular publishers.
  *
  * As anticipated, \c configure is also the request you use when you want
@@ -1434,6 +1432,7 @@ room-<unique room ID>: {
 			"feed" : <unique ID of the publisher the new source is from>,
 			"mid" : "<unique mid of the source we want to switch to>",
 			"sub_mid" : "<unique mid of the stream we want to pipe the new source to>"
+			.. other properties, e.g., substream, temporal, etc.
 		},
 		{
 			// Other updates, if any
@@ -1513,6 +1512,7 @@ room-<unique room ID>: {
 #include "../rtp.h"
 #include "../rtpsrtp.h"
 #include "../rtcp.h"
+#include "../rtpfwd.h"
 #include "../record.h"
 #include "../sdp-utils.h"
 #include "../utils.h"
@@ -1613,7 +1613,6 @@ static struct janus_json_parameter create_parameters[] = {
 	{"h264_profile", JSON_STRING, 0},
 	{"opus_fec", JANUS_JSON_BOOL, 0},
 	{"opus_dtx", JANUS_JSON_BOOL, 0},
-	{"video_svc", JANUS_JSON_BOOL, 0},
 	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
 	{"audiolevel_event", JANUS_JSON_BOOL, 0},
 	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1803,11 +1802,11 @@ static struct janus_json_parameter configure_stream_parameters[] = {
 	/* For talk detection */
 	{"audio_level_averge", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	/* For VP8 (or H.264) simulcast */
+	/* For simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"fallback", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	/* For VP9 SVC */
+	/* For SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* For the playout-delay RTP extension, if negotiated */
@@ -1836,11 +1835,11 @@ static struct janus_json_parameter subscriber_parameters[] = {
 	{"offer_audio", JANUS_JSON_BOOL, 0},
 	{"offer_video", JANUS_JSON_BOOL, 0},
 	{"offer_data", JANUS_JSON_BOOL, 0},
-	/* For VP8 (or H.264) simulcast */
+	/* For simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"fallback", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	/* For VP9 SVC */
+	/* For SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 };
@@ -1848,16 +1847,12 @@ static struct janus_json_parameter subscriber_stream_parameters[] = {
 	{"mid", JANUS_JSON_STRING, 0},
 	{"crossrefid", JANUS_JSON_STRING, 0},
 	{"send", JANUS_JSON_BOOL, 0},
-	/* For VP8 (or H.264) simulcast */
+	/* For simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"substream", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"temporal", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	/* For VP9 SVC */
+	/* For SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"spatial_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"temporal_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* For the playout-delay RTP extension, if negotiated */
 	{"min_delay", JSON_INTEGER, 0},
 	{"max_delay", JSON_INTEGER, 0}
@@ -1880,7 +1875,13 @@ static struct janus_json_parameter switch_parameters[] = {
 static struct janus_json_parameter switch_update_parameters[] = {
 	//~ {"feed", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"sub_mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"sub_mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	/* For simulcast */
+	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	/* For SVC */
+	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter publish_remotely_parameters[] = {
 	{"secret", JSON_STRING, 0},
@@ -2020,7 +2021,6 @@ typedef struct janus_videoroom {
 	char *h264_profile;			/* H.264 codec profile to prefer, if more are negotiated */
 	gboolean do_opusfec;		/* Whether inband FEC must be negotiated (note: only available for Opus) */
 	gboolean do_opusdtx;		/* Whether DTX must be negotiated (note: only available for Opus) */
-	gboolean do_svc;			/* Whether SVC must be done for video (note: only available for VP9 right now) */
 	gboolean audiolevel_ext;	/* Whether the ssrc-audio-level extension must be negotiated or not for new publishers */
 	gboolean audiolevel_event;	/* Whether to emit event to other users about audiolevel */
 	int audio_active_packets;	/* Amount of packets with audio level for checkup */
@@ -2061,91 +2061,6 @@ typedef struct janus_videoroom_session {
 static GHashTable *sessions;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
-/* A host whose ports gets streamed RTP packets of the corresponding type */
-typedef struct janus_videoroom_srtp_context janus_videoroom_srtp_context;
-typedef struct janus_videoroom_rtp_forwarder {
-	void *source;
-	uint32_t stream_id;
-	gboolean is_video;
-	gboolean is_data;
-	uint32_t ssrc;
-	int payload_type;
-	int substream;
-	struct sockaddr_in serv_addr;
-	struct sockaddr_in6 serv_addr6;
-	/* Only needed for RTCP */
-	int rtcp_fd;
-	uint16_t local_rtcp_port, remote_rtcp_port;
-	GSource *rtcp_recv;
-	/* Only needed when forwarding simulcasted streams to a single endpoint */
-	gboolean simulcast;
-	janus_rtp_switching_context context;
-	janus_rtp_simulcasting_context sim_context;
-	/* Only needed for SRTP forwarders */
-	gboolean is_srtp;
-	janus_videoroom_srtp_context *srtp_ctx;
-	/* In case this is part of the remotization of publisher */
-	char *remote_id;
-	/* Reference */
-	volatile gint destroyed;
-	janus_refcount ref;
-} janus_videoroom_rtp_forwarder;
-static void janus_videoroom_rtp_forwarder_destroy(janus_videoroom_rtp_forwarder *forward);
-static void janus_videoroom_rtp_forwarder_free(const janus_refcount *f_ref);
-/* SRTP encryption may be needed, and potentially shared */
-struct janus_videoroom_srtp_context {
-	GHashTable *contexts;
-	char *id;
-	srtp_t ctx;
-	srtp_policy_t policy;
-	char sbuf[1500];
-	int slen;
-	/* Keep track of how many forwarders are using this context */
-	uint8_t count;
-};
-static void janus_videoroom_srtp_context_free(gpointer data);
-/* RTCP support in RTP forwarders */
-typedef struct janus_videoroom_rtcp_receiver {
-	GSource parent;
-	janus_videoroom_rtp_forwarder *forward;
-	GDestroyNotify destroy;
-} janus_videoroom_rtcp_receiver;
-static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_videoroom_rtp_forwarder *forward);
-static gboolean janus_videoroom_rtp_forwarder_rtcp_prepare(GSource *source, gint *timeout) {
-	*timeout = -1;
-	return FALSE;
-}
-static gboolean janus_videoroom_rtp_forwarder_rtcp_dispatch(GSource *source, GSourceFunc callback, gpointer user_data) {
-	janus_videoroom_rtcp_receiver *r = (janus_videoroom_rtcp_receiver *)source;
-	/* Receive the packet */
-	if(r)
-		janus_videoroom_rtp_forwarder_rtcp_receive(r->forward);
-	return G_SOURCE_CONTINUE;
-}
-static void janus_videoroom_publisher_stream_dereference_void(void *ps);
-static void janus_videoroom_rtp_forwarder_rtcp_finalize(GSource *source) {
-	janus_videoroom_rtcp_receiver *r = (janus_videoroom_rtcp_receiver *)source;
-	/* Remove the reference to the forwarder */
-	if(r && r->forward) {
-		if(r->forward->source) {
-			janus_videoroom_publisher_stream_dereference_void(r->forward->source);
-			r->forward->source = NULL;
-		}
-		janus_refcount_decrease(&r->forward->ref);
-	}
-}
-static GSourceFuncs janus_videoroom_rtp_forwarder_rtcp_funcs = {
-	janus_videoroom_rtp_forwarder_rtcp_prepare,
-	NULL,
-	janus_videoroom_rtp_forwarder_rtcp_dispatch,
-	janus_videoroom_rtp_forwarder_rtcp_finalize,
-	NULL, NULL
-};
-static GMainContext *rtcpfwd_ctx = NULL;
-static GMainLoop *rtcpfwd_loop = NULL;
-static GThread *rtcpfwd_thread = NULL;
-static void *janus_videoroom_rtp_forwarder_rtcp_thread(void *data);
-
 typedef struct janus_videoroom_publisher {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
@@ -2176,7 +2091,6 @@ typedef struct janus_videoroom_publisher {
 	GSList *subscriptions;	/* Subscriptions this publisher has created (who this publisher is watching) */
 	janus_mutex subscribers_mutex;
 	janus_mutex own_subscriptions_mutex;
-	GHashTable *srtp_contexts;	/* SRTP contexts that we can share among RTP forwarders */
 	/* In case this local publisher is being forwarder remotely */
 	GHashTable *remote_recipients;
 	/* In case this is a remote publisher */
@@ -2215,8 +2129,8 @@ typedef struct janus_videoroom_publisher_stream {
 	gboolean opusfec;						/* Whether this stream is sending inband Opus FEC */
 	gboolean opusdtx;						/* Whether this publisher is using Opus DTX (Discontinuous Transmission) */
 	gboolean opusstereo;					/* Whether this publisher is doing stereo Opus */
-	gboolean simulcast, svc;				/* Whether this stream uses simulcast or VP9 SVC */
-	uint32_t vssrc[3];						/* Only needed in case VP8 (or H.264) simulcasting is involved */
+	gboolean simulcast, svc;				/* Whether this stream uses simulcast or SVC */
+	uint32_t vssrc[3];						/* Only needed in case simulcasting is involved */
 	char *rid[3];							/* Only needed if simulcasting is rid-based */
 	int rid_extmap_id;						/* rid extmap ID */
 	janus_mutex rid_mutex;					/* Mutex to protect access to the rid array and the extmap ID */
@@ -2250,12 +2164,13 @@ typedef struct janus_videoroom_publisher_stream {
 	janus_refcount ref;
 } janus_videoroom_publisher_stream;
 /* Helper to add a new RTP forwarder for a specific stream sent by publisher */
-static janus_videoroom_rtp_forwarder *janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publisher *p,
+static janus_rtp_forwarder *janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publisher *p,
 	janus_videoroom_publisher_stream *ps,
 	const gchar *host, int port, int rtcp_port, int pt, uint32_t ssrc,
 	gboolean simulcast, int srtp_suite, const char *srtp_crypto,
 	int substream, gboolean is_video, gboolean is_data);
-static json_t *janus_videoroom_rtp_forwarder_summary(janus_videoroom_rtp_forwarder *f);
+static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_rtp_forwarder *rf, char *buffer, int len);
+static json_t *janus_videoroom_rtp_forwarder_summary(janus_rtp_forwarder *f);
 static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashTable *streams);
 
 /* We support remote publishers as well, for which we use plain RTP,
@@ -2316,11 +2231,8 @@ typedef struct janus_videoroom_subscriber_stream {
 	janus_rtp_switching_context context;
 	janus_rtp_simulcasting_context sim_context;
 	janus_vp8_simulcast_context vp8_context;
-	/* The following are only relevant if we're doing VP9 SVC, and are not to be confused with plain
-	 * simulcast, which has similar info (substream/templayer) but in a completely different context */
-	int spatial_layer, target_spatial_layer;
-	gint64 last_spatial_layer[3];
-	int temporal_layer, target_temporal_layer;
+	/* SVC context */
+	janus_rtp_svc_context svc_context;
 	/* Playout delays to enforce when relaying this stream, if the extension has been negotiated */
 	int16_t min_delay, max_delay;
 	volatile gint ready, destroyed;
@@ -2340,7 +2252,7 @@ typedef struct janus_videoroom_rtp_relay_packet {
 	janus_plugin_rtp_extensions extensions;
 	/* Whether simulcast is involved */
 	gboolean simulcast;
-	/* The following are only relevant if we're doing VP9 SVC*/
+	/* The following are only relevant if we're doing SVC*/
 	gboolean svc;
 	janus_vp9_svc_info svc_info;
 	/* The following is only relevant for datachannels */
@@ -2450,7 +2362,12 @@ static void janus_videoroom_publisher_stream_free(const janus_refcount *ps_ref) 
 }
 
 static void janus_videoroom_publisher_dereference(janus_videoroom_publisher *p) {
-	/* This is used by g_pointer_clear and g_hash_table_new_full so that NULL is only possible if that was inserted into the hash table. */
+	/* This is used by g_hash_table_new_full so that NULL is only possible
+	 * if that was inserted into the hash table. Notice that this also
+	 * dereferences the session the participant is associated with, since
+	 * we add an extra ref to the session to when inserting in the table */
+	if(p->session)
+		janus_refcount_decrease(&p->session->ref);
 	janus_refcount_decrease(&p->ref);
 }
 
@@ -2477,7 +2394,7 @@ static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 				gpointer key_f, value_f;
 				g_hash_table_iter_init(&iter_f, ps->rtp_forwarders);
 				while(g_hash_table_iter_next(&iter_f, &key_f, &value_f)) {
-					janus_videoroom_rtp_forwarder *rpv = value_f;
+					janus_rtp_forwarder *rpv = value_f;
 					if(rpv->rtcp_recv) {
 						GSource *source = rpv->rtcp_recv;
 						rpv->rtcp_recv = NULL;
@@ -2509,7 +2426,6 @@ static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 		close(p->udp_sock);
 	g_hash_table_destroy(p->remote_recipients);
 	g_hash_table_destroy(p->rtp_forwarders);
-	g_hash_table_destroy(p->srtp_contexts);
 	g_slist_free(p->subscriptions);
 
 	if(p->remote_fd > 0)
@@ -2713,228 +2629,44 @@ static void janus_videoroom_reqpli(janus_videoroom_publisher_stream *ps, const c
 
 
 /* RTP forwarder helpers */
-static janus_videoroom_rtp_forwarder *janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publisher *p,
+static janus_rtp_forwarder *janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publisher *p,
 		janus_videoroom_publisher_stream *ps,
 		const gchar *host, int port, int rtcp_port, int pt, uint32_t ssrc,
 		gboolean simulcast, int srtp_suite, const char *srtp_crypto,
 		int substream, gboolean is_video, gboolean is_data) {
-	if(!p || !ps || !host) {
+	if(!p || !ps || !host)
 		return NULL;
-	}
-	if(ipv6_disabled && strstr(host, ":") != NULL) {
-		JANUS_LOG(LOG_ERR, "Attempt to create an IPv6 forwarder, but IPv6 networking is not available\n");
-		return NULL;
-	}
 	janus_refcount_increase(&p->ref);
 	janus_refcount_increase(&ps->ref);
+	/* Create a new RTP forwarder */
+	janus_rtp_forwarder *rf = janus_rtp_forwarder_create(JANUS_VIDEOROOM_NAME, 0,
+		p->udp_sock, host, port, ssrc, pt, srtp_suite, srtp_crypto, simulcast, substream, is_video, is_data);
+	if(rf == NULL)
+		return NULL;
+	rf->source = ps;
+	if(simulcast && ps->rid_extmap_id > 0)
+		rf->sim_context.rid_ext_id = ps->rid_extmap_id;
+	/* Add the forwarder to the ones we have for the publisher stream */
 	janus_mutex_lock(&ps->rtp_forwarders_mutex);
-	/* Do we need to bind to a port for RTCP? */
-	int fd = -1;
-	uint16_t local_rtcp_port = 0;
-	if(!is_data && rtcp_port > 0) {
-		fd = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-		if(fd < 0) {
-			janus_mutex_unlock(&ps->rtp_forwarders_mutex);
-			janus_refcount_decrease(&ps->ref);
-			janus_refcount_decrease(&p->ref);
-			JANUS_LOG(LOG_ERR, "Error creating RTCP socket for new RTP forwarder... %d (%s)\n",
-				errno, g_strerror(errno));
-			return NULL;
-		}
-		struct sockaddr *address = NULL;
-		struct sockaddr_in addr4 = { 0 };
-		struct sockaddr_in6 addr6 = { 0 };
-		socklen_t len = 0;
-		if(!ipv6_disabled) {
-			/* Configure the socket so that it can be used both on IPv4 and IPv6 */
-			int v6only = 0;
-			if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
-				janus_mutex_unlock(&ps->rtp_forwarders_mutex);
-				janus_refcount_decrease(&ps->ref);
-				janus_refcount_decrease(&p->ref);
-				JANUS_LOG(LOG_ERR, "Error configuring RTCP socket for new RTP forwarder... %d (%s)\n",
-					errno, g_strerror(errno));
-				close(fd);
-				return NULL;
-			}
-			len = sizeof(addr6);
-			addr6.sin6_family = AF_INET6;
-			addr6.sin6_port = htons(0);		/* The RTCP port we received is the remote one */
-			addr6.sin6_addr = in6addr_any;
-			address = (struct sockaddr *)&addr6;
-		} else {
-			/* IPv6 is disabled, only do IPv4 */
-			len = sizeof(addr4);
-			addr4.sin_family = AF_INET;
-			addr4.sin_port = htons(0);		/* The RTCP port we received is the remote one */
-			addr4.sin_addr.s_addr = INADDR_ANY;
-			address = (struct sockaddr *)&addr4;
-		}
-		if(bind(fd, (struct sockaddr *)address, len) < 0 ||
-				getsockname(fd, (struct sockaddr *)address, &len) < 0) {
-			janus_mutex_unlock(&ps->rtp_forwarders_mutex);
-			janus_refcount_decrease(&ps->ref);
-			janus_refcount_decrease(&p->ref);
-			JANUS_LOG(LOG_ERR, "Error binding RTCP socket for new RTP forwarder... %d (%s)\n",
-				errno, g_strerror(errno));
-			close(fd);
-			return NULL;
-		}
-		local_rtcp_port = ntohs(!ipv6_disabled ? addr6.sin6_port : addr4.sin_port);
-		JANUS_LOG(LOG_VERB, "Bound local %s RTCP port: %"SCNu16"\n",
-			is_video ? "video" : "audio", local_rtcp_port);
-	}
-	janus_videoroom_rtp_forwarder *forward = g_malloc0(sizeof(janus_videoroom_rtp_forwarder));
-	forward->source = ps;
-	forward->rtcp_fd = fd;
-	forward->local_rtcp_port = local_rtcp_port;
-	forward->remote_rtcp_port = rtcp_port > 0 ? rtcp_port : 0;
-	/* First of all, let's check if we need to setup an SRTP forwarder */
-	if(!is_data && srtp_suite > 0 && srtp_crypto != NULL) {
-		/* First of all, let's check if there's already an RTP forwarder with
-		 * the same SRTP context: make sure SSRC and pt are the same too */
-		char media[10] = {0};
-		if(!is_video) {
-			g_sprintf(media, "audio");
-		} else if(is_video) {
-			g_sprintf(media, "video%d", substream);
-		}
-		char srtp_id[256] = {0};
-		g_snprintf(srtp_id, 255, "%s-%s-%"SCNu32"-%d", srtp_crypto, media, ssrc, pt);
-		JANUS_LOG(LOG_VERB, "SRTP context ID: %s\n", srtp_id);
-		janus_videoroom_srtp_context *srtp_ctx = g_hash_table_lookup(p->srtp_contexts, srtp_id);
-		if(srtp_ctx != NULL) {
-			JANUS_LOG(LOG_VERB, "  -- Reusing existing SRTP context\n");
-			srtp_ctx->count++;
-			forward->srtp_ctx = srtp_ctx;
-		} else {
-			/* Nope, base64 decode the crypto string and set it as a new SRTP context */
-			JANUS_LOG(LOG_VERB, "  -- Creating new SRTP context\n");
-			srtp_ctx = g_malloc0(sizeof(janus_videoroom_srtp_context));
-			gsize len = 0;
-			guchar *decoded = g_base64_decode(srtp_crypto, &len);
-			if(len < SRTP_MASTER_LENGTH) {
-				janus_mutex_unlock(&ps->rtp_forwarders_mutex);
-			janus_refcount_decrease(&ps->ref);
-			janus_refcount_decrease(&p->ref);
-				JANUS_LOG(LOG_ERR, "Invalid SRTP crypto (%s)\n", srtp_crypto);
-				g_free(decoded);
-				g_free(srtp_ctx);
-				if(forward->rtcp_fd > -1)
-					close(forward->rtcp_fd);
-				g_free(forward);
-				return NULL;
-			}
-			/* Set SRTP policy */
-			srtp_policy_t *policy = &srtp_ctx->policy;
-			srtp_crypto_policy_set_rtp_default(&(policy->rtp));
-			if(srtp_suite == 32) {
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
-			} else if(srtp_suite == 80) {
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
-			}
-			policy->ssrc.type = ssrc_any_outbound;
-			policy->key = decoded;
-			policy->next = NULL;
-			/* Create SRTP context */
-			srtp_err_status_t res = srtp_create(&srtp_ctx->ctx, policy);
-			if(res != srtp_err_status_ok) {
-				/* Something went wrong... */
-				janus_mutex_unlock(&ps->rtp_forwarders_mutex);
-				janus_refcount_decrease(&ps->ref);
-				janus_refcount_decrease(&p->ref);
-				JANUS_LOG(LOG_ERR, "Error creating forwarder SRTP session: %d (%s)\n", res, janus_srtp_error_str(res));
-				g_free(decoded);
-				policy->key = NULL;
-				g_free(srtp_ctx);
-				if(forward->rtcp_fd > -1)
-					close(forward->rtcp_fd);
-				g_free(forward);
-				return NULL;
-			}
-			srtp_ctx->contexts = p->srtp_contexts;
-			srtp_ctx->id = g_strdup(srtp_id);
-			srtp_ctx->count = 1;
-			g_hash_table_insert(p->srtp_contexts, srtp_ctx->id, srtp_ctx);
-			forward->srtp_ctx = srtp_ctx;
-		}
-		forward->is_srtp = TRUE;
-	}
-	forward->is_video = is_video;
-	forward->payload_type = pt;
-	forward->ssrc = ssrc;
-	forward->substream = substream;
-	forward->is_data = is_data;
-	/* Check if the host address is IPv4 or IPv6 */
-	if(strstr(host, ":") != NULL) {
-		forward->serv_addr6.sin6_family = AF_INET6;
-		inet_pton(AF_INET6, host, &(forward->serv_addr6.sin6_addr));
-		forward->serv_addr6.sin6_port = htons(port);
-	} else {
-		forward->serv_addr.sin_family = AF_INET;
-		inet_pton(AF_INET, host, &(forward->serv_addr.sin_addr));
-		forward->serv_addr.sin_port = htons(port);
-	}
-	if(is_video && simulcast) {
-		forward->simulcast = TRUE;
-		janus_rtp_switching_context_reset(&forward->context);
-		janus_rtp_simulcasting_context_reset(&forward->sim_context);
-		forward->sim_context.rid_ext_id = ps->rid_extmap_id;
-		forward->sim_context.substream_target = 2;
-		forward->sim_context.templayer_target = 2;
-	}
-	janus_refcount_init(&forward->ref, janus_videoroom_rtp_forwarder_free);
-	guint32 stream_id = janus_random_uint32();
-	while(g_hash_table_lookup(ps->rtp_forwarders, GUINT_TO_POINTER(stream_id)) != NULL &&
-			g_hash_table_lookup(p->rtp_forwarders, GUINT_TO_POINTER(stream_id)) != NULL) {
-		stream_id = janus_random_uint32();
-	}
-	forward->stream_id = stream_id;
-	g_hash_table_insert(ps->rtp_forwarders, GUINT_TO_POINTER(stream_id), forward);
-	g_hash_table_insert(p->rtp_forwarders, GUINT_TO_POINTER(stream_id), GUINT_TO_POINTER(stream_id));
-	if(fd > -1) {
-		/* We need RTCP: track this file descriptor, and ref the forwarder */
-		janus_refcount_increase(&ps->ref);
-		janus_refcount_increase(&forward->ref);
-		forward->rtcp_recv = g_source_new(&janus_videoroom_rtp_forwarder_rtcp_funcs, sizeof(janus_videoroom_rtcp_receiver));
-		janus_videoroom_rtcp_receiver *rr = (janus_videoroom_rtcp_receiver *)forward->rtcp_recv;
-		rr->forward = forward;
-		g_source_set_priority(forward->rtcp_recv, G_PRIORITY_DEFAULT);
-		g_source_add_unix_fd(forward->rtcp_recv, fd, G_IO_IN | G_IO_ERR);
-		g_source_attach((GSource *)forward->rtcp_recv, rtcpfwd_ctx);
-		/* Send a couple of empty RTP packets to the remote port to do latching */
-		struct sockaddr *address = NULL;
-		struct sockaddr_in addr4 = { 0 };
-		struct sockaddr_in6 addr6 = { 0 };
-		socklen_t addrlen = 0;
-		if(forward->serv_addr.sin_family == AF_INET) {
-			addr4.sin_family = AF_INET;
-			addr4.sin_addr.s_addr = forward->serv_addr.sin_addr.s_addr;
-			addr4.sin_port = htons(forward->remote_rtcp_port);
-			address = (struct sockaddr *)&addr4;
-			addrlen = sizeof(addr4);
-		} else {
-			addr6.sin6_family = AF_INET6;
-			memcpy(&addr6.sin6_addr, &forward->serv_addr6.sin6_addr, sizeof(struct in6_addr));
-			addr6.sin6_port = htons(forward->remote_rtcp_port);
-			address = (struct sockaddr *)&addr6;
-			addrlen = sizeof(addr6);
-		}
-		janus_rtp_header rtp;
-		memset(&rtp, 0, sizeof(rtp));
-		rtp.version = 2;
-		(void)sendto(fd, &rtp, 12, 0, address, addrlen);
-		(void)sendto(fd, &rtp, 12, 0, address, addrlen);
-	}
+	g_hash_table_insert(ps->rtp_forwarders, GUINT_TO_POINTER(rf->stream_id), rf);
+	g_hash_table_insert(p->rtp_forwarders, GUINT_TO_POINTER(rf->stream_id), GUINT_TO_POINTER(rf->stream_id));
 	janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+	/* If we need to add RTCP too, do that now */
+	if(rtcp_port > 0) {
+		int res = janus_rtp_forwarder_add_rtcp(rf, rtcp_port, &janus_videoroom_rtp_forwarder_rtcp_receive);
+		if(res < 0) {
+			JANUS_LOG(LOG_WARN, "Error adding RTCP support to new RTP forwarder (%d)...\n", res);
+		}
+	}
+	/* Done */
 	janus_refcount_decrease(&ps->ref);
 	janus_refcount_decrease(&p->ref);
 	JANUS_LOG(LOG_VERB, "Added %s/%d rtp_forward to participant %s host: %s:%d stream_id: %"SCNu32"\n",
-		is_data ? "data" : (is_video ? "video" : "audio"), substream, p->user_id_str, host, port, stream_id);
-	return forward;
+		is_data ? "data" : (is_video ? "video" : "audio"), substream, p->user_id_str, host, port, rf->stream_id);
+	return rf;
 }
 
-static json_t *janus_videoroom_rtp_forwarder_summary(janus_videoroom_rtp_forwarder *f) {
+static json_t *janus_videoroom_rtp_forwarder_summary(janus_rtp_forwarder *f) {
 	if(f == NULL)
 		return NULL;
 	json_t *json = json_object();
@@ -2978,42 +2710,6 @@ static json_t *janus_videoroom_rtp_forwarder_summary(janus_videoroom_rtp_forward
 	return json;
 }
 
-static void janus_videoroom_rtp_forwarder_destroy(janus_videoroom_rtp_forwarder *forward) {
-	if(forward && g_atomic_int_compare_and_exchange(&forward->destroyed, 0, 1)) {
-		if(forward->rtcp_fd > -1 && forward->rtcp_recv != NULL) {
-			g_source_destroy(forward->rtcp_recv);
-			g_source_unref(forward->rtcp_recv);
-		}
-		janus_refcount_decrease(&forward->ref);
-	}
-}
-static void janus_videoroom_rtp_forwarder_free(const janus_refcount *f_ref) {
-	janus_videoroom_rtp_forwarder *forward = janus_refcount_containerof(f_ref, janus_videoroom_rtp_forwarder, ref);
-	if(forward->rtcp_fd > -1)
-		close(forward->rtcp_fd);
-	if(forward->is_srtp && forward->srtp_ctx) {
-		forward->srtp_ctx->count--;
-		if(forward->srtp_ctx->count == 0 && forward->srtp_ctx->contexts != NULL)
-			g_hash_table_remove(forward->srtp_ctx->contexts, forward->srtp_ctx->id);
-	}
-	g_free(forward->remote_id);
-	g_free(forward);
-	forward = NULL;
-}
-
-static void janus_videoroom_srtp_context_free(gpointer data) {
-	if(data) {
-		janus_videoroom_srtp_context *srtp_ctx = (janus_videoroom_srtp_context *)data;
-		if(srtp_ctx) {
-			g_free(srtp_ctx->id);
-			srtp_dealloc(srtp_ctx->ctx);
-			g_free(srtp_ctx->policy.key);
-			g_free(srtp_ctx);
-			srtp_ctx = NULL;
-		}
-	}
-}
-
 /* Helper to create a dummy publisher, with placeholder streams for each supported codec */
 static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashTable *streams) {
 	if(room == NULL || !room->dummy_publisher)
@@ -3052,7 +2748,6 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 	publisher->remote_recipients = g_hash_table_new_full(g_str_hash, g_str_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)janus_videoroom_remote_recipient_free);
 	publisher->rtp_forwarders = g_hash_table_new(NULL, NULL);
-	publisher->srtp_contexts = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, (GDestroyNotify)janus_videoroom_srtp_context_free);
 	publisher->udp_sock = -1;
 	g_atomic_int_set(&publisher->destroyed, 0);
 	janus_refcount_init(&publisher->ref, janus_videoroom_publisher_free);
@@ -3100,7 +2795,7 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 		janus_mutex_init(&ps->subscribers_mutex);
 		janus_mutex_init(&ps->rtp_forwarders_mutex);
 		janus_mutex_init(&ps->rid_mutex);
-		ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_rtp_forwarder_destroy);
+		ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_rtp_forwarder_destroy);
 		publisher->streams = g_list_append(publisher->streams, ps);
 		g_hash_table_insert(publisher->streams_byid, GINT_TO_POINTER(ps->mindex), ps);
 		g_hash_table_insert(publisher->streams_bymid, g_strdup(ps->mid), ps);
@@ -3147,7 +2842,7 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 		janus_mutex_init(&ps->subscribers_mutex);
 		janus_mutex_init(&ps->rtp_forwarders_mutex);
 		janus_mutex_init(&ps->rid_mutex);
-		ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_rtp_forwarder_destroy);
+		ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_rtp_forwarder_destroy);
 		publisher->streams = g_list_append(publisher->streams, ps);
 		g_hash_table_insert(publisher->streams_byid, GINT_TO_POINTER(ps->mindex), ps);
 		g_hash_table_insert(publisher->streams_bymid, g_strdup(ps->mid), ps);
@@ -3155,6 +2850,7 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 	}
 	/* Done: add the dummy publisher to the list */
 	janus_refcount_increase(&publisher->ref);
+	janus_refcount_increase(&publisher->session->ref);
 	g_hash_table_insert(room->participants,
 		string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
 		publisher);
@@ -3214,12 +2910,9 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(
 	stream->sim_context.substream_target = 2;
 	stream->sim_context.templayer_target = 2;
 	janus_vp8_simulcast_context_reset(&stream->vp8_context);
-	/* This stream may belong to a room where VP9 SVC has been enabled,
-	 * let's assume we're interested in all layers for the time being */
-	stream->spatial_layer = -1;
-	stream->target_spatial_layer = 1;		/* FIXME Chrome sends 0 and 1 */
-	stream->temporal_layer = -1;
-	stream->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
+	janus_rtp_svc_context_reset(&stream->svc_context);
+	stream->svc_context.spatial_target = 2;	/* FIXME Actually depends on the scalabilityMode */
+	stream->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
 	janus_mutex_lock(&ps->subscribers_mutex);
 	ps->subscribers = g_slist_append(ps->subscribers, stream);
 	/* The two streams reference each other */
@@ -3276,12 +2969,9 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_
 				}
 				janus_vp8_simulcast_context_reset(&stream->vp8_context);
 				if(ps->svc) {
-					/* This stream belongs to a room where VP9 SVC has been enabled,
-					 * let's assume we're interested in all layers for the time being */
-					stream->spatial_layer = -1;
-					stream->target_spatial_layer = 1;		/* FIXME Chrome sends 0 and 1 */
-					stream->temporal_layer = -1;
-					stream->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
+					janus_rtp_svc_context_reset(&stream->svc_context);
+					stream->svc_context.spatial_target = 2;		/* FIXME Actually depends on the scalabilityMode */
+					stream->svc_context.temporal_target = 2;	/* FIXME Actually depends on the scalabilityMode */
 				}
 				janus_mutex_lock(&ps->subscribers_mutex);
 				if(g_slist_find(ps->subscribers, stream) == NULL && g_slist_find(stream->publisher_streams, ps) == NULL) {
@@ -3416,10 +3106,10 @@ static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscr
 			}
 			if(ps->svc) {
 				json_t *svc = json_object();
-				json_object_set_new(svc, "spatial-layer", json_integer(stream->spatial_layer));
-				json_object_set_new(svc, "target-spatial-layer", json_integer(stream->target_spatial_layer));
-				json_object_set_new(svc, "temporal-layer", json_integer(stream->temporal_layer));
-				json_object_set_new(svc, "target-temporal-layer", json_integer(stream->target_temporal_layer));
+				json_object_set_new(svc, "spatial-layer", json_integer(stream->svc_context.spatial));
+				json_object_set_new(svc, "target-spatial-layer", json_integer(stream->svc_context.spatial_target));
+				json_object_set_new(svc, "temporal-layer", json_integer(stream->svc_context.temporal));
+				json_object_set_new(svc, "target-temporal-layer", json_integer(stream->svc_context.temporal_target));
 				json_object_set_new(m, "svc", svc);
 			}
 		}
@@ -3590,7 +3280,6 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *h264profile = janus_config_get(config, cat, janus_config_type_item, "h264_profile");
 			janus_config_item *fec = janus_config_get(config, cat, janus_config_type_item, "opus_fec");
 			janus_config_item *dtx = janus_config_get(config, cat, janus_config_type_item, "opus_dtx");
-			janus_config_item *svc = janus_config_get(config, cat, janus_config_type_item, "video_svc");
 			janus_config_item *audiolevel_ext = janus_config_get(config, cat, janus_config_type_item, "audiolevel_ext");
 			janus_config_item *audiolevel_event = janus_config_get(config, cat, janus_config_type_item, "audiolevel_event");
 			janus_config_item *audio_active_packets = janus_config_get(config, cat, janus_config_type_item, "audio_active_packets");
@@ -3763,17 +3452,6 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 					JANUS_LOG(LOG_WARN, "DTX is only supported for rooms that allow Opus: disabling it...\n");
 				}
 			}
-			if(svc && svc->value && janus_is_true(svc->value)) {
-				if(videoroom->vcodec[0] == JANUS_VIDEOCODEC_VP9 &&
-						videoroom->vcodec[1] == JANUS_VIDEOCODEC_NONE &&
-						videoroom->vcodec[2] == JANUS_VIDEOCODEC_NONE &&
-						videoroom->vcodec[3] == JANUS_VIDEOCODEC_NONE &&
-						videoroom->vcodec[4] == JANUS_VIDEOCODEC_NONE) {
-					videoroom->do_svc = TRUE;
-				} else {
-					JANUS_LOG(LOG_WARN, "SVC is only supported, in an experimental way, for VP9 only rooms: disabling it...\n");
-				}
-			}
 			videoroom->audiolevel_ext = TRUE;
 			if(audiolevel_ext != NULL && audiolevel_ext->value != NULL)
 				videoroom->audiolevel_ext = janus_is_true(audiolevel_ext->value);
@@ -3912,18 +3590,6 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	}
 	janus_mutex_unlock(&rooms_mutex);
 
-	/* Thread for handling incoming RTCP packets from RTP forwarders, if any */
-	rtcpfwd_ctx = g_main_context_new();
-	rtcpfwd_loop = g_main_loop_new(rtcpfwd_ctx, FALSE);
-	GError *error = NULL;
-	rtcpfwd_thread = g_thread_try_new("videoroom rtcpfwd", janus_videoroom_rtp_forwarder_rtcp_thread, NULL, &error);
-	if(error != NULL) {
-		/* We show the error but it's not fatal */
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VideoRoom RTCP thread for RTP forwarders...\n",
-			error->code, error->message ? error->message : "??");
-		g_error_free(error);
-	}
-
 	/* Finally, let's check if IPv6 is disabled, as we may need to know for forwarders */
 	int fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 	if(fd < 0) {
@@ -3942,7 +3608,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	g_atomic_int_set(&initialized, 1);
 
 	/* Launch the thread that will handle incoming messages */
-	error = NULL;
+	GError *error = NULL;
 	handler_thread = g_thread_try_new("videoroom handler", janus_videoroom_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
@@ -3965,14 +3631,6 @@ void janus_videoroom_destroy(void) {
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
-	}
-	if(rtcpfwd_thread != NULL) {
-		if(g_main_loop_is_running(rtcpfwd_loop)) {
-			g_main_loop_quit(rtcpfwd_loop);
-			g_main_context_wakeup(rtcpfwd_ctx);
-		}
-		g_thread_join(rtcpfwd_thread);
-		rtcpfwd_thread = NULL;
 	}
 
 	/* FIXME We should destroy the sessions cleanly */
@@ -4425,7 +4083,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 					if(ps->simulcast)
 						json_object_set_new(m, "simulcast", json_true());
 					if(ps->svc)
-						json_object_set_new(m, "vp9-svc", json_true());
+						json_object_set_new(m, "svc", json_true());
 					if(ps->rc && ps->rc->filename)
 						json_object_set_new(m, "recording", json_string(ps->rc->filename));
 					if(ps->audio_level_extmap_id > 0) {
@@ -4640,7 +4298,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *h264profile = json_object_get(root, "h264_profile");
 		json_t *fec = json_object_get(root, "opus_fec");
 		json_t *dtx = json_object_get(root, "opus_dtx");
-		json_t *svc = json_object_get(root, "video_svc");
 		json_t *audiolevel_ext = json_object_get(root, "audiolevel_ext");
 		json_t *audiolevel_event = json_object_get(root, "audiolevel_event");
 		json_t *audio_active_packets = json_object_get(root, "audio_active_packets");
@@ -4861,17 +4518,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				JANUS_LOG(LOG_WARN, "DTX is only supported for rooms that allow Opus: disabling it...\n");
 			}
 		}
-		if(svc && json_is_true(svc)) {
-			if(videoroom->vcodec[0] == JANUS_VIDEOCODEC_VP9 &&
-					videoroom->vcodec[1] == JANUS_VIDEOCODEC_NONE &&
-					videoroom->vcodec[2] == JANUS_VIDEOCODEC_NONE &&
-					videoroom->vcodec[3] == JANUS_VIDEOCODEC_NONE &&
-					videoroom->vcodec[4] == JANUS_VIDEOCODEC_NONE) {
-				videoroom->do_svc = TRUE;
-			} else {
-				JANUS_LOG(LOG_WARN, "SVC is only supported, in an experimental way, for VP9 only rooms: disabling it...\n");
-			}
-		}
 		videoroom->audiolevel_ext = audiolevel_ext ? json_is_true(audiolevel_ext) : TRUE;
 		videoroom->audiolevel_event = audiolevel_event ? json_is_true(audiolevel_event) : FALSE;
 		if(videoroom->audiolevel_event) {
@@ -5018,8 +4664,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				janus_config_add(config, c, janus_config_item_create("opus_fec", "yes"));
 			if(videoroom->do_opusdtx)
 				janus_config_add(config, c, janus_config_item_create("opus_dtx", "yes"));
-			if(videoroom->do_svc)
-				janus_config_add(config, c, janus_config_item_create("video_svc", "yes"));
 			if(videoroom->room_secret)
 				janus_config_add(config, c, janus_config_item_create("secret", videoroom->room_secret));
 			if(videoroom->room_pin)
@@ -5213,8 +4857,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				janus_config_add(config, c, janus_config_item_create("opus_fec", "yes"));
 			if(videoroom->do_opusdtx)
 				janus_config_add(config, c, janus_config_item_create("opus_dtx", "yes"));
-			if(videoroom->do_svc)
-				janus_config_add(config, c, janus_config_item_create("video_svc", "yes"));
 			if(videoroom->room_secret)
 				janus_config_add(config, c, janus_config_item_create("secret", videoroom->room_secret));
 			if(videoroom->room_pin)
@@ -5418,8 +5060,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					json_object_set_new(rl, "opus_fec", json_true());
 				if(room->do_opusdtx)
 					json_object_set_new(rl, "opus_dtx", json_true());
-				if(room->do_svc)
-					json_object_set_new(rl, "video_svc", json_true());
 				json_object_set_new(rl, "record", room->record ? json_true() : json_false());
 				json_object_set_new(rl, "rec_dir", json_string(room->rec_dir));
 				json_object_set_new(rl, "lock_record", room->lock_record ? json_true() : json_false());
@@ -5699,7 +5339,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					JANUS_LOG(LOG_WARN, "No such stream with mid '%s', skipping forwarder...\n", mid);
 					continue;
 				}
-				janus_videoroom_rtp_forwarder *f = NULL;
+				janus_rtp_forwarder *f = NULL;
 				json_t *stream_host = json_object_get(s, "host");
 				host = json_string_value(stream_host) ? json_string_value(stream_host) : json_string_value(json_host);
 				json_t *stream_port = json_object_get(s, "port");
@@ -5916,7 +5556,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				video_port[2] = -1;
 			}
 			/* Create all the forwarders we need */
-			janus_videoroom_rtp_forwarder *f = NULL;
+			janus_rtp_forwarder *f = NULL;
 			guint32 audio_handle = 0;
 			guint32 video_handle[3] = {0, 0, 0};
 			guint32 data_handle = 0;
@@ -6196,9 +5836,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		while(temp) {
 			janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
 			janus_mutex_lock(&ps->rtp_forwarders_mutex);
-			janus_videoroom_rtp_forwarder *f = g_hash_table_lookup(ps->rtp_forwarders, GUINT_TO_POINTER(stream_id));
+			janus_rtp_forwarder *f = g_hash_table_lookup(ps->rtp_forwarders, GUINT_TO_POINTER(stream_id));
 			if(f != NULL) {
-				if(f->remote_id != NULL) {
+				if(f->metadata != NULL) {
 					/* This belongs to a remotization, ignore */
 					janus_mutex_unlock(&ps->rtp_forwarders_mutex);
 					found = FALSE;
@@ -6768,9 +6408,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				gpointer key_f, value_f;
 				g_hash_table_iter_init(&iter_f, ps->rtp_forwarders);
 				while(g_hash_table_iter_next(&iter_f, &key_f, &value_f)) {
-					janus_videoroom_rtp_forwarder *rpv = value_f;
+					janus_rtp_forwarder *rpv = value_f;
 					/* If this belongs to a remotization, skip it */
-					if(rpv->remote_id != NULL)
+					if(rpv->metadata != NULL)
 						continue;
 					/* Return a different, media-agnostic, format */
 					json_t *fl = janus_videoroom_rtp_forwarder_summary(rpv);
@@ -7029,7 +6669,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		/* Add a new RTP forwarder for each of the publisher streams */
 		janus_mutex_lock(&publisher->streams_mutex);
 		janus_videoroom_publisher_stream *ps = NULL;
-		janus_videoroom_rtp_forwarder *f = NULL;
+		janus_rtp_forwarder *f = NULL;
 		gboolean rtcp_added = FALSE, add_rtcp = FALSE;
 		GList *temp = publisher->streams;
 		while(temp) {
@@ -7045,7 +6685,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					(REMOTE_PUBLISHER_BASE_SSRC + ps->mindex*REMOTE_PUBLISHER_SSRC_STEP),
 					FALSE, 0, NULL, 0, FALSE, FALSE);
 				if(f != NULL)
-					f->remote_id = g_strdup(remote_id);
+					f->metadata = g_strdup(remote_id);
 			} else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 				/* Video stream */
 				add_rtcp = (!rtcp_added && rtcp_port > 0);
@@ -7054,7 +6694,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					(REMOTE_PUBLISHER_BASE_SSRC + ps->mindex*REMOTE_PUBLISHER_SSRC_STEP),
 					FALSE, 0, NULL, 0, TRUE, FALSE);
 				if(f != NULL)
-					f->remote_id = g_strdup(remote_id);
+					f->metadata = g_strdup(remote_id);
 				if(add_rtcp)
 					rtcp_added = TRUE;
 				/* Check if there's simulcast substreams we need to relay too */
@@ -7064,7 +6704,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 						(REMOTE_PUBLISHER_BASE_SSRC + ps->mindex*REMOTE_PUBLISHER_SSRC_STEP + 1),
 						FALSE, 0, NULL, 1, TRUE, FALSE);
 					if(f != NULL)
-						f->remote_id = g_strdup(remote_id);
+						f->metadata = g_strdup(remote_id);
 				}
 				if(ps->vssrc[2] || ps->rid[2]) {
 					f = janus_videoroom_rtp_forwarder_add_helper(publisher, ps,
@@ -7072,7 +6712,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 						(REMOTE_PUBLISHER_BASE_SSRC + ps->mindex*REMOTE_PUBLISHER_SSRC_STEP + 2),
 						FALSE, 0, NULL, 2, TRUE, FALSE);
 					if(f != NULL)
-						f->remote_id = g_strdup(remote_id);
+						f->metadata = g_strdup(remote_id);
 				}
 			} else {
 				/* Data stream */
@@ -7081,7 +6721,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					(REMOTE_PUBLISHER_BASE_SSRC + ps->mindex*REMOTE_PUBLISHER_SSRC_STEP),
 					FALSE, 0, NULL, 0, FALSE, TRUE);
 				if(f != NULL)
-					f->remote_id = g_strdup(remote_id);
+					f->metadata = g_strdup(remote_id);
 			}
 			temp = temp->next;
 		}
@@ -7185,8 +6825,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			gpointer value;
 			g_hash_table_iter_init(&iter, ps->rtp_forwarders);
 			while(g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_videoroom_rtp_forwarder *f = (janus_videoroom_rtp_forwarder *)value;
-				if(f->remote_id != NULL && !strcmp(f->remote_id, remote_id)) {
+				janus_rtp_forwarder *f = (janus_rtp_forwarder *)value;
+				if(f->metadata != NULL && !strcmp((char *)f->metadata, remote_id)) {
 					/* We found one, get rid of it */
 					uint32_t stream_id = f->stream_id;
 					g_hash_table_iter_remove(&iter);
@@ -7523,7 +7163,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		publisher->remote_recipients = g_hash_table_new_full(g_str_hash, g_str_equal,
 			(GDestroyNotify)g_free, (GDestroyNotify)janus_videoroom_remote_recipient_free);
 		publisher->rtp_forwarders = g_hash_table_new(NULL, NULL);
-		publisher->srtp_contexts = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, (GDestroyNotify)janus_videoroom_srtp_context_free);
 		publisher->udp_sock = -1;
 		g_atomic_int_set(&publisher->destroyed, 0);
 		janus_refcount_init(&publisher->ref, janus_videoroom_publisher_free);
@@ -7630,7 +7269,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_refcount_increase(&ps->ref);	/* This is for the mid-indexed hashtable */
 			janus_mutex_init(&ps->subscribers_mutex);
 			janus_mutex_init(&ps->rtp_forwarders_mutex);
-			ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_rtp_forwarder_destroy);
+			ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_rtp_forwarder_destroy);
 			publisher->streams = g_list_append(publisher->streams, ps);
 			g_hash_table_insert(publisher->streams_byid, GINT_TO_POINTER(ps->mindex), ps);
 			g_hash_table_insert(publisher->streams_bymid, g_strdup(ps->mid), ps);
@@ -7647,9 +7286,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			/* Something went wrong */
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
+			janus_videoroom_publisher_destroy(publisher);
 			janus_refcount_decrease(&publisher->ref);
 			janus_refcount_decrease(&publisher->session->ref);
-			janus_videoroom_publisher_destroy(publisher);
 			JANUS_LOG(LOG_ERR, "Could not spawn thread for remote publisher, %d (%s)\n",
 				errno, g_strerror(errno));
 			error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
@@ -7906,7 +7545,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_refcount_increase(&ps->ref);	/* This is for the mid-indexed hashtable */
 			janus_mutex_init(&ps->subscribers_mutex);
 			janus_mutex_init(&ps->rtp_forwarders_mutex);
-			ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_rtp_forwarder_destroy);
+			ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_rtp_forwarder_destroy);
 			publisher->streams = g_list_append(publisher->streams, ps);
 			g_hash_table_insert(publisher->streams_byid, GINT_TO_POINTER(ps->mindex), ps);
 			g_hash_table_insert(publisher->streams_bymid, g_strdup(ps->mid), ps);
@@ -8346,85 +7985,15 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 		}
 		/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
 		janus_mutex_lock(&ps->rtp_forwarders_mutex);
-		if(participant->srtp_contexts && g_hash_table_size(participant->srtp_contexts) > 0) {
-			GHashTableIter iter;
-			gpointer value;
-			g_hash_table_iter_init(&iter, participant->srtp_contexts);
-			while(g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_videoroom_srtp_context *srtp_ctx = (janus_videoroom_srtp_context *)value;
-				srtp_ctx->slen = 0;
-			}
-		}
 		GHashTableIter iter;
 		gpointer value;
 		g_hash_table_iter_init(&iter, ps->rtp_forwarders);
 		while(participant->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
-			janus_videoroom_rtp_forwarder *rtp_forward = (janus_videoroom_rtp_forwarder *)value;
+			janus_rtp_forwarder *rtp_forward = (janus_rtp_forwarder *)value;
 			if(rtp_forward->is_data || (video && !rtp_forward->is_video) || (!video && rtp_forward->is_video))
 				continue;
-			/* Backup the RTP header info, as we may rewrite part of it */
-			uint32_t seq_number = ntohs(rtp->seq_number);
-			uint32_t timestamp = ntohl(rtp->timestamp);
-			int pt = rtp->type;
-			uint32_t ssrc = ntohl(rtp->ssrc);
-			/* First of all, check if we're simulcasting and if we need to forward or ignore this frame */
-			if(video && !rtp_forward->simulcast && rtp_forward->substream != sc) {
-				continue;
-			} else if(video && rtp_forward->simulcast) {
-				/* This is video and we're simulcasting, check if we need to forward this frame */
-				if(!janus_rtp_simulcasting_context_process_rtp(&rtp_forward->sim_context,
-						buf, len, ps->vssrc, ps->rid, ps->vcodec, &rtp_forward->context, &ps->rid_mutex))
-					continue;
-				janus_rtp_header_update(rtp, &rtp_forward->context, TRUE, 0);
-				/* By default we use a fixed SSRC (it may be overwritten later) */
-				rtp->ssrc = htonl(participant->user_id & 0xffffffff);
-			}
-			/* Check if payload type and/or SSRC need to be overwritten for this forwarder */
-			if(rtp_forward->payload_type > 0)
-				rtp->type = rtp_forward->payload_type;
-			if(rtp_forward->ssrc > 0)
-				rtp->ssrc = htonl(rtp_forward->ssrc);
-			/* Check if this is an RTP or SRTP forwarder */
-			if(!rtp_forward->is_srtp) {
-				/* Plain RTP */
-				struct sockaddr *address = (rtp_forward->serv_addr.sin_family == AF_INET ?
-					(struct sockaddr *)&rtp_forward->serv_addr : (struct sockaddr *)&rtp_forward->serv_addr6);
-				size_t addrlen = (rtp_forward->serv_addr.sin_family == AF_INET ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6));
-				if(sendto(participant->udp_sock, buf, len, 0, address, addrlen) < 0) {
-					JANUS_LOG(LOG_HUGE, "Error forwarding RTP %s packet for %s... %s (len=%d)...\n",
-						(video ? "video" : "audio"), participant->display, g_strerror(errno), len);
-				}
-			} else {
-				/* SRTP: check if we already encrypted the packet before */
-				if(rtp_forward->srtp_ctx->slen == 0) {
-					memcpy(&rtp_forward->srtp_ctx->sbuf, buf, len);
-					int protected = len;
-					int res = srtp_protect(rtp_forward->srtp_ctx->ctx, &rtp_forward->srtp_ctx->sbuf, &protected);
-					if(res != srtp_err_status_ok) {
-						janus_rtp_header *header = (janus_rtp_header *)&rtp_forward->srtp_ctx->sbuf;
-						guint32 timestamp = ntohl(header->timestamp);
-						guint16 seq = ntohs(header->seq_number);
-						JANUS_LOG(LOG_ERR, "Error encrypting %s packet for %s... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
-							(video ? "Video" : "Audio"), participant->display, janus_srtp_error_str(res), len, protected, timestamp, seq);
-					} else {
-						rtp_forward->srtp_ctx->slen = protected;
-					}
-				}
-				if(rtp_forward->srtp_ctx->slen > 0) {
-					struct sockaddr *address = (rtp_forward->serv_addr.sin_family == AF_INET ?
-						(struct sockaddr *)&rtp_forward->serv_addr : (struct sockaddr *)&rtp_forward->serv_addr6);
-					size_t addrlen = (rtp_forward->serv_addr.sin_family == AF_INET ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6));
-					if(sendto(participant->udp_sock, rtp_forward->srtp_ctx->sbuf, rtp_forward->srtp_ctx->slen, 0, address, addrlen) < 0) {
-						JANUS_LOG(LOG_HUGE, "Error forwarding SRTP %s packet for %s... %s (len=%d)...\n",
-							(video ? "video" : "audio"), participant->display, g_strerror(errno), rtp_forward->srtp_ctx->slen);
-					}
-				}
-			}
-			/* Restore original values of payload type and SSRC before going on */
-			rtp->type = pt;
-			rtp->ssrc = htonl(ssrc);
-			rtp->timestamp = htonl(timestamp);
-			rtp->seq_number = htons(seq_number);
+			janus_rtp_forwarder_send_rtp_full(rtp_forward, buf, len, sc,
+				ps->vssrc, ps->rid, ps->vcodec, &ps->rid_mutex);
 		}
 		janus_mutex_unlock(&ps->rtp_forwarders_mutex);
 		/* Set the payload type of the publisher */
@@ -8435,7 +8004,8 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 		} else {
 			/* We're simulcasting, save the best video quality */
 			gboolean save = janus_rtp_simulcasting_context_process_rtp(&ps->rec_simctx,
-				buf, len, ps->vssrc, ps->rid, ps->vcodec, &ps->rec_ctx, &ps->rid_mutex);
+				buf, len, pkt->extensions.dd_content, pkt->extensions.dd_len,
+				ps->vssrc, ps->rid, ps->vcodec, &ps->rec_ctx, &ps->rid_mutex);
 			if(save) {
 				uint32_t seq_number = ntohs(rtp->seq_number);
 				uint32_t timestamp = ntohl(rtp->timestamp);
@@ -8467,10 +8037,14 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 				janus_videoroom_publisher_dereference_nodebug(participant);
 				return;
 			}
-			gboolean found = FALSE;
-			memset(&packet.svc_info, 0, sizeof(packet.svc_info));
-			if(janus_vp9_parse_svc(payload, plen, &found, &packet.svc_info) == 0) {
-				packet.svc = found;
+			if(ps->vcodec == JANUS_VIDEOCODEC_VP9) {
+				gboolean found = FALSE;
+				memset(&packet.svc_info, 0, sizeof(packet.svc_info));
+				if(janus_vp9_parse_svc(payload, plen, &found, &packet.svc_info) == 0) {
+					packet.svc = found;
+				}
+			} else if(ps->vcodec == JANUS_VIDEOCODEC_AV1) {
+				packet.svc = (pkt->extensions.dd_len > 0);
 			}
 		}
 		if(video && ps->simulcast)
@@ -8651,13 +8225,13 @@ static void janus_videoroom_incoming_data_internal(janus_videoroom_session *sess
 	gpointer value;
 	g_hash_table_iter_init(&iter, ps->rtp_forwarders);
 	while(participant->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
-		janus_videoroom_rtp_forwarder *rtp_forward = (janus_videoroom_rtp_forwarder *)value;
+		janus_rtp_forwarder *rtp_forward = (janus_rtp_forwarder *)value;
 		if(rtp_forward->is_data) {
 			struct sockaddr *address = (rtp_forward->serv_addr.sin_family == AF_INET ?
 				(struct sockaddr *)&rtp_forward->serv_addr : (struct sockaddr *)&rtp_forward->serv_addr6);
 			size_t addrlen = (rtp_forward->serv_addr.sin_family == AF_INET ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6));
 			/* Check if this is a regular RTP forwarder, or a publisher remotization */
-			if(rtp_forward->remote_id == NULL) {
+			if(rtp_forward->metadata == NULL) {
 				/* Regular forwarder, send the payload as it is */
 				if(sendto(participant->udp_sock, buf, len, 0, address, addrlen) < 0) {
 					JANUS_LOG(LOG_HUGE, "Error forwarding data packet for %s... %s (len=%d)...\n",
@@ -9152,6 +8726,7 @@ static void *janus_videoroom_handler(void *data) {
 			}
 			janus_refcount_increase(&videoroom->ref);
 			janus_mutex_unlock(&rooms_mutex);
+			janus_mutex_lock(&sessions_mutex);
 			janus_mutex_lock(&videoroom->mutex);
 			json_t *ptype = json_object_get(root, "ptype");
 			const char *ptype_text = json_string_value(ptype);
@@ -9162,6 +8737,7 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0) {
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_mutex_unlock(&sessions_mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
@@ -9176,6 +8752,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				if(error_code != 0) {
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_mutex_unlock(&sessions_mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
@@ -9189,6 +8766,7 @@ static void *janus_videoroom_handler(void *data) {
 							JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 						if(error_code != 0) {
 							janus_mutex_unlock(&videoroom->mutex);
+							janus_mutex_unlock(&sessions_mutex);
 							janus_refcount_decrease(&videoroom->ref);
 							goto error;
 
@@ -9201,6 +8779,7 @@ static void *janus_videoroom_handler(void *data) {
 					const char *token_text = token ? json_string_value(token) : NULL;
 					if(token_text == NULL || g_hash_table_lookup(videoroom->allowed, token_text) == NULL) {
 						janus_mutex_unlock(&videoroom->mutex);
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						JANUS_LOG(LOG_ERR, "Unauthorized (not in the allowed list)\n");
 						error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
@@ -9226,6 +8805,7 @@ static void *janus_videoroom_handler(void *data) {
 							string_ids ? (gpointer)user_id_str : (gpointer)&user_id) != NULL) {
 						/* User ID already taken */
 						janus_mutex_unlock(&videoroom->mutex);
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						error_code = JANUS_VIDEOROOM_ERROR_ID_EXISTS;
 						JANUS_LOG(LOG_ERR, "User ID %s already exists\n", user_id_str);
@@ -9305,7 +8885,6 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->remote_recipients = g_hash_table_new_full(g_str_hash, g_str_equal,
 					(GDestroyNotify)g_free, (GDestroyNotify)janus_videoroom_remote_recipient_free);
 				publisher->rtp_forwarders = g_hash_table_new(NULL, NULL);
-				publisher->srtp_contexts = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, (GDestroyNotify)janus_videoroom_srtp_context_free);
 				publisher->udp_sock = -1;
 				/* Finally, generate a private ID: this is only needed in case the participant
 				 * wants to allow the plugin to know which subscriptions belong to them */
@@ -9331,6 +8910,7 @@ static void *janus_videoroom_handler(void *data) {
 						JANUS_LOG(LOG_ERR, "Participant asked for audio codec '%s', but it's not allowed (room %s, user %s)\n",
 							json_string_value(audiocodec), publisher->room_id_str, publisher->user_id_str);
 						janus_mutex_unlock(&publisher->room->mutex);
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&publisher->room->ref);
 						janus_refcount_decrease(&publisher->ref);
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
@@ -9353,6 +8933,7 @@ static void *janus_videoroom_handler(void *data) {
 						JANUS_LOG(LOG_ERR, "Participant asked for video codec '%s', but it's not allowed (room %s, user %s)\n",
 							json_string_value(videocodec), publisher->room_id_str, publisher->user_id_str);
 						janus_mutex_unlock(&publisher->room->mutex);
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&publisher->room->ref);
 						janus_refcount_decrease(&publisher->ref);
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
@@ -9394,6 +8975,7 @@ static void *janus_videoroom_handler(void *data) {
 				if(g_atomic_int_get(&session->destroyed)) {
 					janus_mutex_unlock(&session->mutex);
 					janus_mutex_unlock(&publisher->room->mutex);
+					janus_mutex_unlock(&sessions_mutex);
 					janus_refcount_decrease(&publisher->room->ref);
 					janus_videoroom_publisher_destroy(publisher);
 					JANUS_LOG(LOG_ERR, "Session destroyed, invalidating new publisher\n");
@@ -9410,6 +8992,7 @@ static void *janus_videoroom_handler(void *data) {
 				GHashTableIter iter;
 				gpointer value;
 				janus_refcount_increase(&publisher->ref);
+				janus_refcount_increase(&publisher->session->ref);
 				g_hash_table_insert(publisher->room->participants,
 					string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
 					publisher);
@@ -9537,6 +9120,7 @@ static void *janus_videoroom_handler(void *data) {
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 				}
 				janus_mutex_unlock(&publisher->room->mutex);
+				janus_mutex_unlock(&sessions_mutex);
 				if(user_id_allocated)
 					g_free(user_id_str);
 			} else if(!strcasecmp(ptype_text, "subscriber")) {
@@ -9547,27 +9131,26 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0) {
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_mutex_unlock(&sessions_mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
-				janus_mutex_lock(&sessions_mutex);
 				session = janus_videoroom_lookup_session(msg->handle);
 				if(!session) {
-					janus_mutex_unlock(&sessions_mutex);
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_mutex_unlock(&sessions_mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 					janus_videoroom_message_free(msg);
 					continue;
 				}
 				if(g_atomic_int_get(&session->destroyed)) {
-					janus_mutex_unlock(&sessions_mutex);
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_mutex_unlock(&sessions_mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					janus_videoroom_message_free(msg);
 					continue;
 				}
-				janus_mutex_unlock(&sessions_mutex);
 				/* Who does this subscription belong to? */
 				guint64 feed_id = 0;
 				char feed_id_num[30], *feed_id_str = NULL;
@@ -9590,6 +9173,7 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					if(error_code != 0) {
 						janus_mutex_unlock(&videoroom->mutex);
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9599,6 +9183,7 @@ static void *janus_videoroom_handler(void *data) {
 						error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
 						g_snprintf(error_cause, 512, "At least one between 'streams' and 'feed' must be specified");
 						janus_mutex_unlock(&videoroom->mutex);
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9640,6 +9225,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9661,6 +9247,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9687,6 +9274,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9707,6 +9295,7 @@ static void *janus_videoroom_handler(void *data) {
 								janus_refcount_decrease(&publisher->ref);
 								publishers = g_list_remove(publishers, publisher);
 							}
+							janus_mutex_unlock(&sessions_mutex);
 							janus_refcount_decrease(&videoroom->ref);
 							goto error;
 						}
@@ -9727,6 +9316,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9745,6 +9335,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9774,6 +9365,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&publisher->ref);
 							publishers = g_list_remove(publishers, publisher);
 						}
+						janus_mutex_unlock(&sessions_mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
@@ -9872,9 +9464,9 @@ static void *janus_videoroom_handler(void *data) {
 							if(sc_fallback)
 								stream->sim_context.drop_trigger = json_integer_value(sc_fallback);
 							if(spatial)
-								stream->target_spatial_layer = json_integer_value(spatial);
+								stream->svc_context.spatial_target = json_integer_value(spatial);
 							if(temporal)
-								stream->target_temporal_layer = json_integer_value(temporal);
+								stream->svc_context.temporal_target = json_integer_value(temporal);
 						}
 						if(stream && ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 							/* Override the playout-delay properties */
@@ -9935,9 +9527,9 @@ static void *janus_videoroom_handler(void *data) {
 								if(sc_temporal)
 									stream->sim_context.templayer_target = json_integer_value(sc_temporal);
 								if(spatial)
-									stream->target_spatial_layer = json_integer_value(spatial);
+									stream->svc_context.spatial_target = json_integer_value(spatial);
 								if(temporal)
-									stream->target_temporal_layer = json_integer_value(temporal);
+									stream->svc_context.temporal_target = json_integer_value(temporal);
 							}
 							if(stream && ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 								/* Override the playout-delay properties */
@@ -9986,11 +9578,12 @@ static void *janus_videoroom_handler(void *data) {
 						janus_refcount_decrease(&publisher->ref);
 						publishers = g_list_remove(publishers, publisher);
 					}
+					janus_mutex_unlock(&sessions_mutex);
 					JANUS_LOG(LOG_ERR, "Can't offer an SDP with no stream\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP;
 					g_snprintf(error_cause, 512, "Can't offer an SDP with no stream");
-					janus_refcount_decrease(&subscriber->ref);
 					janus_videoroom_subscriber_destroy(subscriber);
+					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
 				session->participant = subscriber;
@@ -9999,9 +9592,6 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_lock(&owner->subscribers_mutex);
 					owner->subscriptions = g_slist_append(owner->subscriptions, subscriber);
 					janus_mutex_unlock(&owner->subscribers_mutex);
-					/* Done adding the subscription, owner is safe to be released */
-					janus_refcount_decrease(&owner->session->ref);
-					janus_refcount_decrease(&owner->ref);
 				}
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("attached"));
@@ -10023,6 +9613,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* Negotiate by crafting a new SDP matching the subscriptions */
 				json_t *jsep = janus_videoroom_subscriber_offer(subscriber);
 				janus_mutex_unlock(&subscriber->streams_mutex);
+				janus_mutex_unlock(&sessions_mutex);
 				/* How long will the Janus core take to push the event? */
 				g_atomic_int_set(&session->hangingup, 0);
 				gint64 start = janus_get_monotonic_time();
@@ -10030,6 +9621,46 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
 				json_decref(event);
 				json_decref(jsep);
+				if(res < 0) {
+					/* Soemthing went wrong, get rid of the subscription */
+					if(media_event)
+						json_decref(media_event);
+					if(owner) {
+						janus_mutex_lock(&owner->subscribers_mutex);
+						owner->subscriptions = g_slist_remove(owner->subscriptions, subscriber);
+						janus_mutex_unlock(&owner->subscribers_mutex);
+						janus_refcount_decrease(&owner->session->ref);
+						janus_refcount_decrease(&owner->ref);
+					}
+					while(publishers) {
+						janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
+						janus_refcount_decrease(&publisher->session->ref);
+						janus_refcount_decrease(&publisher->ref);
+						publishers = g_list_remove(publishers, publisher);
+					}
+					JANUS_LOG(LOG_ERR, "Error pushing event to new subscriber\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Error pushing event");
+					janus_mutex_lock(&session->mutex)
+					session->participant = NULL;
+					janus_mutex_unlock(&session->mutex)
+					/* Get rid of streams */
+					janus_mutex_lock(&subscriber->streams_mutex);
+					GList *temp = subscriber->streams;
+					while(temp) {
+						janus_videoroom_subscriber_stream *s = (janus_videoroom_subscriber_stream *)temp->data;
+						janus_videoroom_subscriber_stream_remove(s, NULL, TRUE);
+						temp = temp->next;
+					}
+					g_list_free(subscriber->streams);
+					subscriber->streams = NULL;
+					g_hash_table_remove_all(subscriber->streams_byid);
+					g_hash_table_remove_all(subscriber->streams_bymid);
+					janus_mutex_unlock(&subscriber->streams_mutex);
+					janus_videoroom_subscriber_destroy(subscriber);
+					janus_refcount_decrease(&subscriber->ref);
+					goto error;
+				}
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
@@ -10047,11 +9678,17 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&publisher->ref);
 					publishers = g_list_remove(publishers, publisher);
 				}
+				if(owner) {
+					/* Done adding the subscription, owner is safe to be released */
+					janus_refcount_decrease(&owner->session->ref);
+					janus_refcount_decrease(&owner->ref);
+				}
 				janus_refcount_decrease(&subscriber->ref);
 				janus_videoroom_message_free(msg);
 				continue;
 			} else {
 				janus_mutex_unlock(&videoroom->mutex);
+				janus_mutex_unlock(&sessions_mutex);
 				janus_refcount_decrease(&videoroom->ref);
 				JANUS_LOG(LOG_ERR, "Invalid element (ptype)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
@@ -10874,9 +10511,9 @@ static void *janus_videoroom_handler(void *data) {
 									if(sc_fallback)
 										stream->sim_context.drop_trigger = json_integer_value(sc_fallback);
 									if(spatial)
-										stream->target_spatial_layer = json_integer_value(spatial);
+										stream->svc_context.spatial_target = json_integer_value(spatial);
 									if(temporal)
-										stream->target_temporal_layer = json_integer_value(temporal);
+										stream->svc_context.temporal_target = json_integer_value(temporal);
 								}
 								if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 									/* Override the playout-delay properties */
@@ -10928,9 +10565,9 @@ static void *janus_videoroom_handler(void *data) {
 										if(sc_fallback)
 											stream->sim_context.drop_trigger = json_integer_value(sc_fallback);
 										if(spatial)
-											stream->target_spatial_layer = json_integer_value(spatial);
+											stream->svc_context.spatial_target = json_integer_value(spatial);
 										if(temporal)
-											stream->target_temporal_layer = json_integer_value(temporal);
+											stream->svc_context.temporal_target = json_integer_value(temporal);
 									}
 									if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 										/* Override the playout-delay properties */
@@ -11260,7 +10897,7 @@ static void *janus_videoroom_handler(void *data) {
 									janus_videoroom_reqpli(ps, "Simulcasting substream change");
 								}
 							}
-							if(ps->vcodec == JANUS_VIDEOCODEC_VP8 && ps->simulcast && sc_temporal) {
+							if(ps->simulcast && sc_temporal) {
 								stream->sim_context.templayer_target = json_integer_value(sc_temporal);
 								JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
 									stream->sim_context.templayer_target, stream->sim_context.templayer);
@@ -11286,42 +10923,39 @@ static void *janus_videoroom_handler(void *data) {
 							/* Also check if the viewer is trying to configure a layer change */
 							if(spatial) {
 								int spatial_layer = json_integer_value(spatial);
-								if(spatial_layer > 1) {
-									JANUS_LOG(LOG_WARN, "Spatial layer higher than 1, will probably be ignored\n");
-								}
-								if(spatial_layer == stream->spatial_layer) {
+								if(spatial_layer == stream->svc_context.spatial) {
 									/* No need to do anything, we're already getting the right spatial layer, so notify the user */
 									json_t *event = json_object();
 									json_object_set_new(event, "videoroom", json_string("event"));
 									json_object_set_new(event, "room", string_ids ?
 										json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 									json_object_set_new(event, "mid", json_string(stream->mid));
-									json_object_set_new(event, "spatial_layer", json_integer(stream->spatial_layer));
+									json_object_set_new(event, "spatial_layer", json_integer(stream->svc_context.spatial));
 									gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
 									json_decref(event);
-								} else if(spatial_layer != stream->target_spatial_layer) {
+								} else if(spatial_layer != stream->svc_context.spatial_target) {
 									/* Send a PLI to the new RTP forward publisher */
 									janus_videoroom_reqpli(ps, "Need to downscale spatially");
 								}
-								stream->target_spatial_layer = spatial_layer;
+								stream->svc_context.spatial_target = spatial_layer;
 							}
 							if(temporal) {
 								int temporal_layer = json_integer_value(temporal);
 								if(temporal_layer > 2) {
 									JANUS_LOG(LOG_WARN, "Temporal layer higher than 2, will probably be ignored\n");
 								}
-								if(temporal_layer == stream->temporal_layer) {
+								if(temporal_layer == stream->svc_context.temporal) {
 									/* No need to do anything, we're already getting the right temporal layer, so notify the user */
 									json_t *event = json_object();
 									json_object_set_new(event, "videoroom", json_string("event"));
 									json_object_set_new(event, "room", string_ids ?
 										json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 									json_object_set_new(event, "mid", json_string(stream->mid));
-									json_object_set_new(event, "temporal_layer", json_integer(stream->temporal_layer));
+									json_object_set_new(event, "temporal_layer", json_integer(stream->svc_context.temporal_target));
 									gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
 									json_decref(event);
 								}
-								stream->target_temporal_layer = temporal_layer;
+								stream->svc_context.temporal_target = temporal_layer;
 							}
 						}
 						if(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
@@ -11684,13 +11318,43 @@ static void *janus_videoroom_handler(void *data) {
 					stream->sim_context.rid_ext_id = ps->rid_extmap_id;
 					janus_mutex_unlock(&ps->rid_mutex);
 					stream->send = TRUE;
-					stream->sim_context.substream_target = 2;
-					stream->sim_context.templayer_target = 2;
-					janus_vp8_simulcast_context_reset(&stream->vp8_context);
-					stream->spatial_layer = -1;
-					stream->target_spatial_layer = 1;		/* FIXME Chrome sends 0 and 1 */
-					stream->temporal_layer = -1;
-					stream->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
+					json_t *substream = json_object_get(s, "substream");
+					int substream_target = substream ? json_integer_value(substream) : 2;
+					if(substream_target >= 0 && substream_target <= 2) {
+						/* Override substream_target if valid */
+						stream->sim_context.substream_target = substream_target;
+					} else {
+						/* Reset sustream_target to 2 */
+						stream->sim_context.substream_target = 2;
+					}
+					json_t *temporal = json_object_get(s, "temporal");
+					int templayer_target = temporal ? json_integer_value(temporal) : 2;
+					if(templayer_target >= 0 && templayer_target <= 2) {
+						/* Override templayer_target if valid */
+						stream->sim_context.templayer_target = templayer_target;
+					} else {
+						/* Reset templayer_target to 2 */
+						stream->sim_context.templayer_target = 2;
+					}
+					janus_rtp_svc_context_reset(&stream->svc_context);
+					json_t *spatial = json_object_get(s, "spatial_layer");
+					int spatial_target = spatial ? json_integer_value(spatial) : 2;
+					if(spatial_target >= 0 && spatial_target <= 2) {
+						/* Override spatial_target if valid */
+						stream->svc_context.spatial_target = spatial_target;
+					} else {
+						/* Reset sustream_target to 2 */
+						stream->svc_context.spatial_target = 2;
+					}
+					temporal = json_object_get(s, "temporal_layer");
+					templayer_target = temporal ? json_integer_value(temporal) : 2;
+					if(templayer_target >= 0 && templayer_target <= 2) {
+						/* Override templayer_target if valid */
+						stream->svc_context.temporal_target = templayer_target;
+					} else {
+						/* Reset templayer_target to 2 */
+						stream->svc_context.temporal_target = 2;
+					}
 					janus_mutex_unlock(&ps->subscribers_mutex);
 					janus_videoroom_reqpli(ps, "Subscriber switch");
 					if(unref)
@@ -11799,6 +11463,7 @@ static void *janus_videoroom_handler(void *data) {
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
 		json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
+		json_t *msg_svc = json_object_get(msg->jsep, "svc");
 		gboolean e2ee = json_is_true(json_object_get(msg->jsep, "e2ee"));
 		if(!msg_sdp) {
 			/* No SDP to send */
@@ -11999,7 +11664,7 @@ static void *janus_videoroom_handler(void *data) {
 						janus_mutex_init(&ps->subscribers_mutex);
 						janus_mutex_init(&ps->rtp_forwarders_mutex);
 						janus_mutex_init(&ps->rid_mutex);
-						ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_rtp_forwarder_destroy);
+						ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_rtp_forwarder_destroy);
 					}
 					if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 						/* Are the extmaps we care about there? */
@@ -12142,9 +11807,8 @@ static void *janus_videoroom_handler(void *data) {
 									}
 								}
 							}
-							/* Check if simulcast is in place */
-							if(msg_simulcast != NULL && json_array_size(msg_simulcast) > 0 &&
-									(ps->vcodec == JANUS_VIDEOCODEC_VP8 || ps->vcodec == JANUS_VIDEOCODEC_H264)) {
+							/* Check if simulcast or SVC is in place */
+							if(msg_simulcast != NULL && json_array_size(msg_simulcast) > 0) {
 								size_t i = 0;
 								for(i=0; i<json_array_size(msg_simulcast); i++) {
 									json_t *s = json_array_get(msg_simulcast, i);
@@ -12160,6 +11824,17 @@ static void *janus_videoroom_handler(void *data) {
 										&ps->rid_extmap_id,
 										ps->vssrc, ps->rid);
 									janus_mutex_unlock(&ps->rid_mutex);
+								}
+							} else if(msg_svc != NULL && json_array_size(msg_svc) > 0 &&
+									(ps->vcodec == JANUS_VIDEOCODEC_VP9 || ps->vcodec == JANUS_VIDEOCODEC_AV1)) {
+								size_t i = 0;
+								for(i=0; i<json_array_size(msg_svc); i++) {
+									json_t *s = json_array_get(msg_svc, i);
+									int mindex = json_integer_value(json_object_get(s, "mindex"));
+									if(mindex != ps->mindex)
+										continue;
+									JANUS_LOG(LOG_WARN, "Publisher stream is going to do SVC (#%d, %s)\n", ps->mindex, ps->mid);
+									ps->svc = TRUE;
 								}
 							}
 							mdir = (ps->vcodec != JANUS_VIDEOCODEC_NONE ? JANUS_SDP_RECVONLY : JANUS_SDP_INACTIVE);
@@ -12214,6 +11889,7 @@ static void *janus_videoroom_handler(void *data) {
 								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_DEPENDENCY_DESC,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->videoorient_ext ? JANUS_RTP_EXTMAP_VIDEO_ORIENTATION : NULL,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->playoutdelay_ext ? JANUS_RTP_EXTMAP_PLAYOUT_DELAY : NULL,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->transport_wide_cc_ext ? JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC : NULL,
@@ -12286,7 +11962,7 @@ static void *janus_videoroom_handler(void *data) {
 						g_hash_table_iter_init(&iter, participant->remote_recipients);
 						while(g_hash_table_iter_next(&iter, NULL, &value)) {
 							janus_videoroom_remote_recipient *r = (janus_videoroom_remote_recipient *)value;
-							janus_videoroom_rtp_forwarder *f = NULL;
+							janus_rtp_forwarder *f = NULL;
 							if(r) {
 								if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
 									/* Audio stream */
@@ -12295,7 +11971,7 @@ static void *janus_videoroom_handler(void *data) {
 										(REMOTE_PUBLISHER_BASE_SSRC + ps->mindex*REMOTE_PUBLISHER_SSRC_STEP),
 										FALSE, 0, NULL, 0, FALSE, FALSE);
 									if(f != NULL)
-										f->remote_id = g_strdup(r->remote_id);
+										f->metadata = g_strdup(r->remote_id);
 								} else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 									/* Video stream */
 									gboolean add_rtcp = (!r->rtcp_added && r->rtcp_port > 0);
@@ -12304,7 +11980,7 @@ static void *janus_videoroom_handler(void *data) {
 										(REMOTE_PUBLISHER_BASE_SSRC + ps->mindex*REMOTE_PUBLISHER_SSRC_STEP),
 										FALSE, 0, NULL, 0, TRUE, FALSE);
 									if(f != NULL)
-										f->remote_id = g_strdup(r->remote_id);
+										f->metadata = g_strdup(r->remote_id);
 									if(add_rtcp)
 										r->rtcp_added = TRUE;
 									/* Check if there's simulcast substreams we need to relay too */
@@ -12314,7 +11990,7 @@ static void *janus_videoroom_handler(void *data) {
 											(REMOTE_PUBLISHER_BASE_SSRC + ps->mindex*REMOTE_PUBLISHER_SSRC_STEP + 1),
 											FALSE, 0, NULL, 1, TRUE, FALSE);
 										if(f != NULL)
-											f->remote_id = g_strdup(r->remote_id);
+											f->metadata = g_strdup(r->remote_id);
 									}
 									if(ps->vssrc[2] || ps->rid[2]) {
 										f = janus_videoroom_rtp_forwarder_add_helper(participant, ps,
@@ -12322,7 +11998,7 @@ static void *janus_videoroom_handler(void *data) {
 											(REMOTE_PUBLISHER_BASE_SSRC + ps->mindex*REMOTE_PUBLISHER_SSRC_STEP + 2),
 											FALSE, 0, NULL, 2, TRUE, FALSE);
 										if(f != NULL)
-											f->remote_id = g_strdup(r->remote_id);
+											f->metadata = g_strdup(r->remote_id);
 									}
 								} else {
 									/* Data stream */
@@ -12478,142 +12154,48 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 	if(packet->is_video) {
 		/* Check if there's any SVC info to take into account */
 		if(packet->svc) {
-			/* There is: check if this is a layer that can be dropped for this viewer
-			 * Note: Following core inspired by the excellent job done by Sergio Garcia Murillo here:
-			 * https://github.com/medooze/media-server/blob/master/src/vp9/VP9LayerSelector.cpp */
+			/* Handle SVC: make sure we have a payload to work with */
 			int plen = 0;
 			char *payload = janus_rtp_payload((char *)packet->data, packet->length, &plen);
-			gboolean keyframe = janus_vp9_is_keyframe((const char *)payload, plen);
-			gboolean override_mark_bit = FALSE, has_marker_bit = packet->data->markerbit;
-			int spatial_layer = stream->spatial_layer;
-			gint64 now = janus_get_monotonic_time();
-			if(packet->svc_info.spatial_layer >= 0 && packet->svc_info.spatial_layer <= 2)
-				stream->last_spatial_layer[packet->svc_info.spatial_layer] = now;
-			if(stream->target_spatial_layer > stream->spatial_layer) {
-				JANUS_LOG(LOG_HUGE, "We need to upscale spatially: (%d < %d)\n",
-					stream->spatial_layer, stream->target_spatial_layer);
-				/* We need to upscale: wait for a keyframe */
-				if(keyframe) {
-					int new_spatial_layer = stream->target_spatial_layer;
-					while(new_spatial_layer > stream->spatial_layer && new_spatial_layer > 0) {
-						if(now - stream->last_spatial_layer[new_spatial_layer] >= 250000) {
-							/* We haven't received packets from this layer for a while, try a lower layer */
-							JANUS_LOG(LOG_HUGE, "Haven't received packets from layer %d for a while, trying %d instead...\n",
-								new_spatial_layer, new_spatial_layer-1);
-							new_spatial_layer--;
-						} else {
-							break;
-						}
-					}
-					if(new_spatial_layer > stream->spatial_layer) {
-						JANUS_LOG(LOG_HUGE, "  -- Upscaling spatial layer: %d --> %d (need %d)\n",
-							stream->spatial_layer, new_spatial_layer, stream->target_spatial_layer);
-						stream->spatial_layer = new_spatial_layer;
-						spatial_layer = stream->spatial_layer;
-						/* Notify the viewer */
-						json_t *event = json_object();
-						json_object_set_new(event, "videoroom", json_string("event"));
-						json_object_set_new(event, "room", string_ids ? json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-						json_object_set_new(event, "mid", json_string(stream->mid));
-						json_object_set_new(event, "spatial_layer", json_integer(stream->spatial_layer));
-						if(stream->temporal_layer == -1) {
-							/* We just started: initialize the temporal layer and notify that too */
-							stream->temporal_layer = 0;
-							json_object_set_new(event, "temporal_layer", json_integer(stream->temporal_layer));
-						}
-						gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
-						json_decref(event);
-					}
-				}
-			} else if(stream->target_spatial_layer < stream->spatial_layer) {
-				/* We need to downscale */
-				JANUS_LOG(LOG_HUGE, "We need to downscale spatially: (%d > %d)\n",
-					stream->spatial_layer, stream->target_spatial_layer);
-				gboolean downscaled = FALSE;
-				if(!packet->svc_info.fbit && keyframe) {
-					/* Non-flexible mode: wait for a keyframe */
-					downscaled = TRUE;
-				} else if(packet->svc_info.fbit && packet->svc_info.ebit) {
-					/* Flexible mode: check the E bit */
-					downscaled = TRUE;
-				}
-				if(downscaled) {
-					JANUS_LOG(LOG_HUGE, "  -- Downscaling spatial layer: %d --> %d\n",
-						stream->spatial_layer, stream->target_spatial_layer);
-					stream->spatial_layer = stream->target_spatial_layer;
-					/* Notify the viewer */
-					json_t *event = json_object();
-					json_object_set_new(event, "videoroom", json_string("event"));
-					json_object_set_new(event, "room", string_ids ? json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-					json_object_set_new(event, "mid", json_string(stream->mid));
-					json_object_set_new(event, "spatial_layer", json_integer(stream->spatial_layer));
-					gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
-					json_decref(event);
-				}
-			}
-			if(spatial_layer < packet->svc_info.spatial_layer) {
-				/* Drop the packet: update the context to make sure sequence number is increased normally later */
-				JANUS_LOG(LOG_HUGE, "Dropping packet (spatial layer %d < %d)\n", spatial_layer, packet->svc_info.spatial_layer);
-				stream->context.base_seq++;
+			if(payload == NULL)
 				return;
-			} else if(packet->svc_info.ebit && spatial_layer == packet->svc_info.spatial_layer) {
-				/* If we stop at layer 0, we need a marker bit now, as the one from layer 1 will not be received */
-				override_mark_bit = TRUE;
+			/* Process this packet: don't relay if it's not the layer we wanted to handle */
+			janus_rtp_header rtp = *(packet->data);
+			gboolean relay = janus_rtp_svc_context_process_rtp(&stream->svc_context,
+				(char *)packet->data, packet->length, packet->extensions.dd_content, packet->extensions.dd_len,
+				ps->vcodec, &packet->svc_info, &stream->context);
+			if(stream->svc_context.need_pli) {
+				/* Send a PLI */
+				JANUS_LOG(LOG_VERB, "We need a PLI for the SVC context\n");
+				janus_videoroom_reqpli(ps, "SVC change");
 			}
-			int temporal_layer = stream->temporal_layer;
-			if(stream->target_temporal_layer > stream->temporal_layer) {
-				/* We need to upscale */
-				JANUS_LOG(LOG_HUGE, "We need to upscale temporally: (%d < %d)\n",
-					stream->temporal_layer, stream->target_temporal_layer);
-				if(packet->svc_info.ubit && packet->svc_info.bbit &&
-						packet->svc_info.temporal_layer > stream->temporal_layer &&
-						packet->svc_info.temporal_layer <= stream->target_temporal_layer) {
-					JANUS_LOG(LOG_HUGE, "  -- Upscaling temporal layer: %d --> %d (want %d)\n",
-						stream->temporal_layer, packet->svc_info.temporal_layer, stream->target_temporal_layer);
-					stream->temporal_layer = packet->svc_info.temporal_layer;
-					temporal_layer = stream->temporal_layer;
-					/* Notify the viewer */
-					json_t *event = json_object();
-					json_object_set_new(event, "videoroom", json_string("event"));
-					json_object_set_new(event, "room", string_ids ? json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-					json_object_set_new(event, "mid", json_string(stream->mid));
-					json_object_set_new(event, "temporal_layer", json_integer(stream->temporal_layer));
-					gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
-					json_decref(event);
-				}
-			} else if(stream->target_temporal_layer < stream->temporal_layer) {
-				/* We need to downscale */
-				JANUS_LOG(LOG_HUGE, "We need to downscale temporally: (%d > %d)\n",
-					stream->temporal_layer, stream->target_temporal_layer);
-				if(packet->svc_info.ebit && packet->svc_info.temporal_layer == stream->target_temporal_layer) {
-					JANUS_LOG(LOG_HUGE, "  -- Downscaling temporal layer: %d --> %d\n",
-						stream->temporal_layer, stream->target_temporal_layer);
-					stream->temporal_layer = stream->target_temporal_layer;
-					/* Notify the viewer */
-					json_t *event = json_object();
-					json_object_set_new(event, "videoroom", json_string("event"));
-					json_object_set_new(event, "room", string_ids ? json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
-					json_object_set_new(event, "mid", json_string(stream->mid));
-					json_object_set_new(event, "temporal_layer", json_integer(stream->temporal_layer));
-					gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
-					json_decref(event);
-				}
-			}
-			if(temporal_layer < packet->svc_info.temporal_layer) {
-				/* Drop the packet: update the context to make sure sequence number is increased normally later */
-				JANUS_LOG(LOG_HUGE, "Dropping packet (temporal layer %d < %d)\n", temporal_layer, packet->svc_info.temporal_layer);
-				stream->context.base_seq++;
+			/* Do we need to drop this? */
+			if(!relay)
 				return;
+			/* Any event we should notify? */
+			if(stream->svc_context.changed_spatial) {
+				/* Notify the user about the spatial layer change */
+				json_t *event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "room", string_ids ? json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
+				json_object_set_new(event, "mid", json_string(stream->mid));
+				json_object_set_new(event, "spatial_layer", json_integer(stream->svc_context.spatial));
+				gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
+				json_decref(event);
 			}
-			/* If we got here, we can send the frame: this doesn't necessarily mean it's
-			 * one of the layers the user wants, as there may be dependencies involved */
-			JANUS_LOG(LOG_HUGE, "Sending packet (spatial=%d, temporal=%d)\n",
-				packet->svc_info.spatial_layer, packet->svc_info.temporal_layer);
-			/* Fix sequence number and timestamp (publisher switching may be involved) */
+			if(stream->svc_context.changed_temporal) {
+				/* Notify the user about the temporal layer change */
+				json_t *event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "room", string_ids ? json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
+				json_object_set_new(event, "mid", json_string(stream->mid));
+				json_object_set_new(event, "temporal_layer", json_integer(stream->svc_context.temporal));
+				gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
+				json_decref(event);
+			}
+			/* If we got here, update the RTP header and send the packet */
 			janus_rtp_header_update(packet->data, &stream->context, TRUE, 0);
-			if(override_mark_bit && !has_marker_bit) {
-				packet->data->markerbit = 1;
-			}
+			/* Send the packet */
 			if(gateway != NULL) {
 				janus_plugin_rtp rtp = { .mindex = stream->mindex, .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length,
 					.extensions = packet->extensions };
@@ -12623,12 +12205,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				}
 				gateway->relay_rtp(session->handle, &rtp);
 			}
-			if(override_mark_bit && !has_marker_bit) {
-				packet->data->markerbit = 0;
-			}
 			/* Restore the timestamp and sequence number to what the publisher set them to */
-			packet->data->timestamp = htonl(packet->timestamp);
-			packet->data->seq_number = htons(packet->seq_number);
+			*(packet->data) = rtp;
 		} else if(packet->simulcast) {
 			/* Handle simulcast: make sure we have a payload to work with */
 			int plen = 0;
@@ -12637,7 +12215,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				return;
 			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&stream->sim_context,
-				(char *)packet->data, packet->length, packet->ssrc, NULL, ps->vcodec, &stream->context, &ps->rid_mutex);
+				(char *)packet->data, packet->length, packet->extensions.dd_content, packet->extensions.dd_len,
+				packet->ssrc, NULL, ps->vcodec, &stream->context, &ps->rid_mutex);
 			if(!relay) {
 				/* Did a lot of time pass before we could relay a packet? */
 				gint64 now = janus_get_monotonic_time();
@@ -12770,20 +12349,16 @@ static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data)
 }
 
 /* The following methods are only relevant if RTCP is used for RTP forwarders */
-static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_videoroom_rtp_forwarder *forward) {
-	char buffer[1500];
-	struct sockaddr_storage remote_addr;
-	socklen_t addrlen = sizeof(remote_addr);
-	int len = recvfrom(forward->rtcp_fd, buffer, sizeof(buffer), 0, (struct sockaddr *)&remote_addr, &addrlen);
+static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_rtp_forwarder *rf, char *buffer, int len) {
 	if(len > 0 && janus_is_rtcp(buffer, len)) {
-		JANUS_LOG(LOG_HUGE, "Got %s RTCP packet: %d bytes\n", forward->is_video ? "video" : "audio", len);
+		JANUS_LOG(LOG_HUGE, "Got %s RTCP packet: %d bytes\n", rf->is_video ? "video" : "audio", len);
 		/* We only handle incoming video PLIs or FIR at the moment */
 		if(!janus_rtcp_has_fir(buffer, len) && !janus_rtcp_has_pli(buffer, len))
 			return;
 		/* Check if this is a regular RTP forwarder, or a publisher remotization */
-		if(forward->remote_id == NULL) {
+		if(rf->metadata == NULL) {
 			/* Regular forwarder, send the PLI to the stream associated with it */
-			janus_videoroom_reqpli((janus_videoroom_publisher_stream *)forward->source, "RTCP from forwarder");
+			janus_videoroom_reqpli((janus_videoroom_publisher_stream *)rf->source, "RTCP from forwarder");
 		} else {
 			/* Remotization, check the SSRC in the request so that we know
 			 * which publisher video stream we should send the PLI to */
@@ -12822,8 +12397,8 @@ static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_videoroom_rtp_forwa
 			}
 			if(ssrc > 0) {
 				/* Look for the right publisher stream instance */
-				char *remote_id = forward->remote_id;
-				janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)forward->source;
+				char *remote_id = (char *)rf->metadata;
+				janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)rf->source;
 				if(ps == NULL)
 					return;
 				janus_videoroom_publisher *p = ps->publisher;
@@ -12848,9 +12423,9 @@ static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_videoroom_rtp_forwa
 					gpointer key_f, value_f;
 					g_hash_table_iter_init(&iter_f, ps->rtp_forwarders);
 					while(g_hash_table_iter_next(&iter_f, &key_f, &value_f)) {
-						janus_videoroom_rtp_forwarder *rpv = value_f;
+						janus_rtp_forwarder *rpv = value_f;
 						/* We only care about video forwarders used for the same remotization */
-						if(!rpv->is_video || rpv->remote_id == NULL || strcasecmp(rpv->remote_id, remote_id))
+						if(!rpv->is_video || rpv->metadata == NULL || strcasecmp((char *)rpv->metadata, remote_id))
 							continue;
 						/* Check the SSRC */
 						if(rpv->ssrc == ssrc) {
@@ -12867,15 +12442,6 @@ static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_videoroom_rtp_forwa
 			}
 		}
 	}
-}
-
-static void *janus_videoroom_rtp_forwarder_rtcp_thread(void *data) {
-	JANUS_LOG(LOG_VERB, "Joining RTCP thread for RTP forwarders...\n");
-	/* Run the main loop */
-	g_main_loop_run(rtcpfwd_loop);
-	/* When the loop ends, we're done */
-	JANUS_LOG(LOG_VERB, "Leaving RTCP thread for RTP forwarders...\n");
-	return NULL;
 }
 
 /* Helpers to create a listener filedescriptor */
@@ -13076,6 +12642,7 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 
 	/* As the first thing, we add the remote publisher to the list */
 	janus_refcount_increase(&publisher->ref);
+	janus_refcount_increase(&publisher->session->ref);
 	janus_videoroom *videoroom = publisher->room;
 	janus_refcount_increase(&videoroom->ref);
 	g_hash_table_insert(videoroom->participants,

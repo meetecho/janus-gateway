@@ -149,6 +149,7 @@ typedef struct janus_http_msg {
 	char *acro;							/* Value of the Origin HTTP header, if any (needed for CORS) */
 	char *acrh;							/* Value of the Access-Control-Request-Headers HTTP header, if any (needed for CORS) */
 	char *acrm;							/* Value of the Access-Control-Request-Method HTTP header, if any (needed for CORS) */
+	char *xff;							/* Value of the X-Forwarded-For HTTP header, if any  */
 	char *contenttype;					/* Content-Type of the payload */
 	char *payload;						/* Payload of the message */
 	size_t len;							/* Length of the message in octets */
@@ -173,6 +174,7 @@ static void janus_http_msg_free(const janus_refcount *msg_ref) {
 	g_free(request->acro);
 	g_free(request->acrh);
 	g_free(request->acrm);
+	g_free(request->xff);
 	g_free(request->response);
 	g_free(request);
 }
@@ -303,6 +305,7 @@ static gboolean enforce_cors = FALSE;
 
 /* REST and Admin/Monitor ACL list */
 static GList *janus_http_access_list = NULL, *janus_http_admin_access_list = NULL;
+static gboolean janus_http_check_xff = FALSE, janus_http_admin_check_xff = FALSE;
 static janus_mutex access_list_mutex;
 static void janus_http_allow_address(const char *ip, gboolean admin) {
 	if(ip == NULL)
@@ -736,6 +739,10 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			}
 			g_strfreev(list);
 			list = NULL;
+			/* Check if we should use the value of X-Forwarded-For for checks too */
+			item = janus_config_get(config, config_general, janus_config_type_item, "acl_forwarded");
+			if(item && item->value)
+				janus_http_check_xff = janus_is_true(item->value);
 		}
 		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_acl");
 		if(item && item->value) {
@@ -754,6 +761,10 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			}
 			g_strfreev(list);
 			list = NULL;
+			/* Check if we should use the value of X-Forwarded-For for checks too */
+			item = janus_config_get(config, config_general, janus_config_type_item, "admin_acl_forwarded");
+			if(item && item->value)
+				janus_http_admin_check_xff = janus_is_true(item->value);
 		}
 
 		/* Any custom value for the Access-Control-Allow-Origin header? */
@@ -1375,6 +1386,13 @@ static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connectio
 		janus_mutex_unlock(&messages_mutex);
 		*ptr = ts;
 		MHD_get_connection_values(connection, MHD_HEADER_KIND, &janus_http_headers, msg);
+		if(janus_http_check_xff && msg->xff) {
+			/* Any access limitation based on this IP address? */
+			if(!janus_http_is_allowed(msg->xff, FALSE)) {
+				JANUS_LOG(LOG_ERR, "IP %s is unauthorized to connect to the Janus API interface\n", msg->xff);
+				return MHD_NO;
+			}
+		}
 		ret = MHD_YES;
 		/* Notify handlers about this new transport instance */
 		if(notify_events && gateway->events_is_enabled()) {
@@ -1773,6 +1791,13 @@ static MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connection *con
 		janus_mutex_unlock(&messages_mutex);
 		*ptr = ts;
 		MHD_get_connection_values(connection, MHD_HEADER_KIND, &janus_http_headers, msg);
+		if(janus_http_admin_check_xff && msg->xff) {
+			/* Any access limitation based on this IP address? */
+			if(!janus_http_is_allowed(msg->xff, TRUE)) {
+				JANUS_LOG(LOG_ERR, "IP %s is unauthorized to connect to the Janus API interface\n", msg->xff);
+				return MHD_NO;
+			}
+		}
 		ret = MHD_YES;
 		/* Notify handlers about this new transport instance */
 		if(notify_events && gateway->events_is_enabled()) {
@@ -2011,6 +2036,8 @@ static MHD_Result janus_http_headers(void *cls, enum MHD_ValueKind kind, const c
 		request->acrm = g_strdup(value);
 	} else if(!strcasecmp(key, "Access-Control-Request-Headers")) {
 		request->acrh = g_strdup(value);
+	} else if(!strcasecmp(key, "X-Forwarded-For")) {
+		request->xff = g_strdup(value);
 	}
 	janus_refcount_decrease(&request->ref);
 	return MHD_YES;

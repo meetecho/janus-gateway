@@ -1,16 +1,43 @@
 {
-	"name": "janus",
-	"description": "The Janus WebRTC Server",
-	"author": "Meetecho",
-	"license": "GPL-3.0",
-	"repository": "github:meetecho/janus-gateway",
+	"name": "janus-gateway",
+	"version": "1.2.0",
+	"description": "A javascript library for interacting with the C based Janus WebRTC Server",
+	"main": "dist/janus.es.js",
 	"types": "janus.d.ts",
-	"typings": "janus.d.ts",
-	"scripts": {
-		"rollup": "rollup -c rollup.config.js"
+	"files": [
+		"dist",
+		"src",
+		"janus.d.ts",
+		"README.md"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/meetecho/janus-gateway.git",
+		"directory": "npm"
+	},
+	"author": {
+		"name": "Lorenzo Miniero",
+		"email": "lorenzo@meetecho.com",
+		"url": "https://www.meetecho.com"
+	},
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/meetecho/janus-gateway/issues"
+	},
+	"homepage": "https://janus.conf.meetecho.com/docs/JS",
+	"dependencies": {
+		"webrtc-adapter": "8.2.2"
 	},
 	"devDependencies": {
-		"rollup": "^0.50.0",
-		"rollup-plugin-replace": "^2.0.0"
+		"@rollup/plugin-replace": "^5.0.2",
+		"@rollup/plugin-strip": "^3.0.2",
+		"eslint": "^8.39.0",
+		"eslint-plugin-html": "^7.1.0",
+		"rollup": "^3.21.6"
+	},
+	"scripts": {
+		"lint": "eslint ../html --ext .js,.html --resolve-plugins-relative-to ./npm",
+		"rollup": "rollup -c rollup.config.mjs",
+		"prerelease": "npm run rollup -- --o dist/janus.es.js --f es && node -e \"const fs=require('fs'); const data=fs.readFileSync('../html/janus.js'); fs.mkdirSync('./src', {recursive:true}); fs.writeFileSync('./src/janus.js',data);\""
 	}
 }

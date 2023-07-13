@@ -3,13 +3,15 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+/* global md5:readonly */
+
 var janus = null;
 var sipcall = null;
 var opaqueId = "siptest-"+Janus.randomString(12);
 
 var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
-var spinner = null;
 
 var selectedApproach = null;
 var registered = false;
@@ -122,7 +124,7 @@ $(document).ready(function() {
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::", msg);
 									// Any error?
-									var error = msg["error"];
+									let error = msg["error"];
 									if(error) {
 										if(!registered) {
 											$('#server').removeAttr('disabled');
@@ -144,10 +146,10 @@ $(document).ready(function() {
 										bootbox.alert(error);
 										return;
 									}
-									var callId = msg["call_id"];
-									var result = msg["result"];
+									let callId = msg["call_id"];
+									let result = msg["result"];
 									if(result && result["event"]) {
-										var event = result["event"];
+										let event = result["event"];
 										if(event === 'registration_failed') {
 											Janus.warn("Registration failed: " + result["code"] + " " + result["reason"]);
 											$('#server').removeAttr('disabled');
@@ -187,13 +189,13 @@ $(document).ready(function() {
 											Janus.log("Waiting for the peer to answer...");
 											// TODO Any ringtone?
 											$('#call').removeAttr('disabled').html('Hangup')
-												  .removeClass("btn-success").addClass("btn-danger")
-												  .unbind('click').click(doHangup);
+												.removeClass("btn-success").addClass("btn-danger")
+												.unbind('click').click(doHangup);
 										} else if(event === 'incomingcall') {
 											Janus.log("Incoming call from " + result["username"] + "!");
 											sipcall.callId = callId;
-											var doAudio = true, doVideo = true;
-											var offerlessInvite = false;
+											let doAudio = true, doVideo = true;
+											let offerlessInvite = false;
 											if(jsep) {
 												// What has been negotiated?
 												doAudio = (jsep.sdp.indexOf("m=audio ") > -1);
@@ -207,23 +209,23 @@ $(document).ready(function() {
 												doVideo = false;
 											}
 											// Is this the result of a transfer?
-											var transfer = "";
-											var referredBy = result["referred_by"];
+											let transfer = "";
+											let referredBy = result["referred_by"];
 											if(referredBy) {
 												transfer = " (referred by " + referredBy + ")";
 												transfer = transfer.replace(new RegExp('<', 'g'), '&lt');
 												transfer = transfer.replace(new RegExp('>', 'g'), '&gt');
 											}
 											// Any security offered? A missing "srtp" attribute means plain RTP
-											var rtpType = "";
-											var srtp = result["srtp"];
+											let rtpType = "";
+											let srtp = result["srtp"];
 											if(srtp === "sdes_optional")
 												rtpType = " (SDES-SRTP offered)";
 											else if(srtp === "sdes_mandatory")
 												rtpType = " (SDES-SRTP mandatory)";
 											// Notify user
 											bootbox.hideAll();
-											var extra = "";
+											let extra = "";
 											if(offerlessInvite)
 												extra = " (no SDP offer provided)"
 											incoming = bootbox.dialog({
@@ -239,7 +241,7 @@ $(document).ready(function() {
 															$('#peer').val(result["username"]).attr('disabled', true);
 															// Notice that we can only answer if we got an offer: if this was
 															// an offerless call, we'll need to create an offer ourselves
-															var sipcallAction = (offerlessInvite ? sipcall.createOffer : sipcall.createAnswer);
+															let sipcallAction = (offerlessInvite ? sipcall.createOffer : sipcall.createAnswer);
 															// We want bidirectional audio and/or video
 															let tracks = [];
 															if(doAudio)
@@ -254,13 +256,13 @@ $(document).ready(function() {
 																		Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo + ":", jsep);
 																		sipcall.doAudio = doAudio;
 																		sipcall.doVideo = doVideo;
-																		var body = { request: "accept" };
+																		let body = { request: "accept" };
 																		// Note: as with "call", you can add a "srtp" attribute to
 																		// negotiate/mandate SDES support for this incoming call.
 																		// The default behaviour is to automatically use it if
 																		// the caller negotiated it, but you may choose to require
 																		// SDES support by setting "srtp" to "sdes_mandatory", e.g.:
-																		//		var body = { request: "accept", srtp: "sdes_mandatory" };
+																		//		let body = { request: "accept", srtp: "sdes_mandatory" };
 																		// This way you'll tell the plugin to accept the call, but ONLY
 																		// if SDES is available, and you don't want plain RTP. If it
 																		// is not available, you'll get an error (452) back. You can
@@ -282,7 +284,7 @@ $(document).ready(function() {
 																		Janus.error("WebRTC error:", error);
 																		bootbox.alert("WebRTC error... " + error.message);
 																		// Don't keep the caller waiting any longer, but use a 480 instead of the default 486 to clarify the cause
-																		var body = { request: "decline", code: 480 };
+																		let body = { request: "decline", code: 480 };
 																		sipcall.send({ message: body });
 																	}
 																});
@@ -293,7 +295,7 @@ $(document).ready(function() {
 														className: "btn-danger",
 														callback: function() {
 															incoming = null;
-															var body = { request: "decline" };
+															let body = { request: "decline" };
 															sipcall.send({ message: body });
 														}
 													}
@@ -321,7 +323,7 @@ $(document).ready(function() {
 											// to notify about media changes), to keep things simple
 											// we just accept the update and send an answer right away
 											Janus.log("Got re-INVITE");
-											var doAudio = (jsep.sdp.indexOf("m=audio ") > -1),
+											let doAudio = (jsep.sdp.indexOf("m=audio ") > -1),
 												doVideo = (jsep.sdp.indexOf("m=video ") > -1);
 											// We want bidirectional audio and/or video, but only
 											// populate tracks if we weren't sending something before
@@ -340,7 +342,7 @@ $(document).ready(function() {
 													tracks: tracks,
 													success: function(jsep) {
 														Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo + ":", jsep);
-														var body = { request: "update" };
+														let body = { request: "update" };
 														sipcall.send({ message: body, jsep: jsep });
 													},
 													error: function(error) {
@@ -350,30 +352,30 @@ $(document).ready(function() {
 												});
 										} else if(event === 'message') {
 											// We got a MESSAGE
-											var sender = result["displayname"] ? result["displayname"] : result["sender"];
-											var content = result["content"];
+											let sender = result["displayname"] ? result["displayname"] : result["sender"];
+											let content = result["content"];
 											content = content.replace(new RegExp('<', 'g'), '&lt');
 											content = content.replace(new RegExp('>', 'g'), '&gt');
 											toastr.success(content, "Message from " + sender);
 										} else if(event === 'info') {
 											// We got an INFO
-											var sender = result["displayname"] ? result["displayname"] : result["sender"];
-											var content = result["content"];
+											let sender = result["displayname"] ? result["displayname"] : result["sender"];
+											let content = result["content"];
 											content = content.replace(new RegExp('<', 'g'), '&lt');
 											content = content.replace(new RegExp('>', 'g'), '&gt');
 											toastr.info(content, "Info from " + sender);
 										} else if(event === 'notify') {
 											// We got a NOTIFY
-											var notify = result["notify"];
-											var content = result["content"];
+											let notify = result["notify"];
+											let content = result["content"];
 											toastr.info(content, "Notify (" + notify + ")");
 										} else if(event === 'transfer') {
 											// We're being asked to transfer the call, ask the user what to do
-											var referTo = result["refer_to"];
-											var referredBy = result["referred_by"] ? result["referred_by"] : "an unknown party";
-											var referId = result["refer_id"];
-											var replaces = result["replaces"];
-											var extra = ("referred by " + referredBy);
+											let referTo = result["refer_to"];
+											let referredBy = result["referred_by"] ? result["referred_by"] : "an unknown party";
+											let referId = result["refer_id"];
+											let replaces = result["replaces"];
+											let extra = ("referred by " + referredBy);
 											if(replaces)
 												extra += (", replaces call-ID " + replaces);
 											extra = extra.replace(new RegExp('<', 'g'), '&lt');
@@ -388,10 +390,10 @@ $(document).ready(function() {
 															actuallyDoCall(sipcall, referTo, false, referId);
 														} else {
 															// We're in a call already, use a helper
-															var h = -1;
+															let h = -1;
 															if(Object.keys(helpers).length > 0) {
 																// See if any of the helpers if available
-																for(var i in helpers) {
+																for(let i in helpers) {
 																	if(!helpers[i].sipcall.webrtcStuff.pc) {
 																		h = parseInt(i);
 																		break;
@@ -413,7 +415,7 @@ $(document).ready(function() {
 														}
 													} else {
 														// We're rejecting the transfer
-														var body = { request: "decline", refer_id: referId };
+														let body = { request: "decline", refer_id: referId };
 														sipcall.send({ message: body });
 													}
 												});
@@ -447,15 +449,15 @@ $(document).ready(function() {
 								onlocaltrack: function(track, on) {
 									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
 									// We use the track ID as name of the element, but it may contain invalid characters
-									var trackId = track.id.replace(/[{}]/g, "");
+									let trackId = track.id.replace(/[{}]/g, "");
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
-										var stream = localTracks[trackId];
+										let stream = localTracks[trackId];
 										if(stream) {
 											try {
-												var tracks = stream.getTracks();
-												for(var i in tracks) {
-													var mst = tracks[i];
+												let tracks = stream.getTracks();
+												for(let i in tracks) {
+													let mst = tracks[i];
 													if(mst)
 														mst.stop();
 												}
@@ -479,7 +481,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
-									var stream = localTracks[trackId];
+									let stream = localTracks[trackId];
 									if(stream) {
 										// We've been here already
 										return;
@@ -552,7 +554,7 @@ $(document).ready(function() {
 												'<button id="info" title="Send INFO" class="btn btn-info"><i class="fa fa-info"></i></button>' +
 												'<button id="transfer" title="Transfer call" class="btn btn-info"><i class="fa fa-mail-forward"></i></button>' +
 											'</span>');
-										for(var i=0; i<12; i++) {
+										for(let i=0; i<12; i++) {
 											if(i<10)
 												$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
 											else if(i == 10)
@@ -570,7 +572,7 @@ $(document).ready(function() {
 											bootbox.prompt("Insert message to send", function(result) {
 												if(result && result !== '') {
 													// Send the message
-													var msg = { request: "message", content: result };
+													let msg = { request: "message", content: result };
 													sipcall.send({ message: msg });
 												}
 											});
@@ -593,11 +595,11 @@ $(document).ready(function() {
 														className: "btn-primary",
 														callback: function() {
 															// Send the INFO
-															var type = $('#type').val();
-															var content = $('#content').val();
+															let type = $('#type').val();
+															let content = $('#content').val();
 															if(type === '' || content === '')
 																return;
-															var msg = { request: "info", type: type, content: content };
+															let msg = { request: "info", type: type, content: content };
 															sipcall.send({ message: msg });
 														}
 													}
@@ -621,10 +623,10 @@ $(document).ready(function() {
 														className: "btn-info",
 														callback: function() {
 															// Start a blind transfer
-															var address = $('#transferto').val();
+															let address = $('#transferto').val();
 															if(address === '')
 																return;
-															var msg = { request: "transfer", uri: address };
+															let msg = { request: "transfer", uri: address };
 															sipcall.send({ message: msg });
 														}
 													},
@@ -633,11 +635,11 @@ $(document).ready(function() {
 														className: "btn-primary",
 														callback: function() {
 															// Start an attended transfer
-															var address = $('#transferto').val();
+															let address = $('#transferto').val();
 															if(address === '')
 																return;
 															// Add the call-id to replace to the transfer
-															var msg = { request: "transfer", uri: address, replace: sipcall.callId };
+															let msg = { request: "transfer", uri: address, replace: sipcall.callId };
 															sipcall.send({ message: msg });
 														}
 													}
@@ -647,7 +649,7 @@ $(document).ready(function() {
 									}
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote audio stream:", stream);
 										$('#videoright').append('<audio class="hide" id="peervideom' + mid + '" autoplay playsinline/>');
@@ -666,7 +668,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										remoteVideos++;
 										$('#videoright .no-video-container').remove();
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote video stream:", stream);
 										$('#videoright').append('<video class="rounded centered" id="peervideom' + mid + '" width="100%" height="100%" autoplay playsinline/>');
@@ -705,8 +707,9 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(field, event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		if(field.id == 'server' || field.id == 'username' || field.id == 'password' || field.id == 'displayname')
 			registerUsername();
@@ -738,7 +741,7 @@ function registerUsername() {
 	//		"outbound_proxy" property in the request instead. The two are of course not
 	//		mutually exclusive. If you set neither, the domain part of the user identity
 	//		will be used as the target of the REGISTER request the plugin might send.
-	var sipserver = $('#server').val();
+	let sipserver = $('#server').val();
 	if(sipserver !== "" && sipserver.indexOf("sip:") != 0 && sipserver.indexOf("sips:") !=0) {
 		bootbox.alert("Please insert a valid SIP server (e.g., sip:192.168.0.1:5060)");
 		$('#server').removeAttr('disabled');
@@ -752,7 +755,7 @@ function registerUsername() {
 	}
 	if(selectedApproach === "guest") {
 		// We're registering as guests, no username/secret provided
-		var register = {
+		let register = {
 			request: "register",
 			type: "guest"
 		};
@@ -761,7 +764,7 @@ function registerUsername() {
 			// Uncomment this if you want to see an outbound proxy too
 			//~ register["outbound_proxy"] = "sip:outbound.example.com";
 		}
-		var username = $('#username').val();
+		let username = $('#username').val();
 		if(!username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
 			bootbox.alert("Please insert a valid SIP address (e.g., sip:goofy@example.com): this doesn't need to exist for guests, but is required");
 			$('#server').removeAttr('disabled');
@@ -773,7 +776,7 @@ function registerUsername() {
 			return;
 		}
 		register.username = username;
-		var displayname = $('#displayname').val();
+		let displayname = $('#displayname').val();
 		if(displayname) {
 			register.display_name = displayname;
 		}
@@ -796,7 +799,7 @@ function registerUsername() {
 		}
 		return;
 	}
-	var username = $('#username').val();
+	let username = $('#username').val();
 	if(username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
 		bootbox.alert('Please insert a valid SIP identity address (e.g., sip:goofy@example.com)');
 		$('#server').removeAttr('disabled');
@@ -808,7 +811,7 @@ function registerUsername() {
 		$('#registerset').removeAttr('disabled');
 		return;
 	}
-	var password = $('#password').val();
+	let password = $('#password').val();
 	if(password === "") {
 		bootbox.alert("Insert the username secret (e.g., mypassword)");
 		$('#server').removeAttr('disabled');
@@ -820,18 +823,18 @@ function registerUsername() {
 		$('#registerset').removeAttr('disabled');
 		return;
 	}
-	var register = {
+	let register = {
 		request: "register",
 		username: username
 	};
 	// By default, the SIP plugin tries to extract the username part from the SIP
 	// identity to register; if the username is different, you can provide it here
-	var authuser = $('#authuser').val();
+	let authuser = $('#authuser').val();
 	if(authuser !== "") {
 		register.authuser = authuser;
 	}
 	// The display name is only needed when you want a friendly name to appear when you call someone
-	var displayname = $('#displayname').val();
+	let displayname = $('#displayname').val();
 	if(displayname !== "") {
 		register.display_name = displayname;
 	}
@@ -839,8 +842,8 @@ function registerUsername() {
 		// Use the plain secret
 		register["secret"] = password;
 	} else if(selectedApproach === "ha1secret") {
-		var sip_user = username.substring(4, username.indexOf('@'));    /* skip sip: */
-		var sip_domain = username.substring(username.indexOf('@')+1);
+		let sip_user = username.substring(4, username.indexOf('@'));    /* skip sip: */
+		let sip_domain = username.substring(username.indexOf('@')+1);
 		register["ha1_secret"] = md5(sip_user+':'+sip_domain+':'+password);
 	}
 	// Should you want the SIP stack to add some custom headers to the
@@ -882,19 +885,19 @@ function registerUsername() {
 
 function doCall(ev) {
 	// Call someone (from the main session or one of the helpers)
-	var button = ev ? ev.currentTarget.id : "call";
-	var helperId = button.split("call")[1];
+	let button = ev ? ev.currentTarget.id : "call";
+	let helperId = button.split("call")[1];
 	if(helperId === "")
 		helperId = null;
 	else
 		helperId = parseInt(helperId);
-	var handle = helperId ? helpers[helperId].sipcall : sipcall;
-	var prefix = helperId ? ("[Helper #" + helperId + "]") : "";
-	var suffix = helperId ? (""+helperId) : "";
+	let handle = helperId ? helpers[helperId].sipcall : sipcall;
+	let prefix = helperId ? ("[Helper #" + helperId + "]") : "";
+	let suffix = helperId ? (""+helperId) : "";
 	$('#peer' + suffix).attr('disabled', true);
 	$('#call' + suffix).attr('disabled', true).unbind('click');
 	$('#dovideo' + suffix).attr('disabled', true);
-	var username = $('#peer' + suffix).val();
+	let username = $('#peer' + suffix).val();
 	if(username === "") {
 		bootbox.alert('Please insert a valid SIP address (e.g., sip:pluto@example.com)');
 		$('#peer' + suffix).removeAttr('disabled');
@@ -910,7 +913,7 @@ function doCall(ev) {
 		return;
 	}
 	// Call this URI
-	doVideo = $('#dovideo' + suffix).is(':checked');
+	let doVideo = $('#dovideo' + suffix).is(':checked');
 	Janus.log(prefix + "This is a SIP " + (doVideo ? "video" : "audio") + " call (dovideo=" + doVideo + ")");
 	actuallyDoCall(handle, $('#peer' + suffix).val(), doVideo);
 }
@@ -931,17 +934,17 @@ function actuallyDoCall(handle, uri, doVideo, referId) {
 				// SIP stack to add some custom headers to the INVITE,
 				// you can do so by adding an additional "headers" object,
 				// containing each of the headers as key-value, e.g.:
-				//		var body = { request: "call", uri: $('#peer').val(),
+				//		let body = { request: "call", uri: $('#peer').val(),
 				//			headers: {
 				//				"My-Header": "value",
 				//				"AnotherHeader": "another string"
 				//			}
 				//		};
-				var body = { request: "call", uri: uri };
+				let body = { request: "call", uri: uri };
 				// Note: you can also ask the plugin to negotiate SDES-SRTP, instead of the
 				// default plain RTP, by adding a "srtp" attribute to the request. Valid
 				// values are "sdes_optional" and "sdes_mandatory", e.g.:
-				//		var body = { request: "call", uri: $('#peer').val(), srtp: "sdes_optional" };
+				//		let body = { request: "call", uri: $('#peer').val(), srtp: "sdes_optional" };
 				// "sdes_optional" will negotiate RTP/AVP and add a crypto line,
 				// "sdes_mandatory" will set the protocol to RTP/SAVP instead.
 				// Just beware that some endpoints will NOT accept an INVITE
@@ -961,7 +964,7 @@ function actuallyDoCall(handle, uri, doVideo, referId) {
 				handle.send({ message: body, jsep: jsep });
 			},
 			error: function(error) {
-				Janus.error(prefix + "WebRTC error...", error);
+				Janus.error("WebRTC error...", error);
 				bootbox.alert("WebRTC error... " + error.message);
 			}
 		});
@@ -969,20 +972,20 @@ function actuallyDoCall(handle, uri, doVideo, referId) {
 
 function doHangup(ev) {
 	// Hangup a call (on the main session or one of the helpers)
-	var button = ev ? ev.currentTarget.id : "call";
-	var helperId = button.split("call")[1];
+	let button = ev ? ev.currentTarget.id : "call";
+	let helperId = button.split("call")[1];
 	if(helperId === "")
 		helperId = null;
 	else
 		helperId = parseInt(helperId);
 	if(!helperId) {
 		$('#call').attr('disabled', true).unbind('click');
-		var hangup = { request: "hangup" };
+		let hangup = { request: "hangup" };
 		sipcall.send({ message: hangup });
 		sipcall.hangup();
 	} else {
 		$('#call' + helperId).attr('disabled', true).unbind('click');
-		var hangup = { request: "hangup" };
+		let hangup = { request: "hangup" };
 		helpers[helperId].sipcall.send({ message: hangup });
 		helpers[helperId].sipcall.hangup();
 	}
@@ -1004,7 +1007,7 @@ function doHangup(ev) {
 function addHelper(helperCreated) {
 	helperCreated = (typeof helperCreated == "function") ? helperCreated : Janus.noop;
 	helpersCount++;
-	var helperId = helpersCount;
+	let helperId = helpersCount;
 	helpers[helperId] = { id: helperId,
 		localTracks: {}, localVideos: 0,
 		remoteTracks: {}, remoteVideos: 0 };
@@ -1048,7 +1051,7 @@ function addHelper(helperCreated) {
 		'</div>'
 	);
 	$('#rmhelper' + helperId).click(function() {
-		var hid = $(this).attr('id').split("rmhelper")[1];
+		let hid = $(this).attr('id').split("rmhelper")[1];
 		console.log(hid);
 		removeHelper(hid);
 	});
@@ -1111,15 +1114,15 @@ function addHelper(helperCreated) {
 			onmessage: function(msg, jsep) {
 				Janus.debug("[Helper #" + helperId + "]  ::: Got a message :::", msg);
 				// Any error?
-				var error = msg["error"];
+				let error = msg["error"];
 				if(error) {
 					bootbox.alert(error);
 					return;
 				}
-				var callId = msg["call_id"];
-				var result = msg["result"];
+				let callId = msg["call_id"];
+				let result = msg["result"];
 				if(result && result["event"]) {
-					var event = result["event"];
+					let event = result["event"];
 					if(event === 'registration_failed') {
 						Janus.warn("[Helper #" + helperId + "] Registration failed: " + result["code"] + " " + result["reason"]);
 						bootbox.alert(result["code"] + " " + result["reason"]);
@@ -1140,13 +1143,13 @@ function addHelper(helperCreated) {
 						Janus.log("[Helper #" + helperId + "] Waiting for the peer to answer...");
 						// TODO Any ringtone?
 						$('#call' + helperId).removeAttr('disabled').html('Hangup')
-							  .removeClass("btn-success").addClass("btn-danger")
-							  .unbind('click').click(doHangup);
+							.removeClass("btn-success").addClass("btn-danger")
+							.unbind('click').click(doHangup);
 					} else if(event === 'incomingcall') {
 						Janus.log("[Helper #" + helperId + "] Incoming call from " + result["username"] + "! (on helper #" + helperId + ")");
 						helpers[helperId].sipcall.callId = callId;
-						var doAudio = true, doVideo = true;
-						var offerlessInvite = false;
+						let doAudio = true, doVideo = true;
+						let offerlessInvite = false;
 						if(jsep) {
 							// What has been negotiated?
 							doAudio = (jsep.sdp.indexOf("m=audio ") > -1);
@@ -1160,9 +1163,9 @@ function addHelper(helperCreated) {
 							doVideo = false;
 						}
 						// Is this the result of a transfer?
-						var transfer = "";
-						var referredBy = result["referred_by"];
-						var replaces = result["replaces"];
+						let transfer = "";
+						let referredBy = result["referred_by"];
+						let replaces = result["replaces"];
 						if(referredBy && replaces)
 							transfer = " (referred by " + referredBy + ", replaces call-ID " + replaces + ")";
 						else if(referredBy && !replaces)
@@ -1172,15 +1175,15 @@ function addHelper(helperCreated) {
 						transfer = transfer.replace(new RegExp('<', 'g'), '&lt');
 						transfer = transfer.replace(new RegExp('>', 'g'), '&gt');
 						// Any security offered? A missing "srtp" attribute means plain RTP
-						var rtpType = "";
-						var srtp = result["srtp"];
+						let rtpType = "";
+						let srtp = result["srtp"];
 						if(srtp === "sdes_optional")
 							rtpType = " (SDES-SRTP offered)";
 						else if(srtp === "sdes_mandatory")
 							rtpType = " (SDES-SRTP mandatory)";
 						// Notify user
 						bootbox.hideAll();
-						var extra = "";
+						let extra = "";
 						if(offerlessInvite)
 							extra = " (no SDP offer provided)"
 						incoming = bootbox.dialog({
@@ -1196,7 +1199,7 @@ function addHelper(helperCreated) {
 										$('#peer' + helperId).val(result["username"]).attr('disabled', true);
 										// Notice that we can only answer if we got an offer: if this was
 										// an offerless call, we'll need to create an offer ourselves
-										var sipcallAction = (offerlessInvite ? helpers[helperId].sipcall.createOffer : helpers[helperId].sipcall.createAnswer);
+										let sipcallAction = (offerlessInvite ? helpers[helperId].sipcall.createOffer : helpers[helperId].sipcall.createAnswer);
 										// We want bidirectional audio and/or video
 										let tracks = [];
 										if(doAudio)
@@ -1211,13 +1214,13 @@ function addHelper(helperCreated) {
 													Janus.debug("[Helper #" + helperId + "] Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo + ":", jsep);
 													helpers[helperId].sipcall.doAudio = doAudio;
 													helpers[helperId].sipcall.doVideo = doVideo;
-													var body = { request: "accept" };
+													let body = { request: "accept" };
 													// Note: as with "call", you can add a "srtp" attribute to
 													// negotiate/mandate SDES support for this incoming call.
 													// The default behaviour is to automatically use it if
 													// the caller negotiated it, but you may choose to require
 													// SDES support by setting "srtp" to "sdes_mandatory", e.g.:
-													//		var body = { request: "accept", srtp: "sdes_mandatory" };
+													//		let body = { request: "accept", srtp: "sdes_mandatory" };
 													// This way you'll tell the plugin to accept the call, but ONLY
 													// if SDES is available, and you don't want plain RTP. If it
 													// is not available, you'll get an error (452) back. You can
@@ -1239,7 +1242,7 @@ function addHelper(helperCreated) {
 													Janus.error("[Helper #" + helperId + "] WebRTC error:", error);
 													bootbox.alert("WebRTC error... " + error.message);
 													// Don't keep the caller waiting any longer, but use a 480 instead of the default 486 to clarify the cause
-													var body = { request: "decline", code: 480 };
+													let body = { request: "decline", code: 480 };
 													helpers[helperId].sipcall.send({ message: body });
 												}
 											});
@@ -1250,7 +1253,7 @@ function addHelper(helperCreated) {
 									className: "btn-danger",
 									callback: function() {
 										incoming = null;
-										var body = { request: "decline" };
+										let body = { request: "decline" };
 										helpers[helperId].sipcall.send({ message: body });
 									}
 								}
@@ -1284,7 +1287,7 @@ function addHelper(helperCreated) {
 						// to notify about media changes), to keep things simple
 						// we just accept the update and send an answer right away
 						Janus.log("[Helper #" + helperId + "] Got re-INVITE");
-						var doAudio = (jsep.sdp.indexOf("m=audio ") > -1),
+						let doAudio = (jsep.sdp.indexOf("m=audio ") > -1),
 							doVideo = (jsep.sdp.indexOf("m=video ") > -1);
 						// We want bidirectional audio and/or video, but only
 						// populate tracks if we weren't sending something before
@@ -1303,7 +1306,7 @@ function addHelper(helperCreated) {
 								tracks: tracks,
 								success: function(jsep) {
 									Janus.debug("[Helper #" + helperId + "] Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo + ":", jsep);
-									var body = { request: "update" };
+									let body = { request: "update" };
 									helpers[helperId].sipcall.send({ message: body, jsep: jsep });
 								},
 								error: function(error) {
@@ -1313,30 +1316,30 @@ function addHelper(helperCreated) {
 							});
 					} else if(event === 'message') {
 						// We got a MESSAGE
-						var sender = result["displayname"] ? result["displayname"] : result["sender"];
-						var content = result["content"];
+						let sender = result["displayname"] ? result["displayname"] : result["sender"];
+						let content = result["content"];
 						content = content.replace(new RegExp('<', 'g'), '&lt');
 						content = content.replace(new RegExp('>', 'g'), '&gt');
 						toastr.success(content, "Message from " + sender);
 					} else if(event === 'info') {
 						// We got an INFO
-						var sender = result["displayname"] ? result["displayname"] : result["sender"];
-						var content = result["content"];
+						let sender = result["displayname"] ? result["displayname"] : result["sender"];
+						let content = result["content"];
 						content = content.replace(new RegExp('<', 'g'), '&lt');
 						content = content.replace(new RegExp('>', 'g'), '&gt');
 						toastr.info(content, "Info from " + sender);
 					} else if(event === 'notify') {
 						// We got a NOTIFY
-						var notify = result["notify"];
-						var content = result["content"];
+						let notify = result["notify"];
+						let content = result["content"];
 						toastr.info(content, "Notify (" + notify + ")");
 					} else if(event === 'transfer') {
 						// We're being asked to transfer the call, ask the user what to do
-						var referTo = result["refer_to"];
-						var referredBy = result["referred_by"] ? result["referred_by"] : "an unknown party";
-						var referId = result["refer_id"];
-						var replaces = result["replaces"];
-						var extra = ("referred by " + referredBy);
+						let referTo = result["refer_to"];
+						let referredBy = result["referred_by"] ? result["referred_by"] : "an unknown party";
+						let referId = result["refer_id"];
+						let replaces = result["replaces"];
+						let extra = ("referred by " + referredBy);
 						if(replaces)
 							extra += (", replaces call-ID " + replaces);
 						extra = extra.replace(new RegExp('<', 'g'), '&lt');
@@ -1355,10 +1358,10 @@ function addHelper(helperCreated) {
 										actuallyDoCall(sipcall, referTo, false, referId);
 									} else {
 										// We're in a call already, use the main handle or a helper
-										var h = -1;
+										let h = -1;
 										if(Object.keys(helpers).length > 0) {
 											// See if any of the helpers if available
-											for(var i in helpers) {
+											for(let i in helpers) {
 												if(!helpers[i].sipcall.webrtcStuff.pc) {
 													h = parseInt(i);
 													break;
@@ -1380,7 +1383,7 @@ function addHelper(helperCreated) {
 									}
 								} else {
 									// We're rejecting the transfer
-									var body = { request: "decline", refer_id: referId };
+									let body = { request: "decline", refer_id: referId };
 									sipcall.send({ message: body });
 								}
 							});
@@ -1414,15 +1417,15 @@ function addHelper(helperCreated) {
 			onlocaltrack: function(track, on) {
 				Janus.debug("[Helper #" + helperId + "] Local track " + (on ? "added" : "removed") + ":", track);
 				// We use the track ID as name of the element, but it may contain invalid characters
-				var trackId = track.id.replace(/[{}]/g, "");
+				let trackId = track.id.replace(/[{}]/g, "");
 				if(!on) {
 					// Track removed, get rid of the stream and the rendering
-					var stream = helpers[helperId].localTracks[trackId];
+					let stream = helpers[helperId].localTracks[trackId];
 					if(stream) {
 						try {
-							var tracks = stream.getTracks();
-							for(var i in tracks) {
-								var mst = tracks[i];
+							let tracks = stream.getTracks();
+							for(let i in tracks) {
+								let mst = tracks[i];
 								if(mst)
 									mst.stop();
 							}
@@ -1446,7 +1449,7 @@ function addHelper(helperCreated) {
 					return;
 				}
 				// If we're here, a new track was added
-				var stream = helpers[helperId].localTracks[trackId];
+				let stream = helpers[helperId].localTracks[trackId];
 				if(stream) {
 					// We've been here already
 					return;
@@ -1519,7 +1522,7 @@ function addHelper(helperCreated) {
 							'<button id="info' + helperId + '" title="Send INFO" class="btn btn-info"><i class="fa fa-info"></i></button>' +
 							'<button id="transfer' + helperId + '" title="Transfer call" class="btn btn-info"><i class="fa fa-mail-forward"></i></button>' +
 						'</span>');
-					for(var i=0; i<12; i++) {
+					for(let i=0; i<12; i++) {
 						if(i<10)
 							$('#dtmf' + helperId).append('<button class="btn btn-info dtmf">' + i + '</button>');
 						else if(i == 10)
@@ -1537,7 +1540,7 @@ function addHelper(helperCreated) {
 						bootbox.prompt("Insert message to send", function(result) {
 							if(result && result !== '') {
 								// Send the message
-								var msg = { request: "message", content: result };
+								let msg = { request: "message", content: result };
 								helpers[helperId].sipcall.send({ message: msg });
 							}
 						});
@@ -1560,11 +1563,11 @@ function addHelper(helperCreated) {
 									className: "btn-primary",
 									callback: function() {
 										// Send the INFO
-										var type = $('#type').val();
-										var content = $('#content').val();
+										let type = $('#type').val();
+										let content = $('#content').val();
 										if(type === '' || content === '')
 											return;
-										var msg = { request: "info", type: type, content: content };
+										let msg = { request: "info", type: type, content: content };
 										helpers[helperId].sipcall.send({ message: msg });
 									}
 								}
@@ -1588,10 +1591,10 @@ function addHelper(helperCreated) {
 									className: "btn-info",
 									callback: function() {
 										// Start a blind transfer
-										var address = $('#transferto').val();
+										let address = $('#transferto').val();
 										if(address === '')
 											return;
-										var msg = {
+										let msg = {
 											request: "transfer",
 											uri: address
 										};
@@ -1603,11 +1606,11 @@ function addHelper(helperCreated) {
 									className: "btn-primary",
 									callback: function() {
 										// Start an attended transfer
-										var address = $('#transferto').val();
+										let address = $('#transferto').val();
 										if(address === '')
 											return;
 										// Add the call-id to replace to the transfer
-										var msg = {
+										let msg = {
 											request: "transfer",
 											uri: address,
 											replace: helpers[helperId].sipcall.callId
@@ -1621,7 +1624,7 @@ function addHelper(helperCreated) {
 				}
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					helpers[helperId].remoteTracks[mid] = stream;
 					Janus.log("[Helper #" + helperId + "] Created remote audio stream:", stream);
 					$('#videoright' + helperId).append('<audio class="hide" id="peervideo' + helperId + 'm' + mid + '" autoplay playsinline/>');
@@ -1640,7 +1643,7 @@ function addHelper(helperCreated) {
 					// New video track: create a stream out of it
 					helpers[helperId].remoteVideos++;
 					$('#videoright' + helperId + ' .no-video-container').remove();
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					helpers[helperId].remoteTracks[mid] = stream;
 					Janus.log("[Helper #" + helperId + "] Created remote video stream:", stream);
 					$('#videoright' + helperId).append('<video class="rounded centered" id="peervideo' + helperId + 'm' + mid + '" width="100%" height="100%" autoplay playsinline/>');

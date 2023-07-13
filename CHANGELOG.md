@@ -3,6 +3,41 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.1.4] - 2023-05-19
+
+- Moved discussions from Google Group to Discourse
+- Fixed typo in command line argument validation
+- Refactored RTP forwarder internals as a core feature [[PR-3155](https://github.com/meetecho/janus-gateway/pull/3155)]
+- Refactored SVC processing as a core feature, and removed deprecated VP9/SVC demo [[PR-3174](https://github.com/meetecho/janus-gateway/pull/3174)]
+- Don't create IPv6 sockets if IPv6 is completely disabled [[PR-3179](https://github.com/meetecho/janus-gateway/pull/3179)]
+- Fixed some VideoRoom race conditions [[PR-3167](https://github.com/meetecho/janus-gateway/pull/3167)]
+- Added simulcast/SVC params to switch in VideoRoom (thanks @brave44!) [[PR-3197](https://github.com/meetecho/janus-gateway/pull/3197)]
+- Add support for receiving offers in Streaming plugin (for WHEP) [[PR-3199](https://github.com/meetecho/janus-gateway/pull/3199)]
+- Add newline for SIP headers that are overflown in length (thanks @zayim!) [[PR-3184](https://github.com/meetecho/janus-gateway/pull/3184)]
+- Save SIP reason state on multiple callbacks (thanks @kenangenjac!) [[PR-3210](https://github.com/meetecho/janus-gateway/pull/3210)]
+- Avoid parsing whitespace as invalid JSON when receiving WebSocket messages (thanks @htrendev!) [[PR-3208](https://github.com/meetecho/janus-gateway/pull/3208)]
+- Remove old tracks before adding/replacing new ones in janus.js [[PR-3203](https://github.com/meetecho/janus-gateway/pull/3203)]
+- Tweaks to some janus.js internals (thanks @i8-pi!) [[PR-3211](https://github.com/meetecho/janus-gateway/pull/3211)]
+- Fixed some typos and added some tweaks to Admin API demo
+- Refactored npm version of janus.js
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+## [v1.1.3] - 2023-03-06
+
+- Use getaddrinfo instead of gethostbyname [[PR-3159](https://github.com/meetecho/janus-gateway/pull/3159)]
+- Removed VoiceMail plugin and demo [[PR-3172](https://github.com/meetecho/janus-gateway/pull/3172)]
+- Added configurable cap to number of queued events when reconnecting WebSocket event handler [[PR-3148](https://github.com/meetecho/janus-gateway/pull/3148)]
+- Fixed broken support for text datachannels in Streaming plugin
+- Add option to manually insert SPS/PPS RTP packets for H.264 mountpoints [[PR-3168](https://github.com/meetecho/janus-gateway/pull/3168)]
+- Fixed From/To checks when getting a SIP INVITE [[Issue-3164](https://github.com/meetecho/janus-gateway/issues/3164)]
+- Allow changing mjrs dir also when stopping recordings in AudioBridge [[Issue-3171](https://github.com/meetecho/janus-gateway/issues/3171)]
+- Allow Lua and Duktape plugins to relay extensions when relaying RTP packets [[PR-3162](https://github.com/meetecho/janus-gateway/pull/3162)]
+- Optionally support X-Forwarded-For in both HTTP and WebSocket transports [[PR-3160](https://github.com/meetecho/janus-gateway/pull/3160)]
+- Add reason of track being added/removed in onremotetrack in janus.js (thanks @marekpiechut!) [[PR-3150](https://github.com/meetecho/janus-gateway/pull/3150)]
+- Fixed broken VP9-SVC demo room [[Issue-3169](https://github.com/meetecho/janus-gateway/issues/3169)]
+- Linted whole JS demo codebase [[PR-3170](https://github.com/meetecho/janus-gateway/pull/3170)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.1.2] - 2023-01-17
 
 - Always add mid to the SDP, even for disabled m-lines

@@ -3,6 +3,8 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+
 var janus = null;
 var sfutest = null;
 var opaqueId = "videoroomtest-"+Janus.randomString(12);
@@ -21,6 +23,9 @@ var feeds = [], feedStreams = {};
 var bitrateTimer = [];
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
+var doSvc = getQueryStringValue("svc");
+if(doSvc === "")
+	doSvc = null;
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
 var doDtx = (getQueryStringValue("dtx") === "yes" || getQueryStringValue("dtx") === "true");
@@ -107,8 +112,8 @@ $(document).ready(function() {
 									// This controls allows us to override the global room bitrate cap
 									$('#bitrate').parent().parent().removeClass('hide').show();
 									$('#bitrate a').click(function() {
-										var id = $(this).attr("id");
-										var bitrate = parseInt(id)*1000;
+										let id = $(this).attr("id");
+										let bitrate = parseInt(id)*1000;
 										if(bitrate === 0) {
 											Janus.log("Not limiting bandwidth via REMB");
 										} else {
@@ -125,7 +130,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::", msg);
-									var event = msg["videoroom"];
+									let event = msg["videoroom"];
 									Janus.debug("Event: " + event);
 									if(event) {
 										if(event === "joined") {
@@ -141,16 +146,16 @@ $(document).ready(function() {
 											}
 											// Any new feed to attach to?
 											if(msg["publishers"]) {
-												var list = msg["publishers"];
+												let list = msg["publishers"];
 												Janus.debug("Got a list of available publishers/feeds:", list);
-												for(var f in list) {
+												for(let f in list) {
 													if(list[f]["dummy"])
 														continue;
-													var id = list[f]["id"];
-													var streams = list[f]["streams"];
-													var display = list[f]["display"];
-													for(var i in streams) {
-														var stream = streams[i];
+													let id = list[f]["id"];
+													let streams = list[f]["streams"];
+													let display = list[f]["display"];
+													for(let i in streams) {
+														let stream = streams[i];
 														stream["id"] = id;
 														stream["display"] = display;
 													}
@@ -168,24 +173,24 @@ $(document).ready(function() {
 										} else if(event === "event") {
 											// Any info on our streams or a new feed to attach to?
 											if(msg["streams"]) {
-												var streams = msg["streams"];
-												for(var i in streams) {
-													var stream = streams[i];
+												let streams = msg["streams"];
+												for(let i in streams) {
+													let stream = streams[i];
 													stream["id"] = myid;
 													stream["display"] = myusername;
 												}
 												feedStreams[myid] = streams;
 											} else if(msg["publishers"]) {
-												var list = msg["publishers"];
+												let list = msg["publishers"];
 												Janus.debug("Got a list of available publishers/feeds:", list);
-												for(var f in list) {
+												for(let f in list) {
 													if(list[f]["dummy"])
 														continue;
-													var id = list[f]["id"];
-													var display = list[f]["display"];
-													var streams = list[f]["streams"];
-													for(var i in streams) {
-														var stream = streams[i];
+													let id = list[f]["id"];
+													let display = list[f]["display"];
+													let streams = list[f]["streams"];
+													for(let i in streams) {
+														let stream = streams[i];
 														stream["id"] = id;
 														stream["display"] = display;
 													}
@@ -195,10 +200,10 @@ $(document).ready(function() {
 												}
 											} else if(msg["leaving"]) {
 												// One of the publishers has gone away?
-												var leaving = msg["leaving"];
+												let leaving = msg["leaving"];
 												Janus.log("Publisher left: " + leaving);
-												var remoteFeed = null;
-												for(var i=1; i<6; i++) {
+												let remoteFeed = null;
+												for(let i=1; i<6; i++) {
 													if(feeds[i] && feeds[i].rfid == leaving) {
 														remoteFeed = feeds[i];
 														break;
@@ -214,15 +219,15 @@ $(document).ready(function() {
 												delete feedStreams[leaving];
 											} else if(msg["unpublished"]) {
 												// One of the publishers has unpublished?
-												var unpublished = msg["unpublished"];
+												let unpublished = msg["unpublished"];
 												Janus.log("Publisher left: " + unpublished);
 												if(unpublished === 'ok') {
 													// That's us
 													sfutest.hangup();
 													return;
 												}
-												var remoteFeed = null;
-												for(var i=1; i<6; i++) {
+												let remoteFeed = null;
+												for(let i=1; i<6; i++) {
 													if(feeds[i] && feeds[i].rfid == unpublished) {
 														remoteFeed = feeds[i];
 														break;
@@ -256,12 +261,12 @@ $(document).ready(function() {
 										sfutest.handleRemoteJsep({ jsep: jsep });
 										// Check if any of the media we wanted to publish has
 										// been rejected (e.g., wrong or unsupported codec)
-										var audio = msg["audio_codec"];
+										let audio = msg["audio_codec"];
 										if(mystream && mystream.getAudioTracks() && mystream.getAudioTracks().length > 0 && !audio) {
 											// Audio has been rejected
 											toastr.warning("Our audio stream has been rejected, viewers won't hear us");
 										}
-										var video = msg["video_codec"];
+										let video = msg["video_codec"];
 										if(mystream && mystream.getVideoTracks() && mystream.getVideoTracks().length > 0 && !video) {
 											// Video has been rejected
 											toastr.warning("Our video stream has been rejected, viewers won't see us");
@@ -278,15 +283,15 @@ $(document).ready(function() {
 								onlocaltrack: function(track, on) {
 									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
 									// We use the track ID as name of the element, but it may contain invalid characters
-									var trackId = track.id.replace(/[{}]/g, "");
+									let trackId = track.id.replace(/[{}]/g, "");
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
-										var stream = localTracks[trackId];
+										let stream = localTracks[trackId];
 										if(stream) {
 											try {
-												var tracks = stream.getTracks();
-												for(var i in tracks) {
-													var mst = tracks[i];
+												let tracks = stream.getTracks();
+												for(let i in tracks) {
+													let mst = tracks[i];
 													if(mst !== null && mst !== undefined)
 														mst.stop();
 												}
@@ -310,7 +315,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
-									var stream = localTracks[trackId];
+									let stream = localTracks[trackId];
 									if(stream) {
 										// We've been here already
 										return;
@@ -360,6 +365,7 @@ $(document).ready(function() {
 										});
 									}
 								},
+								// eslint-disable-next-line no-unused-vars
 								onremotetrack: function(track, mid, on) {
 									// The publisher stream is sendonly, we don't expect anything here
 								},
@@ -391,8 +397,9 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(field, event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		registerUsername();
 		return false;
@@ -410,7 +417,7 @@ function registerUsername() {
 		// Try a registration
 		$('#username').attr('disabled', true);
 		$('#register').attr('disabled', true).unbind('click');
-		var username = $('#username').val();
+		let username = $('#username').val();
 		if(username === "") {
 			$('#you')
 				.removeClass().addClass('label label-warning')
@@ -427,7 +434,7 @@ function registerUsername() {
 			$('#register').removeAttr('disabled').click(registerUsername);
 			return;
 		}
-		var register = {
+		let register = {
 			request: "join",
 			room: myroom,
 			ptype: "publisher",
@@ -447,7 +454,12 @@ function publishOwnFeed(useAudio) {
 	let tracks = [];
 	if(useAudio)
 		tracks.push({ type: 'audio', capture: true, recv: false });
-	tracks.push({ type: 'video', capture: true, recv: false, simulcast: doSimulcast });
+	tracks.push({ type: 'video', capture: true, recv: false,
+		// We may need to enable simulcast or SVC on the video track
+		simulcast: doSimulcast,
+		// We only support SVC for VP9 and (still WIP) AV1
+		svc: ((vcodec === 'vp9' || vcodec === 'av1') && doSvc) ? doSvc : null
+	});
 	//~ tracks.push({ type: 'data' });
 
 	sfutest.createOffer(
@@ -462,7 +474,7 @@ function publishOwnFeed(useAudio) {
 			},
 			success: function(jsep) {
 				Janus.debug("Got publisher SDP!", jsep);
-				var publish = { request: "configure", audio: useAudio, video: true };
+				let publish = { request: "configure", audio: useAudio, video: true };
 				// You can force a specific codec to use when publishing by using the
 				// audiocodec and videocodec properties, for instance:
 				// 		publish["audiocodec"] = "opus"
@@ -483,7 +495,7 @@ function publishOwnFeed(useAudio) {
 			error: function(error) {
 				Janus.error("WebRTC error:", error);
 				if(useAudio) {
-					 publishOwnFeed(false);
+					publishOwnFeed(false);
 				} else {
 					bootbox.alert("WebRTC error... " + error.message);
 					$('#publish').removeAttr('disabled').click(function() { publishOwnFeed(true); });
@@ -493,7 +505,7 @@ function publishOwnFeed(useAudio) {
 }
 
 function toggleMute() {
-	var muted = sfutest.isAudioMuted();
+	let muted = sfutest.isAudioMuted();
 	Janus.log((muted ? "Unmuting" : "Muting") + " local stream...");
 	if(muted)
 		sfutest.unmuteAudio();
@@ -506,13 +518,13 @@ function toggleMute() {
 function unpublishOwnFeed() {
 	// Unpublish our stream
 	$('#unpublish').attr('disabled', true).unbind('click');
-	var unpublish = { request: "unpublish" };
+	let unpublish = { request: "unpublish" };
 	sfutest.send({ message: unpublish });
 }
 
 function newRemoteFeed(id, display, streams) {
 	// A new feed has been published, create a new plugin handle and attach to it as a subscriber
-	var remoteFeed = null;
+	let remoteFeed = null;
 	if(!streams)
 		streams = feedStreams[id];
 	janus.attach(
@@ -524,16 +536,17 @@ function newRemoteFeed(id, display, streams) {
 				remoteFeed.remoteTracks = {};
 				remoteFeed.remoteVideos = 0;
 				remoteFeed.simulcastStarted = false;
+				remoteFeed.svcStarted = false;
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
 				// Prepare the streams to subscribe to, as an array: we have the list of
 				// streams the feed is publishing, so we can choose what to pick or skip
-				var subscription = [];
-				for(var i in streams) {
-					var stream = streams[i];
+				let subscription = [];
+				for(let i in streams) {
+					let stream = streams[i];
 					// If the publisher is VP8/VP9 and this is an older Safari, let's avoid video
 					if(stream.type === "video" && Janus.webRTCAdapter.browserDetails.browser === "safari" &&
-							(stream.codec === "vp9" || (stream.codec === "vp8" && !Janus.safariVp8))) {
+							((stream.codec === "vp9" && !Janus.safariVp9) || (stream.codec === "vp8" && !Janus.safariVp8))) {
 						toastr.warning("Publisher is using " + stream.codec.toUpperCase +
 							", but Safari doesn't support it: disabling video stream #" + stream.mindex);
 						continue;
@@ -547,7 +560,7 @@ function newRemoteFeed(id, display, streams) {
 					remoteFeed.rfdisplay = escapeXmlTags(stream.display);
 				}
 				// We wait for the plugin to send us an offer
-				var subscribe = {
+				let subscribe = {
 					request: "join",
 					room: myroom,
 					ptype: "subscriber",
@@ -573,14 +586,14 @@ function newRemoteFeed(id, display, streams) {
 			},
 			onmessage: function(msg, jsep) {
 				Janus.debug(" ::: Got a message (subscriber) :::", msg);
-				var event = msg["videoroom"];
+				let event = msg["videoroom"];
 				Janus.debug("Event: " + event);
 				if(msg["error"]) {
 					bootbox.alert(msg["error"]);
 				} else if(event) {
 					if(event === "attached") {
 						// Subscriber created and attached
-						for(var i=1;i<6;i++) {
+						for(let i=1;i<6;i++) {
 							if(!feeds[i]) {
 								feeds[i] = remoteFeed;
 								remoteFeed.rfindex = i;
@@ -588,7 +601,7 @@ function newRemoteFeed(id, display, streams) {
 							}
 						}
 						if(!remoteFeed.spinner) {
-							var target = document.getElementById('videoremote'+remoteFeed.rfindex);
+							let target = document.getElementById('videoremote'+remoteFeed.rfindex);
 							remoteFeed.spinner = new Spinner({top:100}).spin(target);
 						} else {
 							remoteFeed.spinner.spin();
@@ -597,16 +610,28 @@ function newRemoteFeed(id, display, streams) {
 						$('#remote'+remoteFeed.rfindex).removeClass('hide').html(remoteFeed.rfdisplay).show();
 					} else if(event === "event") {
 						// Check if we got a simulcast-related event from this publisher
-						var substream = msg["substream"];
-						var temporal = msg["temporal"];
+						let substream = msg["substream"];
+						let temporal = msg["temporal"];
 						if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 							if(!remoteFeed.simulcastStarted) {
 								remoteFeed.simulcastStarted = true;
 								// Add some new buttons
-								addSimulcastButtons(remoteFeed.rfindex, true);
+								addSimulcastSvcButtons(remoteFeed.rfindex, true);
 							}
 							// We just received notice that there's been a switch, update the buttons
-							updateSimulcastButtons(remoteFeed.rfindex, substream, temporal);
+							updateSimulcastSvcButtons(remoteFeed.rfindex, substream, temporal);
+						}
+						// Or maybe SVC?
+						let spatial = msg["spatial_layer"];
+						temporal = msg["temporal_layer"];
+						if((spatial !== null && spatial !== undefined) || (temporal !== null && temporal !== undefined)) {
+							if(!remoteFeed.svcStarted) {
+								remoteFeed.svcStarted = true;
+								// Add some new buttons
+								addSimulcastSvcButtons(remoteFeed.rfindex, true);
+							}
+							// We just received notice that there's been a switch, update the buttons
+							updateSimulcastSvcButtons(remoteFeed.rfindex, spatial, temporal);
 						}
 					} else {
 						// What has just happened?
@@ -614,7 +639,7 @@ function newRemoteFeed(id, display, streams) {
 				}
 				if(jsep) {
 					Janus.debug("Handling SDP as well...", jsep);
-					var stereo = (jsep.sdp.indexOf("stereo=1") !== -1);
+					let stereo = (jsep.sdp.indexOf("stereo=1") !== -1);
 					// Answer and attach
 					remoteFeed.createAnswer(
 						{
@@ -634,7 +659,7 @@ function newRemoteFeed(id, display, streams) {
 							},
 							success: function(jsep) {
 								Janus.debug("Got SDP!", jsep);
-								var body = { request: "start", room: myroom };
+								let body = { request: "start", room: myroom };
 								remoteFeed.send({ message: body, jsep: jsep });
 							},
 							error: function(error) {
@@ -644,11 +669,17 @@ function newRemoteFeed(id, display, streams) {
 						});
 				}
 			},
+			// eslint-disable-next-line no-unused-vars
 			onlocaltrack: function(track, on) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
-			onremotetrack: function(track, mid, on) {
-				Janus.debug("Remote feed #" + remoteFeed.rfindex + ", remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+			onremotetrack: function(track, mid, on, metadata) {
+				Janus.debug(
+					"Remote feed #" + remoteFeed.rfindex +
+					", remote track (mid=" + mid + ") " +
+					(on ? "added" : "removed") +
+					(metadata? " (" + metadata.reason + ") ": "") + ":", track
+				);
 				if(!on) {
 					// Track removed, get rid of the stream and the rendering
 					$('#remotevideo'+remoteFeed.rfindex + '-' + mid).remove();
@@ -677,7 +708,7 @@ function newRemoteFeed(id, display, streams) {
 					return;
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteFeed.remoteTracks[mid] = stream;
 					Janus.log("Created remote audio stream:", stream);
 					$('#videoremote'+remoteFeed.rfindex).append('<audio class="hide" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" autoplay playsinline/>');
@@ -696,7 +727,7 @@ function newRemoteFeed(id, display, streams) {
 					// New video track: create a stream out of it
 					remoteFeed.remoteVideos++;
 					$('#videoremote'+remoteFeed.rfindex + ' .no-video-container').remove();
-					stream = new MediaStream([track]);
+					let stream = new MediaStream([track]);
 					remoteFeed.remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
 					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" width=100% autoplay playsinline/>');
@@ -711,13 +742,19 @@ function newRemoteFeed(id, display, streams) {
 							if(!$("#videoremote" + remoteFeed.rfindex + ' video').get(0))
 								return;
 							// Display updated bitrate, if supported
-							var bitrate = remoteFeed.getBitrate();
+							let bitrate = remoteFeed.getBitrate();
 							$('#curbitrate'+remoteFeed.rfindex).text(bitrate);
 							// Check if the resolution changed too
-							var width = $("#videoremote" + remoteFeed.rfindex + ' video').get(0).videoWidth;
-							var height = $("#videoremote" + remoteFeed.rfindex + ' video').get(0).videoHeight;
-							if(width > 0 && height > 0)
-								$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
+							let width = $("#videoremote" + remoteFeed.rfindex + ' video').get(0).videoWidth;
+							let height = $("#videoremote" + remoteFeed.rfindex + ' video').get(0).videoHeight;
+							if(width > 0 && height > 0) {
+								let res = width + 'x' + height;
+								if(remoteFeed.simulcastStarted)
+									res += ' (simulcast)';
+								else if(remoteFeed.svcStarted)
+									res += ' (SVC)';
+								$('#curres'+remoteFeed.rfindex).removeClass('hide').text(res).show();
+							}
 						}, 1000);
 					}
 				}
@@ -746,7 +783,7 @@ function newRemoteFeed(id, display, streams) {
 // Helper to parse query string
 function getQueryStringValue(name) {
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
-	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }
@@ -754,15 +791,19 @@ function getQueryStringValue(name) {
 // Helper to escape XML tags
 function escapeXmlTags(value) {
 	if(value) {
-		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		let escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
 		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
 		return escapedValue;
 	}
 }
 
-// Helpers to create Simulcast-related UI, if enabled
-function addSimulcastButtons(feed, temporal) {
-	var index = feed;
+// Helpers to create Simulcast- or SVC-related UI, if enabled
+function addSimulcastSvcButtons(feed, temporal) {
+	let index = feed;
+	let f = feeds[index];
+	let simulcast = (f && f.simulcastStarted);
+	let what = (simulcast ? 'simulcast' : 'SVC');
+	let layer = (simulcast ? 'substream' : 'layer');
 	$('#remote'+index).parent().append(
 		'<div id="simulcast'+index+'" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
 		'	<div class"row">' +
@@ -781,110 +822,138 @@ function addSimulcastButtons(feed, temporal) {
 		'	</div>' +
 		'</div>'
 	);
-	if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
-		// Chromium-based browsers only have two temporal layers
+	if(simulcast && Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
+		// Chromium-based browsers only have two temporal layers, when doing simulcast
 		$('#tl'+index+'-2').remove();
 		$('#tl'+index+'-1').css('width', '50%');
 		$('#tl'+index+'-0').css('width', '50%');
 	}
-	// Enable the simulcast selection buttons
+	// Enable the simulcast/SVC selection buttons
 	$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Switching simulcast substream, wait for it... (lower quality)", null, {timeOut: 2000});
+			toastr.info("Switching " + what + " " + layer + ", wait for it... (lower quality)", null, {timeOut: 2000});
 			if(!$('#sl' + index + '-2').hasClass('btn-success'))
 				$('#sl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl' + index + '-1').hasClass('btn-success'))
 				$('#sl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			feeds[index].send({ message: { request: "configure", substream: 0 }});
+			let f = feeds[index];
+			if(f.simulcastStarted)
+				f.send({ message: { request: "configure", substream: 0 }});
+			else
+				f.send({ message: { request: "configure", spatial_layer: 0 }});
 		});
 	$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Switching simulcast substream, wait for it... (normal quality)", null, {timeOut: 2000});
+			toastr.info("Switching " + what + " " + layer + ", wait for it... (normal quality)", null, {timeOut: 2000});
 			if(!$('#sl' + index + '-2').hasClass('btn-success'))
 				$('#sl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#sl' + index + '-0').hasClass('btn-success'))
 				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			feeds[index].send({ message: { request: "configure", substream: 1 }});
+			let f = feeds[index];
+			if(f.simulcastStarted)
+				f.send({ message: { request: "configure", substream: 1 }});
+			else
+				f.send({ message: { request: "configure", spatial_layer: 1 }});
 		});
 	$('#sl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Switching simulcast substream, wait for it... (higher quality)", null, {timeOut: 2000});
+			toastr.info("Switching " + what + " " + layer + ", wait for it... (higher quality)", null, {timeOut: 2000});
 			$('#sl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#sl' + index + '-1').hasClass('btn-success'))
 				$('#sl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl' + index + '-0').hasClass('btn-success'))
 				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			feeds[index].send({ message: { request: "configure", substream: 2 }});
+			let f = feeds[index];
+			if(f.simulcastStarted)
+				f.send({ message: { request: "configure", substream: 2 }});
+			else
+				f.send({ message: { request: "configure", spatial_layer: 2 }});
 		});
 	if(!temporal)	// No temporal layer support
 		return;
 	$('#tl' + index + '-0').parent().removeClass('hide');
 	$('#tl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Capping simulcast temporal layer, wait for it... (lowest FPS)", null, {timeOut: 2000});
+			toastr.info("Capping " + what + " temporal layer, wait for it... (lowest FPS)", null, {timeOut: 2000});
 			if(!$('#tl' + index + '-2').hasClass('btn-success'))
 				$('#tl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#tl' + index + '-1').hasClass('btn-success'))
 				$('#tl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#tl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			feeds[index].send({ message: { request: "configure", temporal: 0 }});
+			let f = feeds[index];
+			if(f.simulcastStarted)
+				f.send({ message: { request: "configure", temporal: 0 }});
+			else
+				f.send({ message: { request: "configure", temporal_layer: 0 }});
 		});
 	$('#tl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Capping simulcast temporal layer, wait for it... (medium FPS)", null, {timeOut: 2000});
+			toastr.info("Capping " + what + " temporal layer, wait for it... (medium FPS)", null, {timeOut: 2000});
 			if(!$('#tl' + index + '-2').hasClass('btn-success'))
 				$('#tl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#tl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-info');
 			if(!$('#tl' + index + '-0').hasClass('btn-success'))
 				$('#tl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			feeds[index].send({ message: { request: "configure", temporal: 1 }});
+			let f = feeds[index];
+			if(f.simulcastStarted)
+				f.send({ message: { request: "configure", temporal: 1 }});
+			else
+				f.send({ message: { request: "configure", temporal_layer: 1 }});
 		});
 	$('#tl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Capping simulcast temporal layer, wait for it... (highest FPS)", null, {timeOut: 2000});
+			toastr.info("Capping " + what + " temporal layer, wait for it... (highest FPS)", null, {timeOut: 2000});
 			$('#tl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#tl' + index + '-1').hasClass('btn-success'))
 				$('#tl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#tl' + index + '-0').hasClass('btn-success'))
 				$('#tl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			feeds[index].send({ message: { request: "configure", temporal: 2 }});
+			let f = feeds[index];
+			if(f.simulcastStarted)
+				f.send({ message: { request: "configure", temporal: 2 }});
+			else
+				f.send({ message: { request: "configure", temporal_layer: 2 }});
 		});
 }
 
-function updateSimulcastButtons(feed, substream, temporal) {
+function updateSimulcastSvcButtons(feed, substream, temporal) {
 	// Check the substream
-	var index = feed;
+	let index = feed;
+	let f = feeds[index];
+	let simulcast = (f && f.simulcastStarted);
+	let what = (simulcast ? 'simulcast' : 'SVC');
+	let layer = (simulcast ? 'substream' : 'layer');
 	if(substream === 0) {
-		toastr.success("Switched simulcast substream! (lower quality)", null, {timeOut: 2000});
+		toastr.success("Switched " + what + " " + layer + "! (lower quality)", null, {timeOut: 2000});
 		$('#sl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 	} else if(substream === 1) {
-		toastr.success("Switched simulcast substream! (normal quality)", null, {timeOut: 2000});
+		toastr.success("Switched " + what + " " + layer + "! (normal quality)", null, {timeOut: 2000});
 		$('#sl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 		$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 	} else if(substream === 2) {
-		toastr.success("Switched simulcast substream! (higher quality)", null, {timeOut: 2000});
+		toastr.success("Switched " + what + " " + layer + "! (higher quality)", null, {timeOut: 2000});
 		$('#sl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 		$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 	}
 	// Check the temporal layer
 	if(temporal === 0) {
-		toastr.success("Capped simulcast temporal layer! (lowest FPS)", null, {timeOut: 2000});
+		toastr.success("Capped " + what + " temporal layer! (lowest FPS)", null, {timeOut: 2000});
 		$('#tl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#tl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#tl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 	} else if(temporal === 1) {
-		toastr.success("Capped simulcast temporal layer! (medium FPS)", null, {timeOut: 2000});
+		toastr.success("Capped " + what + " temporal layer! (medium FPS)", null, {timeOut: 2000});
 		$('#tl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#tl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 		$('#tl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 	} else if(temporal === 2) {
-		toastr.success("Capped simulcast temporal layer! (highest FPS)", null, {timeOut: 2000});
+		toastr.success("Capped " + what + " temporal layer! (highest FPS)", null, {timeOut: 2000});
 		$('#tl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 		$('#tl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#tl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');

@@ -3,6 +3,8 @@
 // used as well. Specifically, that file defines the "server" and
 // "iceServers" properties we'll pass when creating the Janus session.
 
+/* global iceServers:readonly, Janus:readonly, server:readonly */
+
 var janus = null;
 var videocall = null;
 var opaqueId = "videocalltest-"+Janus.randomString(12);
@@ -102,16 +104,16 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::", msg);
-									var result = msg["result"];
+									let result = msg["result"];
 									if(result) {
 										if(result["list"]) {
-											var list = result["list"];
+											let list = result["list"];
 											Janus.debug("Got a list of registered peers:", list);
-											for(var mp in list) {
+											for(let mp in list) {
 												Janus.debug("  >> [" + list[mp] + "]");
 											}
 										} else if(result["event"]) {
-											var event = result["event"];
+											let event = result["event"];
 											if(event === 'registered') {
 												myusername = escapeXmlTags(result["username"]);
 												Janus.log("Successfully registered as " + myusername + "!");
@@ -131,7 +133,7 @@ $(document).ready(function() {
 												yourusername = escapeXmlTags(result["username"]);
 												// Notify user
 												bootbox.hideAll();
-												incoming = bootbox.dialog({
+												bootbox.dialog({
 													message: "Incoming call from " + yourusername + "!",
 													title: "Incoming call",
 													closeButton: false,
@@ -140,7 +142,6 @@ $(document).ready(function() {
 															label: "Answer",
 															className: "btn-success",
 															callback: function() {
-																incoming = null;
 																$('#peer').val(result["username"]).attr('disabled', true);
 																videocall.createAnswer(
 																	{
@@ -154,7 +155,7 @@ $(document).ready(function() {
 																		],
 																		success: function(jsep) {
 																			Janus.debug("Got SDP!", jsep);
-																			var body = { request: "accept" };
+																			let body = { request: "accept" };
 																			videocall.send({ message: body, jsep: jsep });
 																			$('#peer').attr('disabled', true);
 																			$('#call').removeAttr('disabled').html('Hangup')
@@ -179,7 +180,7 @@ $(document).ready(function() {
 												});
 											} else if(event === 'accepted') {
 												bootbox.hideAll();
-												var peer = escapeXmlTags(result["username"]);
+												let peer = escapeXmlTags(result["username"]);
 												if(!peer) {
 													Janus.log("Call started!");
 												} else {
@@ -210,7 +211,7 @@ $(document).ready(function() {
 																],
 																success: function(jsep) {
 																	Janus.debug("Got SDP!", jsep);
-																	var body = { request: "set" };
+																	let body = { request: "set" };
 																	videocall.send({ message: body, jsep: jsep });
 																},
 																error: function(error) {
@@ -240,8 +241,8 @@ $(document).ready(function() {
 												$('#curres').hide();
 											} else if(event === "simulcast") {
 												// Is simulcast in place?
-												var substream = result["substream"];
-												var temporal = result["temporal"];
+												let substream = result["substream"];
+												let temporal = result["temporal"];
 												if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 													if(!simulcastStarted) {
 														simulcastStarted = true;
@@ -254,7 +255,7 @@ $(document).ready(function() {
 										}
 									} else {
 										// FIXME Error?
-										var error = msg["error"];
+										let error = msg["error"];
 										bootbox.alert(error);
 										if(error.indexOf("already taken") > 0) {
 											// FIXME Use status codes...
@@ -284,15 +285,15 @@ $(document).ready(function() {
 								onlocaltrack: function(track, on) {
 									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
 									// We use the track ID as name of the element, but it may contain invalid characters
-									var trackId = track.id.replace(/[{}]/g, "");
+									let trackId = track.id.replace(/[{}]/g, "");
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
-										var stream = localTracks[trackId];
+										let stream = localTracks[trackId];
 										if(stream) {
 											try {
-												var tracks = stream.getTracks();
-												for(var i in tracks) {
-													var mst = tracks[i];
+												let tracks = stream.getTracks();
+												for(let i in tracks) {
+													let mst = tracks[i];
 													if(mst !== null && mst !== undefined)
 														mst.stop();
 												}
@@ -316,7 +317,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
-									var stream = localTracks[trackId];
+									let stream = localTracks[trackId];
 									if(stream) {
 										// We've been here already
 										return;
@@ -358,8 +359,12 @@ $(document).ready(function() {
 										});
 									}
 								},
-								onremotetrack: function(track, mid, on) {
-									Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+								onremotetrack: function(track, mid, on, metadata) {
+									Janus.debug(
+										"Remote track (mid=" + mid + ") " +
+										(on ? "added" : "removed") +
+										(metadata ? " (" + metadata.reason + ") ": "") + ":", track
+									);
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
 										$('#peervideo' + mid).remove();
@@ -379,15 +384,17 @@ $(document).ready(function() {
 										delete remoteTracks[mid];
 										return;
 									}
+									if($('#peervideo' + mid).length > 0)
+										return;
 									// If we're here, a new track was added
-									var addButtons = false;
+									let addButtons = false;
 									if($('#videoright audio').length === 0 && $('#videoright video').length === 0) {
 										addButtons = true;
 										$('#videos').removeClass('hide').show();
 									}
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote audio stream:", stream);
 										$('#videoright').append('<audio class="hide" id="peervideo' + mid + '" autoplay playsinline/>');
@@ -406,7 +413,7 @@ $(document).ready(function() {
 										// New video track: create a stream out of it
 										remoteVideos++;
 										$('#videoright .no-video-container').remove();
-										stream = new MediaStream([track]);
+										let stream = new MediaStream([track]);
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote video stream:", stream);
 										$('#videoright').append('<video class="rounded centered" id="peervideo' + mid + '" width="100%" height="100%" autoplay playsinline/>');
@@ -418,12 +425,12 @@ $(document).ready(function() {
 												if(!$("#peervideo" + mid).get(0))
 													return;
 												// Display updated bitrate, if supported
-												var bitrate = videocall.getBitrate();
+												let bitrate = videocall.getBitrate();
 												//~ Janus.debug("Current bitrate is " + videocall.getBitrate());
 												$('#curbitrate').text(bitrate);
 												// Check if the resolution changed too
-												var width = $("#peervideo" + mid).get(0).videoWidth;
-												var height = $("#peervideo" + mid).get(0).videoHeight;
+												let width = $("#peervideo" + mid).get(0).videoWidth;
+												let height = $("#peervideo" + mid).get(0).videoHeight;
 												if(width > 0 && height > 0)
 													$('#curres').removeClass('hide').text(width+'x'+height).show();
 											}, 1000);
@@ -454,8 +461,8 @@ $(document).ready(function() {
 										});
 									$('#toggleaudio').parent().removeClass('hide').show();
 									$('#bitrate a').removeAttr('disabled').click(function() {
-										var id = $(this).attr("id");
-										var bitrate = parseInt(id)*1000;
+										let id = $(this).attr("id");
+										let bitrate = parseInt(id)*1000;
 										if(bitrate === 0) {
 											Janus.log("Not limiting bandwidth via REMB");
 										} else {
@@ -466,7 +473,8 @@ $(document).ready(function() {
 										return false;
 									});
 								},
-								ondataopen: function(data) {
+								// eslint-disable-next-line no-unused-vars
+								ondataopen: function(label, protocol) {
 									Janus.log("The DataChannel is available!");
 									$('#videos').removeClass('hide').show();
 									$('#datasend').removeAttr('disabled');
@@ -520,8 +528,9 @@ $(document).ready(function() {
 	}});
 });
 
+// eslint-disable-next-line no-unused-vars
 function checkEnter(field, event) {
-	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	let theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		if(field.id == 'username')
 			registerUsername();
@@ -539,7 +548,7 @@ function registerUsername() {
 	// Try a registration
 	$('#username').attr('disabled', true);
 	$('#register').attr('disabled', true).unbind('click');
-	var username = $('#username').val();
+	let username = $('#username').val();
 	if(username === "") {
 		bootbox.alert("Insert a username to register (e.g., pippo)");
 		$('#username').removeAttr('disabled');
@@ -552,7 +561,7 @@ function registerUsername() {
 		$('#register').removeAttr('disabled').click(registerUsername);
 		return;
 	}
-	var register = { request: "register", username: username };
+	let register = { request: "register", username: username };
 	videocall.send({ message: register });
 }
 
@@ -560,7 +569,7 @@ function doCall() {
 	// Call someone
 	$('#peer').attr('disabled', true);
 	$('#call').attr('disabled', true).unbind('click');
-	var username = $('#peer').val();
+	let username = $('#peer').val();
 	if(username === "") {
 		bootbox.alert("Insert a username to call (e.g., pluto)");
 		$('#peer').removeAttr('disabled');
@@ -584,7 +593,7 @@ function doCall() {
 			],
 			success: function(jsep) {
 				Janus.debug("Got SDP!", jsep);
-				var body = { request: "call", username: $('#peer').val() };
+				let body = { request: "call", username: $('#peer').val() };
 				videocall.send({ message: body, jsep: jsep });
 			},
 			error: function(error) {
@@ -597,14 +606,14 @@ function doCall() {
 function doHangup() {
 	// Hangup a call
 	$('#call').attr('disabled', true).unbind('click');
-	var hangup = { request: "hangup" };
+	let hangup = { request: "hangup" };
 	videocall.send({ message: hangup });
 	videocall.hangup();
 	yourusername = null;
 }
 
 function sendData() {
-	var data = $('#datasend').val();
+	let data = $('#datasend').val();
 	if(data === "") {
 		bootbox.alert('Insert a message to send on the DataChannel to your peer');
 		return;
@@ -619,7 +628,7 @@ function sendData() {
 // Helper to parse query string
 function getQueryStringValue(name) {
 	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
-	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }
@@ -627,7 +636,7 @@ function getQueryStringValue(name) {
 // Helper to escape XML tags
 function escapeXmlTags(value) {
 	if(value) {
-		var escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
+		let escapedValue = value.replace(new RegExp('<', 'g'), '&lt');
 		escapedValue = escapedValue.replace(new RegExp('>', 'g'), '&gt');
 		return escapedValue;
 	}
