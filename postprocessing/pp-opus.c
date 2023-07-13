@@ -228,7 +228,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					/* The last block is the primary data, so just update the current
 					 * stored packet with the Opus payload type and the right offset/len */
 					gens++;
-					JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%"SCNu16"\n", gens, plen);
+					JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%d\n", gens, plen);
 					tmp->pt = block_pt;
 					tmp->offset += (payload-buffer);
 					tmp->len = (plen + 12 + tmp->skip);
@@ -277,8 +277,10 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				pkt->pts = pkt->dts = av_rescale_q(pos, timebase, fctx->streams[0]->time_base);
 				pkt->duration = OPUS_PACKET_DURATION;
 
-				if(av_write_frame(fctx, pkt) < 0) {
-					JANUS_LOG(LOG_ERR, "Error writing audio frame to file...\n");
+				int res = av_write_frame(fctx, pkt);
+				if(res < 0) {
+					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d, %s)\n",
+						res, av_err2str(res));
 				}
 			}
 		}

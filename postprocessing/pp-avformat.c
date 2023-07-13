@@ -42,7 +42,8 @@ AVFormatContext *janus_pp_create_avformatcontext(const char *format, const char 
 
 	int res = avio_open(&ctx->pb, destination, AVIO_FLAG_WRITE);
 	if(res < 0) {
-		JANUS_LOG(LOG_ERR, "Error opening file for output (%d)\n", res);
+		JANUS_LOG(LOG_ERR, "Error opening file for output (%d, %s)\n",
+			res, av_err2str(res));
 		avformat_free_context(ctx);
 		return NULL;
 	}

@@ -368,6 +368,7 @@ typedef struct janus_duktape_rtp_relay_packet {
 	janus_duktape_session *sender;
 	janus_rtp_header *data;
 	gint length;
+	janus_plugin_rtp_extensions extensions;
 	gboolean is_rtp;	/* This may be a data packet and not RTP */
 	gboolean is_video;
 	uint32_t ssrc[3];
@@ -1604,8 +1605,8 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 		return -1;
 	}
 	fseek(f, 0, SEEK_END);
-	size_t len = ftell(f);
-	if(len < 1) {
+	long int fs = ftell(f);
+	if(fs < 1) {
 		JANUS_LOG(LOG_ERR, "Error loading JS script %s: empty file\n", duktape_file);
 		fclose(f);
 		duk_destroy_heap(duktape_ctx);
@@ -1613,9 +1614,18 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 		g_free(duktape_file);
 		return -1;
 	}
+	size_t len = fs;
 	char *buf = (char *)g_malloc0(len);
 	fseek(f, 0, SEEK_SET);
-	fread((void *)buf, 1, len, f);
+	if(fread((void *)buf, 1, len, f) < len) {
+		JANUS_LOG(LOG_ERR, "Error reading JS script %s: %s\n", duktape_file, g_strerror(errno));
+		g_free(buf);
+		fclose(f);
+		duk_destroy_heap(duktape_ctx);
+		g_free(duktape_folder);
+		g_free(duktape_file);
+		return -1;
+	}
 	fclose(f);
 	duk_push_lstring(duktape_ctx, (const char *)buf, (duk_size_t)len);
 	g_free(buf);
@@ -2169,6 +2179,7 @@ json_t *janus_duktape_query_session(janus_plugin_session *handle) {
 		json_object_set_new(json, "error", json_string(duk_safe_to_string(t, -1)));
 		duk_pop(t);
 		duk_pop(duktape_ctx);
+		janus_mutex_unlock(&duktape_mutex);
 		janus_refcount_decrease(&session->ref);
 		return json;
 	}
@@ -2469,6 +2480,7 @@ void janus_duktape_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *
 	packet.data = rtp;
 	packet.length = len;
 	packet.is_video = video;
+	packet.extensions = rtp_packet->extensions;
 	packet.ssrc[0] = (sc != -1 ? session->ssrc[0] : 0);
 	packet.ssrc[1] = (sc != -1 ? session->ssrc[1] : 0);
 	packet.ssrc[2] = (sc != -1 ? session->ssrc[2] : 0);
@@ -2833,7 +2845,8 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 		}
 		/* Send the packet */
 		if(duktape_janus_core != NULL) {
-			janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
+			janus_plugin_rtp rtp = { .video = packet->is_video,
+				.buffer = (char *)packet->data, .length = packet->length, .extensions = packet->extensions };
 			janus_plugin_rtp_extensions_reset(&rtp.extensions);
 			duktape_janus_core->relay_rtp(session->handle, &rtp);
 		}
@@ -2849,7 +2862,8 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 		janus_rtp_header_update(packet->data, &session->rtpctx, packet->is_video, 0);
 		/* Send the packet */
 		if(duktape_janus_core != NULL) {
-			janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
+			janus_plugin_rtp rtp = { .video = packet->is_video,
+				.buffer = (char *)packet->data, .length = packet->length, .extensions = packet->extensions };
 			janus_plugin_rtp_extensions_reset(&rtp.extensions);
 			duktape_janus_core->relay_rtp(session->handle, &rtp);
 		}

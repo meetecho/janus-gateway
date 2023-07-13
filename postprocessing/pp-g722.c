@@ -25,7 +25,7 @@
 #include "../debug.h"
 
 /* G.722 decoder */
-static AVCodec *dec_codec;			/* FFmpeg decoding codec */
+static const AVCodec *dec_codec;	/* FFmpeg decoding codec */
 static AVCodecContext *dec_ctx;		/* FFmpeg decoding context */
 
 /* WAV header */
@@ -194,7 +194,8 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 #ifdef USE_CODECPAR
 		err = avcodec_send_packet(dec_ctx, avpacket);
 		if(err < 0) {
-			JANUS_LOG(LOG_ERR, "Error decoding audio frame... (%d)\n", err);
+			JANUS_LOG(LOG_ERR, "Error decoding audio frame... (%d, %s)\n",
+				err, av_err2str(err));
 		} else {
 			err = avcodec_receive_frame(dec_ctx, frame);
 		}
@@ -203,7 +204,8 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		int got_frame = 0;
 		err = avcodec_decode_audio4(dec_ctx, frame, &got_frame, avpacket);
 		if(err < 0 || !got_frame) {
-			JANUS_LOG(LOG_ERR, "Error decoding audio frame... (%d)\n", err);
+			JANUS_LOG(LOG_ERR, "Error decoding audio frame... (%d, %s)\n",
+				err, av_err2str(err));
 		} else {
 #endif
 			if(wav_file != NULL) {

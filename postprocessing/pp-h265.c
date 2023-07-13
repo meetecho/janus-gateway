@@ -67,7 +67,11 @@ int janus_pp_h265_create(char *destination, char *metadata, gboolean faststart, 
     char filename[1024];
 	snprintf(filename, sizeof(filename), "%s", destination);
 #ifdef USE_CODECPAR
+#if LIBAVCODEC_VER_AT_LEAST(59, 18)
+	const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H265);
+#else
 	AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H265);
+#endif
 	if(!codec) {
 		/* Error opening video codec */
 		JANUS_LOG(LOG_ERR, "Encoder not available\n");
@@ -110,8 +114,7 @@ int janus_pp_h265_create(char *destination, char *metadata, gboolean faststart, 
 	vStream->codec->width = max_width;
 	vStream->codec->height = max_height;
 	vStream->codec->pix_fmt = PIX_FMT_YUV420P;
-	//~ if (fctx->flags & AVFMT_GLOBALHEADER)
-		vStream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
+	vStream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
 #endif
 	AVDictionary *options = NULL;
 	if(faststart)
@@ -119,9 +122,12 @@ int janus_pp_h265_create(char *destination, char *metadata, gboolean faststart, 
 
 	int res = avio_open2(&fctx->pb, filename, AVIO_FLAG_WRITE, NULL, &options);
 	if(res < 0) {
-		JANUS_LOG(LOG_ERR, "Error opening file for output (%d)\n", res);
+		JANUS_LOG(LOG_ERR, "Error opening file for output (%d, %s)\n", res, av_err2str(res));
 		return -1;
 	}
+#if LIBAVFORMAT_VER_AT_LEAST(58, 7)
+	fctx->url = g_strdup(filename);
+#endif
 	if(avformat_write_header(fctx, &options) < 0) {
 		JANUS_LOG(LOG_ERR, "Error writing header\n");
 		return -1;
@@ -609,7 +615,8 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			if(fctx) {
 				int res = av_write_frame(fctx, packet);
 				if(res < 0) {
-					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d)\n", res);
+					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d, %s)\n",
+						res, av_err2str(res));
 				}
 			}
 		}
@@ -642,6 +649,9 @@ void janus_pp_h265_close(void) {
 	}
 	if(fctx != NULL) {
 		avio_close(fctx->pb);
+#if LIBAVFORMAT_VER_AT_LEAST(58, 7)
+		g_free(fctx->url);
+#endif
 		av_free(fctx);
 	}
 }

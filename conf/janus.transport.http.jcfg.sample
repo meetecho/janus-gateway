@@ -20,6 +20,8 @@ general: {
 	#secure_interface = "eth0"		# Whether we should bind this server to a specific interface only
 	#secure_ip = "192.168.0.1"		# Whether we should bind this server to a specific IP address (v4 or v6) only
 	#acl = "127.,192.168.0."		# Only allow requests coming from this comma separated list of addresses
+	#acl_forwarded = true			# Whether we should check the X-Forwarded-For header too for the ACL
+									# (default=false, since without a proxy in the middle this could be abused)
 	#mhd_connection_limit = 1020		# Open connections limit in libmicrohttpd (default=1020)
 	#mhd_debug = false					# Ask libmicrohttpd to write warning and error messages to stderr (default=false)
 }
@@ -46,6 +48,8 @@ admin: {
 	#admin_secure_interface = "eth0"	# Whether we should bind this server to a specific interface only
 	#admin_secure_ip = "192.168.0.1"	# Whether we should bind this server to a specific IP address (v4 or v6) only
 	#admin_acl = "127.,192.168.0."		# Only allow requests coming from this comma separated list of addresses
+	#admin_acl_forwarded = true			# Whether we should check the X-Forwarded-For header too for the admin ACL
+										# (default=false, since without a proxy in the middle this could be abused)
 }
 
 # The HTTP servers created in Janus support CORS out of the box, but by

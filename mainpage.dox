@@ -75,7 +75,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Server © 2014-2022 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2023 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -106,7 +106,7 @@
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
  * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0 for MQTT v3.1 & v3.1.1 or v1.3.0 for MQTT v5)
  * - \b nanomsg: https://nanomsg.org/ (\c optional, Nanomsg)
- * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (\c optional, only needed for the SIP plugin)
+ * - \b Sofia-SIP: https://github.com/freeswitch/sofia-sip (\c optional, only needed for the SIP plugin)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
  * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
@@ -3417,9 +3417,8 @@ ldd janus | grep asan
  * libraries and bindings in other languages (that is tools that you find
  * helpful to interact with Janus outside of the context of the \c janus.js
  * JavaScript library we provide) and so on. It is not a complete list,
- * but just a summary of the material that has been shared so far on the
- * <a href="https://groups.google.com/forum/#!forum/meetecho-janus">meetecho-janus</a>
- * Google group.
+ * but just a summary of the material that has been shared so far by the
+ * <a href="https://janus.discourse.group/">community</a>.
  *
  * If you've developed anything related to Janus and you're willing to share
  * it with the community, or you know any such effort that is not listed
@@ -3835,7 +3834,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Server © 2014-2022 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2023 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -3856,7 +3855,7 @@ ldd janus | grep asan
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
  * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0 for MQTT v3.1 & v3.1.1 or v1.3.0 for MQTT v5)
  * - \b nanomsg: https://nanomsg.org/ (\c optional, Nanomsg)
- * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (\c optional, only needed for the SIP plugin)
+ * - \b Sofia-SIP: https://github.com/freeswitch/sofia-sip (\c optional, only needed for the SIP plugin)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
  * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
@@ -3908,8 +3907,7 @@ ldd janus | grep asan
 
 /*! \page FAQ Frequently Asked Questions
  * This page contains a list of FAQ as gathered on the
- * <a href="https://groups.google.com/forum/?pli=1#!forum/meetecho-janus">meetecho-janus</a>
- * Google group and the
+ * <a href="https://janus.discourse.group/">Community</a> and the
  * <a href="https://github.com/meetecho/janus-gateway/issues">Issues</a>
  * page on GitHub. It obviously also includes things we're being asked all the
  * time in general! If your question is not listed here or not available
@@ -4042,7 +4040,9 @@ ldd janus | grep asan
  *    - Presentation on the efforts to integrate audio redundancy via RED in Janus at <a href="https://www.youtube.com/watch?v=NWEYv6OILZI">ClueCon 2021</a>;
  *    - Presentation on how to use WHIP, NDI and Janus together at <a href="https://2021.commcon.xyz/talks/whip-ndi-and-janus-genesis-of-a-broadcasting-demo">CommCon 2021</a>;
  *    - Presentation on Janode, the official Janus nodejs SDK, at <a href="https://2021.commcon.xyz/talks/janode-the-janus-node-js-sdk">CommCon 2021</a>;
- *    - Presentation on WebRTC broadcasting with WHIP and how to scale at <a href="https://fosdem.org/2022/schedule/event/rtc_whip/">FOSDEM 2022</a>. \n\n
+ *    - Presentation on WebRTC broadcasting with WHIP and how to scale at <a href="https://fosdem.org/2022/schedule/event/rtc_whip/">FOSDEM 2022</a>;
+ *    - Presentation on SIP call transfers and multiple calls at <a href="https://youtu.be/vSFZe8SsTbM?t=6379">OpenSIPS 2022</a>;
+ *    - Presentation on SFU/VideoRoom cascading at <a href="https://www.youtube.com/watch?v=z7SvEQcDEgM">IIT RTC 2022</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
  *    and presentations from <a href="https://januscon.it/2019">JanusCon</a>,
  *    the Janus conference we hosted here in Napoli.
@@ -4137,7 +4137,7 @@ ldd janus | grep asan
  * -# <b>Can I use Janus as a gateway to my Freeswitch/Kamailio/Asterisk/other SIP infrastructure?</b>\n
  *    .
  *    Of course! One of the modules we provide out of the box is a SIP
- *    gateway plugin based on the <a href="http://sofia-sip.sourceforge.net/">Sofia-SIP</a>
+ *    gateway plugin based on the <a href="https://github.com/freeswitch/sofia-sip">Sofia-SIP</a>
  *    library stack. These plugin allows a web user to register at a SIP
  *    proxy/server either as an authenticated user or as a guest, and
  *    start or receive calls from other SIP users, including other web users
@@ -4448,8 +4448,8 @@ ldd janus | grep asan
  *    That's great! The first obvious suggestion is of course to carefully
  *    read the documentation here: we worked hard on it and are constantly
  *    expanding it, so it should always be the first source of information
- *    whenever in doubt. We have a great Google group as well where the
- *    <a href="https://groups.google.com/forum/#!forum/meetecho-janus">community</a>
+ *    whenever in doubt. We have a great Discourse as well where the
+ *    <a href="https://janus.discourse.group/">community</a>
  *    shares questions, data and more everyday, so make sure you join too! \n\n
  *    We also provide training on Janus and WebRTC in general, so if interested
  *    just <a href="https://janus.conf.meetecho.com/support">contact us</a>.\n\n

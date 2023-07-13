@@ -23,6 +23,28 @@ general: {
 	backend = "ws://your.websocket.here"
 	# subprotocol = "your-subprotocol"
 
+						# If the WebSocket server isn't reachable or the client has
+						# to reconnect, the default behaviour of the handler plugin
+						# is to retry with an exponential back-off, all while buffering
+						# events that Janus may keep on pushing. Buffering has no
+						# limit, so if reconnecting takes a long time (or forever)
+						# memory usage will keep on growing; besides, it may cause
+						# a network spike when eventually reconnected, as all stored
+						# events would need to be sent to the backend before new
+						# ones can be relayed as well. You can prune queued events
+						# and put a cap on the amount of buffering to perform when
+						# reconnecting by setting the 'events_cap_on_reconnect'
+						# property accordingly: any number you set will be the
+						# maximum number of events stored in memory until we
+						# reconnect, which means older packets will be discarded
+						# if the cap is exceeded. Notice that setting a value
+						# of 0 will not mean "drop all packets", but will disable
+						# the cap (default behaviour), which means the minimum
+						# possible value is 1. Also notice that, when the cap is
+						# enabled, this means the event receiver may end up missing key
+						# events when a reconnection actually ends up taking place.
+	# events_cap_on_reconnect = 10
+
 						# In case you need to debug connection issues, you can configure
 						# the libwebsockets debugging level as a comma separated list of things
 						# to debug, supported values: err, warn, notice, info, debug, parser,

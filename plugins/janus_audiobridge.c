@@ -941,7 +941,17 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
- * All the participants will receive an \c event notification with the
+ * The leaving user will receive a \c left notification:
+ *
+\verbatim
+{
+	"audiobridge" : "left",
+	"room" : <numeric ID of the room>,
+	"id" : <numeric ID of the participant who left>
+}
+\endverbatim
+ *
+ * All the other participants will receive an \c event notification with the
  * ID of the participant who just left:
  *
 \verbatim
@@ -3850,17 +3860,16 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&audiobridge->mutex);
 		/* Set MJR recording status */
-		gboolean room_prev_mjrs_active = mjrs_active;
-		if(mjrs_active && mjrsdir) {
+		if(mjrsdir) {
 			/* Update the path where to save the MJR files */
 			char *old_mjrs_dir = audiobridge->mjrs_dir;
 			char *new_mjrs_dir = g_strdup(json_string_value(mjrsdir));
 			audiobridge->mjrs_dir = new_mjrs_dir;
 			g_free(old_mjrs_dir);
 		}
-		if(room_prev_mjrs_active != audiobridge->mjrs) {
+		if(mjrs_active != audiobridge->mjrs) {
 			/* Room recording state has changed */
-			audiobridge->mjrs = room_prev_mjrs_active;
+			audiobridge->mjrs = mjrs_active;
 			/* Iterate over all participants */
 			gpointer value;
 			GHashTableIter iter;
@@ -5895,6 +5904,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 			} else if(participant->codec == JANUS_AUDIOCODEC_PCMA || participant->codec == JANUS_AUDIOCODEC_PCMU) {
 				/* G.711 */
 				if(plen != 160) {
+					g_atomic_int_set(&participant->decoding, 0);
 					JANUS_LOG(LOG_WARN, "[G.711] Wrong packet size (expected 160, got %d), skipping audio packet\n", plen);
 					g_free(pkt->data);
 					g_free(pkt);
@@ -6138,8 +6148,8 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 	janus_audiobridge_room *audiobridge = participant->room;
 	gboolean removed = FALSE;
 	if(audiobridge != NULL) {
-		participant->room = NULL;
 		janus_mutex_lock(&audiobridge->mutex);
+		participant->room = NULL;
 		json_t *event = json_object();
 		json_object_set_new(event, "audiobridge", json_string("event"));
 		json_object_set_new(event, "room",
@@ -6668,6 +6678,7 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->reset = FALSE;
 			/* If this is a plain RTP participant, create the socket */
 			if(rtp != NULL) {
+				gen_offer = NULL;
 				const char *ip = json_string_value(json_object_get(rtp, "ip"));
 				uint16_t port = json_integer_value(json_object_get(rtp, "port"));
 				if(participant->codec == JANUS_AUDIOCODEC_OPUS) {
@@ -8756,6 +8767,8 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					janus_audiobridge_relay_rtp_packet(participant->session, outpkt);
 				}
 			}
+		}
+		if(mixedpkt) {
 			g_free(mixedpkt->data);
 			g_free(mixedpkt);
 		}

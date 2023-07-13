@@ -351,8 +351,9 @@ Janus.init = function(options) {
 				oldOBF();
 			}
 		});
-		// If this is a Safari Technology Preview, check if VP8 is supported
+		// If this is a Safari, check if VP8 or VP9 are supported
 		Janus.safariVp8 = false;
+		Janus.safariVp9 = false;
 		if(Janus.webRTCAdapter.browserDetails.browser === 'safari' &&
 				Janus.webRTCAdapter.browserDetails.version >= 605) {
 			// Let's see if RTCRtpSender.getCapabilities() is there
@@ -361,7 +362,8 @@ Janus.init = function(options) {
 				for(var codec of RTCRtpSender.getCapabilities("video").codecs) {
 					if(codec && codec.mimeType && codec.mimeType.toLowerCase() === "video/vp8") {
 						Janus.safariVp8 = true;
-						break;
+					} else if(codec && codec.mimeType && codec.mimeType.toLowerCase() === "video/vp9") {
+						Janus.safariVp9 = true;
 					}
 				}
 				if(Janus.safariVp8) {
@@ -376,6 +378,7 @@ Janus.init = function(options) {
 				var testpc = new RTCPeerConnection({});
 				testpc.createOffer({offerToReceiveVideo: true}).then(function(offer) {
 					Janus.safariVp8 = offer.sdp.indexOf("VP8") !== -1;
+					Janus.safariVp9 = offer.sdp.indexOf("VP9") !== -1;
 					if(Janus.safariVp8) {
 						Janus.log("This version of Safari supports VP8");
 					} else {
@@ -1822,19 +1825,7 @@ function Janus(gatewayCallbacks) {
 				// For Chrome versions before 72, we force a plan-b semantic, and unified-plan otherwise
 				pc_config["sdpSemantics"] = (Janus.webRTCAdapter.browserDetails.version < 72) ? "plan-b" : "unified-plan";
 			}
-			var pc_constraints = {
-				"optional": [{"DtlsSrtpKeyAgreement": true}]
-			};
-			if(ipv6Support) {
-				pc_constraints.optional.push({"googIPv6":true});
-			}
-			// Any custom constraint to add?
-			if(callbacks.rtcConstraints && typeof callbacks.rtcConstraints === 'object') {
-				Janus.debug("Adding custom PeerConnection constraints:", callbacks.rtcConstraints);
-				for(var i in callbacks.rtcConstraints) {
-					pc_constraints.optional.push(callbacks.rtcConstraints[i]);
-				}
-			}
+			var pc_constraints = {};
 			if(Janus.webRTCAdapter.browserDetails.browser === "edge") {
 				// This is Edge, enable BUNDLE explicitly
 				pc_config.bundlePolicy = "max-bundle";

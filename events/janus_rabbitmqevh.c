@@ -112,14 +112,14 @@ static amqp_bytes_t rmq_exchange;
 static janus_mutex mutex;
 
 static char *rmqhost = NULL;
-static const char *vhost = NULL, *username = NULL, *password = NULL;
-static const char *ssl_cacert_file = NULL;
-static const char *ssl_cert_file = NULL;
-static const char *ssl_key_file = NULL;
+static char *vhost = NULL, *username = NULL, *password = NULL;
+static char *ssl_cacert_file = NULL;
+static char *ssl_cert_file = NULL;
+static char *ssl_key_file = NULL;
 static gboolean ssl_enable = FALSE;
 static gboolean ssl_verify_peer = FALSE;
 static gboolean ssl_verify_hostname = FALSE;
-static const char *route_key = NULL, *exchange = NULL, *exchange_type = NULL ;
+static char *route_key = NULL, *exchange = NULL, *exchange_type = NULL ;
 static uint16_t heartbeat = 0;
 static uint16_t rmqport = AMQP_PROTOCOL_PORT;
 static gboolean declare_outgoing_queue = TRUE;
@@ -331,10 +331,8 @@ int janus_rabbitmqevh_init(const char *config_path) {
 error:
 	/* If we got here, something went wrong */
 	success = FALSE;
-	if(route_key)
-		g_free((char *)route_key);
-	if(exchange)
-		g_free((char *)exchange);
+	g_free(route_key);
+	g_free(exchange);
 	/* Fall through */
 done:
 	if(config)
@@ -453,22 +451,14 @@ void janus_rabbitmqevh_destroy(void) {
 	if(rmq_conn) {
 		amqp_destroy_connection(rmq_conn);
 	}
-	if(rmq_exchange.bytes)
-		g_free((char *)rmq_exchange.bytes);
-	if(rmqhost)
-		g_free((char *)rmqhost);
-	if(vhost)
-		g_free((char *)vhost);
-	if(username)
-		g_free((char *)username);
-	if(password)
-		g_free((char *)password);
-	if(ssl_cacert_file)
-		g_free((char *)ssl_cacert_file);
-	if(ssl_cert_file)
-		g_free((char *)ssl_cert_file);
-	if(ssl_key_file)
-		g_free((char *)ssl_key_file);
+	g_free(rmq_exchange.bytes);
+	g_free(rmqhost);
+	g_free(vhost);
+	g_free(username);
+	g_free(password);
+	g_free(ssl_cacert_file);
+	g_free(ssl_cert_file);
+	g_free(ssl_key_file);
 
 	janus_mutex_destroy(&mutex);
 	g_atomic_int_set(&initialized, 0);
