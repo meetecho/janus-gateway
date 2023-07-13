@@ -815,7 +815,7 @@ static struct janus_json_parameter decline_parameters[] = {
 };
 static struct janus_json_parameter transfer_parameters[] = {
 	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"call_id", JANUS_JSON_STRING, 0}
+	{"replace", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter hold_parameters[] = {
 	{"direction", JSON_STRING, 0}

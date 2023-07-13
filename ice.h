@@ -147,6 +147,15 @@ void janus_ice_set_nomination_mode(const char *nomination);
  * @returns "regular" or "aggressive" */
 const char *janus_ice_get_nomination_mode(void);
 #endif
+/*! \brief Method to enable/disable consent freshness in PeerConnections.
+ * \note This is only available on libnice >= 0.1.19, and automatically enables
+ * keepalive connectivity checks too. Documentation for the setting:
+ * https://libnice.freedesktop.org/libnice/NiceAgent.html#NiceAgent--consent-freshness
+ * @param[in] enabled Whether the functionality should be enabled or disabled */
+void janus_ice_set_consent_freshness_enabled(gboolean enabled);
+/*! \brief Method to check whether consent fresnhess will be enabled in ICE
+ * @returns true if enabled, false (default) otherwise */
+gboolean janus_ice_is_consent_freshness_enabled(void);
 /*! \brief Method to enable/disable connectivity checks as keepalives for PeerConnections.
  * \note The main rationale behind this setting is provided in the libnice documentation:
  * https://libnice.freedesktop.org/libnice/NiceAgent.html#NiceAgent--keepalive-conncheck

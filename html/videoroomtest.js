@@ -458,7 +458,7 @@ function newRemoteFeed(id, display, audio, video) {
 				// 		subscribe["offer_video"] = false;
 				// For example, if the publisher is VP8 and this is Safari, let's avoid video
 				if(Janus.webRTCAdapter.browserDetails.browser === "safari" &&
-						(video === "vp9" || (video === "vp8" && !Janus.safariVp8))) {
+						((video === "vp9" && !Janus.safariVp9) || (video === "vp8" && !Janus.safariVp8))) {
 					if(video)
 						video = video.toUpperCase()
 					toastr.warning("Publisher is using " + video + ", but Safari doesn't support it: disabling video");

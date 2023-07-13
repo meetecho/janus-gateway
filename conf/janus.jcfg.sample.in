@@ -270,8 +270,11 @@ media: {
 # it should work in ICE-Lite mode (by default it doesn't). If libnice is
 # at least 0.1.15, you can choose which ICE nomination mode to use: valid
 # values are "regular" and "aggressive" (the default depends on the libnice
-# version itself; if we can set it, we set aggressive nomination). You can
-# also configure whether to use connectivity checks as keep-alives, which
+# version itself; if we can set it, we set aggressive nomination). If
+# libnice is at least 0.1.19, you can enable consent freshness checks for
+# PeerConnections as well: this will issue regular checks to check whether
+# or not the WebRTC peer isn't available anymore. Enabling consent freshness
+# will automatically also enable using connectivity checks as keep-alives, which
 # might help detecting when a peer is no longer available (notice that
 # current libnice master is breaking connections after 50 seconds when
 # keepalive-conncheck is being used, so if you want to use it, better
@@ -286,6 +289,7 @@ nat: {
 	nice_debug = false
 	#full_trickle = true
 	#ice_nomination = "regular"
+	#ice_consent_freshness = true
 	#ice_keepalive_conncheck = true
 	#ice_lite = true
 	#ice_tcp = true
