@@ -130,6 +130,7 @@ janus_turnrest_response *janus_turnrest_request(const char *user) {
 	CURLcode res;
 	CURL *curl = curl_easy_init();
 	if(curl == NULL) {
+		janus_mutex_unlock(&api_mutex);
 		JANUS_LOG(LOG_ERR, "libcurl error\n");
 		return NULL;
 	}

@@ -151,6 +151,15 @@ void janus_ice_set_nomination_mode(const char *nomination);
  * @returns "regular" or "aggressive" */
 const char *janus_ice_get_nomination_mode(void);
 #endif
+/*! \brief Method to enable/disable consent freshness in PeerConnections.
+ * \note This is only available on libnice >= 0.1.19, and automatically enables
+ * keepalive connectivity checks too. Documentation for the setting:
+ * https://libnice.freedesktop.org/libnice/NiceAgent.html#NiceAgent--consent-freshness
+ * @param[in] enabled Whether the functionality should be enabled or disabled */
+void janus_ice_set_consent_freshness_enabled(gboolean enabled);
+/*! \brief Method to check whether consent fresnhess will be enabled in ICE
+ * @returns true if enabled, false (default) otherwise */
+gboolean janus_ice_is_consent_freshness_enabled(void);
 /*! \brief Method to enable/disable connectivity checks as keepalives for PeerConnections.
  * \note The main rationale behind this setting is provided in the libnice documentation:
  * https://libnice.freedesktop.org/libnice/NiceAgent.html#NiceAgent--keepalive-conncheck
@@ -205,6 +214,9 @@ void janus_ice_set_event_stats_period(int period);
 /*! \brief Method to get the current event handler statistics period (see above)
  * @returns The current event handler stats period */
 int janus_ice_get_event_stats_period(void);
+/*! \brief Method to get the number of active PeerConnection (for stats)
+ * @returns The current number of active PeerConnections */
+int janus_ice_get_peerconnection_num(void);
 
 /*! \brief Method to define wether the media stats shall be dispatched in one event (true) or in dedicated single events (false - default)
  * @param[in] combine_media_stats_to_one_event true to combine media statistics in on event or false to send dedicated events */
@@ -402,6 +414,8 @@ struct janus_ice_handle {
 	janus_text2pcap *text2pcap;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
+	/*! \brief Atomic flag to check whether a PeerConnection was established */
+	volatile gint has_pc;
 	/*! \brief Whether a close_pc was requested recently on the PeerConnection */
 	volatile gint closepc;
 	/*! \brief Atomic flag to check if this instance has been destroyed */

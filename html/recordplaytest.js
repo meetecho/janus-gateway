@@ -305,6 +305,8 @@ $(document).ready(function() {
 										delete remoteTracks[mid];
 										return;
 									}
+									if($('#thevideo' + mid).length > 0)
+										return;
 									// If we're here, a new track was added
 									if($('#videobox audio').length === 0 && $('#videobox video').length === 0) {
 										$('#videotitle').html(selectedRecordingInfo);

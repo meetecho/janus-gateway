@@ -295,6 +295,54 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
 int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now);
 
 
+/** @name Janus AV1-SVC processing methods
+ */
+///@{
+/*! \brief Helper struct for processing and tracking AV1-SVC streams */
+typedef struct janus_av1_svc_context {
+	/*! \brief Number of templates advertised via Dependency Descriptor */
+	uint8_t tcnt;
+	/*! \brief Template ID offset, as advertised via Dependency Descriptor */
+	uint8_t tioff;
+	/*! \brief Map of templates advertised via Dependency Descriptor, indexed by ID */
+	GHashTable *templates;
+	/*! \brief How many spatial and temporal layers are available */
+	int spatial_layers, temporal_layers;
+	/*! \brief Whether this context changed since the last update */
+	gboolean updated;
+} janus_av1_svc_context;
+
+/*! \brief Helper struct to track SVC templates
+ * \note This is very incomplete, since we only track the spatial and
+ * temporal layer associated with a specific template ID for now */
+typedef struct janus_av1_svc_template {
+	/*! \brief Template ID */
+	uint8_t id;
+	/*! \brief Spatial layer associated to this template */
+	int spatial;
+	/*! \brief Temporal layer associated to this template */
+	int temporal;
+} janus_av1_svc_template;
+
+/*! \brief Set (or reset) the context fields to their default values
+ * @param[in] context The context to (re)set */
+void janus_av1_svc_context_reset(janus_av1_svc_context *context);
+
+/*! \brief Process a Dependency Descriptor payload, updating the SVC context accordingly
+ * \note At the moment, this code is quite naive, as it mostly looks at the target
+ * spatial/temporal layers, and the one written in the Dependency Descriptor data.
+ * In the future, this should become more sophisticated, and use additional
+ * information like dependency chains and stuff like that
+ * @param[in] context The av1svc context to use
+ * @param[in] dd Pointer to the Dependency Descriptor data
+ * @param[in] dd_len The length of the Dependendy Descriptor data
+ * @param[out] template_id Pointer to the ID of the template referenced in this packet
+ * @param[out] ebit Whether this packet is an end of frame or not
+ * @returns TRUE if the packet is valid, FALSE if it should be dropped instead */
+gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
+	uint8_t *dd, int dd_len, uint8_t *template_id, uint8_t *ebit);
+///@}
+
 /** @name Janus simulcast processing methods
  */
 ///@{
@@ -302,6 +350,8 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 typedef struct janus_rtp_simulcasting_context {
 	/*! \brief RTP Stream extension ID, if any */
 	gint rid_ext_id;
+	/*! \brief Dependency Descriptors contexts, if any */
+	janus_av1_svc_context av1_context[3];
 	/*! \brief Which simulcast substream we should forward back */
 	int substream;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */
@@ -348,6 +398,8 @@ void janus_rtp_simulcasting_cleanup(int *rid_ext_id, uint32_t *ssrcs, char **rid
  * @param[in] context The simulcasting context to use
  * @param[in] buf The RTP packet to process
  * @param[in] len The length of the RTP packet (header, extension and payload)
+ * @param[in] dd_content The Dependency Descriptor RTP extension data, if available
+ * @param[in] dd_len Length of the Dependency Descriptor data, if available
  * @param[in] ssrcs The simulcast SSRCs to refer to (may be updated if rids are involved)
  * @param[in] rids The simulcast rids to refer to, if any
  * @param[in] vcodec Video codec of the RTP payload
@@ -355,7 +407,7 @@ void janus_rtp_simulcasting_cleanup(int *rid_ext_id, uint32_t *ssrcs, char **rid
  * @param[in] rid_mutex A mutex that must be acquired before reading the rids array, if any
  * @returns TRUE if the packet should be relayed, FALSE if it should be dropped instead */
 gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
-	char *buf, int len, uint32_t *ssrcs, char **rids,
+	char *buf, int len, uint8_t *dd_content, int dd_len, uint32_t *ssrcs, char **rids,
 	janus_videocodec vcodec, janus_rtp_switching_context *sc, janus_mutex *rid_mutex);
 ///@}
 
@@ -364,6 +416,8 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 ///@{
 /*! \brief Helper struct for processing and tracking VP9-SVC streams */
 typedef struct janus_rtp_svc_context {
+	/*! \brief Dependency Descriptor context, in case it's needed */
+	struct janus_av1_svc_context dd_context;
 	/*! \brief Which SVC spatial layer we should forward back */
 	int spatial;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */
@@ -394,60 +448,15 @@ void janus_rtp_svc_context_reset(janus_rtp_svc_context *context);
  * @param[in] context The VP9 SVC context to use
  * @param[in] buf The RTP packet to process
  * @param[in] len The length of the RTP packet (header, extension and payload)
+ * @param[in] dd_content The Dependency Descriptor RTP extension data, if available
+ * @param[in] dd_len Length of the Dependency Descriptor data, if available
  * @param[in] vcodec Video codec of the RTP payload
  * @param[in] info Parsed info on VP9-SVC, if any
  * @param[in] sc RTP switching context to refer to, if any
  * @returns TRUE if the packet should be relayed, FALSE if it should be dropped instead */
-gboolean janus_rtp_svc_context_process_rtp(janus_rtp_svc_context *context, char *buf, int len,
+gboolean janus_rtp_svc_context_process_rtp(janus_rtp_svc_context *context,
+	char *buf, int len, uint8_t *dd_content, int dd_len,
 	janus_videocodec vcodec, janus_vp9_svc_info *info, janus_rtp_switching_context *sc);
 ///@}
-
-/** @name Janus AV1-SVC processing methods (still WIP)
- */
-///@{
-/*! \brief Helper struct for processing and tracking AV1-SVC streams */
-typedef struct janus_av1_svc_context {
-	/*! \brief Number of templates advertised via Dependency Descriptor */
-	uint8_t tcnt;
-	/*! \brief Template ID offset, as advertised via Dependency Descriptor */
-	uint8_t tioff;
-	/*! \brief Map of templates advertised via Dependency Descriptor, indexed by ID */
-	GHashTable *templates;
-	/*! \brief How many spatial and temporal layers are available */
-	int spatial_layers, temporal_layers;
-	/*! \brief Whether this context changed since the last update */
-	gboolean updated;
-} janus_av1_svc_context;
-
-/*! \brief Helper struct to track SVC templates
- * \note This is very incomplete, since we only track the spatial and
- * temporal layer associated with a specific template ID for now */
-typedef struct janus_av1_svc_template {
-	/*! \brief Template ID */
-	uint8_t id;
-	/*! \brief Spatial layer associated to this template */
-	int spatial;
-	/*! \brief Temporal layer associated to this template */
-	int temporal;
-} janus_av1_svc_template;
-
-/*! \brief Set (or reset) the context fields to their default values
- * @param[in] context The context to (re)set */
-void janus_av1_svc_context_reset(janus_av1_svc_context *context);
-
-/*! \brief Process a Dependency Descriptor payload, updating the SVC context accordingly
- * \note At the moment, this code is quite naive, as it mostly looks at the target
- * spatial/temporal layers, and the one written in the Dependency Descriptor data.
- * In the future, this should become more sophisticated, and use additional
- * information like dependency chains and stuff like that
- * @param[in] context The av1svc context to use
- * @param[in] dd Pointer to the Dependency Descriptor data
- * @param[in] dd_len The length of the Dependendy Descriptor data
- * @param[out] template_id Pointer to the ID of the template referenced in this packet
- * @returns TRUE if the packet is valid, FALSE if it should be dropped instead */
-gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
-	uint8_t *dd, int dd_len, uint8_t *template_id);
-///@}
-
 
 #endif

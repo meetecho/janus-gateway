@@ -97,7 +97,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: cisco/libsrtp
-        ref: v2.4.2
+        ref: v2.5.0
     - name: setup libsrtp from sources
       if: ${{ matrix.deps_from_src == 'yes' }}
       run: |
@@ -159,19 +159,26 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Install modules
-      run: npm install
-    - name: Run ESLint
-      run: npm run lint
-  javascript-rollup:
-    runs-on: ubuntu-22.04
-    steps:
-    - uses: actions/checkout@v3
-    - name: Rollup
       run: |
         cd npm
         npm install
-        npm run rollup -- --o janus.cjs.js --f cjs
+    - name: Run ESLint
+      run: |
+        cd npm
+        npm run lint
+  javascript-dist:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install modules
+      run: |
+        cd npm
+        npm install
+    - name: Make dist files
+      run: |
+        cd npm
+        npm run prerelease
     - uses: actions/upload-artifact@v3
       with:
-        name: janus.cjs.js
-        path: npm/janus.cjs.js
+        name: janus.es.js
+        path: npm/dist/janus.es.js

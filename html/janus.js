@@ -488,8 +488,9 @@ Janus.init = function(options) {
 				oldOBF();
 			}
 		});
-		// If this is a Safari Technology Preview, check if VP8 is supported
+		// If this is a Safari, check if VP8 or VP9 are supported
 		Janus.safariVp8 = false;
+		Janus.safariVp9 = false;
 		if(Janus.webRTCAdapter.browserDetails.browser === 'safari' &&
 				Janus.webRTCAdapter.browserDetails.version >= 605) {
 			// Let's see if RTCRtpSender.getCapabilities() is there
@@ -498,7 +499,8 @@ Janus.init = function(options) {
 				for(let codec of RTCRtpSender.getCapabilities("video").codecs) {
 					if(codec && codec.mimeType && codec.mimeType.toLowerCase() === "video/vp8") {
 						Janus.safariVp8 = true;
-						break;
+					} else if(codec && codec.mimeType && codec.mimeType.toLowerCase() === "video/vp9") {
+						Janus.safariVp9 = true;
 					}
 				}
 				if(Janus.safariVp8) {
@@ -513,6 +515,7 @@ Janus.init = function(options) {
 				let testpc = new RTCPeerConnection({});
 				testpc.createOffer({offerToReceiveVideo: true}).then(function(offer) {
 					Janus.safariVp8 = offer.sdp.indexOf("VP8") !== -1;
+					Janus.safariVp9 = offer.sdp.indexOf("VP9") !== -1;
 					if(Janus.safariVp8) {
 						Janus.log("This version of Safari supports VP8");
 					} else {
@@ -2497,9 +2500,9 @@ function Janus(gatewayCallbacks) {
 								direction: 'sendrecv',
 								streams: [config.myStream],
 								sendEncodings: track.sendEncodings || [
-									{ rid: 'h', active: true, maxBitrate: maxBitrates.high },
-									{ rid: 'm', active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
-									{ rid: 'l', active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
+									{ rid: 'h', active: true, scalabilityMode: 'L1T2', maxBitrate: maxBitrates.high },
+									{ rid: 'm', active: true, scalabilityMode: 'L1T2', maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
+									{ rid: 'l', active: true, scalabilityMode: 'L1T2', maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
 								]
 							});
 						} else {
@@ -2645,9 +2648,10 @@ function Janus(gatewayCallbacks) {
 				}
 				if(nt && track.dontStop === true)
 					nt.dontStop = true;
-			} else if(track.recv && !transceiver) {
+			} else if(track.recv) {
 				// Maybe a new recvonly track
-				transceiver = config.pc.addTransceiver(kind);
+				if(!transceiver)
+					transceiver = config.pc.addTransceiver(kind);
 				if(transceiver) {
 					// Check if we need to override some settings
 					if(track.codec) {

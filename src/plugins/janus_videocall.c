@@ -778,7 +778,8 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle
 			 * The caveat is that the targets in OUR simulcast context are the PEER's targets */
 			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&peer->sim_context,
-				buf, len, session->ssrc, session->rid, session->vcodec, &peer->context, &session->rid_mutex);
+				buf, len, packet->extensions.dd_content, packet->extensions.dd_len,
+				session->ssrc, session->rid, session->vcodec, &peer->context, &session->rid_mutex);
 			/* Do we need to drop this? */
 			if(!relay)
 				return;
@@ -1374,7 +1375,7 @@ static void *janus_videocall_handler(void *data) {
 			session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);
 			/* Check if this user will simulcast */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
-			if(msg_simulcast && janus_get_codec_pt(msg_sdp, "vp8") > 0) {
+			if(msg_simulcast) {
 				JANUS_LOG(LOG_VERB, "VideoCall callee (%s) cannot do simulcast.\n", session->username);
 			} else {
 				janus_rtp_simulcasting_cleanup(NULL, session->ssrc, session->rid, &session->rid_mutex);
@@ -1533,7 +1534,7 @@ static void *janus_videocall_handler(void *data) {
 				session->sim_context.templayer_target = json_integer_value(temporal);
 				JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
 					session->sim_context.templayer_target, session->sim_context.templayer);
-				if(session->vcodec == JANUS_VIDEOCODEC_VP8 && session->sim_context.templayer_target == session->sim_context.templayer) {
+				if(session->sim_context.templayer_target == session->sim_context.templayer) {
 					/* No need to do anything, we're already getting the right temporal, so notify the user */
 					json_t *event = json_object();
 					json_object_set_new(event, "videocall", json_string("event"));
@@ -1569,7 +1570,7 @@ static void *janus_videocall_handler(void *data) {
 				session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);
 				/* Check if this user will simulcast */
 				json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
-				if(msg_simulcast && janus_get_codec_pt(msg_sdp, "vp8") > 0) {
+				if(msg_simulcast) {
 					JANUS_LOG(LOG_VERB, "VideoCall callee (%s) cannot do simulcast.\n", session->username);
 				} else {
 					janus_rtp_simulcasting_cleanup(NULL, session->ssrc, session->rid, &session->rid_mutex);
