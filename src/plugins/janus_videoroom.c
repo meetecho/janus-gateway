@@ -9110,15 +9110,11 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 		char error_cause[512];
 		json_t *root = NULL,
 			*event = NULL;
-		/*IGOGO*/
-		char *transaction_text = NULL;
-		/*IGOGO*/
 
 		if(msg->handle == NULL) {
 			JANUS_LOG(LOG_HUGE, "[%s] msg->handle == NULL\n",msg->transaction);
 			return;
 		}
-		transaction_text = msg->transaction;
 		janus_videoroom *videoroom = NULL;
 		janus_videoroom_publisher *participant = NULL;
 		janus_videoroom_subscriber *subscriber = NULL;
@@ -10090,7 +10086,7 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 					media_event = json_deep_copy(media);
 				json_object_set_new(event, "streams", media);
 				session->participant_type = janus_videoroom_p_type_subscriber;
-				JANUS_LOG(LOG_VERB, "transaction %s Preparing JSON event as a reply\n",transaction_text);
+				JANUS_LOG(LOG_VERB, "transaction %s Preparing JSON event as a reply\n",msg->transaction);
 				/* Negotiate by crafting a new SDP matching the subscriptions */
 				json_t *jsep = janus_videoroom_subscriber_offer(subscriber);
 				janus_mutex_unlock(&subscriber->streams_mutex);
@@ -10098,7 +10094,7 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 				g_atomic_int_set(&session->hangingup, 0);
 				gint64 start = janus_get_monotonic_time();
 				int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, jsep);
-				JANUS_LOG(LOG_VERB, "transaction %s  >> Pushing event: %d (took %"SCNu64" us)\n", transaction_text, res, janus_get_monotonic_time()-start);
+				JANUS_LOG(LOG_VERB, "transaction %s  >> Pushing event: %d (took %"SCNu64" us)\n", msg->transaction, res, janus_get_monotonic_time()-start);
 				json_decref(event);
 				json_decref(jsep);
 				/* Also notify event handlers */
