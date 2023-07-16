@@ -9116,7 +9116,6 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 
 		if(msg->handle == NULL) {
 			JANUS_LOG(LOG_HUGE, "[%s] msg->handle == NULL\n",msg->transaction);
-			janus_videoroom_message_free(msg);
 			return;
 		}
 		transaction_text = msg->transaction;
@@ -9128,13 +9127,11 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 		if(!session) {
 			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "[%s] No session associated with this handle...\n",msg->transaction);
-			janus_videoroom_message_free(msg);
 			return;
 		}
 		if(g_atomic_int_get(&session->destroyed)) {
 			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_HUGE, "[%s] session is destroyed\n",msg->transaction);
-			janus_videoroom_message_free(msg);
 			return;
 		}
 		if(session->participant_type == janus_videoroom_p_type_subscriber) {
@@ -9633,14 +9630,12 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 					janus_mutex_unlock(&videoroom->mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
-					janus_videoroom_message_free(msg);
 					return;
 				}
 				if(g_atomic_int_get(&session->destroyed)) {
 					janus_mutex_unlock(&sessions_mutex);
 					janus_mutex_unlock(&videoroom->mutex);
 					janus_refcount_decrease(&videoroom->ref);
-					janus_videoroom_message_free(msg);
 					return;
 				}
 				janus_mutex_unlock(&sessions_mutex);
@@ -10124,7 +10119,6 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 					publishers = g_list_remove(publishers, publisher);
 				}
 				janus_refcount_decrease(&subscriber->ref);
-				janus_videoroom_message_free(msg);
 				return;
 			} else {
 				janus_mutex_unlock(&videoroom->mutex);
@@ -11066,7 +11060,6 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 					}
 					janus_refcount_decrease(&subscriber->ref);
 					/* Done */
-					janus_videoroom_message_free(msg);
 					return;
 				}
 				if(!g_atomic_int_get(&subscriber->answered)) {
@@ -11089,7 +11082,6 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 						publishers = g_list_remove(publishers, publisher);
 					}
 					janus_refcount_decrease(&subscriber->ref);
-					janus_videoroom_message_free(msg);
 					return;
 				}
 				event = json_object();
@@ -11129,7 +11121,6 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 				}
 				/* Done */
 				janus_refcount_decrease(&subscriber->ref);
-				janus_videoroom_message_free(msg);
 				return;
 			} else if(!strcasecmp(request_text, "configure")) {
 				JANUS_VALIDATE_JSON_OBJECT(root, configure_parameters,
@@ -11443,7 +11434,6 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 						g_atomic_int_set(&subscriber->pending_restart, 1);
 						janus_mutex_unlock(&subscriber->streams_mutex);
 						JANUS_LOG(LOG_VERB, "Post-poning new ICE restart offer, waiting for previous answer\n");
-						janus_videoroom_message_free(msg);
 						return;
 					}
 					json_t *jsep = janus_videoroom_subscriber_offer(subscriber);
@@ -11457,7 +11447,6 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 					json_decref(event);
 					json_decref(jsep);
 					/* Done */
-					janus_videoroom_message_free(msg);
 					return;
 				}
 				janus_mutex_unlock(&subscriber->streams_mutex);
@@ -11965,7 +11954,6 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 					janus_mutex_unlock(&subscriber->streams_mutex);
 				}
 				JANUS_LOG(LOG_VERB, "thread<%p> [%s] end processing\n", g_thread_self(),msg->transaction);
-				janus_videoroom_message_free(msg);
 				return;
 			} else {
 				/* TODO We don't support anything else right now... */
@@ -12512,8 +12500,6 @@ static void janus_videoroom_message_handler(janus_videoroom_message *msg) {
 				janus_refcount_decrease(&participant->ref);
 		}
 		JANUS_LOG(LOG_VERB, "vr [%s] end processing\n", msg->transaction);
-		janus_videoroom_message_free(msg);
-
 		return;
 
 error:
@@ -12529,7 +12515,6 @@ error:
 				ret,
 				janus_get_api_error(ret));
 			json_decref(event);
-			janus_videoroom_message_free(msg);
 		}
 }
 
@@ -12537,18 +12522,18 @@ error:
 static void janus_videoroom_tp_message_handler(gpointer data, gpointer user_data) {
 	janus_videoroom_message *msg = data;
 
-	char transaction_text[1024] = {0};
+	if(msg) {
+		guint64 start = janus_get_monotonic_time();
 
-	guint64 start = janus_get_monotonic_time();
+		janus_videoroom_message_handler(msg);
 
-	strncpy(transaction_text,msg->transaction,sizeof(transaction_text) - 1);
+		JANUS_LOG(LOG_PERF, "tp-thread<%p>. transaction [%s] took %"SCNi64"us\n",
+				g_thread_self(),
+				msg->transaction,
+				janus_get_monotonic_time() - start);
 
-	janus_videoroom_message_handler(msg);
-
-	JANUS_LOG(LOG_PERF, "tp-thread<%p>. transaction [%s] took %"SCNi64"us\n",
-			g_thread_self(),
-			transaction_text,
-			janus_get_monotonic_time() - start);
+		janus_videoroom_message_free(msg);		
+	}
 
 }
 
@@ -12557,8 +12542,9 @@ static void janus_videoroom_tp_session_handler(gpointer data, gpointer user_data
 	if(!session) {
 		return;
 	}
-   GSList *messages;
-   for(;;) {
+
+    GSList *messages;
+    do {
 		janus_mutex_lock(&session->mutex);
 		messages = g_slist_remove_all(session->messages,NULL);
 		if(!messages){
@@ -12574,14 +12560,14 @@ static void janus_videoroom_tp_session_handler(gpointer data, gpointer user_data
 				g_slist_length(messages));
 			g_slist_foreach(messages,janus_videoroom_tp_message_handler,NULL);
 			g_slist_free(messages);
-		} else {
-			JANUS_LOG(LOG_PERF, "tp-thread<%p>. janus_videoroom_tp_session_handler exit\n",
-				g_thread_self());
-			break;
-		}
-   }
-	janus_refcount_decrease(&session->ref);
-}
+		} 
+    } while(messages);
+
+    JANUS_LOG(LOG_PERF, "tp-thread<%p>. janus_videoroom_tp_session_handler exit\n",
+		g_thread_self());
+
+    janus_refcount_decrease(&session->ref);
+} 
 
 /* Helper to quickly relay RTP packets from publishers to subscribers */
 static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) {
