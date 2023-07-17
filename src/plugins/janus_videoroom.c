@@ -8129,15 +8129,16 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 					janus_mutex_lock(&session->mutex);
 					session->processing_messages = FALSE;
 					janus_mutex_unlock(&session->mutex);
-				} else {
-					JANUS_LOG(LOG_PERF, "%s queued request %s handle %p\n",
-						transaction,
-						request_text,
-						handle);
-
-					return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
-				}
+					goto plugin_response;
+				} 
 			}
+			
+			JANUS_LOG(LOG_PERF, "%s queued request %s handle %p\n",
+			  transaction,
+			  request_text,
+			  handle);
+
+			return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
 		error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST;
