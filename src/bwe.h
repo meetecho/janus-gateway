@@ -14,6 +14,7 @@
 
 #include <glib.h>
 
+#include "mutex.h"
 
 /*! \brief Transport Wide CC statuses */
 typedef enum janus_bwe_twcc_status {
@@ -60,6 +61,8 @@ typedef struct janus_bwe_context {
 	int64_t bitrate_ts;
 	/*! \brief Amount of bytes we've sent and the ones we've had feedback were received */
 	uint32_t sent_bytes, received_bytes;
+	/*! \brief How much delay has been accumulated (may be negative) */
+	int64_t delay;
 } janus_bwe_context;
 /*! \brief Helper to create a new bandwidth estimation context
  * @returns a new janus_bwe_context instance, if successful, or NULL otherwise */
@@ -84,5 +87,37 @@ gboolean janus_bwe_context_add_inflight(janus_bwe_context *bwe,
  * @param[in] delta_us If the packet was received, the delta that was provided */
 void janus_bwe_context_handle_feedback(janus_bwe_context *bwe,
 	uint16_t seq, janus_bwe_twcc_status status, uint32_t delta_us);
+
+/*! \brief Tracker for a stream bitrate (whether it's simulcast/SVC or not) */
+typedef struct janus_bwe_stream_bitrate {
+	/*! \brief Time based queue of packet sizes */
+	GQueue *packets[9];
+	/*! \brief Current bitrate */
+	uint32_t bitrate[9];
+	/*! \brief Mutex to lock this instance */
+	janus_mutex mutex;
+} janus_bwe_stream_bitrate;
+/*! \brief Helper method to create a new janus_bwe_stream_bitrate instance
+ * @returns A janus_bwe_stream_bitrate instance, if successful, or NULL otherwise */
+janus_bwe_stream_bitrate *janus_bwe_stream_bitrate_create(void);
+/*! \brief Helper method to update an existing janus_bwe_stream_bitrate instance with new data
+ * \note Passing \c -1 or \c 0 as size just updates the queue to get rid of older values
+ * @param[in] bwe_sb The janus_bwe_stream_bitrate instance to update
+ * @param[in] when Timestamp of the packet
+ * @param[in] sl Substream or spatial layer of the packet (can be 0 for audio)
+ * @param[in] sl Temporal layer of the packet (can be 0 for audio)
+ * @param[in] size Size of the packet */
+void janus_bwe_stream_bitrate_update(janus_bwe_stream_bitrate *bwe_sb, int64_t when, int sl, int tl, int size);
+/*! \brief Helper method to destroy an existing janus_bwe_stream_bitrate instance
+ * @param[in] bwe_sb The janus_bwe_stream_bitrate instance to destroy */
+void janus_bwe_stream_bitrate_destroy(janus_bwe_stream_bitrate *bwe_sb);
+
+/*! \brief Packet size and time */
+typedef struct janus_bwe_stream_packet {
+	/*! \brief Timestamp */
+	int64_t sent_ts;
+	/*! \brief Size of packet */
+	uint16_t size;
+} janus_bwe_stream_packet;
 
 #endif

@@ -61,6 +61,7 @@ gboolean janus_bwe_context_add_inflight(janus_bwe_context *bwe,
 	bwe->last_sent_ts = sent;
 	stat->type = type;
 	stat->size = size;
+	bwe->sent_bytes += size;
 	g_hash_table_insert(bwe->packets, GUINT_TO_POINTER(seq), stat);
 	return TRUE;
 }
@@ -73,9 +74,9 @@ void janus_bwe_context_handle_feedback(janus_bwe_context *bwe,
 	janus_bwe_twcc_inflight *p = g_hash_table_lookup(bwe->packets, GUINT_TO_POINTER(seq));
 	if(p == NULL)
 		return;
-	bwe->sent_bytes += p->size;
 	if(status != janus_bwe_twcc_status_notreceived)
 		bwe->received_bytes += p->size;
+	bwe->delay += (delta_us && p) ? (delta_us - p->delta_us) : 0;
 	/* Print summary */
 	JANUS_LOG(LOG_HUGE, "[BWE] [%"SCNu16"] %s (%"SCNu32"us) (send: %"SCNi64"us)\n", seq,
 		janus_bwe_twcc_status_description(status), delta_us, p ? ((p->delta_us/250)*250) : 0);
@@ -85,10 +86,66 @@ void janus_bwe_context_handle_feedback(janus_bwe_context *bwe,
 		bwe->bitrate_ts = now;
 	if(now - bwe->bitrate_ts >= G_USEC_PER_SEC) {
 		/* It is, show the outgoing and (acked) incoming bitrate */
-		JANUS_LOG(LOG_WARN, "[BWE] sent=%"SCNu32"kbps, received=%"SCNu32"kbps\n",
-			(bwe->sent_bytes / 1000) * 8, (bwe->received_bytes / 1000) * 8);
+		JANUS_LOG(LOG_WARN, "[BWE] sent=%"SCNu32"kbps, received=%"SCNu32"kbps, delay=%"SCNi64"\n",
+			(bwe->sent_bytes / 1000) * 8, (bwe->received_bytes / 1000) * 8, bwe->delay);
 		bwe->bitrate_ts += G_USEC_PER_SEC;
 		bwe->sent_bytes = 0;
 		bwe->received_bytes = 0;
+		bwe->delay = 0;
 	}
+}
+
+janus_bwe_stream_bitrate *janus_bwe_stream_bitrate_create(void) {
+	janus_bwe_stream_bitrate *bwe_sb = g_malloc0(sizeof(janus_bwe_stream_bitrate));
+	janus_mutex_init(&bwe_sb->mutex);
+	return bwe_sb;
+}
+
+void janus_bwe_stream_bitrate_update(janus_bwe_stream_bitrate *bwe_sb, int64_t when, int sl, int tl, int size) {
+	if(bwe_sb == NULL || sl < 0 || sl > 2 || tl > 2)
+		return;
+	if(tl < 0)
+		tl = 0;
+	int i = 0;
+	int64_t cleanup_ts = when - G_USEC_PER_SEC;
+	janus_mutex_lock(&bwe_sb->mutex);
+	for(i=tl; i<3; i++) {
+		if(i <= tl && bwe_sb->packets[sl*3 + i] == NULL)
+			bwe_sb->packets[sl*3 + i] = g_queue_new();
+		if(bwe_sb->packets[sl*3 + i] == NULL)
+			continue;
+		/* Check if we need to get rid of some old packets */
+		janus_bwe_stream_packet *sp = g_queue_peek_head(bwe_sb->packets[sl*3 + i]);
+		while(sp && sp->sent_ts < cleanup_ts) {
+			sp = g_queue_pop_head(bwe_sb->packets[sl*3 + i]);
+			if(bwe_sb->bitrate[sl*3 + i] >= sp->size)
+				bwe_sb->bitrate[sl*3 + i] -= sp->size;
+			g_free(sp);
+			sp = g_queue_peek_head(bwe_sb->packets[sl*3 + i]);
+		}
+		/* Check if there's anything new we need to add now */
+		if(size > 0) {
+			sp = g_malloc(sizeof(janus_bwe_stream_packet));
+			sp->sent_ts = when;
+			sp->size = size*8;
+			bwe_sb->bitrate[sl*3 + i] += sp->size;
+			g_queue_push_tail(bwe_sb->packets[sl*3 + i], sp);
+		}
+	}
+	janus_mutex_unlock(&bwe_sb->mutex);
+}
+
+void janus_bwe_stream_bitrate_destroy(janus_bwe_stream_bitrate *bwe_sb) {
+	if(bwe_sb == NULL)
+		return;
+	int i = 0;
+	janus_mutex_lock(&bwe_sb->mutex);
+	for(i=0; i<9; i++) {
+		if(bwe_sb->packets[i] != NULL)
+			g_queue_free_full(bwe_sb->packets[i], (GDestroyNotify)g_free);
+	}
+	bwe_sb->packets[i] = NULL;
+	janus_mutex_unlock(&bwe_sb->mutex);
+	janus_mutex_destroy(&bwe_sb->mutex);
+	g_free(bwe_sb);
 }
