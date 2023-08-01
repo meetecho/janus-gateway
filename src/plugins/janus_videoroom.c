@@ -2239,6 +2239,13 @@ typedef struct janus_videoroom_subscriber_stream {
 	janus_refcount ref;
 } janus_videoroom_subscriber_stream;
 
+typedef struct janus_videoroom_stream_mapping {
+	janus_videoroom_publisher_stream *ps;
+	janus_videoroom_subscriber *subscriber;
+	janus_videoroom_subscriber_stream *ss;
+	gboolean unref_ss;
+} janus_videoroom_stream_mapping;
+
 typedef struct janus_videoroom_rtp_relay_packet {
 	janus_videoroom_publisher_stream *source;
 	janus_rtp_header *data;
@@ -8469,7 +8476,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 		participant->e2ee = FALSE;
 		/* Get rid of streams */
 		janus_mutex_lock(&participant->streams_mutex);
-		GList *subscribers = NULL;
+		GList *subscribers = NULL, *mappings = NULL;
 		GList *temp = participant->streams;
 		while(temp) {
 			janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
@@ -8486,8 +8493,16 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 						janus_refcount_increase(&ss->subscriber->session->ref);
 						subscribers = g_list_append(subscribers, ss->subscriber);
 					}
-					/* Remove the subscription (turns the m-line to inactive) */
-					janus_videoroom_subscriber_stream_remove(ss, ps, FALSE);
+					/* Take note of the subscription to remove */
+					janus_videoroom_stream_mapping *m = g_malloc(sizeof(janus_videoroom_stream_mapping));
+					janus_refcount_increase(&ps->ref);
+					janus_refcount_increase(&ss->ref);
+					janus_refcount_increase(&ss->subscriber->ref);
+					m->ps = ps;
+					m->ss = ss;
+					m->unref_ss = (g_slist_find(ps->subscribers, ss) != NULL);
+					m->subscriber = ss->subscriber;
+					mappings = g_list_append(mappings, m);
 				}
 			}
 			g_slist_free(ps->subscribers);
@@ -8497,6 +8512,28 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 			ps->fmtp = NULL;
 			janus_mutex_unlock(&ps->subscribers_mutex);
 			temp = temp->next;
+		}
+		if(mappings) {
+			temp = mappings;
+			while(temp) {
+				janus_videoroom_stream_mapping *m = (janus_videoroom_stream_mapping *)temp->data;
+				/* Remove the subscription (turns the m-line to inactive) */
+				janus_videoroom_publisher_stream *ps = m->ps;
+				janus_videoroom_subscriber *subscriber = m->subscriber;
+				janus_videoroom_subscriber_stream *ss = m->ss;
+				if(subscriber) {
+					janus_mutex_lock(&subscriber->streams_mutex);
+					janus_videoroom_subscriber_stream_remove(ss, ps, TRUE);
+					janus_mutex_unlock(&subscriber->streams_mutex);
+					if(m->unref_ss)
+						janus_refcount_decrease(&ss->ref);
+					janus_refcount_decrease(&subscriber->ref);
+				}
+				janus_refcount_decrease(&ss->ref);
+				janus_refcount_decrease(&ps->ref);
+				temp = temp->next;
+			}
+			g_list_free_full(mappings, (GDestroyNotify)g_free);
 		}
 		/* Any subscriber session to update? */
 		janus_videoroom *room = participant->room;
@@ -10432,10 +10469,10 @@ static void *janus_videoroom_handler(void *data) {
 										list = list->next;
 										continue;
 									}
-									janus_videoroom_subscriber_stream_remove(stream, ps, TRUE);
 									if(stream->type != JANUS_VIDEOROOM_MEDIA_DATA)
 										changes++;
 									list = list->next;
+									janus_videoroom_subscriber_stream_remove(stream, ps, TRUE);
 								}
 								temp = temp->next;
 							}
