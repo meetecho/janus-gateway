@@ -72,19 +72,33 @@ void janus_bwe_context_handle_feedback(janus_bwe_context *bwe,
 		return;
 	/* Find the inflight information we stored when sending this packet */
 	janus_bwe_twcc_inflight *p = g_hash_table_lookup(bwe->packets, GUINT_TO_POINTER(seq));
-	if(p == NULL)
+	if(p == NULL) {
+		JANUS_LOG(LOG_WARN, "[BWE] [%"SCNu16"] not found in inflight packets table\n", seq);
 		return;
-	if(status != janus_bwe_twcc_status_notreceived) {
-		bwe->received_bytes += p->size;
-		bwe->received_pkts++;
 	}
 	/* The first recv delta is relative to the reference time, not to the previous packet */
 	if(!first) {
-		int64_t rounded_delta_us = (p->delta_us / 250) * 250;
+		int64_t send_delta_us;
+		if(seq == bwe->last_recv_seq + 1) {
+			send_delta_us = p->delta_us;
+		} else {
+			janus_bwe_twcc_inflight *prev_p = g_hash_table_lookup(bwe->packets, GUINT_TO_POINTER(bwe->last_recv_seq));
+			if(prev_p != NULL) {
+				send_delta_us = p->sent_ts - prev_p->sent_ts;
+			} else {
+				JANUS_LOG(LOG_WARN, "[BWE] [%"SCNu16"] not found in inflight packets table\n", bwe->last_recv_seq);
+			}
+		}
+		int64_t rounded_delta_us = (send_delta_us / 250) * 250;
 		int64_t diff_us = delta_us - rounded_delta_us;
 		bwe->delay += diff_us;
 		JANUS_LOG(LOG_HUGE, "[BWE] [%"SCNu16"] %s (%"SCNi64"us) (send: %"SCNi64"us) diff_us=%"SCNi64"\n", seq,
 			janus_bwe_twcc_status_description(status), delta_us, rounded_delta_us, diff_us);
+	}
+	if(status != janus_bwe_twcc_status_notreceived) {
+		bwe->received_bytes += p->size;
+		bwe->received_pkts++;
+		bwe->last_recv_seq = seq;
 	}
 }
 
@@ -99,9 +113,9 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 		/* TODO Actually estimate the bitrate: now we're just checking how
 		 * much the peer received out of what we sent, which is not enough */
 		int64_t diff = now - bwe->bitrate_ts;
-		float ratio = (float)G_USEC_PER_SEC / (float)diff;
-		float estimate = ratio * bwe->received_bytes * 8;
-		bwe->estimate = estimate;
+		double ratio = (double)G_USEC_PER_SEC / (double)diff;
+		double estimate_bytes = ratio * bwe->received_bytes;
+		bwe->estimate = 8 * estimate_bytes;
 		bwe->bitrate_ts = now;
 	}
 	JANUS_LOG(LOG_WARN, "[BWE] sent=%"SCNu32"kbps, received=%"SCNu32"kbps, avg_delay=%.2fms\n",

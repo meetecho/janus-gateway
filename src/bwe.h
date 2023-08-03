@@ -55,6 +55,8 @@ typedef struct janus_bwe_twcc_inflight {
 typedef struct janus_bwe_context {
 	/*! \brief Monotonic timestamp of the last sent packet */
 	int64_t last_sent_ts;
+	/*! \brief Last twcc seq number of a received packet */
+	uint16_t last_recv_seq;
 	/*! \brief Map of in-flight packets */
 	GHashTable *packets;
 	/*! \brief Monotonic timestamp of when we last computed the bitrates */
