@@ -78,7 +78,7 @@ void janus_bwe_context_handle_feedback(janus_bwe_context *bwe,
 	}
 	/* The first recv delta is relative to the reference time, not to the previous packet */
 	if(!first) {
-		int64_t send_delta_us;
+		int64_t send_delta_us = 0;
 		if(seq == bwe->last_recv_seq + 1) {
 			send_delta_us = p->delta_us;
 		} else {
