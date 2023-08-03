@@ -208,6 +208,7 @@ static janus_plugin janus_echotest_plugin =
 		.incoming_data = NULL,			\
 		.data_ready = NULL,				\
 		.slow_link = NULL,				\
+		.estimated_bandwidth = NULL,	\
 		.hangup_media = NULL,			\
 		.destroy_session = NULL,		\
 		.query_session = NULL, 			\
@@ -335,6 +336,11 @@ struct janus_plugin {
 	 * @param[in] uplink Whether this is related to the uplink (Janus to peer)
 	 * or downlink (peer to Janus) */
 	void (* const slow_link)(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
+	/*! \brief Callback to be notified about the estimated outgoing bandwidth
+	 * on this PeerConnection, e.g., for simulcast/SVC automated switches
+	 * @param[in] handle The plugin/gateway session used for this peer
+	 * @param[in] estimate The estimated bandwidth in bps */
+	void (* const estimated_bandwidth)(janus_plugin_session *handle, uint32_t estimate);
 	/*! \brief Callback to be notified about DTLS alerts from a peer (i.e., the PeerConnection is not valid any more)
 	 * @param[in] handle The plugin/gateway session used for this peer */
 	void (* const hangup_media)(janus_plugin_session *handle);

@@ -156,6 +156,7 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtc
 void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
 void janus_echotest_data_ready(janus_plugin_session *handle);
 void janus_echotest_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
+void janus_echotest_estimated_bandwidth(janus_plugin_session *handle, uint32_t estimate);
 void janus_echotest_hangup_media(janus_plugin_session *handle);
 void janus_echotest_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_echotest_query_session(janus_plugin_session *handle);
@@ -183,6 +184,7 @@ static janus_plugin janus_echotest_plugin =
 		.incoming_data = janus_echotest_incoming_data,
 		.data_ready = janus_echotest_data_ready,
 		.slow_link = janus_echotest_slow_link,
+		.estimated_bandwidth = janus_echotest_estimated_bandwidth,
 		.hangup_media = janus_echotest_hangup_media,
 		.destroy_session = janus_echotest_destroy_session,
 		.query_session = janus_echotest_query_session,
@@ -851,6 +853,28 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int mindex, gboolean
 			json_decref(event);
 		}
 	}
+	janus_refcount_decrease(&session->ref);
+}
+
+void janus_echotest_estimated_bandwidth(janus_plugin_session *handle, uint32_t estimate) {
+	/* The core is informing us that our peer got or sent too many NACKs, are we pushing media too hard? */
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return;
+	janus_mutex_lock(&sessions_mutex);
+	janus_echotest_session *session = janus_echotest_lookup_session(handle);
+	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return;
+	}
+	if(g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&sessions_mutex);
+		return;
+	}
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
+	/* TODO Actually use this estimate for something */
+	JANUS_LOG(LOG_WARN, "[echotest] BWE=%"SCNu32"\n", estimate);
 	janus_refcount_decrease(&session->ref);
 }
 

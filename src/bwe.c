@@ -86,20 +86,30 @@ void janus_bwe_context_handle_feedback(janus_bwe_context *bwe,
 		JANUS_LOG(LOG_HUGE, "[BWE] [%"SCNu16"] %s (%"SCNi64"us) (send: %"SCNi64"us) diff_us=%"SCNi64"\n", seq,
 			janus_bwe_twcc_status_description(status), delta_us, rounded_delta_us, diff_us);
 	}
-	/* Check if it's time to compute the bitrates */
+}
+
+void janus_bwe_context_update(janus_bwe_context *bwe) {
+	if(bwe == NULL)
+		return;
 	int64_t now = janus_get_monotonic_time();
 	if(bwe->bitrate_ts == 0)
 		bwe->bitrate_ts = now;
-	if(now - bwe->bitrate_ts >= G_USEC_PER_SEC) {
-		/* It is, show the outgoing and (acked) incoming bitrate */
-		JANUS_LOG(LOG_WARN, "[BWE] sent=%"SCNu32"kbps, received=%"SCNu32"kbps, avg_delay=%.2fms\n",
-			(bwe->sent_bytes / 1000) * 8, (bwe->received_bytes / 1000) * 8, ((double)bwe->delay / (double)bwe->received_pkts) / 1000);
-		bwe->bitrate_ts += G_USEC_PER_SEC;
-		bwe->sent_bytes = 0;
-		bwe->received_bytes = 0;
-		bwe->delay = 0;
-		bwe->received_pkts = 0;
+	/* Reset the outgoing and (acked) incoming bitrate, and estimate the bitrate */
+	if(now > bwe->bitrate_ts) {
+		/* TODO Actually estimate the bitrate: now we're just checking how
+		 * much the peer received out of what we sent, which is not enough */
+		int64_t diff = now - bwe->bitrate_ts;
+		float ratio = (float)G_USEC_PER_SEC / (float)diff;
+		float estimate = ratio * bwe->received_bytes * 8;
+		bwe->estimate = estimate;
+		bwe->bitrate_ts = now;
 	}
+	JANUS_LOG(LOG_WARN, "[BWE] sent=%"SCNu32"kbps, received=%"SCNu32"kbps, avg_delay=%.2fms\n",
+		(bwe->sent_bytes / 1000) * 8, (bwe->received_bytes / 1000) * 8, ((double)bwe->delay / (double)bwe->received_pkts) / 1000);
+	bwe->sent_bytes = 0;
+	bwe->received_bytes = 0;
+	bwe->delay = 0;
+	bwe->received_pkts = 0;
 }
 
 janus_bwe_stream_bitrate *janus_bwe_stream_bitrate_create(void) {

@@ -65,6 +65,8 @@ typedef struct janus_bwe_context {
 	int64_t delay;
 	/*! \brief Number of packets with a received status */
 	uint16_t received_pkts;
+	/*! \brief Latest estimated bitrate */
+	uint32_t estimate;
 } janus_bwe_context;
 /*! \brief Helper to create a new bandwidth estimation context
  * @returns a new janus_bwe_context instance, if successful, or NULL otherwise */
@@ -87,9 +89,12 @@ gboolean janus_bwe_context_add_inflight(janus_bwe_context *bwe,
  * @param[in] seq The TWCC sequence number of the inflight packet we have feedback for
  * @param[in] status Feedback status for the packet
  * @param[in] delta_us If the packet was received, the delta that was provided
- * @param[in] first True if this is the first received packet in a twcc feedback */
+ * @param[in] first True if this is the first received packet in a TWCC feedback */
 void janus_bwe_context_handle_feedback(janus_bwe_context *bwe,
 	uint16_t seq, janus_bwe_twcc_status status, int64_t delta_us, gboolean first);
+/*! \brief Update the internal BWE context state with a new tick
+ * @param[in] bwe The janus_bwe_context instance to update */
+void janus_bwe_context_update(janus_bwe_context *bwe);
 
 /*! \brief Tracker for a stream bitrate (whether it's simulcast/SVC or not) */
 typedef struct janus_bwe_stream_bitrate {

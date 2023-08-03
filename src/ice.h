@@ -374,7 +374,7 @@ struct janus_ice_handle {
 	/*! \brief GLib thread for the handle and libnice */
 	GThread *thread;
 	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats (and optionally TWCC) */
-	GSource *rtp_source, *rtcp_source, *stats_source, *twcc_source;
+	GSource *rtp_source, *rtcp_source, *stats_source, *twcc_source, *bwe_source;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */

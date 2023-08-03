@@ -527,6 +527,7 @@ typedef struct janus_ice_outgoing_traffic {
 } janus_ice_outgoing_traffic;
 static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data);
 static gboolean janus_ice_outgoing_stats_handle(gpointer user_data);
+static gboolean janus_ice_outgoing_bwe_handle(gpointer user_data);
 static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janus_ice_queued_packet *pkt);
 static gboolean janus_ice_outgoing_traffic_prepare(GSource *source, gint *timeout) {
 	janus_ice_outgoing_traffic *t = (janus_ice_outgoing_traffic *)source;
@@ -4459,6 +4460,25 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 	return G_SOURCE_CONTINUE;
 }
 
+static gboolean janus_ice_outgoing_bwe_handle(gpointer user_data) {
+	janus_ice_handle *handle = (janus_ice_handle *)user_data;
+	janus_ice_peerconnection *pc = handle->pc;
+	if(pc == NULL)
+		return G_SOURCE_CONTINUE;
+	/* This callback is for updating the state of the bandwidth estimator */
+	if(pc->bwe != NULL) {
+		janus_bwe_context_update(pc->bwe);
+		if(pc->bwe->estimate > 0) {
+			/* Notify the plugin about the current value */
+			janus_plugin *plugin = (janus_plugin *)handle->app;
+			if(plugin && plugin->estimated_bandwidth && janus_plugin_session_is_alive(handle->app_handle) &&
+					!g_atomic_int_get(&handle->destroyed))
+				plugin->estimated_bandwidth(handle->app_handle, pc->bwe->estimate);
+		}
+	}
+	return G_SOURCE_CONTINUE;
+}
+
 static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janus_ice_queued_packet *pkt) {
 	janus_session *session = (janus_session *)handle->session;
 	janus_ice_peerconnection *pc = handle->pc;
@@ -4555,6 +4575,11 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			g_source_destroy(handle->twcc_source);
 			g_source_unref(handle->twcc_source);
 			handle->twcc_source = NULL;
+		}
+		if(handle->bwe_source) {
+			g_source_destroy(handle->bwe_source);
+			g_source_unref(handle->bwe_source);
+			handle->bwe_source = NULL;
 		}
 		if(handle->stats_source) {
 			g_source_destroy(handle->stats_source);
@@ -5235,6 +5260,11 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle) {
 	g_source_set_callback(handle->stats_source, janus_ice_outgoing_stats_handle, handle, NULL);
 	g_source_set_priority(handle->stats_source, G_PRIORITY_DEFAULT);
 	g_source_attach(handle->stats_source, handle->mainctx);
+	/* FIXME Finally, let's create a source for BWE */
+	handle->bwe_source = g_timeout_source_new(1000);
+	g_source_set_priority(handle->bwe_source, G_PRIORITY_DEFAULT);
+	g_source_set_callback(handle->bwe_source, janus_ice_outgoing_bwe_handle, handle, NULL);
+	g_source_attach(handle->bwe_source, handle->mainctx);
 	janus_mutex_unlock(&handle->mutex);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] The DTLS handshake has been completed\n", handle->handle_id);
 	/* Notify the plugin that the WebRTC PeerConnection is ready to be used */
