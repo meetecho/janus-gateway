@@ -281,9 +281,10 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_bwe_
 	/* Iterate on all recv deltas */
 	JANUS_LOG(LOG_HUGE, "[TWCC] Recv Deltas (%d/%"SCNu16"):\n", g_list_length(list), status_count);
 	num = 0;
-	uint16_t delta = 0, seq = 0;
-	uint32_t delta_us = 0;
+	int16_t delta = 0, seq = 0;
+	int64_t delta_us = 0;
 	GList *iter = list;
+	gboolean first_recv_found = FALSE;
 	while(iter != NULL && total > 0) {
 		num++;
 		delta = 0;
@@ -291,22 +292,27 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_bwe_
 		/* Get the delta */
 		s = GPOINTER_TO_UINT(iter->data);
 		if(s == janus_bwe_twcc_status_smalldelta) {
-			/* Small delta = 1 byte */
-			delta = *data;
+			/* Small delta = unsigned 1 byte */
+			delta = (int16_t)*data;
 			total--;
 			data++;
 		} else if(s == janus_bwe_twcc_status_largeornegativedelta) {
-			/* Large or negative delta = 2 bytes */
+			/* Large or negative delta = signed 2 bytes */
 			if(total < 2)
 				break;
-			memcpy(&delta, data, sizeof(uint16_t));
+			memcpy(&delta, data, sizeof(int16_t));
 			delta = ntohs(delta);
 			total -= 2;
 			data += 2;
 		}
 		delta_us = delta*250;
+		gboolean first = FALSE;
+		if(!first_recv_found && s != janus_bwe_twcc_status_notreceived) {
+			first_recv_found = TRUE;
+			first = TRUE;
+		}
 		/* Pass the feedback to the bandwidth estimation context */
-		janus_bwe_context_handle_feedback(bwe, seq, s, delta_us);
+		janus_bwe_context_handle_feedback(bwe, seq, s, delta_us, first);
 		/* Move to the next feedback */
 		iter = iter->next;
 	}
