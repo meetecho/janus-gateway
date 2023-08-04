@@ -3027,7 +3027,7 @@ static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
 	}
 	janus_mutex_unlock(&session->mutex);
 	JANUS_LOG(LOG_VERB, "Leaving %d rooms\n", g_list_length(list));
-	char request[100];
+	char request[200];
 	GList *first = list;
 	while(list) {
 		char *room_id_str = (char *)list->data;
