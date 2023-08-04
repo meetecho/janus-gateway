@@ -8632,8 +8632,8 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 					}
 					list = list->next;
 				}
-				janus_videoroom_subscriber_stream_remove(s, NULL, TRUE);
 				temp = temp->next;
+				janus_videoroom_subscriber_stream_remove(s, NULL, TRUE);
 			}
 			/* Free streams */
 			g_list_free(subscriber->streams);
@@ -9686,8 +9686,8 @@ static void *janus_videoroom_handler(void *data) {
 					GList *temp = subscriber->streams;
 					while(temp) {
 						janus_videoroom_subscriber_stream *s = (janus_videoroom_subscriber_stream *)temp->data;
-						janus_videoroom_subscriber_stream_remove(s, NULL, TRUE);
 						temp = temp->next;
+						janus_videoroom_subscriber_stream_remove(s, NULL, TRUE);
 					}
 					g_list_free(subscriber->streams);
 					subscriber->streams = NULL;
