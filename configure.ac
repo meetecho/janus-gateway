@@ -788,14 +788,17 @@ AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
 
 PKG_CHECK_MODULES([OPUS],
-                  [opus],
+                  [
+                   opus
+                   speexdsp
+                  ],
                   [
                     AS_IF([test "x$enable_plugin_audiobridge" = "xmaybe"],
                           [enable_plugin_audiobridge=yes])
                   ],
                   [
                     AS_IF([test "x$enable_plugin_audiobridge" = "xyes"],
-                          [AC_MSG_ERROR([libopus not found. See README.md for installation instructions or use --disable-plugin-audiobridge])])
+                          [AC_MSG_ERROR([libopus or libspeexdsp not found. See README.md for installation instructions or use --disable-plugin-audiobridge])])
                   ])
 AC_SUBST([OPUS_CFLAGS])
 AC_SUBST([OPUS_LIBS])
