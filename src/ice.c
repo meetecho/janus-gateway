@@ -4868,15 +4868,15 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 						handle->handle_id, janus_srtp_error_str(res), pkt->length, protected, timestamp, seq);
 					janus_ice_free_rtp_packet(p);
 				} else {
-					/* Keep track of the packet if we're using TWCC */
-					if(medium->do_twcc && handle->pc->transport_wide_cc_ext_id > 0) {
-						janus_bwe_context_add_inflight(pc->bwe, pkt->twcc_seq, janus_get_monotonic_time(),
-							(pkt->retransmission ? janus_bwe_packet_type_rtx : janus_bwe_packet_type_regular), protected);
-					}
 					/* Shoot! */
 					int sent = nice_agent_send(handle->agent, pc->stream_id, pc->component_id, protected, pkt->data);
 					if(sent < protected) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, protected);
+					}
+					/* Keep track of the packet if we're using TWCC */
+					if(medium->do_twcc && handle->pc->transport_wide_cc_ext_id > 0) {
+						janus_bwe_context_add_inflight(pc->bwe, pkt->twcc_seq, janus_get_monotonic_time(),
+							(pkt->retransmission ? janus_bwe_packet_type_rtx : janus_bwe_packet_type_regular), protected);
 					}
 					/* Update stats */
 					if(sent > 0) {
