@@ -6114,6 +6114,7 @@ done:
 					JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
 					JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_MID, janus_rtp_extension_id(JANUS_RTP_EXTMAP_MID),
 					JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_ABS_SEND_TIME, janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_SEND_TIME),
+					JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME, janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME),
 					JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
 						(session->playoutdelay_ext ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_PLAYOUT_DELAY) : 0),
 					JANUS_SDP_OA_DONE);
@@ -6137,6 +6138,7 @@ done:
 							JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_MID, janus_rtp_extension_id(JANUS_RTP_EXTMAP_MID),
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_ABS_SEND_TIME, janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_SEND_TIME),
+							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME, janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME),
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
 								(session->playoutdelay_ext ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_PLAYOUT_DELAY) : 0),
 							JANUS_SDP_OA_DONE);
@@ -6153,6 +6155,7 @@ done:
 							JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_MID, janus_rtp_extension_id(JANUS_RTP_EXTMAP_MID),
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_ABS_SEND_TIME, janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_SEND_TIME),
+							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME, janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME),
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
 								(session->playoutdelay_ext ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_PLAYOUT_DELAY) : 0),
 							JANUS_SDP_OA_DONE);
@@ -6338,6 +6341,7 @@ done:
 								JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_ABS_SEND_TIME,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
 								JANUS_SDP_OA_DONE);
 							/* Done */
@@ -6422,6 +6426,7 @@ done:
 							JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
 							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_ABS_SEND_TIME,
+							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME,
 							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
 							JANUS_SDP_OA_DONE);
 						/* Done */
@@ -6563,7 +6568,7 @@ done:
 			json_t *audio = json_object_get(root, "audio");
 			json_t *video = json_object_get(root, "video");
 			json_t *data = json_object_get(root, "data");
-			
+
 			/* We use an array of streams to state the changes we want to make,
 			 * were for each stream we specify the 'mid' to impact (e.g., send) */
 			json_t *streams = json_object_get(root, "streams");
@@ -6604,7 +6609,7 @@ done:
 				json_array_append_new(streams, stream);
 				json_object_set_new(root, "streams", streams);
 			}
-				
+
 			size_t i = 0;
 			size_t streams_size = json_array_size(streams);
 			for(i=0; i<streams_size; i++) {
@@ -6651,7 +6656,7 @@ done:
 			if(error_code != 0) {
 				goto error;
 			}
-			
+
 			if(mp->streaming_source == janus_streaming_source_rtp) {
 				/* Enforce the requested changes */
 				for(i=0; i<json_array_size(streams); i++) {

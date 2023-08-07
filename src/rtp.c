@@ -365,6 +365,10 @@ int janus_rtp_header_extension_set_abs_send_time(char *buf, int len, int id, uin
 	return 0;
 }
 
+/*
+	It parses only the shortened version of abs-capture-time without estimated-capture-clock-offset
+	Check http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time for details.
+*/
 int janus_rtp_header_extension_parse_abs_capture_time(char *buf, int len, int id, uint64_t *abs_ts) {
 	char *ext = NULL;
 	uint8_t idlen = 0;
@@ -504,6 +508,8 @@ int janus_rtp_extension_id(const char *type) {
 		return 14;
 	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
 		return 2;
+	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME))
+		return 7;
 	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
 		return 13;
 	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
