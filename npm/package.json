@@ -26,7 +26,7 @@
 	},
 	"homepage": "https://janus.conf.meetecho.com/docs/JS",
 	"dependencies": {
-		"webrtc-adapter": "8.2.2"
+		"webrtc-adapter": "8.2.3"
 	},
 	"devDependencies": {
 		"@rollup/plugin-replace": "^5.0.2",
