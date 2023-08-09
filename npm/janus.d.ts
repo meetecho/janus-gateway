@@ -121,6 +121,10 @@ declare namespace JanusJS {
 		error?: (error: string) => void;
 	}
 
+	interface RemoteTrackMetadata {
+		reason: "created" | "ended" | "mute" | "unmute";
+	}
+
 	enum MessageType {
 		Recording = 'recording',
 		Starting = 'starting',
@@ -152,7 +156,7 @@ declare namespace JanusJS {
 		slowLink?: (uplink: boolean, lost: number, mid: string) => void;
 		onmessage?: (message: Message, jsep?: JSEP) => void;
 		onlocaltrack?: (track: MediaStreamTrack, on: boolean) => void;
-		onremotetrack?: (track: MediaStreamTrack, mid: string, on: boolean) => void;
+		onremotetrack?: (track: MediaStreamTrack, mid: string, on: boolean, metadata?: RemoteTrackMetadata) => void;
 		ondataopen?: Function;
 		ondata?: Function;
 		oncleanup?: Function;
