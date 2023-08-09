@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.14.0] - 2023-08-09
+
+- Fixed RTCP out quality stats [[PR-3228](https://github.com/meetecho/janus-gateway/pull/3228)]
+- Default link quality stats to 100
+- Added support for ICE consent freshness [[PR-3234](https://github.com/meetecho/janus-gateway/pull/3234)]
+- Use speexdsp's jitter buffer in the AudioBridge [[PR-3214](https://github.com/meetecho/janus-gateway/pull/3214)]
+- Fixed rare deadlock in Streamin plugin [[PR-3246](https://github.com/meetecho/janus-gateway/pull/3246)]
+- Fix simulated leave message for longer string ID rooms in TextRoom (thanks @adnanel!) [PR-3243](https://github.com/meetecho/janus-gateway/pull/3243)]
+- Notify about count of sessions, handles and PeerConnections on a regular basis, when event handlers are enabled [[PR-3221](https://github.com/meetecho/janus-gateway/pull/3221)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.13.4] - 2023-05-19
 
 - Moved discussions from Google Group to Discourse
