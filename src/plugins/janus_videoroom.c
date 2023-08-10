@@ -11606,6 +11606,12 @@ static void *janus_videoroom_handler(void *data) {
 			} else {
 				/* This is a new publisher, or an updated one */
 				participant = janus_videoroom_session_get_publisher(session);
+				if(participant == NULL) {
+					JANUS_LOG(LOG_ERR, "Invalid participant instance\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Invalid participant instance");
+					goto error;
+				}
 				janus_videoroom *videoroom = participant->room;
 				int count = 0;
 				GHashTableIter iter;
