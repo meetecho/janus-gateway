@@ -317,7 +317,9 @@ declare namespace JanusJS {
 	}
 
 	type PluginDataParam = {
+		/** @deprecated use data instead */
 		text?: string;
+		data?: any;
 		label?: string;
 		protocol?: string;
 		success?: (data: unknown) => void;
