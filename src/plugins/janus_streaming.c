@@ -1348,7 +1348,7 @@ typedef struct janus_streaming_rtp_source {
 	/* Whether the playout-delay extension should be negotiated or not for new subscribers */
 	gboolean playoutdelay_ext;
 	/* Whether the abs-capture-time extension should be negotiated or not for new subscribers */
-    gboolean abscapturetime_ext;
+	gboolean abscapturetime_ext;
 } janus_streaming_rtp_source;
 
 typedef enum janus_streaming_media {
@@ -4196,7 +4196,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				if(source->playoutdelay_ext)
 					janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", "true"));
 				if(source->abscapturetime_ext)
-                	janus_config_add(config, c, janus_config_item_create("abscapturetime_ext", "true"));
+					janus_config_add(config, c, janus_config_item_create("abscapturetime_ext", "true"));
 				/* Iterate on all media streams */
 				janus_config_array *media = janus_config_array_create("media");
 				janus_config_add(config, c, media);
@@ -4597,7 +4597,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					if(source->playoutdelay_ext)
 						janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", "true"));
 					if(source->abscapturetime_ext)
-                    	janus_config_add(config, c, janus_config_item_create("abscapturetime_ext", "true"));
+						janus_config_add(config, c, janus_config_item_create("abscapturetime_ext", "true"));
 					/* Iterate on all media streams */
 					janus_config_array *media = janus_config_array_create("media");
 					janus_config_add(config, c, media);
@@ -6117,7 +6117,7 @@ static void *janus_streaming_handler(void *data) {
 				/* Also check if we have to offer the playout-delay extension */
 				session->playoutdelay_ext = source->playoutdelay_ext;
 				/* Also check if we have to offer the abs-capture-time extension */
-                session->abscapturetime_ext = source->abscapturetime_ext;
+				session->abscapturetime_ext = source->abscapturetime_ext;
 			}
 			janus_refcount_increase(&session->ref);
 done:
@@ -6165,7 +6165,7 @@ done:
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_MID, janus_rtp_extension_id(JANUS_RTP_EXTMAP_MID),
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_ABS_SEND_TIME, janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_SEND_TIME),
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME,
-                            	(session->abscapturetime_ext ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME) : 0),
+								(session->abscapturetime_ext ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME) : 0),
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
 								(session->playoutdelay_ext ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_PLAYOUT_DELAY) : 0),
 							JANUS_SDP_OA_DONE);
@@ -6183,7 +6183,7 @@ done:
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_MID, janus_rtp_extension_id(JANUS_RTP_EXTMAP_MID),
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_ABS_SEND_TIME, janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_SEND_TIME),
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME,
-                            	(session->abscapturetime_ext ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME) : 0),
+								(session->abscapturetime_ext ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME) : 0),
 							JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
 								(session->playoutdelay_ext ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_PLAYOUT_DELAY) : 0),
 							JANUS_SDP_OA_DONE);
@@ -6446,7 +6446,7 @@ done:
 						/* Also check if we have to offer the playout-delay extension */
 						session->playoutdelay_ext = source->playoutdelay_ext;
 						/* Also check if we have to offer the abs-capture-time extension */
-                        session->abscapturetime_ext = source->abscapturetime_ext;
+						session->abscapturetime_ext = source->abscapturetime_ext;
 						/* Accept the m-line */
 						janus_sdp_generate_answer_mline(parsed_sdp, answer, m,
 							JANUS_SDP_OA_MLINE, m->type,
