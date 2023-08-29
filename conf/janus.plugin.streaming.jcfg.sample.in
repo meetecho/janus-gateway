@@ -83,6 +83,12 @@
 # assuming the browser supports the RTP extension in the first place.
 # playoutdelay_ext = true
 #
+# To allow mountpoints to negotiate the abs-capture-time RTP extension,
+# you can set the 'abscapturetime_ext' property to true: this way, any
+# subscriber can receive the abs-capture-time of incoming video streams,
+# assuming the browser supports the RTP extension in the first place.
+# abscapturetime_ext = true
+#
 # The following options are only valid for the 'rtsp' type:
 # url = RTSP stream URL (only for restreaming RTSP)
 # rtsp_user = RTSP authorization username (only if type=rtsp)

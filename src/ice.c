@@ -4078,14 +4078,6 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 				}
 			}
 		}
-		/* Parse the abs-capture-time extension from source if needed */
-		if(handle->pc->abs_capture_time_ext_id != -1) {
-			uint64_t abs_ts = 0;
-			if(janus_rtp_header_extension_parse_abs_capture_time(packet->data, packet->length,
-					handle->pc->abs_capture_time_ext_id, &abs_ts) == 0) {
-				packet->extensions.abs_capture_ts = abs_ts;
-			}
-		}
 		/* Check if we need to add the abs-capture-time extension */
 		if(packet->extensions.abs_capture_ts > 0 && handle->pc->abs_capture_time_ext_id > 0) {
 			uint64_t abs64 = htonll(packet->extensions.abs_capture_ts);
