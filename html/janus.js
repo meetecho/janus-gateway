@@ -1889,12 +1889,10 @@ function Janus(gatewayCallbacks) {
 				}
 			}
 		}
-
-		if (callbacks.externalEncryption) {
+		if(callbacks.externalEncryption) {
 			insertableStreams = true;
 			config.externalEncryption = true;
 		}
-
 		if(RTCRtpSender && (RTCRtpSender.prototype.createEncodedStreams ||
 				(RTCRtpSender.prototype.createEncodedAudioStreams &&
 				RTCRtpSender.prototype.createEncodedVideoStreams)) && insertableStreams) {
