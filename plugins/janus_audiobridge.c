@@ -770,6 +770,7 @@ room-<unique room ID>: {
 	"display" : "<display name to have in the room; optional>",
 	"token" : "<invitation token, in case the room has an ACL; optional>",
 	"muted" : <true|false, whether to start unmuted or muted>,
+	"suspended" : <true|false, whether to start suspended or not (false by default)>,
 	"codec" : "<codec to use, among opus (default), pcma (A-Law) or pcmu (mu-Law)>",
 	"bitrate" : <bitrate to use for the Opus stream in bps; optional, default=0 (libopus decides)>,
 	"quality" : <0-10, Opus-related complexity to use, the higher the value, the better the quality (but more CPU); optional, default is 4>,
@@ -970,6 +971,7 @@ room-<unique room ID>: {
 	"display" : "<display name to have in the room; optional>",
 	"token" : "<invitation token, in case the new room has an ACL; optional>",
 	"muted" : <true|false, whether to start unmuted or muted>,
+	"suspended" : <true|false, whether to start suspended or not>,
 	"bitrate" : <bitrate to use for the Opus stream in bps; optional, default=0 (libopus decides)>,
 	"quality" : <0-10, Opus-related complexity to use, higher is higher quality; optional, default is 4>,
 	"expected_loss" : <0-20, a percentage of the expected loss (capped at 20%), only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>
@@ -1235,6 +1237,7 @@ static struct janus_json_parameter join_parameters[] = {
 	{"token", JSON_STRING, 0},
 	{"group", JSON_STRING, 0},
 	{"muted", JANUS_JSON_BOOL, 0},
+	{"suspended", JANUS_JSON_BOOL, 0},
 	{"codec", JSON_STRING, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -6212,6 +6215,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *display = json_object_get(root, "display");
 			const char *display_text = display ? json_string_value(display) : NULL;
 			json_t *muted = json_object_get(root, "muted");
+			json_t *suspended = json_object_get(root, "suspended");
 			json_t *gain = json_object_get(root, "volume");
 			json_t *spatial = json_object_get(root, "spatial_position");
 			json_t *bitrate = json_object_get(root, "bitrate");
@@ -6346,6 +6350,8 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->admin = admin;
 			participant->display = display_text ? g_strdup(display_text) : NULL;
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* By default, everyone's unmuted when joining */
+			if(suspended)
+				g_atomic_int_set(&participant->suspended, 1);
 			participant->volume_gain = volume;
 			participant->opus_complexity = complexity;
 			participant->opus_bitrate = opus_bitrate;
@@ -6994,6 +7000,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *display = json_object_get(root, "display");
 			const char *display_text = display ? json_string_value(display) : NULL;
 			json_t *muted = json_object_get(root, "muted");
+			json_t *suspended = json_object_get(root, "suspended");
 			json_t *gain = json_object_get(root, "volume");
 			json_t *spatial = json_object_get(root, "spatial_position");
 			json_t *bitrate = json_object_get(root, "bitrate");
@@ -7219,6 +7226,8 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->display = display_text ? g_strdup(display_text) : NULL;
 			participant->room = audiobridge;
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* When switching to a new room, you're unmuted by default */
+			if(suspended)
+				g_atomic_int_set(&participant->suspended, 1);
 			participant->audio_active_packets = 0;
 			participant->audio_dBov_sum = 0;
 			participant->talking = FALSE;
