@@ -235,6 +235,10 @@ $(document).ready(function() {
 											});
 										} else if(event === "event") {
 											if(msg["participants"]) {
+												if(msg["resumed"]) {
+													// This is a full recap after a suspend: clear the list of participants
+													$('#list').empty();
+												}
 												var list = msg["participants"];
 												Janus.debug("Got a list of participants:", list);
 												for(var f in list) {
