@@ -1653,6 +1653,8 @@ typedef struct janus_audiobridge_participant {
 #endif
 	uint group;					/* Forwarding group index, if enabled in the room */
 	janus_mutex rec_mutex;		/* Mutex to protect the recorder from race conditions */
+	janus_mutex suspend_cond_mutex;
+	GCond suspend_cond;
 	volatile gint suspended;	/* Whether this participant has been temporarily suspended */
 	volatile gint paused_events;/* Whether sending events to this participant has been paused because they're suspended */
 	volatile gint destroyed;	/* Whether this participant has been destroyed */
@@ -5403,13 +5405,17 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				goto prepare_response;
 			}
 			/* Suspend this participant */
+			janus_mutex_lock(&participant->suspend_cond_mutex);
 			if(g_atomic_int_compare_and_exchange(&participant->suspended, 0, 1)) {
+				janus_mutex_unlock(&participant->suspend_cond_mutex);
 				json_t *pauseevs = json_object_get(root, "pause_events");
 				if(pauseevs && json_is_true(pauseevs))
 					g_atomic_int_set(&participant->paused_events, 1);
 				notify_participant = TRUE;
 				/* Participant is now muted, so clear the queued packets waiting to be handled */
 				janus_mutex_lock(&participant->qmutex);
+				if(participant->jitter)
+					jitter_buffer_reset(participant->jitter);
 				while(participant->inbuf) {
 					GList *first = g_list_first(participant->inbuf);
 					janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
@@ -5432,6 +5438,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 					participant->mjr_active = FALSE;
 					janus_mutex_unlock(&participant->rec_mutex);
 				}
+			} else {
+				janus_mutex_unlock(&participant->suspend_cond_mutex);
 			}
 		} else {
 			/* Validate the request */
@@ -5444,7 +5452,10 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				goto prepare_response;
 			}
 			/* Resume this participant */
+			janus_mutex_lock(&participant->suspend_cond_mutex);
 			if(g_atomic_int_compare_and_exchange(&participant->suspended, 1, 0)) {
+				g_cond_signal(&participant->suspend_cond);
+				janus_mutex_unlock(&participant->suspend_cond_mutex);
 				notify_participant = TRUE;
 				/* Should we create a new recording? */
 				json_t *record = json_object_get(root, "record");
@@ -5504,6 +5515,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 					JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 					json_decref(event);
 				}
+			} else {
+				janus_mutex_unlock(&participant->suspend_cond_mutex);
 			}
 		}
 		if(notify_participant) {
@@ -6058,6 +6071,10 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 		pkt = NULL;
 	}
 	janus_mutex_unlock(&participant->qmutex);
+	janus_mutex_lock(&participant->suspend_cond_mutex);
+	if(g_atomic_int_compare_and_exchange(&participant->suspended, 1, 0))
+		g_cond_signal(&participant->suspend_cond);
+	janus_mutex_unlock(&participant->suspend_cond_mutex);
 	if(audiobridge != NULL) {
 		janus_mutex_unlock(&audiobridge->mutex);
 		if(removed) {
@@ -6408,7 +6425,9 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->display = display_text ? g_strdup(display_text) : NULL;
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* By default, everyone's unmuted when joining */
 			if(suspended && json_is_true(suspended)) {
+				janus_mutex_lock(&participant->suspend_cond_mutex);
 				g_atomic_int_set(&participant->suspended, 1);
+				janus_mutex_unlock(&participant->suspend_cond_mutex);
 				json_t *pauseevs = json_object_get(root, "pause_events");
 				if(pauseevs && json_is_true(pauseevs))
 					g_atomic_int_set(&participant->paused_events, 1);
@@ -7288,7 +7307,9 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->room = audiobridge;
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* When switching to a new room, you're unmuted by default */
 			if(suspended && json_is_true(suspended)) {
+				janus_mutex_lock(&participant->suspend_cond_mutex);
 				g_atomic_int_set(&participant->suspended, 1);
+				janus_mutex_unlock(&participant->suspend_cond_mutex);
 				json_t *pauseevs = json_object_get(root, "pause_events");
 				if(pauseevs && json_is_true(pauseevs))
 					g_atomic_int_set(&participant->paused_events, 1);
@@ -8528,6 +8549,12 @@ static void *janus_audiobridge_participant_thread(void *data) {
 
 	/* Start working: check both the incoming queue (to decode and queue) and the outgoing one (to encode and send) */
 	while(!g_atomic_int_get(&stopping) && g_atomic_int_get(&session->destroyed) == 0) {
+		janus_mutex_lock(&participant->suspend_cond_mutex);
+		while(g_atomic_int_get(&participant->suspended)) {
+			g_cond_wait(&participant->suspend_cond, &participant->suspend_cond_mutex);
+			before = janus_get_monotonic_time();
+		}
+		janus_mutex_unlock(&participant->suspend_cond_mutex);
 		/* Start with packets to decode and queue for the mixer */
 		now = janus_get_monotonic_time();
 		janus_mutex_lock(&participant->qmutex);
