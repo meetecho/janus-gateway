@@ -8203,8 +8203,10 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_da
 	janus_videoroom_incoming_data_internal(session, participant, packet);
 }
 static void janus_videoroom_incoming_data_internal(janus_videoroom_session *session, janus_videoroom_publisher *participant, janus_plugin_data *packet) {
-	if(packet->buffer == NULL || packet->length == 0)
+	if(packet->buffer == NULL || packet->length == 0) {
+		janus_videoroom_publisher_dereference_nodebug(participant);
 		return;
+	}
 	if(g_atomic_int_get(&participant->destroyed) || participant->kicked || !participant->streams || participant->room == NULL) {
 		janus_videoroom_publisher_dereference_nodebug(participant);
 		return;
