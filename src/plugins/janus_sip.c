@@ -2005,9 +2005,9 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
 	/*
-		Since we might have to derive SDP connection address from local_media_ip make sure it has a meaningful value
-		for the prupose of using it in the SDP c= header.
-	*/
+	 * Since we might have to derive SDP connection address from local_media_ip make sure it has a meaningful value
+	 *	for the purpose of using it in the SDP c= header.
+	 */
 	janus_network_address_nullify(&janus_network_local_media_ip);
 	if(local_media_ip) {
 		if(janus_network_string_to_address(janus_network_query_options_any_ip, local_media_ip, &janus_network_local_media_ip) != 0) {
@@ -6652,13 +6652,6 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			session->media.pipefd[1] = -1;
 		}
 	}
-	/* Determine the address family to use */
-	if(ipv6_disabled &&
-		!janus_network_address_is_null(&janus_network_local_media_ip) &&
-		janus_network_local_media_ip.family == AF_INET6) {
-		JANUS_LOG(LOG_ERR, "Error setting address for media sockets, IPv6 is disabled and local media address is IPv6...\n");
-		return -1;
-	}
 	gboolean use_ipv6_address_family = !ipv6_disabled &&
 		(janus_network_address_is_null(&janus_network_local_media_ip) || janus_network_local_media_ip.family == AF_INET6);
 	socklen_t addrlen = use_ipv6_address_family? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
@@ -6674,9 +6667,9 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			memset(&audio_rtp_address, 0, sizeof(audio_rtp_address));
 			memset(&audio_rtcp_address, 0, sizeof(audio_rtcp_address));
 			if(session->media.audio_rtp_fd == -1) {
-				session->media.audio_rtp_fd = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
+				session->media.audio_rtp_fd = socket(use_ipv6_address_family ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
 				int v6only = 0;
-				if(!ipv6_disabled && session->media.audio_rtp_fd != -1 &&
+				if(use_ipv6_address_family && session->media.audio_rtp_fd != -1 &&
 						setsockopt(session->media.audio_rtp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 					JANUS_LOG(LOG_WARN, "Error setting v6only to false on audio RTP socket (error=%s)\n",
 						g_strerror(errno));
@@ -6692,9 +6685,9 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 				}
 			}
 			if(session->media.audio_rtcp_fd == -1) {
-				session->media.audio_rtcp_fd = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
+				session->media.audio_rtcp_fd = socket(use_ipv6_address_family ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
 				int v6only = 0;
-				if(!ipv6_disabled && session->media.audio_rtcp_fd != -1 &&
+				if(use_ipv6_address_family && session->media.audio_rtcp_fd != -1 &&
 						setsockopt(session->media.audio_rtcp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 					JANUS_LOG(LOG_WARN, "Error setting v6only to false on audio RTCP socket (error=%s)\n",
 						g_strerror(errno));
@@ -6764,9 +6757,9 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			memset(&video_rtp_address, 0, sizeof(video_rtp_address));
 			memset(&video_rtcp_address, 0, sizeof(video_rtcp_address));
 			if(session->media.video_rtp_fd == -1) {
-				session->media.video_rtp_fd = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
+				session->media.video_rtp_fd = socket(use_ipv6_address_family ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
 				int v6only = 0;
-				if(!ipv6_disabled && session->media.video_rtp_fd != -1 &&
+				if(use_ipv6_address_family && session->media.video_rtp_fd != -1 &&
 						setsockopt(session->media.video_rtp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 					JANUS_LOG(LOG_WARN, "Error setting v6only to false on video RTP socket (error=%s)\n",
 						g_strerror(errno));
@@ -6782,9 +6775,9 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 				}
 			}
 			if(session->media.video_rtcp_fd == -1) {
-				session->media.video_rtcp_fd = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
+				session->media.video_rtcp_fd = socket(use_ipv6_address_family ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
 				int v6only = 0;
-				if(!ipv6_disabled && session->media.video_rtcp_fd != -1 &&
+				if(use_ipv6_address_family && session->media.video_rtcp_fd != -1 &&
 						setsockopt(session->media.video_rtcp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 					JANUS_LOG(LOG_WARN, "Error setting v6only to false on video RTCP socket (error=%s)\n",
 						g_strerror(errno));
