@@ -1918,8 +1918,8 @@ static struct janus_json_parameter remote_publisher_stream_parameters[] = {
 	{"stereo", JANUS_JSON_BOOL, 0},
 	{"fec", JANUS_JSON_BOOL, 0},
 	{"dtx", JANUS_JSON_BOOL, 0},
-	{"h264_profile", JANUS_JSON_BOOL, 0},
-	{"vp9_profile", JANUS_JSON_BOOL, 0},
+	{"h264_profile", JSON_STRING, 0},
+	{"vp9_profile", JSON_STRING, 0},
 	{"simulcast", JANUS_JSON_BOOL, 0},
 	{"svc", JANUS_JSON_BOOL, 0},
 	{"audiolevel_ext_id", JANUS_JSON_INTEGER, 0},
@@ -3578,6 +3578,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			}
 			cl = cl->next;
 		}
+		g_list_free(clist);
 		/* Done: we keep the configuration file open in case we get a "create" or "destroy" with permanent=true */
 	}
 
@@ -8202,8 +8203,10 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_da
 	janus_videoroom_incoming_data_internal(session, participant, packet);
 }
 static void janus_videoroom_incoming_data_internal(janus_videoroom_session *session, janus_videoroom_publisher *participant, janus_plugin_data *packet) {
-	if(packet->buffer == NULL || packet->length == 0)
+	if(packet->buffer == NULL || packet->length == 0) {
+		janus_videoroom_publisher_dereference_nodebug(participant);
 		return;
+	}
 	if(g_atomic_int_get(&participant->destroyed) || participant->kicked || !participant->streams || participant->room == NULL) {
 		janus_videoroom_publisher_dereference_nodebug(participant);
 		return;
@@ -11606,6 +11609,12 @@ static void *janus_videoroom_handler(void *data) {
 			} else {
 				/* This is a new publisher, or an updated one */
 				participant = janus_videoroom_session_get_publisher(session);
+				if(participant == NULL) {
+					JANUS_LOG(LOG_ERR, "Invalid participant instance\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Invalid participant instance");
+					goto error;
+				}
 				janus_videoroom *videoroom = participant->room;
 				int count = 0;
 				GHashTableIter iter;

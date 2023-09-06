@@ -174,6 +174,7 @@ declare namespace JanusJS {
 		tracks?: TrackOption[];
 		trickle?: boolean;
 		iceRestart?: boolean;
+		externalEncryption?: boolean;
 		success?: (jsep: JSEP) => void;
 		error?: (error: Error) => void;
 		customizeSdp?: (jsep: JSEP) => void;
@@ -250,14 +251,16 @@ declare namespace JanusJS {
 			timer: number;
 		};
 
-		sdpSent: boolean,
-		insertableStreams?: any,
-		candidates: RTCIceCandidateInit[],
+		sdpSent: boolean;
+		insertableStreams?: boolean;
+		externalEncryption?: boolean;
+		candidates: RTCIceCandidateInit[];
 	}
 
 	type PluginCreateAnswerParam = {
 		jsep: JSEP;
 		tracks?: TrackOption[];
+		externalEncryption?: boolean;
 
 		/** @deprecated use tracks instead */
 		media?: { audioSend: any, videoSend: any };
@@ -317,6 +320,11 @@ declare namespace JanusJS {
 	}
 
 	type PluginDataParam = {
+		/** @deprecated use data instead */
+		text?: string;
+		data?: any;
+		label?: string;
+		protocol?: string;
 		success?: (data: unknown) => void;
 		error?: (error: string) => void;
 	}
