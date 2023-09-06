@@ -2044,7 +2044,8 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
-	if(janus_network_address_is_null(&janus_network_local_media_ip)) {
+	if(janus_network_address_is_null(&janus_network_local_media_ip) ||
+			janus_network_local_media_ip.family == AF_INET6) {
 		/* Finally, let's check if IPv6 is disabled, as we may need to know for RTP/RTCP sockets */
 		int fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 		if(fd <= 0) {
@@ -2057,6 +2058,10 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		if(fd > 0)
 			close(fd);
 		if(ipv6_disabled) {
+			if(!janus_network_address_is_null(&janus_network_local_media_ip)) {
+				JANUS_LOG(LOG_ERR, "IPv6 disabled and local media address is IPv6...\n");
+				return -1;
+			}
 			JANUS_LOG(LOG_WARN, "IPv6 disabled, will only use IPv4 for RTP/RTCP sockets (SIP)\n");
 		}
 	} else if(janus_network_local_media_ip.family == AF_INET) {
