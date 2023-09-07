@@ -405,6 +405,15 @@ struct janus_callbacks {
 	 * @param[in] bitrate The bitrate value to send in the REMB message */
 	void (* const send_remb)(janus_plugin_session *handle, guint32 bitrate);
 
+	/*! \brief Create a new bandwidth estimation context for this session
+	 * \note A call to this method will result in the core invoking the
+	 * estimated_bandwidth callback on a regular basis for this session
+	 * @param[in] handle The plugin/gateway session to enable BWE for */
+	void (* const enable_bwe)(janus_plugin_session *handle);
+	/*! \brief Get rid of the bandwidth estimation context for this session
+	 * @param[in] handle The plugin/gateway session to disnable BWE for */
+	void (* const disable_bwe)(janus_plugin_session *handle);
+
 	/*! \brief Callback to ask the core to close a WebRTC PeerConnection
 	 * \note A call to this method will result in the core invoking the hangup_media
 	 * callback on this plugin when done

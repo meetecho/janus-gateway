@@ -31,20 +31,37 @@ const char *janus_bwe_twcc_status_description(janus_bwe_twcc_status status) {
 	return NULL;
 }
 
+const char *janus_bwe_status_description(janus_bwe_status status) {
+	switch(status) {
+		case janus_bwe_status_start:
+			return "start";
+		case janus_bwe_status_regular:
+			return "regular";
+		case janus_bwe_status_lossy:
+			return "lossy";
+		case janus_bwe_status_congested:
+			return "congested";
+		case janus_bwe_status_recovering:
+			return "recovering";
+		default: break;
+	}
+	return NULL;
+}
+
 static void janus_bwe_twcc_inflight_destroy(janus_bwe_twcc_inflight *stat) {
 	g_free(stat);
 }
 
 janus_bwe_context *janus_bwe_context_create(void) {
 	janus_bwe_context *bwe = g_malloc0(sizeof(janus_bwe_context));
-	/* TODO */
+	/* FIXME */
 	bwe->packets = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_bwe_twcc_inflight_destroy);
 	return bwe;
 }
 
 void janus_bwe_context_destroy(janus_bwe_context *bwe) {
 	if(bwe) {
-		/* TODO clean everything up */
+		/* FIXME clean everything up */
 		g_hash_table_destroy(bwe->packets);
 		g_free(bwe);
 	}
@@ -54,6 +71,13 @@ gboolean janus_bwe_context_add_inflight(janus_bwe_context *bwe,
 		uint16_t seq, int64_t sent, janus_bwe_packet_type type, int size) {
 	if(bwe == NULL)
 		return FALSE;
+	int64_t now = janus_get_monotonic_time();
+	if(bwe->started == 0)
+		bwe->started = now;
+	if(bwe->status == janus_bwe_status_start && now - bwe->started >= G_USEC_PER_SEC) {
+		/* Let's move from the starting phase to the regular stage */
+		bwe->status = janus_bwe_status_regular;
+	}
 	janus_bwe_twcc_inflight *stat = g_malloc(sizeof(janus_bwe_twcc_inflight));
 	stat->seq = seq;
 	stat->sent_ts = sent;
@@ -99,6 +123,8 @@ void janus_bwe_context_handle_feedback(janus_bwe_context *bwe,
 		bwe->received_bytes += p->size;
 		bwe->received_pkts++;
 		bwe->last_recv_seq = seq;
+	} else {
+		bwe->lost_pkts++;
 	}
 }
 
@@ -115,15 +141,34 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 		int64_t diff = now - bwe->bitrate_ts;
 		double ratio = (double)G_USEC_PER_SEC / (double)diff;
 		double estimate_bytes = ratio * bwe->received_bytes;
-		bwe->estimate = 8 * estimate_bytes;
+		uint32_t estimate = 8 * estimate_bytes;
+		uint16_t tot = bwe->received_pkts + bwe->lost_pkts;
+		if(tot > 0)
+			bwe->loss_ratio = (double)bwe->lost_pkts / (double)tot;
+		/* Depending on the severity of the loss, we change the estimate */
+		if(bwe->loss_ratio > 0.05 || estimate > bwe->estimate) {
+			/* FIXME Lossy network? */
+			bwe->status = janus_bwe_status_lossy;
+			bwe->estimate = estimate;
+		}
+		/* Let's also check of the average delay is increasing */
+		double avg_delay = ((double)bwe->delay / (double)bwe->received_pkts) / 1000;
+		if(bwe->avg_delay > 0 && avg_delay - bwe->avg_delay > 0.5) {
+			/* FIXME Delay is increasing */
+			bwe->status = janus_bwe_status_congested;
+			bwe->estimate = estimate;
+		}
+		bwe->avg_delay = avg_delay;
 		bwe->bitrate_ts = now;
 	}
-	JANUS_LOG(LOG_WARN, "[BWE] sent=%"SCNu32"kbps, received=%"SCNu32"kbps, avg_delay=%.2fms\n",
-		(bwe->sent_bytes / 1000) * 8, (bwe->received_bytes / 1000) * 8, ((double)bwe->delay / (double)bwe->received_pkts) / 1000);
+	JANUS_LOG(LOG_WARN, "[BWE] sent=%"SCNu32"kbps, received=%"SCNu32"kbps, loss=%.2f%%, avg_delay=%.2fms\n",
+		(bwe->sent_bytes / 1000) * 8, (bwe->received_bytes / 1000) * 8,
+		bwe->loss_ratio, bwe->avg_delay);
 	bwe->sent_bytes = 0;
 	bwe->received_bytes = 0;
 	bwe->delay = 0;
 	bwe->received_pkts = 0;
+	bwe->lost_pkts = 0;
 }
 
 janus_bwe_stream_bitrate *janus_bwe_stream_bitrate_create(void) {

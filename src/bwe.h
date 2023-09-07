@@ -51,8 +51,30 @@ typedef struct janus_bwe_twcc_inflight {
 	int size;
 } janus_bwe_twcc_inflight;
 
+/*! \brief Current status of the bandwidth estimator */
+typedef enum janus_bwe_status {
+	/* BWE just started */
+	janus_bwe_status_start = 0,
+	/* BWE in the regular/increasing stage */
+	janus_bwe_status_regular,
+	/* BWE detected too many losses */
+	janus_bwe_status_lossy,
+	/* BWE detected congestion */
+	janus_bwe_status_congested,
+	/* BWE recovering from losses/congestion */
+	janus_bwe_status_recovering
+} janus_bwe_status;
+/*! \brief Helper to return a string description of a BWE status
+ * @param[in] status The janus_bwe_status status
+ * @returns A string description */
+const char *janus_bwe_status_description(janus_bwe_status status);
+
 /*! \brief Bandwidth estimation context */
 typedef struct janus_bwe_context {
+	/*! \brief Current status of the context */
+	janus_bwe_status status;
+	/*! \brief Monotonic timestamp of when the BWE work started */
+	int64_t started;
 	/*! \brief Monotonic timestamp of the last sent packet */
 	int64_t last_sent_ts;
 	/*! \brief Last twcc seq number of a received packet */
@@ -65,8 +87,12 @@ typedef struct janus_bwe_context {
 	uint32_t sent_bytes, received_bytes;
 	/*! \brief How much delay has been accumulated (may be negative) */
 	int64_t delay;
-	/*! \brief Number of packets with a received status */
-	uint16_t received_pkts;
+	/*! \brief Number of packets with a received status, and number of lost ones */
+	uint16_t received_pkts, lost_pkts;
+	/*! \brief Latest average delay */
+	double avg_delay;
+	/*! \brief Latest loss ratio */
+	double loss_ratio;
 	/*! \brief Latest estimated bitrate */
 	uint32_t estimate;
 } janus_bwe_context;

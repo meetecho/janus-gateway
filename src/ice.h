@@ -785,6 +785,12 @@ void janus_ice_restart(janus_ice_handle *handle);
 /*! \brief Method to resend all the existing candidates via trickle (e.g., after an ICE restart)
  * @param[in] handle The Janus ICE handle this method refers to */
 void janus_ice_resend_trickles(janus_ice_handle *handle);
+/*! \brief Method to dynamically enable bandwidth estimation for a handle
+ * @param[in] handle The Janus ICE handle this method refers to */
+void janus_ice_handle_enable_bwe(janus_ice_handle *handle);
+/*! \brief Method to dynamically disable bandwidth estimation for a handle
+ * @param[in] handle The Janus ICE handle this method refers to */
+void janus_ice_handle_disable_bwe(janus_ice_handle *handle);
 ///@}
 
 

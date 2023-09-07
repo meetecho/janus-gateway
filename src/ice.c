@@ -472,6 +472,8 @@ static janus_ice_queued_packet
 	janus_ice_add_candidates,
 	janus_ice_dtls_handshake,
 	janus_ice_media_stopped,
+	janus_ice_enable_bwe,
+	janus_ice_disable_bwe,
 	janus_ice_hangup_peerconnection,
 	janus_ice_detach_handle,
 	janus_ice_data_ready;
@@ -650,6 +652,8 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 	if(pkt == NULL || pkt == &janus_ice_start_gathering ||
 			pkt == &janus_ice_add_candidates ||
 			pkt == &janus_ice_dtls_handshake ||
+			pkt == &janus_ice_enable_bwe ||
+			pkt == &janus_ice_disable_bwe ||
 			pkt == &janus_ice_media_stopped ||
 			pkt == &janus_ice_hangup_peerconnection ||
 			pkt == &janus_ice_detach_handle ||
@@ -3734,7 +3738,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, gboolean offer, gboolean tri
 	pc->stream_id = handle->stream_id;
 	pc->handle = handle;
 	pc->dtls_role = dtls_role;
-	pc->bwe = janus_bwe_context_create();
 	janus_mutex_init(&pc->mutex);
 	if(!have_turnrest_credentials) {
 		/* No TURN REST API server and credentials, any static ones? */
@@ -3868,6 +3871,30 @@ void janus_ice_resend_trickles(janus_ice_handle *handle) {
 	}
 	/* Send a "completed" trickle at the end */
 	janus_ice_notify_trickle(handle, NULL);
+}
+
+void janus_ice_handle_enable_bwe(janus_ice_handle *handle) {
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Enabling bandwidth estimation\n", handle->handle_id);
+	if(handle->queued_packets != NULL) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_enable_bwe);
+#else
+		g_async_queue_push(handle->queued_packets, &janus_ice_enable_bwe);
+#endif
+		g_main_context_wakeup(handle->mainctx);
+	}
+}
+
+void janus_ice_handle_disable_bwe(janus_ice_handle *handle) {
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Disabling bandwidth estimation\n", handle->handle_id);
+	if(handle->queued_packets != NULL) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_disable_bwe);
+#else
+		g_async_queue_push(handle->queued_packets, &janus_ice_disable_bwe);
+#endif
+		g_main_context_wakeup(handle->mainctx);
+	}
 }
 
 static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_peerconnection_medium *medium, janus_ice_queued_packet *packet) {
@@ -4531,6 +4558,29 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		g_source_set_callback(pc->dtlsrt_source, janus_dtls_retry, pc->dtls, NULL);
 		guint id = g_source_attach(pc->dtlsrt_source, handle->mainctx);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating retransmission timer with ID %u\n", handle->handle_id, id);
+		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_enable_bwe) {
+		/* Create a new bandwidth estimation context for this handle */
+		if(pc == NULL || pc->bwe != NULL)
+			return G_SOURCE_CONTINUE;
+		pc->bwe = janus_bwe_context_create();
+		/* Let's create a source for BWE */
+		handle->bwe_source = g_timeout_source_new(1000);
+		g_source_set_priority(handle->bwe_source, G_PRIORITY_DEFAULT);
+		g_source_set_callback(handle->bwe_source, janus_ice_outgoing_bwe_handle, handle, NULL);
+		g_source_attach(handle->bwe_source, handle->mainctx);
+		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_disable_bwe) {
+		/* We need to get rif of the bandwidth estimator */
+		if(pc == NULL || pc->bwe == NULL)
+			return G_SOURCE_CONTINUE;
+		if(handle->bwe_source) {
+			g_source_destroy(handle->bwe_source);
+			g_source_unref(handle->bwe_source);
+			handle->bwe_source = NULL;
+		}
+		janus_bwe_context_destroy(pc->bwe);
+		pc->bwe = NULL;
 		return G_SOURCE_CONTINUE;
 	} else if(pkt == &janus_ice_media_stopped) {
 		/* Some media has been disabled on the way in, so use the callback to notify the peer */
@@ -5260,11 +5310,6 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle) {
 	g_source_set_callback(handle->stats_source, janus_ice_outgoing_stats_handle, handle, NULL);
 	g_source_set_priority(handle->stats_source, G_PRIORITY_DEFAULT);
 	g_source_attach(handle->stats_source, handle->mainctx);
-	/* FIXME Finally, let's create a source for BWE */
-	handle->bwe_source = g_timeout_source_new(1000);
-	g_source_set_priority(handle->bwe_source, G_PRIORITY_DEFAULT);
-	g_source_set_callback(handle->bwe_source, janus_ice_outgoing_bwe_handle, handle, NULL);
-	g_source_attach(handle->bwe_source, handle->mainctx);
 	janus_mutex_unlock(&handle->mutex);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] The DTLS handshake has been completed\n", handle->handle_id);
 	/* Notify the plugin that the WebRTC PeerConnection is ready to be used */
