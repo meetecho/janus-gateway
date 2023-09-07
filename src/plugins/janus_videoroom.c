@@ -1920,8 +1920,8 @@ static struct janus_json_parameter remote_publisher_stream_parameters[] = {
 	{"stereo", JANUS_JSON_BOOL, 0},
 	{"fec", JANUS_JSON_BOOL, 0},
 	{"dtx", JANUS_JSON_BOOL, 0},
-	{"h264_profile", JANUS_JSON_BOOL, 0},
-	{"vp9_profile", JANUS_JSON_BOOL, 0},
+	{"h264_profile", JSON_STRING, 0},
+	{"vp9_profile", JSON_STRING, 0},
 	{"simulcast", JANUS_JSON_BOOL, 0},
 	{"svc", JANUS_JSON_BOOL, 0},
 	{"audiolevel_ext_id", JANUS_JSON_INTEGER, 0},
@@ -2242,6 +2242,13 @@ typedef struct janus_videoroom_subscriber_stream {
 	volatile gint ready, destroyed;
 	janus_refcount ref;
 } janus_videoroom_subscriber_stream;
+
+typedef struct janus_videoroom_stream_mapping {
+	janus_videoroom_publisher_stream *ps;
+	janus_videoroom_subscriber *subscriber;
+	janus_videoroom_subscriber_stream *ss;
+	gboolean unref_ss;
+} janus_videoroom_stream_mapping;
 
 typedef struct janus_videoroom_rtp_relay_packet {
 	janus_videoroom_publisher_stream *source;
@@ -3576,6 +3583,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			}
 			cl = cl->next;
 		}
+		g_list_free(clist);
 		/* Done: we keep the configuration file open in case we get a "create" or "destroy" with permanent=true */
 	}
 
@@ -8222,8 +8230,10 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_da
 	janus_videoroom_incoming_data_internal(session, participant, packet);
 }
 static void janus_videoroom_incoming_data_internal(janus_videoroom_session *session, janus_videoroom_publisher *participant, janus_plugin_data *packet) {
-	if(packet->buffer == NULL || packet->length == 0)
+	if(packet->buffer == NULL || packet->length == 0) {
+		janus_videoroom_publisher_dereference_nodebug(participant);
 		return;
+	}
 	if(g_atomic_int_get(&participant->destroyed) || participant->kicked || !participant->streams || participant->room == NULL) {
 		janus_videoroom_publisher_dereference_nodebug(participant);
 		return;
@@ -8612,7 +8622,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 		participant->e2ee = FALSE;
 		/* Get rid of streams */
 		janus_mutex_lock(&participant->streams_mutex);
-		GList *subscribers = NULL;
+		GList *subscribers = NULL, *mappings = NULL;
 		GList *temp = participant->streams;
 		while(temp) {
 			janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
@@ -8629,8 +8639,16 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 						janus_refcount_increase(&ss->subscriber->session->ref);
 						subscribers = g_list_append(subscribers, ss->subscriber);
 					}
-					/* Remove the subscription (turns the m-line to inactive) */
-					janus_videoroom_subscriber_stream_remove(ss, ps, FALSE);
+					/* Take note of the subscription to remove */
+					janus_videoroom_stream_mapping *m = g_malloc(sizeof(janus_videoroom_stream_mapping));
+					janus_refcount_increase(&ps->ref);
+					janus_refcount_increase(&ss->ref);
+					janus_refcount_increase(&ss->subscriber->ref);
+					m->ps = ps;
+					m->ss = ss;
+					m->unref_ss = (g_slist_find(ps->subscribers, ss) != NULL);
+					m->subscriber = ss->subscriber;
+					mappings = g_list_append(mappings, m);
 				}
 			}
 			g_slist_free(ps->subscribers);
@@ -8640,6 +8658,28 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 			ps->fmtp = NULL;
 			janus_mutex_unlock(&ps->subscribers_mutex);
 			temp = temp->next;
+		}
+		if(mappings) {
+			temp = mappings;
+			while(temp) {
+				janus_videoroom_stream_mapping *m = (janus_videoroom_stream_mapping *)temp->data;
+				/* Remove the subscription (turns the m-line to inactive) */
+				janus_videoroom_publisher_stream *ps = m->ps;
+				janus_videoroom_subscriber *subscriber = m->subscriber;
+				janus_videoroom_subscriber_stream *ss = m->ss;
+				if(subscriber) {
+					janus_mutex_lock(&subscriber->streams_mutex);
+					janus_videoroom_subscriber_stream_remove(ss, ps, TRUE);
+					janus_mutex_unlock(&subscriber->streams_mutex);
+					if(m->unref_ss)
+						janus_refcount_decrease(&ss->ref);
+					janus_refcount_decrease(&subscriber->ref);
+				}
+				janus_refcount_decrease(&ss->ref);
+				janus_refcount_decrease(&ps->ref);
+				temp = temp->next;
+			}
+			g_list_free_full(mappings, (GDestroyNotify)g_free);
 		}
 		/* Any subscriber session to update? */
 		janus_videoroom *room = participant->room;
@@ -8738,8 +8778,8 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 					}
 					list = list->next;
 				}
-				janus_videoroom_subscriber_stream_remove(s, NULL, TRUE);
 				temp = temp->next;
+				janus_videoroom_subscriber_stream_remove(s, NULL, TRUE);
 			}
 			/* Free streams */
 			g_list_free(subscriber->streams);
@@ -9792,8 +9832,8 @@ static void *janus_videoroom_handler(void *data) {
 					GList *temp = subscriber->streams;
 					while(temp) {
 						janus_videoroom_subscriber_stream *s = (janus_videoroom_subscriber_stream *)temp->data;
-						janus_videoroom_subscriber_stream_remove(s, NULL, TRUE);
 						temp = temp->next;
+						janus_videoroom_subscriber_stream_remove(s, NULL, TRUE);
 					}
 					g_list_free(subscriber->streams);
 					subscriber->streams = NULL;
@@ -10575,10 +10615,10 @@ static void *janus_videoroom_handler(void *data) {
 										list = list->next;
 										continue;
 									}
-									janus_videoroom_subscriber_stream_remove(stream, ps, TRUE);
 									if(stream->type != JANUS_VIDEOROOM_MEDIA_DATA)
 										changes++;
 									list = list->next;
+									janus_videoroom_subscriber_stream_remove(stream, ps, TRUE);
 								}
 								temp = temp->next;
 							}
@@ -11712,6 +11752,12 @@ static void *janus_videoroom_handler(void *data) {
 			} else {
 				/* This is a new publisher, or an updated one */
 				participant = janus_videoroom_session_get_publisher(session);
+				if(participant == NULL) {
+					JANUS_LOG(LOG_ERR, "Invalid participant instance\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Invalid participant instance");
+					goto error;
+				}
 				janus_videoroom *videoroom = participant->room;
 				int count = 0;
 				GHashTableIter iter;

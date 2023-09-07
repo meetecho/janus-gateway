@@ -58,6 +58,7 @@ jobs:
         libopus-dev
         librabbitmq-dev
         libsofia-sip-ua-dev
+        libspeexdsp-dev
         libssl-dev
         libtool
         libvorbis-dev

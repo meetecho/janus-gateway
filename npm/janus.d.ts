@@ -121,6 +121,10 @@ declare namespace JanusJS {
 		error?: (error: string) => void;
 	}
 
+	interface RemoteTrackMetadata {
+		reason: "created" | "ended" | "mute" | "unmute";
+	}
+
 	enum MessageType {
 		Recording = 'recording',
 		Starting = 'starting',
@@ -152,7 +156,7 @@ declare namespace JanusJS {
 		slowLink?: (uplink: boolean, lost: number, mid: string) => void;
 		onmessage?: (message: Message, jsep?: JSEP) => void;
 		onlocaltrack?: (track: MediaStreamTrack, on: boolean) => void;
-		onremotetrack?: (track: MediaStreamTrack, mid: string, on: boolean) => void;
+		onremotetrack?: (track: MediaStreamTrack, mid: string, on: boolean, metadata?: RemoteTrackMetadata) => void;
 		ondataopen?: Function;
 		ondata?: Function;
 		oncleanup?: Function;
@@ -167,9 +171,10 @@ declare namespace JanusJS {
 	}
 
 	interface OfferParams {
-		tracks?: TrackOptions[];
+		tracks?: TrackOption[];
 		trickle?: boolean;
 		iceRestart?: boolean;
+		externalEncryption?: boolean;
 		success?: (jsep: JSEP) => void;
 		error?: (error: Error) => void;
 		customizeSdp?: (jsep: JSEP) => void;
@@ -246,14 +251,19 @@ declare namespace JanusJS {
 			timer: number;
 		};
 
-		sdpSent: boolean,
-		insertableStreams?: any,
-		candidates: RTCIceCandidateInit[],
+		sdpSent: boolean;
+		insertableStreams?: boolean;
+		externalEncryption?: boolean;
+		candidates: RTCIceCandidateInit[];
 	}
 
 	type PluginCreateAnswerParam = {
 		jsep: JSEP;
-		media: { audioSend: any, videoSend: any };
+		tracks?: TrackOption[];
+		externalEncryption?: boolean;
+
+		/** @deprecated use tracks instead */
+		media?: { audioSend: any, videoSend: any };
 		success?: (data: JSEP) => void;
 		error?: (error: string) => void;
 	}
@@ -310,6 +320,11 @@ declare namespace JanusJS {
 	}
 
 	type PluginDataParam = {
+		/** @deprecated use data instead */
+		text?: string;
+		data?: any;
+		label?: string;
+		protocol?: string;
 		success?: (data: unknown) => void;
 		error?: (error: string) => void;
 	}
