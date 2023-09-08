@@ -5363,14 +5363,6 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		janus_refcount_increase(&audiobridge->ref);
 		janus_mutex_lock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
-		/* A secret may be required for this action */
-		JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
-			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
-		if(error_code != 0) {
-			janus_mutex_unlock(&audiobridge->mutex);
-			janus_refcount_decrease(&audiobridge->ref);
-			goto prepare_response;
-		}
 		guint64 user_id = 0;
 		char user_id_num[30], *user_id_str = NULL;
 		if(!string_ids) {
@@ -5392,6 +5384,16 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 		janus_refcount_increase(&participant->ref);
 		janus_mutex_unlock(&audiobridge->mutex);
+		/* A secret may be required for this action */
+		if(session->participant != participant) {
+			JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
+			if(error_code != 0) {
+				janus_refcount_decrease(&participant->ref);
+				janus_refcount_decrease(&audiobridge->ref);
+				goto prepare_response;
+			}
+		}
 		/* Change the suspend status of this participant */
 		gboolean notify_participant = FALSE, recap = FALSE;
 		if(suspend) {
