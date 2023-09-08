@@ -24,7 +24,7 @@ if(getQueryStringValue("group") !== "")
 var myusername = null;
 var myid = null;
 var webrtcUp = false;
-var audioenabled = false;
+var audioenabled = false, audiosuspended = false;
 
 
 $(document).ready(function() {
@@ -357,6 +357,21 @@ $(document).ready(function() {
 											else
 												$('#toggleaudio').html("Unmute").removeClass("btn-danger").addClass("btn-success");
 											mixertest.send({ message: { request: "configure", muted: !audioenabled }});
+										}).removeClass('hide').show();
+									// Suspend button
+									audiosuspended = false;
+									$('#togglesuspend').click(
+										function() {
+											audiosuspended = !audiosuspended;
+											if(!audiosuspended)
+												$('#togglesuspend').html("Suspend").removeClass("btn-success").addClass("btn-danger");
+											else
+												$('#togglesuspend').html("Resume").removeClass("btn-danger").addClass("btn-success");
+											mixertest.send({ message: {
+												request: (audiosuspended ? "suspend" : "resume"),
+												room: myroom,
+												id: myid
+											}});
 										}).removeClass('hide').show();
 									// Spatial position, if enabled
 									$('#position').click(
