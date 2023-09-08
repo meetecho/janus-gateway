@@ -472,6 +472,7 @@ room-<unique room ID>: {
 			"display" : "<display name of the participant, if any; optional>",
 			"setup" : <true|false, whether user successfully negotiate a WebRTC PeerConnection or not>,
 			"muted" : <true|false, whether user is muted or not>,
+			"suspended" : <true|false, whether user is suspended or not>,
 			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>,
 			"spatial_position" : <in case spatial audio is used, the panning of this participant (0=left, 50=center, 100=right)>,
 		},
@@ -872,7 +873,7 @@ room-<unique room ID>: {
 	"expected_loss" : <new value for the expected loss (see "join" for more info)>
 	"volume" : <new volume percent value (see "join" for more info)>,
 	"spatial_position" : <in case spatial audio is enabled for the room, new panning of this participant (0=left, 50=center, 100=right)>,
-	"record": <true|false, whether to record this user's contribution to a .mjr file (mixer not involved),
+	"record": <true|false, whether to record this user's contribution to a .mjr file (mixer not involved)>,
 	"filename": "<basename of the file to record to, -audio.mjr will be added by the plugin; will be relative to mjrs_dir, if configured in the room>",
 	"group" : "<new group to assign to this participant, if enabled in the room (for forwarding purposes)>"
 }
