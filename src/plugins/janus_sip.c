@@ -2004,10 +2004,8 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	}
 	JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
-	/*
-	 * Since we might have to derive SDP connection address from local_media_ip make sure it has a meaningful value
-	 *	for the purpose of using it in the SDP c= header.
-	 */
+	/* Since we might have to derive SDP connection address from local_media_ip make sure it has a meaningful value
+	 * for the purpose of using it in the SDP c= header */
 	janus_network_address_nullify(&janus_network_local_media_ip);
 	if(local_media_ip) {
 		if(janus_network_string_to_address(janus_network_query_options_any_ip, local_media_ip, &janus_network_local_media_ip) != 0) {
