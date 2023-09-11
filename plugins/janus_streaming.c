@@ -6835,7 +6835,11 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 0L);
 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 #if CURL_AT_LEAST_VERSION(7, 66, 0)
+#if CURL_AT_LEAST_VERSION(7, 85, 0)
+	curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "rtsp");
+#else
 	curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_RTSP);
+#endif
 	curl_easy_setopt(curl, CURLOPT_HTTP09_ALLOWED, 1L);
 #endif
 	char *curl_errbuf = g_malloc(CURL_ERROR_SIZE);
