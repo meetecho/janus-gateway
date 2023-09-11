@@ -1030,7 +1030,9 @@ void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *contex
 	context->rid_ext_id = -1;
 	context->substream = -1;
 	context->substream_target_temp = -1;
+	context->substream_target_bwe = -1;
 	context->templayer = -1;
+	context->templayer_target_bwe = -1;
 }
 
 void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t *ssrcs, char **rids) {
@@ -1148,6 +1150,8 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		context->substream_target_temp = -1;
 	}
 	int target = (context->substream_target_temp == -1) ? context->substream_target : context->substream_target_temp;
+	if(context->substream_target_bwe != -1 && context->substream_target_bwe < target)
+		target = context->substream_target_bwe;
 	/* Check what we need to do with the packet */
 	gboolean relay = TRUE;
 	if(context->substream == -1) {
@@ -1190,10 +1194,10 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		if((now - context->last_relayed) > (context->drop_trigger ? context->drop_trigger : 250000)) {
 			context->last_relayed = now;
 			if(context->substream != substream && context->substream_target_temp != 0) {
-				if(context->substream_target > substream) {
+				if(target > substream) {
 					int prev_target = context->substream_target_temp;
 					if(context->substream_target_temp == -1)
-						context->substream_target_temp = context->substream_target - 1;
+						context->substream_target_temp = target - 1;
 					else
 						context->substream_target_temp--;
 					if(context->substream_target_temp < 0)
@@ -1219,6 +1223,9 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 	if(relay)
 		context->last_relayed = janus_get_monotonic_time();
 	/* Temporal layers are only easily available for some codecs */
+	target = context->templayer_target;
+	if(context->templayer_target_bwe != -1 && context->templayer_target_bwe < target)
+		target = context->templayer_target_bwe;
 	if(vcodec == JANUS_VIDEOCODEC_VP8) {
 		/* Check if there's any temporal scalability to take into account */
 		gboolean m = FALSE;
@@ -1232,9 +1239,9 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 			context->temporal_last = tid;
 			if(!relay)
 				return FALSE;
-			if(context->templayer != context->templayer_target && tid == context->templayer_target) {
+			if(context->templayer != target && tid == target) {
 				/* FIXME We should be smarter in deciding when to switch */
-				context->templayer = context->templayer_target;
+				context->templayer = target;
 				/* Notify the caller that the temporal layer changed */
 				context->changed_temporal = TRUE;
 			}
@@ -1256,19 +1263,19 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 			if(!relay)
 				return FALSE;
 			int temporal_layer = context->templayer;
-			if(context->templayer_target > context->templayer) {
+			if(target > context->templayer) {
 				/* We need to upscale */
 				if(svc_info.ubit && svc_info.bbit &&
 						svc_info.temporal_layer > context->templayer &&
-						svc_info.temporal_layer <= context->templayer_target) {
+						svc_info.temporal_layer <= target) {
 					context->templayer = svc_info.temporal_layer;
 					temporal_layer = context->templayer;
 					context->changed_temporal = TRUE;
 				}
-			} else if(context->templayer_target < context->templayer) {
+			} else if(target < context->templayer) {
 				/* We need to downscale */
-				if(svc_info.ebit && svc_info.temporal_layer == context->templayer_target) {
-					context->templayer = context->templayer_target;
+				if(svc_info.ebit && svc_info.temporal_layer == target) {
+					context->templayer = target;
 					context->changed_temporal = TRUE;
 				}
 			}
@@ -1295,17 +1302,17 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 					if(!relay)
 						return FALSE;
 					int temporal_layer = context->templayer;
-					if(context->templayer_target > context->templayer) {
+					if(target > context->templayer) {
 						/* We need to upscale */
-						if(t->temporal > context->templayer && t->temporal <= context->templayer_target) {
+						if(t->temporal > context->templayer && t->temporal <= target) {
 							context->templayer = t->temporal;
 							temporal_layer = context->templayer;
 							context->changed_temporal = TRUE;
 						}
-					} else if(context->templayer_target < context->templayer) {
+					} else if(target < context->templayer) {
 						/* We need to downscale */
-						if(t->temporal == context->templayer_target) {
-							context->templayer = context->templayer_target;
+						if(t->temporal == target) {
+							context->templayer = target;
 							context->changed_temporal = TRUE;
 						}
 					}

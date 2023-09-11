@@ -8436,11 +8436,15 @@ void janus_videoroom_estimated_bandwidth(janus_plugin_session *handle, uint32_t 
 						}
 					} else if(s->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 						if(ps->simulcast) {
+							JANUS_LOG(LOG_WARN, "current=%d/%d, target=%d/%d, bwe=%d/%d\n",
+								s->sim_context.substream, s->sim_context.templayer,
+								s->sim_context.substream_target, s->sim_context.templayer_target,
+								s->sim_context.substream_target_bwe, s->sim_context.templayer_target_bwe);
 							/* FIXME Simulcast, check the current targets, and retarget if needed */
-							int substream = s->sim_context.substream;
+							int substream = s->sim_context.substream_target;
 							if(substream < 0)
 								substream = 0;
-							int templayer = s->sim_context.templayer;
+							int templayer = s->sim_context.templayer_target;
 							if(templayer < 0)
 								templayer = 0;
 							int target = 3*substream + templayer;
@@ -8469,11 +8473,14 @@ void janus_videoroom_estimated_bandwidth(janus_plugin_session *handle, uint32_t 
 											JANUS_LOG(LOG_WARN, "Insufficient bandwidth for simulcast stream %d (video)\n", s->mindex);
 										} else {
 											estimate -= ps->bitrates->bitrate[target];
-											JANUS_LOG(LOG_WARN, "Insufficient bandwidth for simulcast %d/%d of stream %d (video), switching to %d/%d\n",
-												substream, templayer, s->mindex);
-											/* FIXME */
-											s->sim_context.substream_target = new_substream;
-											s->sim_context.templayer_target = new_templayer;
+											if(s->sim_context.substream_target_bwe == -1 || s->sim_context.substream_target_bwe > new_substream ||
+													s->sim_context.templayer_target_bwe == -1 || s->sim_context.templayer_target_bwe > new_templayer) {
+												JANUS_LOG(LOG_WARN, "Insufficient bandwidth for simulcast %d/%d of stream %d (video), switching to %d/%d\n",
+													substream, templayer, s->mindex, new_substream, new_templayer);
+												/* FIXME */
+											}
+											s->sim_context.substream_target_bwe = new_substream;
+											s->sim_context.templayer_target_bwe = new_templayer;
 										}
 									}
 								} else {

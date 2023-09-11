@@ -373,8 +373,8 @@ struct janus_ice_handle {
 	void *static_event_loop;
 	/*! \brief GLib thread for the handle and libnice */
 	GThread *thread;
-	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats (and optionally TWCC) */
-	GSource *rtp_source, *rtcp_source, *stats_source, *twcc_source, *bwe_source;
+	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats (and optionally TWCC/BWE/probing) */
+	GSource *rtp_source, *rtcp_source, *stats_source, *twcc_source, *bwe_source, *probing_source;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
@@ -597,6 +597,8 @@ struct janus_ice_peerconnection_medium {
 	gint64 last_ntp_ts;
 	/*! \brief Last sent RTP timestamp */
 	guint32 last_rtp_ts;
+	/*! \brief Last sent RTP sequence number */
+	guint16 last_rtp_seqnum;
 	/*! \brief Whether we should do NACKs (in or out) for this medium */
 	gboolean do_nacks;
 	/*! \brief Whether we should do Transport Wide CC for this medium */

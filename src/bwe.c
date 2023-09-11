@@ -56,6 +56,7 @@ janus_bwe_context *janus_bwe_context_create(void) {
 	janus_bwe_context *bwe = g_malloc0(sizeof(janus_bwe_context));
 	/* FIXME */
 	bwe->packets = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_bwe_twcc_inflight_destroy);
+	bwe->probing_mindex = -1;
 	return bwe;
 }
 
@@ -77,6 +78,7 @@ gboolean janus_bwe_context_add_inflight(janus_bwe_context *bwe,
 	if(bwe->status == janus_bwe_status_start && now - bwe->started >= G_USEC_PER_SEC) {
 		/* Let's move from the starting phase to the regular stage */
 		bwe->status = janus_bwe_status_regular;
+		bwe->status_changed = now;
 	}
 	janus_bwe_twcc_inflight *stat = g_malloc(sizeof(janus_bwe_twcc_inflight));
 	stat->seq = seq;
@@ -86,6 +88,8 @@ gboolean janus_bwe_context_add_inflight(janus_bwe_context *bwe,
 	stat->type = type;
 	stat->size = size;
 	bwe->sent_bytes += size;
+	if(type == janus_bwe_packet_type_probing)
+		bwe->sent_bytes_probing += size;
 	g_hash_table_insert(bwe->packets, GUINT_TO_POINTER(seq), stat);
 	return TRUE;
 }
@@ -121,6 +125,8 @@ void janus_bwe_context_handle_feedback(janus_bwe_context *bwe,
 	}
 	if(status != janus_bwe_twcc_status_notreceived) {
 		bwe->received_bytes += p->size;
+		if(p->type == janus_bwe_packet_type_probing)
+			bwe->received_bytes_probing += p->size;
 		bwe->received_pkts++;
 		bwe->last_recv_seq = seq;
 	} else {
@@ -145,27 +151,60 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 		uint16_t tot = bwe->received_pkts + bwe->lost_pkts;
 		if(tot > 0)
 			bwe->loss_ratio = (double)bwe->lost_pkts / (double)tot;
-		/* Depending on the severity of the loss, we change the estimate */
-		if(bwe->loss_ratio > 0.05 || estimate > bwe->estimate) {
-			/* FIXME Lossy network? */
-			bwe->status = janus_bwe_status_lossy;
-			bwe->estimate = estimate;
-		}
-		/* Let's also check of the average delay is increasing */
 		double avg_delay = ((double)bwe->delay / (double)bwe->received_pkts) / 1000;
-		if(bwe->avg_delay > 0 && avg_delay - bwe->avg_delay > 0.5) {
-			/* FIXME Delay is increasing */
-			bwe->status = janus_bwe_status_congested;
+		/* Check if there's packet loss or congestion */
+		if(bwe->loss_ratio > 0.05) {
+			/* FIXME Lossy network? Set the estimate to the acknowledged bitrate */
+			bwe->status = janus_bwe_status_lossy;
+			bwe->status_changed = now;
 			bwe->estimate = estimate;
+		} else if(bwe->avg_delay > 0 && avg_delay - bwe->avg_delay > 0.5) {
+			/* FIXME Delay is increasing, converge to acknowledged bitrate */
+			bwe->status = janus_bwe_status_congested;
+			bwe->status_changed = now;
+			//~ if(estimate > bwe->estimate)
+				bwe->estimate = estimate;
+			//~ else
+				//~ bwe->estimate = ((double)bwe->estimate * 0.8) + ((double)estimate * 0.2);
+		} else {
+			/* FIXME All is fine? Check what state we're in */
+			if(bwe->status == janus_bwe_status_lossy || bwe->status == janus_bwe_status_congested) {
+				bwe->status = janus_bwe_status_recovering;
+				bwe->status_changed = now;
+			}
+			if(bwe->status == janus_bwe_status_recovering) {
+				/* FIXME Still recovering */
+				if(now - bwe->status_changed >= 5*G_USEC_PER_SEC) {
+					bwe->status = janus_bwe_status_regular;
+					bwe->status_changed = now;
+				} else {
+					/* FIXME Keep converging to the estimate */
+					if(estimate > bwe->estimate)
+						bwe->estimate = estimate;
+					//~ else
+						//~ bwe->estimate = ((double)bwe->estimate * 0.8) + ((double)estimate * 0.2);
+				}
+			}
+			if(bwe->status == janus_bwe_status_regular) {
+				/* FIXME Slowly increase */
+				if(estimate > bwe->estimate)
+					bwe->estimate = estimate;
+				else if(now - bwe->status_changed < 10*G_USEC_PER_SEC)
+					bwe->estimate = ((double)bwe->estimate * 1.02);
+			}
 		}
 		bwe->avg_delay = avg_delay;
 		bwe->bitrate_ts = now;
 	}
-	JANUS_LOG(LOG_WARN, "[BWE] sent=%"SCNu32"kbps, received=%"SCNu32"kbps, loss=%.2f%%, avg_delay=%.2fms\n",
-		(bwe->sent_bytes / 1000) * 8, (bwe->received_bytes / 1000) * 8,
+	JANUS_LOG(LOG_WARN, "[BWE][%s] sent=%"SCNu32"kbps (probing=%"SCNu32"kbps), received=%"SCNu32"kbps (probing=%"SCNu32"kbps), loss=%.2f%%, avg_delay=%.2fms\n",
+		janus_bwe_status_description(bwe->status),
+		(bwe->sent_bytes / 1000) * 8, (bwe->sent_bytes_probing / 1000) * 8,
+		(bwe->received_bytes / 1000) * 8, (bwe->received_bytes_probing / 1000) * 8,
 		bwe->loss_ratio, bwe->avg_delay);
 	bwe->sent_bytes = 0;
 	bwe->received_bytes = 0;
+	bwe->sent_bytes_probing = 0;
+	bwe->received_bytes_probing = 0;
 	bwe->delay = 0;
 	bwe->received_pkts = 0;
 	bwe->lost_pkts = 0;

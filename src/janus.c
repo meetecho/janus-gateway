@@ -3275,6 +3275,10 @@ json_t *janus_admin_peerconnection_summary(janus_ice_peerconnection *pc) {
 	json_object_set_new(bwe, "twcc", pc->do_transport_wide_cc ? json_true() : json_false());
 	if(pc->transport_wide_cc_ext_id >= 0)
 		json_object_set_new(bwe, "twcc-ext-id", json_integer(pc->transport_wide_cc_ext_id));
+	if(pc->bwe) {
+		json_object_set_new(bwe, "estimate", json_integer(pc->bwe->estimate));
+		json_object_set_new(bwe, "status", json_string(janus_bwe_status_description(pc->bwe->status)));
+	}
 	json_object_set_new(w, "bwe", bwe);
 	json_t *media = json_object();
 	/* Iterate on all media */

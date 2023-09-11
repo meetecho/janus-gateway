@@ -34,7 +34,8 @@ typedef enum janus_bwe_packet_type {
 	janus_bwe_packet_type_regular = 0,
 	/*! \brief RTC packet */
 	janus_bwe_packet_type_rtx,
-	/* TODO other types? e.g., padding? */
+	/*! \brief Probing */
+	janus_bwe_packet_type_probing
 } janus_bwe_packet_type;
 
 /*! \brief Tracking info for in-flight packet we're waiting TWCC feedback for */
@@ -75,6 +76,10 @@ typedef struct janus_bwe_context {
 	janus_bwe_status status;
 	/*! \brief Monotonic timestamp of when the BWE work started */
 	int64_t started;
+	/*! \brief Monotonic timestamp of when the BWE status last changed */
+	int64_t status_changed;
+	/*! \brief Index of the m-line we're using for probing */
+	int probing_mindex;
 	/*! \brief Monotonic timestamp of the last sent packet */
 	int64_t last_sent_ts;
 	/*! \brief Last twcc seq number of a received packet */
@@ -85,6 +90,8 @@ typedef struct janus_bwe_context {
 	int64_t bitrate_ts;
 	/*! \brief Amount of bytes we've sent and the ones we've had feedback were received */
 	uint32_t sent_bytes, received_bytes;
+	/*! \brief As above, but subset we've specifically done for probing */
+	uint32_t sent_bytes_probing, received_bytes_probing;
 	/*! \brief How much delay has been accumulated (may be negative) */
 	int64_t delay;
 	/*! \brief Number of packets with a received status, and number of lost ones */
