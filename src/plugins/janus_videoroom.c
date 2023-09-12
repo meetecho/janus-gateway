@@ -8441,7 +8441,8 @@ void janus_videoroom_estimated_bandwidth(janus_plugin_session *handle, uint32_t 
 								s->sim_context.substream_target, s->sim_context.templayer_target,
 								s->sim_context.substream_target_bwe, s->sim_context.templayer_target_bwe);
 							/* FIXME Simulcast, check the current targets, and retarget if needed */
-							int substream = s->sim_context.substream_target;
+							int substream = (s->sim_context.substream_target_temp == -1) ?
+								s->sim_context.substream_target : s->sim_context.substream_target_temp;
 							if(substream < 0)
 								substream = 0;
 							int templayer = s->sim_context.templayer_target;
@@ -8485,6 +8486,8 @@ void janus_videoroom_estimated_bandwidth(janus_plugin_session *handle, uint32_t 
 									}
 								} else {
 									estimate -= ps->bitrates->bitrate[target];
+									s->sim_context.substream_target_bwe = -1;
+									s->sim_context.templayer_target_bwe = -1;
 								}
 							}
 						} else if(ps->svc) {
@@ -12449,6 +12452,17 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				json_object_set_new(event, "temporal", json_integer(stream->sim_context.templayer));
 				gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
 				json_decref(event);
+			}
+			if(stream->sim_context.changed_substream || stream->sim_context.changed_temporal) {
+				if(stream->sim_context.substream_target_bwe == -1 && stream->sim_context.substream_target_temp == -1 &&
+						stream->sim_context.substream == stream->sim_context.substream_target &&
+						stream->sim_context.templayer == stream->sim_context.templayer_target) {
+					/* We're receiving what we wanted, stop probing (if it was active) */
+					gateway->disable_probing(subscriber->session->handle);
+				} else {
+					/* We're not receiving what we need, start probing (if we weren't already) */
+					gateway->enable_probing(subscriber->session->handle);
+				}
 			}
 			/* If we got here, update the RTP header and send the packet */
 			janus_rtp_header_update(packet->data, &stream->context, TRUE, 0);

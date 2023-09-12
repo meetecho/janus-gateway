@@ -793,6 +793,12 @@ void janus_ice_handle_enable_bwe(janus_ice_handle *handle);
 /*! \brief Method to dynamically disable bandwidth estimation for a handle
  * @param[in] handle The Janus ICE handle this method refers to */
 void janus_ice_handle_disable_bwe(janus_ice_handle *handle);
+/*! \brief Method to dynamically enable bandwidth probing for a handle
+ * @param[in] handle The Janus ICE handle this method refers to */
+void janus_ice_handle_enable_probing(janus_ice_handle *handle);
+/*! \brief Method to dynamically disable bandwidth probing for a handle
+ * @param[in] handle The Janus ICE handle this method refers to */
+void janus_ice_handle_disable_probing(janus_ice_handle *handle);
 ///@}
 
 

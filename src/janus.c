@@ -613,6 +613,8 @@ void janus_plugin_send_pli_stream(janus_plugin_session *plugin_session, int mind
 void janus_plugin_send_remb(janus_plugin_session *plugin_session, uint32_t bitrate);
 void janus_plugin_enable_bwe(janus_plugin_session *plugin_session);
 void janus_plugin_disable_bwe(janus_plugin_session *plugin_session);
+void janus_plugin_enable_probing(janus_plugin_session *plugin_session);
+void janus_plugin_disable_probing(janus_plugin_session *plugin_session);
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
 void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event);
@@ -630,6 +632,8 @@ static janus_callbacks janus_handler_plugin =
 		.send_remb = janus_plugin_send_remb,
 		.enable_bwe = janus_plugin_enable_bwe,
 		.disable_bwe = janus_plugin_disable_bwe,
+		.enable_probing = janus_plugin_enable_probing,
+		.disable_probing = janus_plugin_disable_probing,
 		.close_pc = janus_plugin_close_pc,
 		.end_session = janus_plugin_end_session,
 		.events_is_enabled = janus_events_is_enabled,
@@ -4276,6 +4280,22 @@ void janus_plugin_disable_bwe(janus_plugin_session *plugin_session) {
 			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
 	janus_ice_handle_disable_bwe(handle);
+}
+
+void janus_plugin_enable_probing(janus_plugin_session *plugin_session) {
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+		return;
+	janus_ice_handle_enable_probing(handle);
+}
+
+void janus_plugin_disable_probing(janus_plugin_session *plugin_session) {
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+		return;
+	janus_ice_handle_disable_probing(handle);
 }
 
 static gboolean janus_plugin_close_pc_internal(gpointer user_data) {

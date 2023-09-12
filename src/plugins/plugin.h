@@ -413,6 +413,15 @@ struct janus_callbacks {
 	/*! \brief Get rid of the bandwidth estimation context for this session
 	 * @param[in] handle The plugin/gateway session to disnable BWE for */
 	void (* const disable_bwe)(janus_plugin_session *handle);
+	/*! \brief Enable bandwidth probing for this session, for bandwidth estimation purposes
+	 * \note The request will be ignored if no BWE context is enabled for this session.
+	 * Also notice that probing may be paused at any time by the core, whether it
+	 * was enabled or not, e.g., in case congestion or losses are detected
+	 * @param[in] handle The plugin/gateway session to enable BWE probing for */
+	void (* const enable_probing)(janus_plugin_session *handle);
+	/*! \brief Disable bandwidth probing for this session
+	 * @param[in] handle The plugin/gateway session to disnable BWE probing for */
+	void (* const disable_probing)(janus_plugin_session *handle);
 
 	/*! \brief Callback to ask the core to close a WebRTC PeerConnection
 	 * \note A call to this method will result in the core invoking the hangup_media

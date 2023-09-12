@@ -1183,6 +1183,12 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 			/* Notify the caller that the substream changed */
 			context->changed_substream = TRUE;
 			context->last_relayed = now;
+		} else if(context->substream_target_bwe != -1 && context->substream > target && substream < context->substream) {
+			/* We need to go down because of BWE, don't wait for a keyframe */
+			context->substream = substream;
+			/* Notify the caller that the substream changed */
+			context->changed_substream = TRUE;
+			context->last_relayed = now;
 		}
 	}
 	/* If we haven't received our desired substream yet, let's drop temporarily */

@@ -475,6 +475,8 @@ static janus_ice_queued_packet
 	janus_ice_media_stopped,
 	janus_ice_enable_bwe,
 	janus_ice_disable_bwe,
+	janus_ice_enable_probing,
+	janus_ice_disable_probing,
 	janus_ice_hangup_peerconnection,
 	janus_ice_detach_handle,
 	janus_ice_data_ready;
@@ -654,8 +656,8 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 	if(pkt == NULL || pkt == &janus_ice_start_gathering ||
 			pkt == &janus_ice_add_candidates ||
 			pkt == &janus_ice_dtls_handshake ||
-			pkt == &janus_ice_enable_bwe ||
-			pkt == &janus_ice_disable_bwe ||
+			pkt == &janus_ice_enable_bwe || pkt == &janus_ice_disable_bwe ||
+			pkt == &janus_ice_enable_probing || pkt == &janus_ice_disable_probing ||
 			pkt == &janus_ice_media_stopped ||
 			pkt == &janus_ice_hangup_peerconnection ||
 			pkt == &janus_ice_detach_handle ||
@@ -3901,6 +3903,30 @@ void janus_ice_handle_disable_bwe(janus_ice_handle *handle) {
 	}
 }
 
+void janus_ice_handle_enable_probing(janus_ice_handle *handle) {
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Enabling bandwidth probing\n", handle->handle_id);
+	if(handle->queued_packets != NULL) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_enable_probing);
+#else
+		g_async_queue_push(handle->queued_packets, &janus_ice_enable_probing);
+#endif
+		g_main_context_wakeup(handle->mainctx);
+	}
+}
+
+void janus_ice_handle_disable_probing(janus_ice_handle *handle) {
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Disabling bandwidth probing\n", handle->handle_id);
+	if(handle->queued_packets != NULL) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_disable_probing);
+#else
+		g_async_queue_push(handle->queued_packets, &janus_ice_disable_probing);
+#endif
+		g_main_context_wakeup(handle->mainctx);
+	}
+}
+
 static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_peerconnection_medium *medium, janus_ice_queued_packet *packet) {
 	if(handle == NULL || handle->pc == NULL || medium == NULL || packet == NULL || packet->data == NULL)
 		return;
@@ -4512,7 +4538,7 @@ static gboolean janus_ice_outgoing_probing_handle(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	janus_ice_peerconnection *pc = handle->pc;
 	janus_ice_peerconnection_medium *medium = NULL;
-	if(pc == NULL || pc->bwe == NULL)
+	if(pc == NULL || pc->bwe == NULL || pc->bwe->probing_duplicates == 0)
 		return G_SOURCE_CONTINUE;
 	/* This callback is for regularly sending probing for the bandwidth estimator */
 	if(pc->bwe->status != janus_bwe_status_start && pc->bwe->status != janus_bwe_status_regular) {
@@ -4546,10 +4572,10 @@ static gboolean janus_ice_outgoing_probing_handle(gpointer user_data) {
 	}
 	/* FIXME We have a packet we can retransmit for probing purposes, enqueue it N times */
 	JANUS_LOG(LOG_WARN, "[%"SCNu64"] Scheduling %u for retransmission (probing)\n", handle->handle_id, seqnr);
-	int i = 0, n = 20;
+	int i = 0;
 	uint32_t enqueued = 0;
 	gint64 now = janus_get_monotonic_time();
-	for(i=0; i<n; i++) {
+	for(i=0; i < pc->bwe->probing_duplicates; i++) {
 		p->last_retransmit = now;
 		/* Enqueue it */
 		janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
@@ -4585,7 +4611,7 @@ static gboolean janus_ice_outgoing_probing_handle(gpointer user_data) {
 		enqueued += p->length+SRTP_MAX_TAG_LEN;
 	}
 	JANUS_LOG(LOG_WARN, "[%"SCNu64"]   -- Enqueued %d duplicates (%"SCNu32" bytes, %"SCNu32" kbps)\n",
-		handle->handle_id, n, enqueued, (enqueued/1000)*8);
+		handle->handle_id, pc->bwe->probing_duplicates, enqueued, (enqueued/1000)*8);
 	/* TODO */
 	return G_SOURCE_CONTINUE;
 }
@@ -4647,21 +4673,19 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		/* Create a new bandwidth estimation context for this handle */
 		if(pc == NULL || pc->bwe != NULL)
 			return G_SOURCE_CONTINUE;
+		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling bandwidth estimation\n", handle->handle_id);
 		pc->bwe = janus_bwe_context_create();
-		/* Let's create a source for BWE and one for probing */
+		/* Let's create a source for BWE */
 		handle->bwe_source = g_timeout_source_new(1000);
 		g_source_set_priority(handle->bwe_source, G_PRIORITY_DEFAULT);
 		g_source_set_callback(handle->bwe_source, janus_ice_outgoing_bwe_handle, handle, NULL);
 		g_source_attach(handle->bwe_source, handle->mainctx);
-		handle->probing_source = g_timeout_source_new(500);
-		g_source_set_priority(handle->probing_source, G_PRIORITY_DEFAULT);
-		g_source_set_callback(handle->probing_source, janus_ice_outgoing_probing_handle, handle, NULL);
-		g_source_attach(handle->probing_source, handle->mainctx);
 		return G_SOURCE_CONTINUE;
 	} else if(pkt == &janus_ice_disable_bwe) {
 		/* We need to get rif of the bandwidth estimator */
 		if(pc == NULL || pc->bwe == NULL)
 			return G_SOURCE_CONTINUE;
+		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Disabling bandwidth estimation\n", handle->handle_id);
 		if(handle->bwe_source) {
 			g_source_destroy(handle->bwe_source);
 			g_source_unref(handle->bwe_source);
@@ -4674,6 +4698,29 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		}
 		janus_bwe_context_destroy(pc->bwe);
 		pc->bwe = NULL;
+		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_enable_probing) {
+		/* Enable probing for the BWE context (assuming BWE is active) */
+		if(pc == NULL || pc->bwe == NULL || handle->probing_source != NULL)
+			return G_SOURCE_CONTINUE;
+		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling bandwidth probing\n", handle->handle_id);
+		/* Let's create a source for probing */
+		pc->bwe->probing_duplicates = 20;	/* FIXME */
+		handle->probing_source = g_timeout_source_new(500);
+		g_source_set_priority(handle->probing_source, G_PRIORITY_DEFAULT);
+		g_source_set_callback(handle->probing_source, janus_ice_outgoing_probing_handle, handle, NULL);
+		g_source_attach(handle->probing_source, handle->mainctx);
+		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_disable_probing) {
+		/* We need to get rif of the bandwidth probing */
+		if(pc == NULL || pc->bwe == NULL)
+			return G_SOURCE_CONTINUE;
+		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Disabling bandwidth probing\n", handle->handle_id);
+		if(handle->probing_source) {
+			g_source_destroy(handle->probing_source);
+			g_source_unref(handle->probing_source);
+			handle->probing_source = NULL;
+		}
 		return G_SOURCE_CONTINUE;
 	} else if(pkt == &janus_ice_media_stopped) {
 		/* Some media has been disabled on the way in, so use the callback to notify the peer */

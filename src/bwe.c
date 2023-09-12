@@ -57,6 +57,7 @@ janus_bwe_context *janus_bwe_context_create(void) {
 	/* FIXME */
 	bwe->packets = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_bwe_twcc_inflight_destroy);
 	bwe->probing_mindex = -1;
+	bwe->probing_duplicates = 20;	/* FIXME */
 	return bwe;
 }
 
@@ -175,8 +176,11 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 			if(bwe->status == janus_bwe_status_recovering) {
 				/* FIXME Still recovering */
 				if(now - bwe->status_changed >= 5*G_USEC_PER_SEC) {
+					/* FIXME Recovery ended, let's assume everything is fine now */
 					bwe->status = janus_bwe_status_regular;
 					bwe->status_changed = now;
+					/* Restore probing but incrementally */
+					bwe->probing_duplicates = 1;
 				} else {
 					/* FIXME Keep converging to the estimate */
 					if(estimate > bwe->estimate)
@@ -191,6 +195,8 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 					bwe->estimate = estimate;
 				else if(now - bwe->status_changed < 10*G_USEC_PER_SEC)
 					bwe->estimate = ((double)bwe->estimate * 1.02);
+				if(bwe->probing_duplicates < 20)	/* FIXME */
+					bwe->probing_duplicates++;
 			}
 		}
 		bwe->avg_delay = avg_delay;
