@@ -4538,7 +4538,7 @@ static gboolean janus_ice_outgoing_probing_handle(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	janus_ice_peerconnection *pc = handle->pc;
 	janus_ice_peerconnection_medium *medium = NULL;
-	if(pc == NULL || pc->bwe == NULL || pc->bwe->probing_duplicates == 0)
+	if(pc == NULL || pc->bwe == NULL || pc->bwe->probing_target == 0)
 		return G_SOURCE_CONTINUE;
 	/* This callback is for regularly sending probing for the bandwidth estimator */
 	if(pc->bwe->status != janus_bwe_status_start && pc->bwe->status != janus_bwe_status_regular) {
@@ -4570,12 +4570,43 @@ static gboolean janus_ice_outgoing_probing_handle(gpointer user_data) {
 		/* We don't have a probing packet to send */
 		return G_SOURCE_CONTINUE;
 	}
+	/* Check how many duplicates we have to send of this packet */
+	if(pc->bwe->probing_count == 20) {
+		pc->bwe->probing_count = 0;
+		pc->bwe->probing_sent = 0;
+		pc->bwe->probing_portion = 0.0;
+	}
+	pc->bwe->probing_count++;
+	uint32_t required = pc->bwe->probing_target;
+	if(pc->bwe->probing_part > 0)
+		required = required / pc->bwe->probing_part;
+	if(pc->bwe->probing_sent >= required) {
+		/* We sent enough for this round */
+		return G_SOURCE_CONTINUE;
+	}
+	uint32_t required_now = required / (8 * 20);
+	//~ if(pc->bwe->probing_count == 20)
+		//~ required_now = (pc->bwe->probing_target - pc->bwe->probing_sent) / 8;
+	double prev_portion = pc->bwe->probing_portion;
+	double portion = (double)required_now / (double)(p->length+SRTP_MAX_TAG_LEN);
+	double new_portion = prev_portion + portion;
+	int duplicates = (int)(new_portion);
+	if(new_portion - (double)duplicates > 0.5)
+		duplicates++;
+	if(duplicates == 0) {
+		/* Skip this round, we'll send something later */
+		pc->bwe->probing_portion = new_portion;
+		return G_SOURCE_CONTINUE;
+	}
+	pc->bwe->probing_portion = ((double)duplicates < new_portion) ?
+		(new_portion - (double)duplicates) : 0;
 	/* FIXME We have a packet we can retransmit for probing purposes, enqueue it N times */
-	JANUS_LOG(LOG_WARN, "[%"SCNu64"] Scheduling %u for retransmission (probing)\n", handle->handle_id, seqnr);
+	JANUS_LOG(LOG_WARN, "[%"SCNu64"] #%d: Scheduling %u for retransmission (probing, pkt_size=%d)\n",
+		handle->handle_id, (pc->bwe->probing_count - 1), seqnr, p->length+SRTP_MAX_TAG_LEN);
 	int i = 0;
 	uint32_t enqueued = 0;
 	gint64 now = janus_get_monotonic_time();
-	for(i=0; i < pc->bwe->probing_duplicates; i++) {
+	for(i=0; i < duplicates; i++) {
 		p->last_retransmit = now;
 		/* Enqueue it */
 		janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
@@ -4610,9 +4641,10 @@ static gboolean janus_ice_outgoing_probing_handle(gpointer user_data) {
 		}
 		enqueued += p->length+SRTP_MAX_TAG_LEN;
 	}
-	JANUS_LOG(LOG_WARN, "[%"SCNu64"]   -- Enqueued %d duplicates (%"SCNu32" bytes, %"SCNu32" kbps)\n",
-		handle->handle_id, pc->bwe->probing_duplicates, enqueued, (enqueued/1000)*8);
-	/* TODO */
+	pc->bwe->probing_sent += (enqueued * 8);
+	JANUS_LOG(LOG_WARN, "[%"SCNu64"]   -- Enqueued %d duplicates (%"SCNu32" bytes, %"SCNu32" kbps; sent=%"SCNu32"/%"SCNu32")\n",
+		handle->handle_id, duplicates, enqueued, (enqueued/1000)*8, pc->bwe->probing_sent, required);
+	/* Done */
 	return G_SOURCE_CONTINUE;
 }
 
@@ -4705,8 +4737,11 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			return G_SOURCE_CONTINUE;
 		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling bandwidth probing\n", handle->handle_id);
 		/* Let's create a source for probing */
-		pc->bwe->probing_duplicates = 20;	/* FIXME */
-		handle->probing_source = g_timeout_source_new(500);
+		pc->bwe->probing_target = 200000;	/* FIXME */
+		pc->bwe->probing_count = 0;	/* FIXME */
+		pc->bwe->probing_sent = 0;	/* FIXME */
+		pc->bwe->probing_part = 0;	/* FIXME */
+		handle->probing_source = g_timeout_source_new(50);
 		g_source_set_priority(handle->probing_source, G_PRIORITY_DEFAULT);
 		g_source_set_callback(handle->probing_source, janus_ice_outgoing_probing_handle, handle, NULL);
 		g_source_attach(handle->probing_source, handle->mainctx);
