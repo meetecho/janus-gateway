@@ -4522,10 +4522,9 @@ static gboolean janus_ice_outgoing_bwe_handle(gpointer user_data) {
 	janus_ice_peerconnection *pc = handle->pc;
 	if(pc == NULL || pc->bwe == NULL)
 		return G_SOURCE_CONTINUE;
-	/* This callback is for updating the state of the bandwidth estimator */
-	janus_bwe_context_update(pc->bwe);
-	if(pc->bwe->estimate > 0) {
+	if(pc->bwe->notify_plugin) {
 		/* Notify the plugin about the current value */
+		pc->bwe->notify_plugin = FALSE;
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		if(plugin && plugin->estimated_bandwidth && janus_plugin_session_is_alive(handle->app_handle) &&
 				!g_atomic_int_get(&handle->destroyed))
@@ -4601,7 +4600,7 @@ static gboolean janus_ice_outgoing_probing_handle(gpointer user_data) {
 	pc->bwe->probing_portion = ((double)duplicates < new_portion) ?
 		(new_portion - (double)duplicates) : 0;
 	/* FIXME We have a packet we can retransmit for probing purposes, enqueue it N times */
-	JANUS_LOG(LOG_WARN, "[%"SCNu64"] #%d: Scheduling %u for retransmission (probing, pkt_size=%d)\n",
+	JANUS_LOG(LOG_DBG, "[%"SCNu64"] #%d: Scheduling %u for retransmission (probing, pkt_size=%d)\n",
 		handle->handle_id, (pc->bwe->probing_count - 1), seqnr, p->length+SRTP_MAX_TAG_LEN);
 	int i = 0;
 	uint32_t enqueued = 0;
@@ -4642,7 +4641,7 @@ static gboolean janus_ice_outgoing_probing_handle(gpointer user_data) {
 		enqueued += p->length+SRTP_MAX_TAG_LEN;
 	}
 	pc->bwe->probing_sent += (enqueued * 8);
-	JANUS_LOG(LOG_WARN, "[%"SCNu64"]   -- Enqueued %d duplicates (%"SCNu32" bytes, %"SCNu32" kbps; sent=%"SCNu32"/%"SCNu32")\n",
+	JANUS_LOG(LOG_DBG, "[%"SCNu64"]   -- Enqueued %d duplicates (%"SCNu32" bytes, %"SCNu32" kbps; sent=%"SCNu32"/%"SCNu32")\n",
 		handle->handle_id, duplicates, enqueued, (enqueued/1000)*8, pc->bwe->probing_sent, required);
 	/* Done */
 	return G_SOURCE_CONTINUE;
@@ -4707,8 +4706,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			return G_SOURCE_CONTINUE;
 		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling bandwidth estimation\n", handle->handle_id);
 		pc->bwe = janus_bwe_context_create();
-		/* Let's create a source for BWE */
-		handle->bwe_source = g_timeout_source_new(1000);
+		/* Let's create a source for BWE, just used to figure out when to notify the plugin */
+		handle->bwe_source = g_timeout_source_new(50);	/* FIXME */
 		g_source_set_priority(handle->bwe_source, G_PRIORITY_DEFAULT);
 		g_source_set_callback(handle->bwe_source, janus_ice_outgoing_bwe_handle, handle, NULL);
 		g_source_attach(handle->bwe_source, handle->mainctx);

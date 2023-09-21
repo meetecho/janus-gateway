@@ -8473,13 +8473,13 @@ void janus_videoroom_estimated_bandwidth(janus_plugin_session *handle, uint32_t 
 											estimate = 0;
 											JANUS_LOG(LOG_WARN, "Insufficient bandwidth for simulcast stream %d (video)\n", s->mindex);
 										} else {
-											estimate -= ps->bitrates->bitrate[target];
 											if(s->sim_context.substream_target_bwe == -1 || s->sim_context.substream_target_bwe > new_substream ||
 													s->sim_context.templayer_target_bwe == -1 || s->sim_context.templayer_target_bwe > new_templayer) {
-												JANUS_LOG(LOG_WARN, "Insufficient bandwidth for simulcast %d/%d of stream %d (video), switching to %d/%d\n",
-													substream, templayer, s->mindex, new_substream, new_templayer);
+												JANUS_LOG(LOG_WARN, "Insufficient bandwidth for simulcast %d/%d of stream %d (%"SCNu32" < %"SCNu32"), switching to %d/%d\n",
+													substream, templayer, s->mindex, estimate, ps->bitrates->bitrate[target], new_substream, new_templayer);
 												/* FIXME */
 											}
+											estimate -= ps->bitrates->bitrate[target];
 											s->sim_context.substream_target_bwe = new_substream;
 											s->sim_context.templayer_target_bwe = new_templayer;
 										}

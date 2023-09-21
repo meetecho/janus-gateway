@@ -317,6 +317,8 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_bwe_
 		iter = iter->next;
 	}
 	g_list_free(list);
+	/* This callback is for updating the state of the bandwidth estimator */
+	janus_bwe_context_update(bwe);
 }
 
 /* Link quality estimate filter coefficient */
