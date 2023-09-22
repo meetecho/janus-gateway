@@ -297,7 +297,7 @@ declare namespace JanusJS {
 			medium: number;
 			high: number;
 		};
-		sendEncodings?: RTCRtpEncodingParameters;
+		sendEncodings?: RTCRtpEncodingParameters[];
 		framerate?: number;
 		bitrate?: number;
 		dontStop?: boolean;
