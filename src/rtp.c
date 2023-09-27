@@ -1245,9 +1245,11 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 			context->temporal_last = tid;
 			if(!relay)
 				return FALSE;
-			if(context->templayer != target && tid == target) {
+			if(context->templayer != target && (tid == target ||
+					(target > tid && context->templayer < tid) ||
+					(target < tid && context->templayer > tid))) {
 				/* FIXME We should be smarter in deciding when to switch */
-				context->templayer = target;
+				context->templayer = tid;
 				/* Notify the caller that the temporal layer changed */
 				context->changed_temporal = TRUE;
 			}
