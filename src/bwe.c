@@ -58,7 +58,16 @@ janus_bwe_context *janus_bwe_context_create(void) {
 	bwe->packets = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_bwe_twcc_inflight_destroy);
 	bwe->sent = janus_bwe_stream_bitrate_create();
 	bwe->acked = janus_bwe_stream_bitrate_create();
+	bwe->delays = janus_bwe_delay_tracker_create(0);
 	bwe->probing_mindex = -1;
+#ifdef BWE_DEBUGGING
+	char filename[256];
+	g_snprintf(filename, sizeof(filename), "/tmp/bwe-janus-%"SCNi64, janus_get_real_time());
+	bwe->csv = fopen(filename, "wt");
+	char line[2048];
+	g_snprintf(line, sizeof(line), "time,status,estimate,bitrate_out,rtx_out,probing_out,bitrate_in,rtx_in,probing_in,acked,lost,loss_ratio,avg_delay,avg_delay_fb\n");
+	fwrite(line, sizeof(char), strlen(line), bwe->csv);
+#endif
 	return bwe;
 }
 
@@ -68,6 +77,10 @@ void janus_bwe_context_destroy(janus_bwe_context *bwe) {
 		g_hash_table_destroy(bwe->packets);
 		janus_bwe_stream_bitrate_destroy(bwe->sent);
 		janus_bwe_stream_bitrate_destroy(bwe->acked);
+		janus_bwe_delay_tracker_destroy(bwe->delays);
+#ifdef BWE_DEBUGGING
+		fclose(bwe->csv);
+#endif
 		g_free(bwe);
 	}
 }
@@ -156,13 +169,19 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 	uint32_t rtx_in = bwe->acked->packets[janus_bwe_packet_type_rtx*3] ? bwe->acked->bitrate[janus_bwe_packet_type_rtx*3] : 0;
 	uint32_t probing_in = bwe->acked->packets[janus_bwe_packet_type_probing*3] ? bwe->acked->bitrate[janus_bwe_packet_type_probing*3] : 0;
 	uint32_t bitrate_in = rtx_in + probing_in + (bwe->acked->packets[0] ? bwe->acked->bitrate[0] : 0);
-	/* TODO Actually estimate the bitrate: now we're just checking how
-	 * much the peer received out of what we sent, which is not enough */
+	/* Get the average delay */
+	double avg_delay_latest = ((double)bwe->delay / (double)bwe->received_pkts) / 1000;
+	janus_bwe_delay_tracker_update(bwe->delays, now, avg_delay_latest);
+	int dts = bwe->delays->queue ? g_queue_get_length(bwe->delays->queue) : 0;
+	if(dts == 0)
+		dts = 1;
+	double avg_delay = bwe->delays->sum / (double)dts;
+	JANUS_LOG(LOG_WARN, "%.2f / %d = %.2f (%.2f)\n", bwe->delays->sum, dts, avg_delay, avg_delay_latest);
+	/* FIXME Estimate the bandwidth */
 	uint32_t estimate = bitrate_in;
 	uint16_t tot = bwe->received_pkts + bwe->lost_pkts;
 	if(tot > 0)
 		bwe->loss_ratio = (double)bwe->lost_pkts / (double)tot;
-	double avg_delay = ((double)bwe->delay / (double)bwe->received_pkts) / 1000;
 	/* Check if there's packet loss or congestion */
 	if(bwe->loss_ratio > 0.05) {
 		/* FIXME Lossy network? Set the estimate to the acknowledged bitrate */
@@ -171,21 +190,30 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 		bwe->status = janus_bwe_status_lossy;
 		bwe->status_changed = now;
 		bwe->estimate = estimate;
-	} else if(bwe->avg_delay > 0 && avg_delay - bwe->avg_delay > 1.0) {
-		/* FIXME Delay is increasing, converge to acknowledged bitrate */
-		if(bwe->status != janus_bwe_status_lossy && bwe->status != janus_bwe_status_congested)
-			notify_plugin = TRUE;
-		bwe->status = janus_bwe_status_congested;
-		bwe->status_changed = now;
-		//~ if(estimate > bwe->estimate)
-			bwe->estimate = estimate;
-		//~ else
-			//~ bwe->estimate = ((double)bwe->estimate * 0.8) + ((double)estimate * 0.2);
+	} else if(avg_delay < 0) {
+		/* FIXME Average delay is negative, let's reset the delay increase counter */
+		bwe->delay_increases = 0;
+	} else if(bwe->avg_delay > 0 && avg_delay - bwe->avg_delay > 0.2) {
+		/* FIXME Delay is increasing */
+		bwe->delay_increases++;
+		if(bwe->delay_increases >= 4) {
+			bwe->delay_increases = 0;
+			/* FIXME Converge to acknowledged bitrate */
+			if(bwe->status != janus_bwe_status_lossy && bwe->status != janus_bwe_status_congested)
+				notify_plugin = TRUE;
+			bwe->status = janus_bwe_status_congested;
+			bwe->status_changed = now;
+			//~ if(estimate > bwe->estimate)
+				bwe->estimate = estimate;
+			//~ else
+				//~ bwe->estimate = ((double)bwe->estimate * 0.8) + ((double)estimate * 0.2);
+		}
 	} else {
 		/* FIXME All is fine? Check what state we're in */
 		if(bwe->status == janus_bwe_status_lossy || bwe->status == janus_bwe_status_congested) {
 			bwe->status = janus_bwe_status_recovering;
 			bwe->status_changed = now;
+			bwe->delay_increases = 0;
 		}
 		if(bwe->status == janus_bwe_status_recovering) {
 			/* FIXME Still recovering */
@@ -221,6 +249,16 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 		now, janus_bwe_status_description(bwe->status),
 		bitrate_out / 1024, probing_out / 1024, bitrate_in / 1024, probing_in / 1024,
 		bwe->loss_ratio, bwe->avg_delay, bwe->estimate);
+#ifdef BWE_DEBUGGING
+	/* Save the details to CSV */
+	char line[2048];
+	g_snprintf(line, sizeof(line), "%"SCNi64",%d,%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu16",%"SCNu16",%.2f,%.2f,%.2f\n",
+		now - bwe->started, bwe->status,
+		bwe->estimate, bitrate_out, rtx_out, probing_out, bitrate_in, rtx_in, probing_in,
+		bwe->received_pkts, bwe->lost_pkts, bwe->loss_ratio, bwe->avg_delay, avg_delay_latest);
+	fwrite(line, sizeof(char), strlen(line), bwe->csv);
+#endif
+	/* Reset values */
 	bwe->delay = 0;
 	bwe->received_pkts = 0;
 	bwe->lost_pkts = 0;
@@ -284,4 +322,38 @@ void janus_bwe_stream_bitrate_destroy(janus_bwe_stream_bitrate *bwe_sb) {
 	janus_mutex_unlock(&bwe_sb->mutex);
 	janus_mutex_destroy(&bwe_sb->mutex);
 	g_free(bwe_sb);
+}
+
+janus_bwe_delay_tracker *janus_bwe_delay_tracker_create(int64_t keep_ts) {
+	janus_bwe_delay_tracker *dt = g_malloc0(sizeof(janus_bwe_delay_tracker));
+	dt->keep_ts = (keep_ts > 0 ? keep_ts : G_USEC_PER_SEC);
+	return dt;
+}
+
+void janus_bwe_delay_tracker_update(janus_bwe_delay_tracker *dt, int64_t when, double avg_delay) {
+	if(dt == NULL)
+		return;
+	if(dt->queue == NULL)
+		dt->queue = g_queue_new();
+	/* Check if we need to get rid of some old feedback */
+	int64_t cleanup_ts = when - dt->keep_ts;
+	janus_bwe_delay_fb *fb = g_queue_peek_head(dt->queue);
+	while(fb && fb->sent_ts < cleanup_ts) {
+		fb = g_queue_pop_head(dt->queue);
+		dt->sum -= fb->avg_delay;
+		g_free(fb);
+		fb = g_queue_peek_head(dt->queue);
+	}
+	/* Check if there's anything new we need to add now */
+	fb = g_malloc(sizeof(janus_bwe_delay_fb));
+	fb->sent_ts = when;
+	fb->avg_delay = avg_delay;
+	dt->sum += avg_delay;
+	g_queue_push_tail(dt->queue, fb);
+}
+
+void janus_bwe_delay_tracker_destroy(janus_bwe_delay_tracker *dt) {
+	if(dt && dt->queue)
+		g_queue_free_full(dt->queue, (GDestroyNotify)g_free);
+	g_free(dt);
 }

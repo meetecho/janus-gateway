@@ -16,6 +16,8 @@
 
 #include "mutex.h"
 
+#define BWE_DEBUGGING
+
 /*! \brief Tracker for a stream bitrate (whether it's simulcast/SVC or not) */
 typedef struct janus_bwe_stream_bitrate {
 	/*! \brief Time based queue of packet sizes */
@@ -47,6 +49,37 @@ typedef struct janus_bwe_stream_packet {
 	/*! \brief Size of packet */
 	uint16_t size;
 } janus_bwe_stream_packet;
+
+/*! \brief Tracker for a stream bitrate (whether it's simulcast/SVC or not) */
+typedef struct janus_bwe_delay_tracker {
+	/*! \brief Time based queue of delays */
+	GQueue *queue;
+	/*! \brief Current sum of average delays */
+	double sum;
+	/*! \brief How long to keep items in queue (1s by default) */
+	int64_t keep_ts;
+} janus_bwe_delay_tracker;
+/*! \brief Helper method to create a new janus_bwe_delay_tracker instance
+ * @note Passing 0 or a negative value for keep_ts will assume 1 second (G_USEC_PER_SEC)
+ * @param[im] keep_ts How long to keep items in queue
+ * @returns A janus_bwe_delay_tracker instance, if successful, or NULL otherwise */
+janus_bwe_delay_tracker *janus_bwe_delay_tracker_create(int64_t keep_ts);
+/*! \brief Helper method to update an existing janus_bwe_delay_tracker instance with new data
+ * @param[in] dt The janus_bwe_delay_tracker instance to update
+ * @param[in] when Timestamp of the average delay
+ * @param[in] avg_delay Average delay */
+void janus_bwe_delay_tracker_update(janus_bwe_delay_tracker *dt, int64_t when, double avg_delay);
+/*! \brief Helper method to destroy an existing janus_bwe_delay_tracker instance
+ * @param[in] dt The janus_bwe_delay_tracker instance to destroy */
+void janus_bwe_delay_tracker_destroy(janus_bwe_delay_tracker *dt);
+
+/*! \brief Instance of accumulated delay, from TWCC feedback */
+typedef struct janus_bwe_delay_fb {
+	/*! \brief Timestamp */
+	int64_t sent_ts;
+	/*! \brief Average delay */
+	double avg_delay;
+} janus_bwe_delay_fb;
 
 /*! \brief Transport Wide CC statuses */
 typedef enum janus_bwe_twcc_status {
@@ -130,8 +163,12 @@ typedef struct janus_bwe_context {
 	int64_t bitrate_ts;
 	/*! \brief Bitrate tracker for sent and acked packets */
 	janus_bwe_stream_bitrate *sent, *acked;
-	/*! \brief How much delay has been accumulated (may be negative) */
+	/*! \brief How much delay has been accumulated in the last feedback (may be negative) */
 	int64_t delay;
+	/*! \brief Accumulated delay over time */
+	janus_bwe_delay_tracker *delays;
+	/*! \brief Number of consecutive times delay increased */
+	uint8_t delay_increases;
 	/*! \brief Number of packets with a received status, and number of lost ones */
 	uint16_t received_pkts, lost_pkts;
 	/*! \brief Latest average delay */
@@ -144,6 +181,10 @@ typedef struct janus_bwe_context {
 	gboolean notify_plugin;
 	/*! \brief When we last notified the plugin */
 	int64_t last_notified;
+#ifdef BWE_DEBUGGING
+	/*! \brief CSV where we save the the debugging information */
+	FILE *csv;
+#endif
 } janus_bwe_context;
 /*! \brief Helper to create a new bandwidth estimation context
  * @returns a new janus_bwe_context instance, if successful, or NULL otherwise */
