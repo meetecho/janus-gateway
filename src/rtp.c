@@ -1229,8 +1229,10 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 	if(relay)
 		context->last_relayed = janus_get_monotonic_time();
 	/* Temporal layers are only easily available for some codecs */
+	int substream_target = target;
 	target = context->templayer_target;
-	if(context->templayer_target_bwe != -1 && context->templayer_target_bwe < target)
+	if(context->templayer_target_bwe != -1 && context->templayer_target_bwe < target &&
+			substream_target <= context->substream)
 		target = context->templayer_target_bwe;
 	if(vcodec == JANUS_VIDEOCODEC_VP8) {
 		/* Check if there's any temporal scalability to take into account */
