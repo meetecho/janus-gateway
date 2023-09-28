@@ -420,7 +420,10 @@ struct janus_callbacks {
 	 * @param[in] handle The plugin/gateway session to enable BWE probing for */
 	void (* const enable_probing)(janus_plugin_session *handle);
 	/*! \brief Disable bandwidth probing for this session
-	 * @param[in] handle The plugin/gateway session to disnable BWE probing for */
+	 * @param[in] handle The plugin/gateway session to disable BWE probing for */
+	void (* const defer_probing)(janus_plugin_session *handle);
+	/*! \brief Defers bandwidth probing for this session for a few seconds
+	 * @param[in] handle The plugin/gateway session to defer BWE probing for */
 	void (* const disable_probing)(janus_plugin_session *handle);
 
 	/*! \brief Callback to ask the core to close a WebRTC PeerConnection

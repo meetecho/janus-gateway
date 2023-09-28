@@ -12460,6 +12460,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				} else {
 					/* We're not receiving what we need, start probing (if we weren't already) */
 					gateway->enable_probing(subscriber->session->handle);
+					gateway->defer_probing(subscriber->session->handle);
 				}
 			}
 			/* If we got here, update the RTP header and send the packet */

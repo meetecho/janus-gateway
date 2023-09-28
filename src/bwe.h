@@ -151,8 +151,10 @@ typedef struct janus_bwe_context {
 	uint8_t probing_count;
 	/*! \brief Portion of probing we didn't manage to send the previous round */
 	double probing_portion;
+	/*! \brief In case probing was deferred, when it shoult restart */
+	int64_t probing_deferred;
 	/*! \brief Whether probing should grow incrementally (e.g., after recovery) */
-	uint8_t probing_part;
+	uint16_t probing_part;
 	/*! \brief Monotonic timestamp of the last sent packet */
 	int64_t last_sent_ts;
 	/*! \brief Last twcc seq number of a received packet */
@@ -167,8 +169,6 @@ typedef struct janus_bwe_context {
 	int64_t delay;
 	/*! \brief Accumulated delay over time */
 	janus_bwe_delay_tracker *delays;
-	/*! \brief Number of consecutive times delay increased */
-	uint8_t delay_increases;
 	/*! \brief Number of packets with a received status, and number of lost ones */
 	uint16_t received_pkts, lost_pkts;
 	/*! \brief Latest average delay */

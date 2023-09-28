@@ -476,6 +476,7 @@ static janus_ice_queued_packet
 	janus_ice_enable_bwe,
 	janus_ice_disable_bwe,
 	janus_ice_enable_probing,
+	janus_ice_defer_probing,
 	janus_ice_disable_probing,
 	janus_ice_hangup_peerconnection,
 	janus_ice_detach_handle,
@@ -657,7 +658,7 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 			pkt == &janus_ice_add_candidates ||
 			pkt == &janus_ice_dtls_handshake ||
 			pkt == &janus_ice_enable_bwe || pkt == &janus_ice_disable_bwe ||
-			pkt == &janus_ice_enable_probing || pkt == &janus_ice_disable_probing ||
+			pkt == &janus_ice_enable_probing || pkt == &janus_ice_defer_probing || pkt == &janus_ice_disable_probing ||
 			pkt == &janus_ice_media_stopped ||
 			pkt == &janus_ice_hangup_peerconnection ||
 			pkt == &janus_ice_detach_handle ||
@@ -3915,6 +3916,18 @@ void janus_ice_handle_enable_probing(janus_ice_handle *handle) {
 	}
 }
 
+void janus_ice_handle_defer_probing(janus_ice_handle *handle) {
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Deferring bandwidth probing\n", handle->handle_id);
+	if(handle->queued_packets != NULL) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_defer_probing);
+#else
+		g_async_queue_push(handle->queued_packets, &janus_ice_defer_probing);
+#endif
+		g_main_context_wakeup(handle->mainctx);
+	}
+}
+
 void janus_ice_handle_disable_probing(janus_ice_handle *handle) {
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Disabling bandwidth probing\n", handle->handle_id);
 	if(handle->queued_packets != NULL) {
@@ -4544,6 +4557,14 @@ static gboolean janus_ice_outgoing_probing_handle(gpointer user_data) {
 		/* The BWE status may be lossy, congested, or recovering: don't probe for now */
 		return G_SOURCE_CONTINUE;
 	}
+	gint64 now = janus_get_monotonic_time();
+	if(pc->bwe->probing_deferred > 0) {
+		if(now < pc->bwe->probing_deferred) {
+			/* The probing has been deferred for a few seconds */
+			return G_SOURCE_CONTINUE;
+		}
+		pc->bwe->probing_deferred = 0;
+	}
 	/* Get the medium instance we'll use for probing */
 	if(pc->bwe->probing_mindex != -1)
 		medium = g_hash_table_lookup(pc->media, GINT_TO_POINTER(pc->bwe->probing_mindex));
@@ -4604,7 +4625,6 @@ static gboolean janus_ice_outgoing_probing_handle(gpointer user_data) {
 		handle->handle_id, (pc->bwe->probing_count - 1), seqnr, p->length+SRTP_MAX_TAG_LEN);
 	int i = 0;
 	uint32_t enqueued = 0;
-	gint64 now = janus_get_monotonic_time();
 	for(i=0; i < duplicates; i++) {
 		p->last_retransmit = now;
 		/* Enqueue it */
@@ -4737,16 +4757,29 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling bandwidth probing\n", handle->handle_id);
 		/* Let's create a source for probing */
 		pc->bwe->probing_target = 200000;	/* FIXME */
-		pc->bwe->probing_count = 0;	/* FIXME */
-		pc->bwe->probing_sent = 0;	/* FIXME */
-		pc->bwe->probing_part = 0;	/* FIXME */
+		pc->bwe->probing_count = 0;
+		pc->bwe->probing_sent = 0;
+		pc->bwe->probing_portion = 0.0;
+		pc->bwe->probing_part = 100;	/* FIXME */
 		handle->probing_source = g_timeout_source_new(50);
 		g_source_set_priority(handle->probing_source, G_PRIORITY_DEFAULT);
 		g_source_set_callback(handle->probing_source, janus_ice_outgoing_probing_handle, handle, NULL);
 		g_source_attach(handle->probing_source, handle->mainctx);
 		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_defer_probing) {
+		/* We need to temporarily pause bandwidth probing */
+		if(pc == NULL || pc->bwe == NULL || handle->probing_source == NULL)
+			return G_SOURCE_CONTINUE;
+		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Deferring bandwidth probing\n", handle->handle_id);
+		gint64 deferred = janus_get_monotonic_time() + G_USEC_PER_SEC;
+		if(deferred > pc->bwe->probing_deferred)
+			pc->bwe->probing_deferred = deferred;
+		pc->bwe->probing_sent = 0;
+		pc->bwe->probing_portion = 0.0;
+		pc->bwe->probing_part = 100;	/* FIXME */
+		return G_SOURCE_CONTINUE;
 	} else if(pkt == &janus_ice_disable_probing) {
-		/* We need to get rif of the bandwidth probing */
+		/* We need to get rid of the bandwidth probing */
 		if(pc == NULL || pc->bwe == NULL)
 			return G_SOURCE_CONTINUE;
 		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Disabling bandwidth probing\n", handle->handle_id);
