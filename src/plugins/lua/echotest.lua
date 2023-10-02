@@ -7,9 +7,9 @@ json = require('json')
 -- We also import our own SDP helper utilities: you may have better ones
 sdp = require('janus-sdp')
 -- Let's also use our ugly stdout logger just for the fun of it: to add
--- some color to the text we use the lua-trm library
+-- some color to the text we use the lua-term library
 -- (https://github.com/hoelzro/lua-term)
-colors = require "term.colors"
+colors = require('term.colors')
 logger = require('janus-logger')
 
 -- Example details
