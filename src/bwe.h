@@ -145,16 +145,16 @@ typedef struct janus_bwe_context {
 	int64_t status_changed;
 	/*! \brief Index of the m-line we're using for probing */
 	int probing_mindex;
-	/*! \brief How much we should aim for with out probing (and how much we sent in a second) */
-	uint32_t probing_target, probing_sent;
+	/*! \brief How much we should aim for with out probing (and how much to increase, plus much we sent in a second) */
+	uint32_t probing_target, probing_buildup, probing_sent;
 	/*! \brief How many times we went through probing in a second */
 	uint8_t probing_count;
 	/*! \brief Portion of probing we didn't manage to send the previous round */
 	double probing_portion;
 	/*! \brief In case probing was deferred, when it shoult restart */
 	int64_t probing_deferred;
-	/*! \brief Whether probing should grow incrementally (e.g., after recovery) */
-	uint16_t probing_part;
+	/*! \brief Timer for building up probing */
+	int64_t probing_buildup_timer;
 	/*! \brief Monotonic timestamp of the last sent packet */
 	int64_t last_sent_ts;
 	/*! \brief Last twcc seq number of a received packet */

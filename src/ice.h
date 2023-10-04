@@ -374,7 +374,7 @@ struct janus_ice_handle {
 	/*! \brief GLib thread for the handle and libnice */
 	GThread *thread;
 	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats (and optionally TWCC/BWE/probing) */
-	GSource *rtp_source, *rtcp_source, *stats_source, *twcc_source, *bwe_source, *probing_source;
+	GSource *rtp_source, *rtcp_source, *stats_source, *twcc_source, *bwe_source;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
@@ -409,6 +409,8 @@ struct janus_ice_handle {
 	gint last_srtp_error, last_srtp_summary;
 	/*! \brief Count of how many seconds passed since the last stats passed to event handlers */
 	gint last_event_stats;
+	/*! \brief Bandwidth estimation target, if any, as asked by the plugin */
+	uint32_t bwe_target;
 	/*! \brief Flag to decide whether or not packets need to be dumped to a text2pcap file */
 	volatile gint dump_packets;
 	/*! \brief In case this session must be saved to text2pcap, the instance to dump packets to */
@@ -524,7 +526,7 @@ struct janus_ice_peerconnection {
 	GHashTable *rtx_payload_types_rev;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gboolean noerrorlog;
-	/*! Bandwidth estimation context */
+	/*! \brief Bandwidth estimation context */
 	janus_bwe_context *bwe;
 	/*! \brief Mutex to lock/unlock this stream */
 	janus_mutex mutex;
@@ -790,18 +792,13 @@ void janus_ice_resend_trickles(janus_ice_handle *handle);
 /*! \brief Method to dynamically enable bandwidth estimation for a handle
  * @param[in] handle The Janus ICE handle this method refers to */
 void janus_ice_handle_enable_bwe(janus_ice_handle *handle);
+/*! \brief Method to dynamically tweak the bandwidth estimation target for a handle (for probing)
+ * @param[in] handle The Janus ICE handle this method refers to
+ * @param[in] bitrate The bitrate to target (will be used to generate probing) */
+void janus_ice_handle_set_bwe_target(janus_ice_handle *handle, uint32_t bitrate);
 /*! \brief Method to dynamically disable bandwidth estimation for a handle
  * @param[in] handle The Janus ICE handle this method refers to */
 void janus_ice_handle_disable_bwe(janus_ice_handle *handle);
-/*! \brief Method to dynamically enable bandwidth probing for a handle
- * @param[in] handle The Janus ICE handle this method refers to */
-void janus_ice_handle_enable_probing(janus_ice_handle *handle);
-/*! \brief Method to dynamically defer bandwidth probing for a handle for a few seconds
- * @param[in] handle The Janus ICE handle this method refers to */
-void janus_ice_handle_defer_probing(janus_ice_handle *handle);
-/*! \brief Method to dynamically disable bandwidth probing for a handle
- * @param[in] handle The Janus ICE handle this method refers to */
-void janus_ice_handle_disable_probing(janus_ice_handle *handle);
 ///@}
 
 

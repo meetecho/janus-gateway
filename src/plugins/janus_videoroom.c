@@ -2237,6 +2237,8 @@ typedef struct janus_videoroom_subscriber_stream {
 	janus_vp8_simulcast_context vp8_context;
 	/* SVC context */
 	janus_rtp_svc_context svc_context;
+	/* When we last dropped a layer because of BWE (to implement a cooldown period) */
+	gint64 last_bwe_drop;
 	/* Playout delays to enforce when relaying this stream, if the extension has been negotiated */
 	int16_t min_delay, max_delay;
 	volatile gint ready, destroyed;
@@ -8415,12 +8417,15 @@ void janus_videoroom_estimated_bandwidth(janus_plugin_session *handle, uint32_t 
 		JANUS_LOG(LOG_WARN, "[videoroom] BWE=%"SCNu32"\n", estimate);
 		janus_mutex_lock(&subscriber->streams_mutex);
 		GList *temp = subscriber->streams;
+		gint64 now = janus_get_monotonic_time();
 		while(temp) {
 			janus_videoroom_subscriber_stream *s = (janus_videoroom_subscriber_stream *)temp->data;
 			if(s->type == JANUS_VIDEOROOM_MEDIA_DATA) {
 				temp = temp->next;
 				continue;
 			}
+			if(s->last_bwe_drop > 0 && s->last_bwe_drop < now)
+				s->last_bwe_drop = 0;
 			GSList *list = s->publisher_streams;
 			if(list) {
 				janus_videoroom_publisher_stream *ps = list->data;
@@ -8436,7 +8441,7 @@ void janus_videoroom_estimated_bandwidth(janus_plugin_session *handle, uint32_t 
 						}
 					} else if(s->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 						if(ps->simulcast) {
-							JANUS_LOG(LOG_WARN, "current=%d/%d, target=%d/%d, bwe=%d/%d\n",
+							JANUS_LOG(LOG_DBG, "current=%d/%d, target=%d/%d, bwe=%d/%d\n",
 								s->sim_context.substream, s->sim_context.templayer,
 								s->sim_context.substream_target, s->sim_context.templayer_target,
 								s->sim_context.substream_target_bwe, s->sim_context.templayer_target_bwe);
@@ -8451,19 +8456,40 @@ void janus_videoroom_estimated_bandwidth(janus_plugin_session *handle, uint32_t 
 							int target = 3*substream + templayer;
 							if(target > 8)
 								target = 8;
-							if(ps->bitrates->packets[target] == NULL || estimate < ps->bitrates->bitrate[target]) {
+							/* Check if the target is actually available */
+							while(ps->bitrates->packets[target] == NULL) {
+								templayer--;
+								if(templayer < 0) {
+									substream--;
+									if(substream < 0) {
+										substream = 0;
+									} else {
+										templayer = 2;
+									}
+								}
+								target = 3*substream + templayer;
+							}
+							if(estimate < ps->bitrates->bitrate[target]) {
 								/* Unavailable layer, or we don't have room for these layers, find one below that fits */
 								if(target == 0) {
 									estimate = 0;
 									JANUS_LOG(LOG_WARN, "Insufficient bandwidth for simulcast stream %d (video)\n", s->mindex);
 								} else {
 									gboolean found = FALSE;
+									int old_target = target;
 									int new_substream = 0, new_templayer = 0;
 									while(target > 0) {
 										target--;
 										new_substream = target/3;
 										new_templayer = target%3;
 										if(ps->bitrates->packets[target] && estimate >= ps->bitrates->bitrate[target]) {
+											/* If we're going up, make sure we're not in the cooldown period */
+											if(s->sim_context.substream_target_bwe != -1 &&
+													new_substream > s->sim_context.substream_target_bwe &&
+													now < s->last_bwe_drop) {
+												/* We are, ignore this layer */
+												continue;
+											}
 											found = TRUE;
 											break;
 										}
@@ -8474,13 +8500,20 @@ void janus_videoroom_estimated_bandwidth(janus_plugin_session *handle, uint32_t 
 									} else {
 										if(s->sim_context.substream_target_bwe == -1 || s->sim_context.substream_target_bwe > new_substream ||
 												s->sim_context.templayer_target_bwe == -1 || s->sim_context.templayer_target_bwe > new_templayer) {
-											JANUS_LOG(LOG_WARN, "Insufficient bandwidth for simulcast %d/%d of stream %d (%"SCNu32" < %"SCNu32"), switching to %d/%d\n",
-												substream, templayer, s->mindex, estimate, ps->bitrates->bitrate[target], new_substream, new_templayer);
-											/* FIXME */
+											JANUS_LOG(LOG_WARN, "Insufficient bandwidth for simulcast %d/%d of stream %d (%"SCNu32" < %"SCNu32"), switching to %d/%d (%"SCNu32")\n",
+												substream, templayer, s->mindex, estimate, ps->bitrates->bitrate[old_target],
+												new_substream, new_templayer, ps->bitrates->bitrate[target]);
+											/* If BWE made us go down, implement a cooldown period of about 5 seconds */
+											if(s->sim_context.substream_target_bwe == -1 ||
+													new_substream < s->sim_context.substream_target_bwe)
+												s->last_bwe_drop = now + 5*G_USEC_PER_SEC;
 										}
 										estimate -= ps->bitrates->bitrate[target];
 										s->sim_context.substream_target_bwe = new_substream;
 										s->sim_context.templayer_target_bwe = new_templayer;
+										/* Request a PLI if needed */
+										if(s->sim_context.substream_target_bwe != new_substream)
+											janus_videoroom_reqpli(ps, "Simulcasting substream change (BWE)");
 									}
 								}
 							} else {
@@ -12452,15 +12485,24 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				json_decref(event);
 			}
 			if(stream->sim_context.changed_substream || stream->sim_context.changed_temporal) {
-				if(stream->sim_context.substream_target_bwe == -1 && stream->sim_context.substream_target_temp == -1 &&
-						stream->sim_context.substream == stream->sim_context.substream_target &&
-						stream->sim_context.templayer == stream->sim_context.templayer_target) {
-					/* We're receiving what we wanted, stop probing (if it was active) */
-					gateway->disable_probing(subscriber->session->handle);
-				} else {
-					/* We're not receiving what we need, start probing (if we weren't already) */
-					gateway->enable_probing(subscriber->session->handle);
-					gateway->defer_probing(subscriber->session->handle);
+				/* FIXME We changed substream, check if we need to reconfigure the bitrate target for probing */
+				if(stream->sim_context.substream < stream->sim_context.substream_target ||
+						(stream->sim_context.substream == stream->sim_context.substream_target &&
+						stream->sim_context.templayer < stream->sim_context.templayer_target)) {
+					/* We're not receiving what we need, aim for a higher layer */
+					uint8_t current_layer = stream->sim_context.substream*3 + stream->sim_context.templayer;
+					uint8_t target_layer = stream->sim_context.substream_target*3 + stream->sim_context.templayer_target;
+					uint32_t target = 0;
+					uint8_t i = 0;
+					JANUS_LOG(LOG_WARN, "[videoroom] current=%d, target=%d\n", current_layer, target_layer);
+					for(i = current_layer+1; i<=target_layer; i++) {
+						JANUS_LOG(LOG_WARN, "[videoroom]   -- %d --> %"SCNu32"\n", i, (ps->bitrates->packets[i] ? ps->bitrates->bitrate[i] : 0));
+						if(ps->bitrates->packets[i])
+							target = ps->bitrates->bitrate[i];
+						if(target > 0)
+							break;
+					}
+					gateway->set_bwe_target(subscriber->session->handle, target);
 				}
 			}
 			/* If we got here, update the RTP header and send the packet */

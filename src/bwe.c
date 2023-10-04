@@ -65,7 +65,7 @@ janus_bwe_context *janus_bwe_context_create(void) {
 	g_snprintf(filename, sizeof(filename), "/tmp/bwe-janus-%"SCNi64, janus_get_real_time());
 	bwe->csv = fopen(filename, "wt");
 	char line[2048];
-	g_snprintf(line, sizeof(line), "time,status,estimate,bitrate_out,rtx_out,probing_out,bitrate_in,rtx_in,probing_in,acked,lost,loss_ratio,avg_delay,avg_delay_weighted,avg_delay_fb\n");
+	g_snprintf(line, sizeof(line), "time,status,estimate,probing_target,bitrate_out,rtx_out,probing_out,bitrate_in,rtx_in,probing_in,acked,lost,loss_ratio,avg_delay,avg_delay_weighted,avg_delay_fb\n");
 	fwrite(line, sizeof(char), strlen(line), bwe->csv);
 #endif
 	return bwe;
@@ -190,7 +190,9 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 		bwe->status = janus_bwe_status_lossy;
 		bwe->status_changed = now;
 		bwe->estimate = estimate;
-	} else if(avg_delay_weighted > 1.5 && avg_delay_weighted - bwe->avg_delay > 0.1) {
+	} else if(avg_delay_weighted > 1.2 && avg_delay_weighted - bwe->avg_delay > 0.1) {
+		JANUS_LOG(LOG_WARN, "[BWE] Congested (delay=%.2f, increase=%.2f)\n",
+			avg_delay_weighted, avg_delay_weighted - bwe->avg_delay);
 		/* FIXME Delay is increasing */
 		if(bwe->status != janus_bwe_status_lossy && bwe->status != janus_bwe_status_congested)
 			notify_plugin = TRUE;
@@ -215,7 +217,8 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 				/* Restore probing but incrementally */
 				bwe->probing_sent = 0;
 				bwe->probing_portion = 0.0;
-				bwe->probing_part = 200;	/* FIXME */
+				bwe->probing_buildup = 0;
+				bwe->probing_buildup_timer = now;
 			} else {
 				/* FIXME Keep converging to the estimate */
 				if(estimate > bwe->estimate)
@@ -230,22 +233,20 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 				bwe->estimate = estimate;
 			//~ else if(now - bwe->status_changed < 10*G_USEC_PER_SEC)
 				//~ bwe->estimate = ((double)bwe->estimate * 1.02);
-			if(bwe->probing_part > 0)	/* FIXME */
-				bwe->probing_part--;
 		}
 	}
 	bwe->avg_delay = avg_delay_weighted;
 	bwe->bitrate_ts = now;
-	JANUS_LOG(LOG_WARN, "[BWE][%"SCNi64"][%s] sent=%"SCNu32"kbps (probing=%"SCNu32"kbps), acked=%"SCNu32"kbps (probing=%"SCNu32"kbps), loss=%.2f%%, avg_delay=%.2fms, estimate=%"SCNu32"\n",
+	JANUS_LOG(LOG_DBG, "[BWE][%"SCNi64"][%s] sent=%"SCNu32"kbps (probing=%"SCNu32"kbps), acked=%"SCNu32"kbps (probing=%"SCNu32"kbps), loss=%.2f%%, avg_delay=%.2fms, estimate=%"SCNu32"\n",
 		now, janus_bwe_status_description(bwe->status),
 		bitrate_out / 1024, probing_out / 1024, bitrate_in / 1024, probing_in / 1024,
 		bwe->loss_ratio, bwe->avg_delay, bwe->estimate);
 #ifdef BWE_DEBUGGING
 	/* Save the details to CSV */
 	char line[2048];
-	g_snprintf(line, sizeof(line), "%"SCNi64",%d,%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu16",%"SCNu16",%.2f,%.2f,%.2f,%.2f\n",
+	g_snprintf(line, sizeof(line), "%"SCNi64",%d,%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu16",%"SCNu16",%.2f,%.2f,%.2f,%.2f\n",
 		now - bwe->started, bwe->status,
-		bwe->estimate, bitrate_out, rtx_out, probing_out, bitrate_in, rtx_in, probing_in,
+		bwe->estimate, bwe->probing_target, bitrate_out, rtx_out, probing_out, bitrate_in, rtx_in, probing_in,
 		bwe->received_pkts, bwe->lost_pkts, bwe->loss_ratio, avg_delay, avg_delay_weighted, avg_delay_latest);
 	fwrite(line, sizeof(char), strlen(line), bwe->csv);
 #endif
@@ -254,7 +255,7 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 	bwe->received_pkts = 0;
 	bwe->lost_pkts = 0;
 	/* Check if we should notify the plugin about the estimate */
-	if(notify_plugin || (now - bwe->last_notified) >= 250000) {
+	if(bwe->status != janus_bwe_status_start && (notify_plugin || (now - bwe->last_notified) >= 250000)) {
 		bwe->notify_plugin = TRUE;
 		bwe->last_notified = now;
 	}
