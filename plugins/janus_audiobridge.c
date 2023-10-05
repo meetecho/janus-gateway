@@ -8587,6 +8587,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 		while(g_atomic_int_get(&participant->suspended)) {
 			g_cond_wait(&participant->suspend_cond, &participant->suspend_cond_mutex);
 			before = janus_get_monotonic_time();
+			participant->context.a_seq_reset = TRUE;
 		}
 		janus_mutex_unlock(&participant->suspend_cond_mutex);
 		/* Start with packets to decode and queue for the mixer */
