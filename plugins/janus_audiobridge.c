@@ -1619,6 +1619,7 @@ typedef struct janus_audiobridge_participant {
 	int spatial_position;	/* Panning of this participant in the mix */
 	/* RTP stuff */
 	JitterBuffer *jitter;	/* Jitter buffer of incoming audio packets */
+	gint64 jitter_next_check;	/* Timestamp to perform next jitter buffer size check */
 	GList *inbuf;			/* Decoded audio from this participant, to feed to the mixer */
 	GAsyncQueue *outbuf;	/* Mixed audio to send to this participant */
 	janus_mutex qmutex;		/* Incoming queue mutex */
@@ -2139,6 +2140,11 @@ static int janus_audiobridge_resample(int16_t *input, int input_num, int input_r
 #define	G711_SAMPLES	160
 #define	BUFFER_SAMPLES	OPUS_SAMPLES*12
 #define DEFAULT_COMPLEXITY	4
+
+
+/* Jitter Buffer settings */
+#define JITTER_BUFFER_MAX_PACKETS 40
+#define JITTER_BUFFER_CHECK_USECS 1*G_USEC_PER_SEC
 
 
 /* Error codes */
@@ -5898,6 +5904,21 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 		if(participant->jitter) {
 			janus_audiobridge_buffer_packet *pkt = janus_audiobridge_buffer_packet_create(buf, len, silence);
 			janus_mutex_lock(&participant->qmutex);
+			/* Limit the size of the jitter buffer */
+			gint64 now = janus_get_monotonic_time();
+			if(participant->jitter_next_check == 0) {
+				/* Schedule next check */
+				participant->jitter_next_check = now + JITTER_BUFFER_CHECK_USECS;
+			} else if(now >= participant->jitter_next_check) {
+				spx_int32_t count = 0;
+				jitter_buffer_ctl(participant->jitter, JITTER_BUFFER_GET_AVALIABLE_COUNT, &count);
+				if(count >= JITTER_BUFFER_MAX_PACKETS) {
+					JANUS_LOG(LOG_WARN, "Jitter buffer contains too many packets, clearing now (count=%d)\n", count);
+					jitter_buffer_reset(participant->jitter);
+				}
+				/* Schedule next check */
+				participant->jitter_next_check = now + JITTER_BUFFER_CHECK_USECS;
+			}
 			JitterBufferPacket jbp = {0};
 			jbp.data = (char *)pkt;
 			jbp.len = 0;
