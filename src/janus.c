@@ -189,6 +189,13 @@ static struct janus_json_parameter text2pcap_parameters[] = {
 	{"filename", JSON_STRING, 0},
 	{"truncate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter debug_bwe_parameters[] = {
+	{"csv", JANUS_JSON_BOOL, 0},
+	{"path", JSON_STRING, 0},
+	{"live", JANUS_JSON_BOOL, 0},
+	{"host", JSON_STRING, 0},
+	{"port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+};
 static struct janus_json_parameter handleinfo_parameters[] = {
 	{"plugin_only", JANUS_JSON_BOOL, 0}
 };
@@ -3002,8 +3009,88 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
+		} else if(!strcasecmp(message_text, "debug_bwe")) {
+			/* Enable or disable BWE debugging (to CSV and/or external UDP address) */
+			JANUS_VALIDATE_JSON_OBJECT(root, debug_bwe_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			json_t *csv = json_object_get(root, "csv");
+			json_t *live = json_object_get(root, "live");
+			gboolean changes = FALSE;
+			janus_mutex_lock(&handle->mutex);
+			if(json_is_true(csv)) {
+				/* Enable CSV offline debugging */
+				if(handle->bwe_csv) {
+					janus_mutex_unlock(&handle->mutex);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN,
+						"CSV debugging already configured");
+					goto jsondone;
+				}
+				json_t *path = json_object_get(root, "path");
+				const char *path_value = json_string_value(path);
+				if(path_value == NULL) {
+					janus_mutex_unlock(&handle->mutex);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE,
+						"Missing or invalid element (path)");
+					goto jsondone;
+				}
+				changes = TRUE;
+				handle->bwe_csv = g_strdup(path_value);
+			} else {
+				/* Disable CSV offline debugging */
+				if(handle->bwe_csv)
+					changes = TRUE;
+				g_free(handle->bwe_csv);
+				handle->bwe_csv = NULL;
+			}
+			if(json_is_true(live)) {
+				/* Enable live debugging */
+				if(handle->bwe_host) {
+					janus_mutex_unlock(&handle->mutex);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN,
+						"Live debugging already configured");
+					goto jsondone;
+				}
+				json_t *host = json_object_get(root, "host");
+				json_t *port = json_object_get(root, "port");
+				const char *host_value = json_string_value(host);
+				uint16_t port_value = json_integer_value(port);
+				if(host_value == NULL) {
+					janus_mutex_unlock(&handle->mutex);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE,
+						"Missing or invalid element (host)");
+					goto jsondone;
+				}
+				if(port_value == 0) {
+					janus_mutex_unlock(&handle->mutex);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE,
+						"Missing or invalid element (port)");
+					goto jsondone;
+				}
+				changes = TRUE;
+				handle->bwe_host = g_strdup(host_value);
+				handle->bwe_port = port_value;
+			} else {
+				/* Disable live debugging */
+				if(handle->bwe_host)
+					changes = TRUE;
+				g_free(handle->bwe_host);
+				handle->bwe_host = NULL;
+				handle->bwe_port = 0;
+			}
+			janus_mutex_unlock(&handle->mutex);
+			/* Apply the changes, if needed */
+			if(changes)
+				janus_ice_handle_debug_bwe(handle);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
 		}
-		/* If this is not a request to start/stop debugging to text2pcap, it must be a handle_info */
+		/* If we git here, it must be a handle_info */
 		if(strcasecmp(message_text, "handle_info")) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;

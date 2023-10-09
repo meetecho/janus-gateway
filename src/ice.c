@@ -475,6 +475,7 @@ static janus_ice_queued_packet
 	janus_ice_media_stopped,
 	janus_ice_enable_bwe,
 	janus_ice_set_bwe_target,
+	janus_ice_debug_bwe,
 	janus_ice_disable_bwe,
 	janus_ice_hangup_peerconnection,
 	janus_ice_detach_handle,
@@ -654,7 +655,8 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 	if(pkt == NULL || pkt == &janus_ice_start_gathering ||
 			pkt == &janus_ice_add_candidates ||
 			pkt == &janus_ice_dtls_handshake ||
-			pkt == &janus_ice_enable_bwe || pkt == &janus_ice_set_bwe_target || pkt == &janus_ice_disable_bwe ||
+			pkt == &janus_ice_enable_bwe || pkt == &janus_ice_set_bwe_target ||
+				pkt == &janus_ice_debug_bwe || pkt == &janus_ice_disable_bwe ||
 			pkt == &janus_ice_media_stopped ||
 			pkt == &janus_ice_hangup_peerconnection ||
 			pkt == &janus_ice_detach_handle ||
@@ -1617,6 +1619,8 @@ static void janus_ice_handle_free(const janus_refcount *handle_ref) {
 	}
 	g_free(handle->opaque_id);
 	g_free(handle->token);
+	g_free(handle->bwe_csv);
+	g_free(handle->bwe_host);
 	g_free(handle);
 }
 
@@ -3904,6 +3908,18 @@ void janus_ice_handle_set_bwe_target(janus_ice_handle *handle, uint32_t bitrate)
 	}
 }
 
+void janus_ice_handle_debug_bwe(janus_ice_handle *handle) {
+	JANUS_LOG(LOG_WARN, "[%"SCNu64"] Tweaking debugging of bandwidth estimation\n", handle->handle_id);
+	if(handle->queued_packets != NULL) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_debug_bwe);
+#else
+		g_async_queue_push(handle->queued_packets, &janus_ice_debug_bwe);
+#endif
+		g_main_context_wakeup(handle->mainctx);
+	}
+}
+
 void janus_ice_handle_disable_bwe(janus_ice_handle *handle) {
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Disabling bandwidth estimation\n", handle->handle_id);
 	if(handle->queued_packets != NULL) {
@@ -4714,6 +4730,15 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		pc->bwe = janus_bwe_context_create();
 		janus_mutex_lock(&handle->mutex);
 		handle->bwe_target = 0;
+		/* Check if we need debugging */
+		if(handle->bwe_csv) {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling CSV debugging of bandwidth estimation\n", handle->handle_id);
+			janus_bwe_save_csv(pc->bwe, handle->bwe_csv);
+		}
+		if(handle->bwe_host && handle->bwe_port > 0) {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling live debugging of bandwidth estimation\n", handle->handle_id);
+			janus_bwe_save_live(pc->bwe, handle->bwe_host, handle->bwe_port);
+		}
 		janus_mutex_unlock(&handle->mutex);
 		/* Let's create a source for BWE, for plugin notifications and probing */
 		handle->bwe_source = g_timeout_source_new(50);	/* FIXME */
@@ -4743,8 +4768,30 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		//~ pc->bwe->probing_buildup_timer = janus_get_monotonic_time();
 		pc->bwe->probing_deferred = janus_get_monotonic_time() + G_USEC_PER_SEC;
 		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_debug_bwe) {
+		/* Enable or disable debugging for the bandwidth estimator */
+		if(pc == NULL || pc->bwe == NULL)
+			return G_SOURCE_CONTINUE;
+		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Tweaking debugging for bandwidth estimation\n", handle->handle_id);
+		janus_mutex_lock(&handle->mutex);
+		if(handle->bwe_csv) {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling CSV debugging of bandwidth estimation\n", handle->handle_id);
+			janus_bwe_save_csv(pc->bwe, handle->bwe_csv);
+		} else {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Disabling CSV debugging of bandwidth estimation\n", handle->handle_id);
+			janus_bwe_close_csv(pc->bwe);
+		}
+		if(handle->bwe_host && handle->bwe_port > 0) {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling live debugging of bandwidth estimation\n", handle->handle_id);
+			janus_bwe_save_live(pc->bwe, handle->bwe_host, handle->bwe_port);
+		} else {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Disabling live debugging of bandwidth estimation\n", handle->handle_id);
+			janus_bwe_close_live(pc->bwe);
+		}
+		janus_mutex_unlock(&handle->mutex);
+		return G_SOURCE_CONTINUE;
 	} else if(pkt == &janus_ice_disable_bwe) {
-		/* We need to get rif of the bandwidth estimator */
+		/* We need to get rid of the bandwidth estimator */
 		if(pc == NULL || pc->bwe == NULL)
 			return G_SOURCE_CONTINUE;
 		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Disabling bandwidth estimation\n", handle->handle_id);

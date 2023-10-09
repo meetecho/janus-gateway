@@ -411,6 +411,12 @@ struct janus_ice_handle {
 	gint last_event_stats;
 	/*! \brief Bandwidth estimation target, if any, as asked by the plugin */
 	uint32_t bwe_target;
+	/*! \brief In case offline BWE debugging is enabled, the CSV file to save to */
+	char *bwe_csv;
+	/*! \brief In case live BWE debugging is enabled, the host to send stats to */
+	char *bwe_host;
+	/*! \brief In case live BWE debugging is enabled, the port to send stats to */
+	uint16_t bwe_port;
 	/*! \brief Flag to decide whether or not packets need to be dumped to a text2pcap file */
 	volatile gint dump_packets;
 	/*! \brief In case this session must be saved to text2pcap, the instance to dump packets to */
@@ -796,6 +802,9 @@ void janus_ice_handle_enable_bwe(janus_ice_handle *handle);
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] bitrate The bitrate to target (will be used to generate probing) */
 void janus_ice_handle_set_bwe_target(janus_ice_handle *handle, uint32_t bitrate);
+/*! \brief Method to dynamically tweak the bandwidth estimation debugging for a handle
+ * @param[in] handle The Janus ICE handle this method refers to */
+void janus_ice_handle_debug_bwe(janus_ice_handle *handle);
 /*! \brief Method to dynamically disable bandwidth estimation for a handle
  * @param[in] handle The Janus ICE handle this method refers to */
 void janus_ice_handle_disable_bwe(janus_ice_handle *handle);

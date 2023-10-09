@@ -11,16 +11,15 @@
 
 #include <inttypes.h>
 #include <string.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
 
 #include "bwe.h"
 #include "debug.h"
 #include "utils.h"
+#include "ip-utils.h"
 
-#ifdef BWE_DEBUGGING
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <sys/socket.h>
-#endif
 
 const char *janus_bwe_twcc_status_description(janus_bwe_twcc_status status) {
 	switch(status) {
@@ -66,36 +65,7 @@ janus_bwe_context *janus_bwe_context_create(void) {
 	bwe->acked = janus_bwe_stream_bitrate_create();
 	bwe->delays = janus_bwe_delay_tracker_create(0);
 	bwe->probing_mindex = -1;
-#ifdef BWE_DEBUGGING
-	char filename[256];
-	g_snprintf(filename, sizeof(filename), "/tmp/bwe-janus-%"SCNi64, janus_get_real_time());
-	bwe->csv = fopen(filename, "wt");
-	char line[2048];
-	g_snprintf(line, sizeof(line), "time,status,estimate,probing_target,bitrate_out,rtx_out,probing_out,bitrate_in,rtx_in,probing_in,acked,lost,loss_ratio,avg_delay,avg_delay_weighted,avg_delay_fb\n");
-	fwrite(line, sizeof(char), strlen(line), bwe->csv);
-	bwe->fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if(bwe->fd == -1) {
-		JANUS_LOG(LOG_ERR, "Error creating socket: %s\n", g_strerror(errno));
-	} else {
-		struct sockaddr_in address = { 0 };
-		address.sin_family = AF_INET;
-		address.sin_port = htons(0);
-		address.sin_addr.s_addr = INADDR_ANY;
-		if(bind(bwe->fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-			JANUS_LOG(LOG_ERR, "Error binding socket: %s\n", g_strerror(errno));
-			close(bwe->fd);
-			bwe->fd = -1;
-		} else {
-			address.sin_port = htons(8878);
-			address.sin_addr.s_addr = inet_addr("127.0.0.1");
-			if(connect(bwe->fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-				JANUS_LOG(LOG_ERR, "Error connecting socket: %s\n", g_strerror(errno));
-				close(bwe->fd);
-				bwe->fd = -1;
-			}
-		}
-	}
-#endif
+	bwe->fd = -1;
 	return bwe;
 }
 
@@ -106,11 +76,10 @@ void janus_bwe_context_destroy(janus_bwe_context *bwe) {
 		janus_bwe_stream_bitrate_destroy(bwe->sent);
 		janus_bwe_stream_bitrate_destroy(bwe->acked);
 		janus_bwe_delay_tracker_destroy(bwe->delays);
-#ifdef BWE_DEBUGGING
-		fclose(bwe->csv);
+		if(bwe->csv != NULL)
+			fclose(bwe->csv);
 		if(bwe->fd > -1)
 			close(bwe->fd);
-#endif
 		g_free(bwe);
 	}
 }
@@ -280,17 +249,20 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 		now, janus_bwe_status_description(bwe->status),
 		bitrate_out / 1024, probing_out / 1024, bitrate_in / 1024, probing_in / 1024,
 		bwe->loss_ratio, bwe->avg_delay, bwe->estimate);
-#ifdef BWE_DEBUGGING
-	/* Save the details to CSV */
-	char line[2048];
-	g_snprintf(line, sizeof(line), "%"SCNi64",%d,%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu16",%"SCNu16",%.2f,%.2f,%.2f,%.2f\n",
-		now - bwe->started, bwe->status,
-		bwe->estimate, bwe->probing_target, bitrate_out, rtx_out, probing_out, bitrate_in, rtx_in, probing_in,
-		bwe->received_pkts, bwe->lost_pkts, bwe->loss_ratio, avg_delay, avg_delay_weighted, avg_delay_latest);
-	fwrite(line, sizeof(char), strlen(line), bwe->csv);
-	if(bwe->fd > -1)
-		send(bwe->fd, line, strlen(line), 0);
-#endif
+
+	/* Save the details to CSV and/or send them externally via UDP, if enabled */
+	if(bwe->csv != NULL || bwe->fd > -1) {
+		char line[2048];
+		g_snprintf(line, sizeof(line), "%"SCNi64",%d,%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu32",%"SCNu16",%"SCNu16",%.2f,%.2f,%.2f,%.2f\n",
+			now - bwe->started, bwe->status,
+			bwe->estimate, bwe->probing_target, bitrate_out, rtx_out, probing_out, bitrate_in, rtx_in, probing_in,
+			bwe->received_pkts, bwe->lost_pkts, bwe->loss_ratio, avg_delay, avg_delay_weighted, avg_delay_latest);
+		if(bwe->csv != NULL)
+			fwrite(line, sizeof(char), strlen(line), bwe->csv);
+		if(bwe->fd > -1)
+			send(bwe->fd, line, strlen(line), 0);
+	}
+
 	/* Reset values */
 	bwe->delay = 0;
 	bwe->received_pkts = 0;
@@ -300,6 +272,98 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 		bwe->notify_plugin = TRUE;
 		bwe->last_notified = now;
 	}
+}
+
+gboolean janus_bwe_save_csv(janus_bwe_context *bwe, const char *path) {
+	if(bwe == NULL || path == NULL || bwe->csv != NULL)
+		return FALSE;
+	/* Open the CSV file */
+	bwe->csv = fopen(path, "wt");
+	if(bwe->csv == NULL) {
+		JANUS_LOG(LOG_ERR, "Couldn't open CSV file for BWE stats: %s\n", g_strerror(errno));
+		return FALSE;
+	}
+	/* Write a header line with the names of the fields we'll save */
+	char line[2048];
+	g_snprintf(line, sizeof(line), "time,status,estimate,probing_target,bitrate_out,rtx_out,probing_out,bitrate_in,rtx_in,probing_in,acked,lost,loss_ratio,avg_delay,avg_delay_weighted,avg_delay_fb\n");
+	fwrite(line, sizeof(char), strlen(line), bwe->csv);
+	fflush(bwe->csv);
+	/* Done */
+	return TRUE;
+}
+
+void janus_bwe_close_csv(janus_bwe_context *bwe) {
+	if(bwe == NULL || bwe->csv == NULL)
+		return;
+	fclose(bwe->csv);
+	bwe->csv = NULL;
+}
+
+gboolean janus_bwe_save_live(janus_bwe_context *bwe, const char *host, uint16_t port) {
+	if(bwe == NULL || host == NULL || port == 0 || bwe->fd > -1)
+		return FALSE;
+	/* Check if we need to resolve this host address */
+	struct addrinfo *res = NULL, *start = NULL;
+	janus_network_address addr;
+	janus_network_address_string_buffer addr_buf;
+	const char *resolved_host = NULL;
+	struct addrinfo hints;
+	memset(&hints, 0, sizeof(hints));
+	if(getaddrinfo(host, NULL, NULL, &res) == 0) {
+		start = res;
+		while(res != NULL) {
+			if(janus_network_address_from_sockaddr(res->ai_addr, &addr) == 0 &&
+					janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
+				/* Resolved */
+				resolved_host = janus_network_address_string_from_buffer(&addr_buf);
+				freeaddrinfo(start);
+				start = NULL;
+				break;
+			}
+			res = res->ai_next;
+		}
+	}
+	if(resolved_host == NULL) {
+		if(start)
+			freeaddrinfo(start);
+		JANUS_LOG(LOG_ERR, "Could not resolve address (%s) for BWE stats...\n", host);
+		return FALSE;
+	}
+	host = resolved_host;
+	/* Create the socket */
+	bwe->fd = socket(addr.family, SOCK_DGRAM, IPPROTO_UDP);
+	if(bwe->fd == -1) {
+		JANUS_LOG(LOG_ERR, "Error creating socket for BWE stats: %s\n", g_strerror(errno));
+		return FALSE;
+	}
+	struct sockaddr_in serv_addr = { 0 };
+	struct sockaddr_in6 serv_addr6 = { 0 };
+	if(addr.family == AF_INET6) {
+		serv_addr6.sin6_family = AF_INET6;
+		inet_pton(AF_INET6, host, &serv_addr6.sin6_addr);
+		serv_addr6.sin6_port = htons(port);
+	} else {
+		serv_addr.sin_family = AF_INET;
+		inet_pton(AF_INET, host, &serv_addr.sin_addr);
+		serv_addr.sin_port = htons(port);
+	}
+	/* Connect the socket to the provided address */
+	struct sockaddr *address = (addr.family == AF_INET ? (struct sockaddr *)&serv_addr : (struct sockaddr *)&serv_addr6);
+	size_t addrlen = (addr.family == AF_INET ? sizeof(serv_addr) : sizeof(serv_addr6));
+	if(connect(bwe->fd, (struct sockaddr *)address, addrlen) < 0) {
+		JANUS_LOG(LOG_ERR, "Error connecting socket for BWE stats: %s\n", g_strerror(errno));
+		close(bwe->fd);
+		bwe->fd = -1;
+	}
+	/* Done */
+	return TRUE;
+}
+
+void janus_bwe_close_live(janus_bwe_context *bwe) {
+	if(bwe == NULL || bwe->fd == -1)
+		return;
+	close(bwe->fd);
+	bwe->fd = -1;
 }
 
 janus_bwe_stream_bitrate *janus_bwe_stream_bitrate_create(void) {

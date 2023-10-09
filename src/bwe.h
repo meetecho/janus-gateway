@@ -16,8 +16,6 @@
 
 #include "mutex.h"
 
-#define BWE_DEBUGGING
-
 /*! \brief Tracker for a stream bitrate (whether it's simulcast/SVC or not) */
 typedef struct janus_bwe_stream_bitrate {
 	/*! \brief Time based queue of packet sizes */
@@ -181,12 +179,10 @@ typedef struct janus_bwe_context {
 	gboolean notify_plugin;
 	/*! \brief When we last notified the plugin */
 	int64_t last_notified;
-#ifdef BWE_DEBUGGING
 	/*! \brief CSV where we save the debugging information */
 	FILE *csv;
 	/*! \brief UDP socket where to send the debugging information */
 	int fd;
-#endif
 } janus_bwe_context;
 /*! \brief Helper to create a new bandwidth estimation context
  * @returns a new janus_bwe_context instance, if successful, or NULL otherwise */
@@ -215,5 +211,23 @@ void janus_bwe_context_handle_feedback(janus_bwe_context *bwe,
 /*! \brief Update the internal BWE context state with a new tick
  * @param[in] bwe The janus_bwe_context instance to update */
 void janus_bwe_context_update(janus_bwe_context *bwe);
+
+/*! \brief Helper method to start saving the stats related to the BWE processing to a CSV file
+ * @param[in] bwe The janus_bwe_context instance to save
+ * @param[in] path Path where to save the file to
+ * @returns TRUE, if successful, or FALSE otherwise */
+gboolean janus_bwe_save_csv(janus_bwe_context *bwe, const char *path);
+/*! \brief Helper method to stop saving the stats related to the BWE processing to a CSV file
+ * @param[in] bwe The janus_bwe_context instance to update */
+void janus_bwe_close_csv(janus_bwe_context *bwe);
+/*! \brief Helper method to relay stats related to the BWE processing to an external UDP address
+ * @param[in] bwe The janus_bwe_context instance to save
+ * @param[in] host The address to send stats to
+ * @param[in] port The port to send stats to
+ * @returns TRUE, if successful, or FALSE otherwise */
+gboolean janus_bwe_save_live(janus_bwe_context *bwe, const char *host, uint16_t port);
+/*! \brief Helper method to stop relaying the stats related to the BWE processing
+ * @param[in] bwe The janus_bwe_context instance to update */
+void janus_bwe_close_live(janus_bwe_context *bwe);
 
 #endif
