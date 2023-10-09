@@ -8469,7 +8469,7 @@ void janus_videoroom_estimated_bandwidth(janus_plugin_session *handle, uint32_t 
 								}
 								target = 3*substream + templayer;
 							}
-							if(estimate < ps->bitrates->bitrate[target]) {
+							if(estimate < (ps->bitrates->bitrate[target] + 20000)) {
 								/* Unavailable layer, or we don't have room for these layers, find one below that fits */
 								if(target == 0) {
 									estimate = 0;
@@ -12502,7 +12502,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 						if(target > 0)
 							break;
 					}
-					gateway->set_bwe_target(subscriber->session->handle, target);
+					gateway->set_bwe_target(subscriber->session->handle, target ? (target + 50000) : 0);
 				}
 			}
 			/* If we got here, update the RTP header and send the packet */

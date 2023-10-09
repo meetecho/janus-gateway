@@ -4536,6 +4536,7 @@ static gboolean janus_ice_outgoing_bwe_handle(gpointer user_data) {
 			return G_SOURCE_CONTINUE;
 		}
 		pc->bwe->probing_deferred = 0;
+		pc->bwe->probing_buildup_timer = now;
 	}
 	/* Get the medium instance we'll use for probing */
 	janus_ice_peerconnection_medium *medium = NULL;
@@ -4574,9 +4575,13 @@ static gboolean janus_ice_outgoing_bwe_handle(gpointer user_data) {
 	uint32_t required = pc->bwe->probing_target - bitrate_out;
 	if(pc->bwe->probing_buildup_timer > 0) {
 		if(pc->bwe->probing_buildup == 0)
-			pc->bwe->probing_buildup = 25000;
-		if(now - pc->bwe->probing_buildup_timer >= 500000) {
-			pc->bwe->probing_buildup += 25000;
+			pc->bwe->probing_buildup = pc->bwe->probing_buildup_step;
+		uint32_t gap = (pc->bwe->probing_buildup_step >= 10000 ? 500000 : 200000);
+		if(now - pc->bwe->probing_buildup_timer >= gap) {
+			pc->bwe->probing_buildup_step += 1000;
+			if(pc->bwe->probing_buildup_step > 20000)
+				pc->bwe->probing_buildup_step = 20000;
+			pc->bwe->probing_buildup += pc->bwe->probing_buildup_step;
 			pc->bwe->probing_buildup_timer = now;
 		}
 		if(pc->bwe->probing_buildup >= required)
@@ -4735,7 +4740,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		pc->bwe->probing_sent = 0;
 		pc->bwe->probing_portion = 0.0;
 		pc->bwe->probing_buildup = 0;
-		pc->bwe->probing_buildup_timer = janus_get_monotonic_time();
+		//~ pc->bwe->probing_buildup_timer = janus_get_monotonic_time();
+		pc->bwe->probing_deferred = janus_get_monotonic_time() + G_USEC_PER_SEC;
 		return G_SOURCE_CONTINUE;
 	} else if(pkt == &janus_ice_disable_bwe) {
 		/* We need to get rif of the bandwidth estimator */

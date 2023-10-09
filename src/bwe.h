@@ -146,7 +146,7 @@ typedef struct janus_bwe_context {
 	/*! \brief Index of the m-line we're using for probing */
 	int probing_mindex;
 	/*! \brief How much we should aim for with out probing (and how much to increase, plus much we sent in a second) */
-	uint32_t probing_target, probing_buildup, probing_sent;
+	uint32_t probing_target, probing_buildup, probing_buildup_step, probing_sent;
 	/*! \brief How many times we went through probing in a second */
 	uint8_t probing_count;
 	/*! \brief Portion of probing we didn't manage to send the previous round */
@@ -182,8 +182,10 @@ typedef struct janus_bwe_context {
 	/*! \brief When we last notified the plugin */
 	int64_t last_notified;
 #ifdef BWE_DEBUGGING
-	/*! \brief CSV where we save the the debugging information */
+	/*! \brief CSV where we save the debugging information */
 	FILE *csv;
+	/*! \brief UDP socket where to send the debugging information */
+	int fd;
 #endif
 } janus_bwe_context;
 /*! \brief Helper to create a new bandwidth estimation context

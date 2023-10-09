@@ -16,6 +16,12 @@
 #include "debug.h"
 #include "utils.h"
 
+#ifdef BWE_DEBUGGING
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#endif
+
 const char *janus_bwe_twcc_status_description(janus_bwe_twcc_status status) {
 	switch(status) {
 		case janus_bwe_twcc_status_notreceived:
@@ -67,6 +73,28 @@ janus_bwe_context *janus_bwe_context_create(void) {
 	char line[2048];
 	g_snprintf(line, sizeof(line), "time,status,estimate,probing_target,bitrate_out,rtx_out,probing_out,bitrate_in,rtx_in,probing_in,acked,lost,loss_ratio,avg_delay,avg_delay_weighted,avg_delay_fb\n");
 	fwrite(line, sizeof(char), strlen(line), bwe->csv);
+	bwe->fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if(bwe->fd == -1) {
+		JANUS_LOG(LOG_ERR, "Error creating socket: %s\n", g_strerror(errno));
+	} else {
+		struct sockaddr_in address = { 0 };
+		address.sin_family = AF_INET;
+		address.sin_port = htons(0);
+		address.sin_addr.s_addr = INADDR_ANY;
+		if(bind(bwe->fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+			JANUS_LOG(LOG_ERR, "Error binding socket: %s\n", g_strerror(errno));
+			close(bwe->fd);
+			bwe->fd = -1;
+		} else {
+			address.sin_port = htons(8878);
+			address.sin_addr.s_addr = inet_addr("127.0.0.1");
+			if(connect(bwe->fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+				JANUS_LOG(LOG_ERR, "Error connecting socket: %s\n", g_strerror(errno));
+				close(bwe->fd);
+				bwe->fd = -1;
+			}
+		}
+	}
 #endif
 	return bwe;
 }
@@ -80,6 +108,8 @@ void janus_bwe_context_destroy(janus_bwe_context *bwe) {
 		janus_bwe_delay_tracker_destroy(bwe->delays);
 #ifdef BWE_DEBUGGING
 		fclose(bwe->csv);
+		if(bwe->fd > -1)
+			close(bwe->fd);
 #endif
 		g_free(bwe);
 	}
@@ -190,18 +220,26 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 		bwe->status = janus_bwe_status_lossy;
 		bwe->status_changed = now;
 		bwe->estimate = estimate;
-	} else if(avg_delay_weighted > 1.2 && avg_delay_weighted - bwe->avg_delay > 0.1) {
-		JANUS_LOG(LOG_WARN, "[BWE] Congested (delay=%.2f, increase=%.2f)\n",
-			avg_delay_weighted, avg_delay_weighted - bwe->avg_delay);
+	} else if(avg_delay_weighted >= 1.0 && (avg_delay_weighted - bwe->avg_delay) >= 0.05) {
+		JANUS_LOG(LOG_WARN, "[BWE][%"SCNi64"] Congested (delay=%.2f, increase=%.2f)\n",
+			now, avg_delay_weighted, avg_delay_weighted - bwe->avg_delay);
 		/* FIXME Delay is increasing */
 		if(bwe->status != janus_bwe_status_lossy && bwe->status != janus_bwe_status_congested)
 			notify_plugin = TRUE;
 		bwe->status = janus_bwe_status_congested;
 		bwe->status_changed = now;
-		//~ if(estimate > bwe->estimate)
-			bwe->estimate = estimate;
+		bwe->estimate = estimate;
 		//~ else
 			//~ bwe->estimate = ((double)bwe->estimate * 0.8) + ((double)estimate * 0.2);
+	//~ } else if(bitrate_out > bitrate_in && (bitrate_out - bitrate_in > 50000)) {
+		//~ /* FIXME We sent much more than what was acked, another indicator of possible congestion? */
+		//~ JANUS_LOG(LOG_WARN, "[BWE][%"SCNi64"] Congested (too much diff with acked rate, %"SCNu32")\n",
+			//~ now, bitrate_out - bitrate_in);
+		//~ if(bwe->status != janus_bwe_status_lossy && bwe->status != janus_bwe_status_congested)
+			//~ notify_plugin = TRUE;
+		//~ bwe->status = janus_bwe_status_congested;
+		//~ bwe->status_changed = now;
+		//~ bwe->estimate = estimate;
 	} else {
 		/* FIXME All is fine? Check what state we're in */
 		if(bwe->status == janus_bwe_status_lossy || bwe->status == janus_bwe_status_congested) {
@@ -218,6 +256,7 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 				bwe->probing_sent = 0;
 				bwe->probing_portion = 0.0;
 				bwe->probing_buildup = 0;
+				bwe->probing_buildup_step = 1000;
 				bwe->probing_buildup_timer = now;
 			} else {
 				/* FIXME Keep converging to the estimate */
@@ -249,6 +288,8 @@ void janus_bwe_context_update(janus_bwe_context *bwe) {
 		bwe->estimate, bwe->probing_target, bitrate_out, rtx_out, probing_out, bitrate_in, rtx_in, probing_in,
 		bwe->received_pkts, bwe->lost_pkts, bwe->loss_ratio, avg_delay, avg_delay_weighted, avg_delay_latest);
 	fwrite(line, sizeof(char), strlen(line), bwe->csv);
+	if(bwe->fd > -1)
+		send(bwe->fd, line, strlen(line), 0);
 #endif
 	/* Reset values */
 	bwe->delay = 0;
