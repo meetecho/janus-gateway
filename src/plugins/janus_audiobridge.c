@@ -2113,9 +2113,10 @@ static int janus_audiobridge_resample(int16_t *input, int input_num, int input_r
 #define DEFAULT_COMPLEXITY	4
 
 
-/* Jitter Buffer settings */
+/* Jitter Buffer and queue-in settings */
 #define JITTER_BUFFER_MAX_PACKETS 40
 #define JITTER_BUFFER_CHECK_USECS 1*G_USEC_PER_SEC
+#define QUEUE_IN_MAX_PACKETS 4
 
 
 /* Error codes */
@@ -5981,7 +5982,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 			} else if(now >= participant->jitter_next_check) {
 				spx_int32_t count = 0;
 				jitter_buffer_ctl(participant->jitter, JITTER_BUFFER_GET_AVALIABLE_COUNT, &count);
-				if(count >= JITTER_BUFFER_MAX_PACKETS) {
+				if(count > JITTER_BUFFER_MAX_PACKETS) {
 					JANUS_LOG(LOG_WARN, "Jitter buffer contains too many packets, clearing now (count=%d)\n", count);
 					jitter_buffer_reset(participant->jitter);
 				}
@@ -8666,6 +8667,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 			g_cond_wait(&participant->suspend_cond, &participant->suspend_cond_mutex);
 			before = janus_get_monotonic_time();
 			participant->context.seq_reset = TRUE;
+			first = TRUE;
 		}
 		janus_mutex_unlock(&participant->suspend_cond_mutex);
 		/* Start with packets to decode and queue for the mixer */
@@ -8681,17 +8683,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 				if(ret == JITTER_BUFFER_OK) {
 					bpkt = (janus_audiobridge_buffer_packet *)jbp.data;
 					janus_mutex_unlock(&participant->qmutex);
-					first = FALSE;
 					locked = FALSE;
-					rtp = (janus_rtp_header *)bpkt->buffer;
-					/* If this is Opus, check if there's a packet gap we should fix with FEC */
-					use_fec = FALSE;
-					if(!first && participant->codec == JANUS_AUDIOCODEC_OPUS && participant->fec) {
-						if(ntohs(rtp->seq_number) != participant->expected_seq) {
-							/* Lost a packet here? Use FEC to recover */
-							use_fec = TRUE;
-						}
-					}
 					if(!g_atomic_int_compare_and_exchange(&participant->decoding, 0, 1)) {
 						/* This means we're cleaning up, so don't try to decode */
 						janus_audiobridge_buffer_packet_destroy(bpkt);
@@ -8707,6 +8699,16 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						janus_audiobridge_buffer_packet_destroy(bpkt);
 						break;
 					}
+					rtp = (janus_rtp_header *)bpkt->buffer;
+					/* If this is Opus, check if there's a packet gap we should fix with FEC */
+					use_fec = FALSE;
+					if(!first && participant->codec == JANUS_AUDIOCODEC_OPUS && participant->fec) {
+						if(ntohs(rtp->seq_number) == (participant->expected_seq + 1)) {
+							/* Lost a packet here? Use FEC to recover */
+							use_fec = TRUE;
+						}
+					}
+					first = FALSE;
 					if(use_fec) {
 						/* There was a gap, try to get decode from redundant info first */
 						pkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
@@ -8778,6 +8780,19 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					/* Queue the decoded packet for the mixer */
 					janus_mutex_lock(&participant->qmutex);
 					locked = TRUE;
+					/* Do not let queue-in grow too much */
+					guint count = g_list_length(participant->inbuf);
+					if(count > QUEUE_IN_MAX_PACKETS) {
+						JANUS_LOG(LOG_WARN, "Participant queue-in contains too many packets, clearing now (count=%u)\n", count);
+						while(participant->inbuf) {
+							GList *first = g_list_first(participant->inbuf);
+							janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
+							participant->inbuf = g_list_delete_link(participant->inbuf, first);
+							if(pkt)
+								g_free(pkt->data);
+							g_free(pkt);
+						}
+					}
 					participant->inbuf = g_list_append(participant->inbuf, pkt);
 				}
 			}
