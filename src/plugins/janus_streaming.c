@@ -3011,9 +3011,9 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 					json_object_set_new(pd, "max-delay", json_integer(s->max_delay));
 					json_object_set_new(info, "playout-delay", pd);
 				}
-				if(session->abscapturetime_ext) {
+				if(session->abscapturetime_ext)
 					json_object_set_new(info, "abs-capture-time", json_true());
-				}
+
 				json_array_append_new(media, info);
 				temp = temp->next;
 			}

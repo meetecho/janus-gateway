@@ -365,10 +365,6 @@ int janus_rtp_header_extension_set_abs_send_time(char *buf, int len, int id, uin
 	return 0;
 }
 
-/*
-	It parses only the shortened version of abs-capture-time without estimated-capture-clock-offset
-	Check http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time for details.
-*/
 int janus_rtp_header_extension_parse_abs_capture_time(char *buf, int len, int id, uint64_t *abs_ts) {
 	char *ext = NULL;
 	uint8_t idlen = 0;
