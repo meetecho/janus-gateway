@@ -1272,6 +1272,7 @@ int janus_process_incoming_request(janus_request *request) {
 		json_t *reply = janus_create_message("success", session_id, transaction_text);
 		json_t *data = json_object();
 		json_object_set_new(data, "id", json_integer(handle_id));
+		json_object_set_new(data, "plugin", json_string(plugin_text));
 		json_object_set_new(reply, "data", data);
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
