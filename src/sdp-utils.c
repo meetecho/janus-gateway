@@ -177,7 +177,7 @@ janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *va
 	a->direction = JANUS_SDP_DEFAULT;
 	a->value = NULL;
 	if(value) {
-		char buffer[512];
+		char buffer[2048];
 		va_list ap;
 		va_start(ap, value);
 		g_vsnprintf(buffer, sizeof(buffer), value, ap);
