@@ -81,7 +81,7 @@ typedef struct janus_sctp_channel {
 	/*! \brief SCTP channel ID */
 	uint32_t id;
 	/*! \brief SCTP channel label */
-	char label[64];
+	char label[128];
 	/*! \brief SCTP protocol */
 	char protocol[64];
 	/*! \brief Value of the PR-SCTP policy (http://tools.ietf.org/html/rfc6458) */
