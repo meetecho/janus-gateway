@@ -1225,6 +1225,12 @@ int main(int argc, char *argv[])
 		tmp = tmp->next;
 	}
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" frame packets\n", count);
+	if(!data && !video) {
+		double diff = ts - pts;
+		if(abs(diff) > 0.5) {
+			JANUS_LOG(LOG_WARN, "Detected audio clock mismatch, consider using skew compensation or restamping (rtp_time=%.2fs, real_time=%.2fs, diff=%.2fs)\n", ts, pts, diff);
+		}
+	}
 	if(rotated != -1) {
 		if(rotated == 0 && last_rotation != 0) {
 			JANUS_LOG(LOG_INFO, "The video is rotated\n");
