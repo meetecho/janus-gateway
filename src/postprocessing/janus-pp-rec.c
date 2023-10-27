@@ -1174,7 +1174,7 @@ int main(int argc, char *argv[]) {
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" frame packets\n", count);
 	if(!data && !video) {
 		double diff = ts - pts;
-		if(diff < -0.5 || diff > 0.5 ) { {
+		if(diff < -0.5 || diff > 0.5) {
 			JANUS_LOG(LOG_WARN, "Detected audio clock mismatch, consider using skew compensation or restamping (rtp_time=%.2fs, real_time=%.2fs, diff=%.2fs)\n", ts, pts, diff);
 		}
 	}
