@@ -1316,7 +1316,11 @@ int main(int argc, char *argv[])
 	}
 
 	/* Run restamping */
-	if(!video && !data && restamp_multiplier > 0) {
+	gboolean restamping = FALSE;
+	if(restamp_multiplier > 0) {
+		restamping = TRUE;
+	}
+	if(!video && !data && restamping > 0) {
 		tmp = list;
 		uint64_t restamping_offset = 0;
 		double restamp_threshold = (double) restamp_min_th/1000;
@@ -1452,7 +1456,7 @@ int main(int argc, char *argv[])
 	/* Loop */
 	if(!video && !data) {
 		if(opus) {
-			if(janus_pp_opus_process(file, list, &working) < 0) {
+			if(janus_pp_opus_process(file, list, restamping, &working) < 0) {
 				JANUS_LOG(LOG_ERR, "Error processing Opus RTP frames...\n");
 			}
 		} else if(g711) {
