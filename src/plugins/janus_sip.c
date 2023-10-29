@@ -4442,9 +4442,12 @@ static void *janus_sip_handler(void *data) {
 				char custom_headers[2048];
 				janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 
+				/* Check if we need to manually add the Contact header */
+				gboolean add_contact_header = (session->stack->contact_header != NULL);
 				/* Send the re-INVITE */
 				char *sdp = janus_sdp_write(session->sdp);
 				nua_invite(session->stack->s_nh_i,
+					TAG_IF(add_contact_header, SIPTAG_CONTACT_STR(session->stack->contact_header)),
 					SOATAG_USER_SDP_STR(sdp),
 					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 					TAG_END());
