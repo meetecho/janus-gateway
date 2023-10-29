@@ -3385,19 +3385,18 @@ static void *janus_sip_handler(void *data) {
 			janus_mutex_unlock(&session->stack->smutex);
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
-			/* Check if we need to manually add the Contact header */
-			gboolean add_contact_header = FALSE;
+			/* Retrieve the Contact header for manually adding if not NULL */
+			char *contact_header = NULL;
 			if(session->helper && session->master)
-				add_contact_header = (session->master->stack->contact_header != NULL);
+				contact_header = session->master->stack->contact_header;
 			else
-				add_contact_header = (session->stack->contact_header != NULL);
+				contact_header = session->stack->contact_header;
 			/* Send the SUBSCRIBE */
 			nua_subscribe(nh,
 				SIPTAG_TO_STR(to),
 				SIPTAG_EVENT_STR(event_type),
 				SIPTAG_CALL_ID_STR(callid),
-				TAG_IF(add_contact_header, SIPTAG_CONTACT_STR((session->helper && session->master) ?
-					 session->master->stack->contact_header: session->stack->contact_header)),
+				TAG_IF(contact_header != NULL, SIPTAG_CONTACT_STR(contact_header),
 				SIPTAG_ACCEPT_STR(accept),
 				SIPTAG_EXPIRES_STR(ttl_text),
 				NUTAG_PROXY(session->helper && session->master ?
@@ -3779,14 +3778,14 @@ static void *janus_sip_handler(void *data) {
 			g_atomic_int_set(&session->establishing, 1);
 			/* Add a reference for this call */
 			janus_sip_ref_active_call(session);
-			/* Check if we need to manually add the Contact header */
-			gboolean add_contact_header = (session->stack->contact_header != NULL);
+			/* Retrieve the Contact header for manually adding if not NULL */
+			char *contact_header = session->stack->contact_header;
 			/* Send the INVITE */
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
 				SIPTAG_CALL_ID_STR(callid),
-				TAG_IF(add_contact_header, SIPTAG_CONTACT_STR(session->stack->contact_header)),
+				TAG_IF(contact_header != NULL, SIPTAG_CONTACT_STR(contact_header)),
 				SOATAG_USER_SDP_STR(sdp),
 				NUTAG_PROXY(session->helper && session->master ?
 					session->master->account.outbound_proxy : session->account.outbound_proxy),
@@ -4137,8 +4136,11 @@ static void *janus_sip_handler(void *data) {
 			session->media.update = offer;
 			JANUS_LOG(LOG_VERB, "Prepared SDP for update:\n%s", sdp);
 			if(session->status == janus_sip_call_status_incall) {
+				/* Retrieve the Contact header for manually adding if not NULL */
+				char *contact_header = session->stack->contact_header;
 				/* We're sending a re-INVITE ourselves */
 				nua_invite(session->stack->s_nh_i,
+					TAG_IF(contact_header != NULL, SIPTAG_CONTACT_STR(contact_header)),
 					SOATAG_USER_SDP_STR(sdp),
 					TAG_END());
 			} else {
@@ -4442,12 +4444,12 @@ static void *janus_sip_handler(void *data) {
 				char custom_headers[2048];
 				janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 
-				/* Check if we need to manually add the Contact header */
-				gboolean add_contact_header = (session->stack->contact_header != NULL);
+				/* Retrieve the Contact header for manually adding if not NULL */
+				char *contact_header = session->stack->contact_header;
 				/* Send the re-INVITE */
 				char *sdp = janus_sdp_write(session->sdp);
 				nua_invite(session->stack->s_nh_i,
-					TAG_IF(add_contact_header, SIPTAG_CONTACT_STR(session->stack->contact_header)),
+					TAG_IF(contact_header != NULL, SIPTAG_CONTACT_STR(contact_header)),
 					SOATAG_USER_SDP_STR(sdp),
 					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 					TAG_END());
