@@ -875,8 +875,6 @@ static GThread *handler_thread;
 static void *janus_sip_handler(void *data);
 static void janus_sip_hangup_media_internal(janus_plugin_session *handle);
 
-#define JANUS_RTP_HEADER_LENGTH 12
-#define JANUS_RTP_RFC2833_DEFAULT_PAYLOAD_TYPE 101
 
 typedef struct janus_sip_message {
 	janus_plugin_session *handle;
@@ -1050,26 +1048,10 @@ typedef struct janus_sip_media {
 	int audio_level_extension_id;
 } janus_sip_media;
 
-typedef struct janus_rtp_rfc2833_payload {
-#if __BYTE_ORDER == __BIG_ENDIAN
-	uint8_t event;
-	uint8_t end : 1;
-	uint8_t reserved : 1;
-	uint8_t volume : 6;
-	uint16_t duration;
-#elif __BYTE_ORDER == __LITTLE_ENDIAN
-	uint8_t event;
-	uint8_t volume : 6;
-	uint8_t reserved : 1;
-	uint8_t end : 1;
-	uint16_t duration;
-#endif
-} janus_rtp_rfc2833_payload;
-
-typedef struct janus_sip_dtmf_cache {
+typedef struct janus_sip_dtmf {
 	uint16_t dtmf_event_id;
 	uint32_t timestamp;
-} janus_sip_dtmf_cache;
+} janus_sip_dtmf;
 
 typedef struct janus_sip_session {
 	janus_plugin_session *handle;
@@ -1103,7 +1085,7 @@ typedef struct janus_sip_session {
 	GList *incoming_header_prefixes;
 	GList *active_calls;
 	janus_refcount ref;
-	janus_sip_dtmf_cache *dtmf_cache;
+	janus_sip_dtmf *latest_dtmf;
 } janus_sip_session;
 
 static GHashTable *sessions;
@@ -1538,7 +1520,7 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean update);
 static void *janus_sip_relay_thread(void *data);
 static void janus_sip_media_cleanup(janus_sip_session *session);
-void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer);
+static void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer, int len);
 
 /* URI parsing utilies */
 
@@ -7166,7 +7148,7 @@ static void *janus_sip_relay_thread(void *data) {
 						continue;
 					}
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
-					janus_sip_check_rfc2833(session, buffer);
+					janus_sip_check_rfc2833(session, buffer, bytes);
 					if(session->media.audio_ssrc_peer == 0) {
 						session->media.audio_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
@@ -7419,29 +7401,33 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	return NULL;
 }
 
-/* check peer rtp has rfc2833 and push event */
-void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer) {
+/* Check peer RTP has RFC2833 and push event */
+static void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer, int len) {
 	janus_rtp_header *rtp_header = (janus_rtp_header *)buffer;
 	if (rtp_header->type != JANUS_RTP_RFC2833_DEFAULT_PAYLOAD_TYPE)
 		return;
-	char *payload_buffer = buffer + JANUS_RTP_HEADER_LENGTH + rtp_header->csrccount * sizeof(uint32_t);
+	int plen = 0;
+	char *payload_buffer = janus_rtp_payload(buffer, len, &plen);
+	int rfc2833_payload_size = sizeof(janus_rtp_rfc2833_payload);
+	if(plen < rfc2833_payload_size)
+		return;
 	janus_rtp_rfc2833_payload *rfc2833_payload = (janus_rtp_rfc2833_payload *)payload_buffer;
 	uint16_t duration = ntohs(rfc2833_payload->duration);
 	if (rfc2833_payload->end == 0)
 		return;
 
-	/* set up cache to avoid duplication */
-	if(session->dtmf_cache != NULL && session->dtmf_cache->dtmf_event_id == rfc2833_payload->event && session->dtmf_cache->timestamp == rtp_header->timestamp)
+	/* Set up last dtmf to avoid duplication */
+	if(session->latest_dtmf != NULL && session->latest_dtmf->dtmf_event_id == rfc2833_payload->event && session->latest_dtmf->timestamp == rtp_header->timestamp)
 		return;
-	if(session->dtmf_cache != NULL){
-		g_free(session->dtmf_cache);
-		session->dtmf_cache = NULL;
+	if(session->latest_dtmf != NULL){
+		g_free(session->latest_dtmf);
+		session->latest_dtmf = NULL;
 	}
-	session->dtmf_cache = g_malloc0(sizeof(janus_sip_dtmf_cache));
-	session->dtmf_cache->dtmf_event_id = rfc2833_payload->event;
-	session->dtmf_cache->timestamp = rtp_header->timestamp;
+	session->latest_dtmf = g_malloc0(sizeof(janus_sip_dtmf));
+	session->latest_dtmf->dtmf_event_id = rfc2833_payload->event;
+	session->latest_dtmf->timestamp = rtp_header->timestamp;
 
-	/* parse dtmf key */ 
+	/* Parse dtmf key */ 
 	uint16_t dtmf_key;
 	uint16_t dtmf_keys[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '#', 'A', 'B', 'C', 'D'};
 	if (rfc2833_payload->event < 0 || rfc2833_payload->event > 15) {
@@ -7449,17 +7435,17 @@ void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer) {
 	} else {
   		dtmf_key = dtmf_keys[rfc2833_payload->event];
 	}
-	char payload[128];
-	g_snprintf(payload, sizeof(payload), "Signal=%c\nDuration=%d\n", dtmf_key, duration);
+	char dtmf_key_str[2];
+	g_snprintf(dtmf_key_str, sizeof(dtmf_key_str), "%c", dtmf_key);
 
 	/* Notify the application */
 	json_t *info = json_object();
 	json_object_set_new(info, "sip", json_string("event"));
 	json_t *result = json_object();
-	json_object_set_new(result, "event", json_string("info"));
+	json_object_set_new(result, "event", json_string("dtmf"));
 	json_object_set_new(result, "sender", json_string(session->callee));
-	json_object_set_new(result, "type", json_string("application/dtmf-relay"));
-	json_object_set_new(result, "content", json_string(payload));
+	json_object_set_new(result, "signal", json_string(dtmf_key_str));
+	json_object_set_new(result, "duration", json_integer(duration));
 	if (session->callid)
 		json_object_set_new(info, "call_id", json_string(session->callid));
 	json_object_set_new(info, "result", result);
