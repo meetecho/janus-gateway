@@ -2045,6 +2045,7 @@ static gboolean janus_ice_check_failed(gpointer data) {
 	if(pc->state == NICE_COMPONENT_STATE_CONNECTED || pc->state == NICE_COMPONENT_STATE_READY) {
 		/* ICE succeeded in the meanwhile, get rid of this timer */
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE succeeded, disabling ICE state check timer!\n", handle->handle_id);
+		pc->icefailed_detected = 0;
 		goto stoptimer;
 	}
 	/* Still in the failed state, how much time passed since we first detected it? */
