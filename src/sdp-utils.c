@@ -1119,9 +1119,9 @@ char *janus_sdp_write(janus_sdp *imported) {
 	if(!imported)
 		return NULL;
 	janus_refcount_increase(&imported->ref);
-	char *sdp = g_malloc(1024), mline[8192], buffer[2048];
+	char *sdp = g_malloc(4096), mline[8192], buffer[2048];
 	*sdp = '\0';
-	size_t sdplen = 1024, mlen = sizeof(mline), offset = 0, moffset = 0;
+	size_t sdplen = 4096, mlen = sizeof(mline), offset = 0, moffset = 0;
 	/* v= */
 	g_snprintf(buffer, sizeof(buffer), "v=%d\r\n", imported->version);
 	janus_strlcat_fast(sdp, buffer, sdplen, &offset);
