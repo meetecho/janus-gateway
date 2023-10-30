@@ -2143,6 +2143,7 @@ static int janus_audiobridge_resample(int16_t *input, int input_num, int input_r
 
 
 /* Jitter Buffer and queue-in settings */
+#define JITTER_BUFFER_MIN_PACKETS 2
 #define JITTER_BUFFER_MAX_PACKETS 40
 #define JITTER_BUFFER_CHECK_USECS 1*G_USEC_PER_SEC
 #define QUEUE_IN_MAX_PACKETS 4
@@ -6448,6 +6449,8 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->display = NULL;
 				participant->jitter = jitter_buffer_init(participant->codec == JANUS_AUDIOCODEC_OPUS ? 960 : 160);
 				jitter_buffer_ctl(participant->jitter, JITTER_BUFFER_SET_DESTROY_CALLBACK, &janus_audiobridge_buffer_packet_destroy);
+				spx_int32_t min_buffer_size = JITTER_BUFFER_MIN_PACKETS;
+				jitter_buffer_ctl(participant->jitter, JITTER_BUFFER_SET_MARGIN, &min_buffer_size);
 				participant->inbuf = NULL;
 				participant->outbuf = NULL;
 				participant->encoder = NULL;
