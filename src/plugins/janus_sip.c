@@ -1122,6 +1122,13 @@ static void janus_sip_session_dereference(janus_sip_session *session) {
 	janus_refcount_decrease(&session->ref);
 }
 
+static char *janus_sip_session_contact_header_retrieve(janus_sip_session *session) {
+	if(session->helper && session->master)
+		return session->master->stack->contact_header;
+	else
+		return session->stack->contact_header;
+}
+
 static void janus_sip_session_free(const janus_refcount *session_ref) {
 	janus_sip_session *session = janus_refcount_containerof(session_ref, janus_sip_session, ref);
 	/* Remove the reference to the core plugin session */
@@ -3386,11 +3393,7 @@ static void *janus_sip_handler(void *data) {
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 			/* Retrieve the Contact header for manually adding if not NULL */
-			char *contact_header = NULL;
-			if(session->helper && session->master)
-				contact_header = session->master->stack->contact_header;
-			else
-				contact_header = session->stack->contact_header;
+			char *contact_header = janus_sip_session_contact_header_retrieve(session);
 			/* Send the SUBSCRIBE */
 			nua_subscribe(nh,
 				SIPTAG_TO_STR(to),
@@ -3779,7 +3782,7 @@ static void *janus_sip_handler(void *data) {
 			/* Add a reference for this call */
 			janus_sip_ref_active_call(session);
 			/* Retrieve the Contact header for manually adding if not NULL */
-			char *contact_header = session->stack->contact_header;
+			char *contact_header = janus_sip_session_contact_header_retrieve(session);
 			/* Send the INVITE */
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
@@ -4137,7 +4140,7 @@ static void *janus_sip_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Prepared SDP for update:\n%s", sdp);
 			if(session->status == janus_sip_call_status_incall) {
 				/* Retrieve the Contact header for manually adding if not NULL */
-				char *contact_header = session->stack->contact_header;
+				char *contact_header = janus_sip_session_contact_header_retrieve(session);
 				/* We're sending a re-INVITE ourselves */
 				nua_invite(session->stack->s_nh_i,
 					TAG_IF(contact_header != NULL, SIPTAG_CONTACT_STR(contact_header)),
@@ -4445,7 +4448,7 @@ static void *janus_sip_handler(void *data) {
 				janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 
 				/* Retrieve the Contact header for manually adding if not NULL */
-				char *contact_header = session->stack->contact_header;
+				char *contact_header = janus_sip_session_contact_header_retrieve(session);
 				/* Send the re-INVITE */
 				char *sdp = janus_sdp_write(session->sdp);
 				nua_invite(session->stack->s_nh_i,
