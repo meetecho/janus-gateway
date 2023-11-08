@@ -3162,6 +3162,12 @@ static json_t *janus_videoroom_subscriber_offer(janus_videoroom_subscriber *subs
 			}
 		}
 		if(stream->type != JANUS_VIDEOROOM_MEDIA_DATA) {
+			if((stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO && stream->acodec == JANUS_AUDIOCODEC_NONE) ||
+			   (stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO && stream->vcodec == JANUS_VIDEOCODEC_NONE)) {
+				// Publisher stream codec unsupported or rejected. Do not add to the offer.
+				temp = temp->next;
+				continue;
+			}
 			pt = stream->pt;
 			codec = (stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO ?
 				janus_audiocodec_name(stream->acodec) : janus_videocodec_name(stream->vcodec));
