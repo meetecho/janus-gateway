@@ -4817,6 +4817,27 @@ static void *janus_streaming_handler(void *data) {
 			janus_mutex_unlock(&mountpoints_mutex);
 			/* Check if this is a new viewer, or if an update is taking place (i.e., ICE restart) */
 			if(do_restart) {
+				if(session->mountpoint == NULL) {
+					JANUS_LOG(LOG_ERR, "Can't perform ICE restart: no mountpoint set\n");
+					error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+					g_snprintf(error_cause, 512, "Can't perform ICE restart: no mountpoint set");
+					janus_mutex_unlock(&session->mutex);
+					janus_mutex_unlock(&mp->mutex);
+					janus_mutex_unlock(&sessions_mutex);
+					janus_refcount_decrease(&mp->ref);
+					goto error;
+				}
+				if(session->mountpoint != mp) {
+					/* Already watching something else */
+					JANUS_LOG(LOG_ERR, "Already watching mountpoint %s\n", session->mountpoint->id_str);
+					error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
+					g_snprintf(error_cause, 512, "Already watching mountpoint %s", session->mountpoint->id_str);
+					janus_mutex_unlock(&session->mutex);
+					janus_mutex_unlock(&mp->mutex);
+					janus_mutex_unlock(&sessions_mutex);
+					janus_refcount_decrease(&mp->ref);
+					goto error;
+				}
 				/* User asked for an ICE restart: provide a new offer */
 				if(!g_atomic_int_compare_and_exchange(&session->renegotiating, 0, 1)) {
 					/* Already triggered a renegotiation, and still waiting for an answer */
