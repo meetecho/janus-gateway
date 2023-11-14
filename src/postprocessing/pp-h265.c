@@ -582,8 +582,6 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				/* Skip the FU header */
 				buffer += 3;
 				len -= 3;
-			} else {
-				JANUS_LOG(LOG_HUGE, "unhandled nalu type: %d\n", type);
 			}
 			/* Frame manipulation */
 			memcpy(received_frame + frameLen, buffer, len);
