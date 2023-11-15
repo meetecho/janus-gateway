@@ -2157,10 +2157,10 @@ static void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_
 			 * notify the user via a Janus API event and then fire the 'failed' timer as sual */
 			janus_ice_notify_ice_failed(handle);
 			/* Check if we need to hangup right away, rather than start the grace period */
-			if(janus_ice_hangup_on_failed && component->icefailed_detected == 0) {
+			if(janus_ice_hangup_on_failed && pc->icefailed_detected == 0) {
 				/* We do, hangup the PeerConnection */
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] ICE failed for component %d in stream %d...\n",
-					handle->handle_id, component->component_id, stream->stream_id);
+					handle->handle_id, component_id, stream_id);
 				janus_ice_webrtc_hangup(handle, "ICE failed");
 				return;
 			}
