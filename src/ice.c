@@ -2876,6 +2876,13 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						memcpy(rtp.extensions.dd_content, dd, len);
 					}
 				}
+				if(pc->abs_capture_time_ext_id != -1) {
+					uint64_t abs_ts = 0;
+					if(janus_rtp_header_extension_parse_abs_capture_time(buf, buflen,
+							pc->abs_capture_time_ext_id, &abs_ts) == 0) {
+						rtp.extensions.abs_capture_ts = abs_ts;
+					}
+				}
 				/* Pass the packet to the plugin */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtp && handle->app_handle &&
@@ -3877,7 +3884,7 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 		totlen += plen;
 	/* We need to strip extensions, here, and add those that need to be there manually */
 	uint16_t extlen = 0;
-	char extensions[300];
+	char extensions[320];
 	uint16_t extbufsize = sizeof(extensions);
 	janus_rtp_header *header = (janus_rtp_header *)packet->data;
 	header->extension = 0;
@@ -3888,7 +3895,8 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 			(!video && packet->extensions.audio_level > -1 && handle->pc->audiolevel_ext_id > 0) ||
 			(video && packet->extensions.video_rotation > -1 && handle->pc->videoorientation_ext_id > 0) ||
 			(video && packet->extensions.min_delay > -1 && packet->extensions.max_delay > -1 && handle->pc->playoutdelay_ext_id > 0) ||
-			(video && packet->extensions.dd_len > 0 && handle->pc->dependencydesc_ext_id > 0)) {
+			(video && packet->extensions.dd_len > 0 && handle->pc->dependencydesc_ext_id > 0) ||
+			(packet->extensions.abs_capture_ts > 0 && handle->pc->abs_capture_time_ext_id > 0)) {
 		/* Do we need 2-byte extemsions, or are 1-byte extensions fine? */
 		gboolean use_2byte = (video && packet->extensions.dd_len > 16 && handle->pc->dependencydesc_ext_id > 0);
 		/* Write the extension(s) */
@@ -4069,6 +4077,26 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 					extlen += packet->extensions.dd_len + 2;
 					extbufsize -= packet->extensions.dd_len + 2;
 				}
+			}
+		}
+		/* Check if we need to add the abs-capture-time extension */
+		if(packet->extensions.abs_capture_ts > 0 && handle->pc->abs_capture_time_ext_id > 0) {
+			uint64_t abs64 = htonll(packet->extensions.abs_capture_ts);
+			if(!use_2byte) {
+				*index = (handle->pc->abs_capture_time_ext_id << 4) + 15;
+				memcpy(index+1, &abs64, 8);
+				memset(index+9, 0, 8);
+				index += 17;
+				extlen += 17;
+				extbufsize -= 17;
+			} else {
+				*index = handle->pc->abs_capture_time_ext_id;
+				*(index+1) = 16;
+				memcpy(index+2, &abs64, 8);
+				memset(index+8, 0, 8);
+				index += 18;
+				extlen += 18;
+				extbufsize -= 18;
 			}
 		}
 		/* Calculate the whole length */
