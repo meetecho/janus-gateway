@@ -2019,8 +2019,11 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	}
 	JANUS_LOG(LOG_VERB, "Binding media address set to [%s]...\n", janus_network_address_is_null(&janus_network_local_media_ip) ? "any" : local_media_ip);
 	if(!sdp_ip) {
-		sdp_ip = janus_network_address_is_null(&janus_network_local_media_ip) ? local_ip : local_media_ip;
-		JANUS_LOG(LOG_VERB, "IP to advertise in SDP: %s\n", sdp_ip);
+		char *ip = janus_network_address_is_null(&janus_network_local_media_ip) ? local_ip : local_media_ip;
+		if(ip) {
+			sdp_ip = g_strdup(ip);
+			JANUS_LOG(LOG_VERB, "IP to advertise in SDP: %s\n", sdp_ip);
+		}
 	}
 
 	/* Setup sofia */
@@ -6745,7 +6748,8 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 				attempts--;
 				continue;
 			}
-			JANUS_LOG(LOG_VERB, "Audio RTCP listener bound to [%s]:%d(%d)\n", janus_network_address_is_null(&janus_network_local_media_ip) ?"any":local_media_ip, rtcp_port, session->media.audio_rtcp_fd);
+			JANUS_LOG(LOG_VERB, "Audio RTCP listener bound to [%s]:%d(%d)\n",
+				janus_network_address_is_null(&janus_network_local_media_ip) ? "any" : local_media_ip, rtcp_port, session->media.audio_rtcp_fd);
 			session->media.local_audio_rtp_port = rtp_port;
 			session->media.local_audio_rtcp_port = rtcp_port;
 		}
