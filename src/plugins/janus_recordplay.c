@@ -778,8 +778,6 @@ static void janus_recordplay_message_free(janus_recordplay_message *msg) {
 #define JANUS_RECORDPLAY_ERROR_RECORDING_EXISTS		420
 #define JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR		499
 
-#define ntohll(x) ((1==ntohl(1)) ? (x) : ((gint64)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
-
 /* Plugin implementation */
 int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 	if(g_atomic_int_get(&stopping)) {
@@ -2529,7 +2527,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
 				break;
 			}
-			when = ntohll(when);
+			when = ntohll((uint64_t)when);
 			offset += sizeof(gint64);
 			len -= sizeof(gint64);
 			/* Generate frame packet and insert in the ordered list */
