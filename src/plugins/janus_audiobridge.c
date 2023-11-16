@@ -8903,8 +8903,8 @@ static void janus_audiobridge_participant_denoise(janus_audiobridge_participant 
 			j = 0;
 			/* RNNoise needs 480 samples @ 48kHz */
 			while(i < FRAME_SIZE && j < chunk_size) {
-				denoised[i] = samples[2*j + 2*offset];
-				denoised_alt[i] = samples[2*j + 1 + 2*offset];
+				denoised[i] = samples[2 * (j + offset)];
+				denoised_alt[i] = samples[2 * (j + offset) + 1];
 				i = i + 1 + empty_samples;
 				j = j + 1;
 			}
@@ -8917,8 +8917,8 @@ static void janus_audiobridge_participant_denoise(janus_audiobridge_participant 
 			j = 0;
 			/* Downsample to the original rate */
 			while(i < FRAME_SIZE && j < chunk_size) {
-				samples[2*j + 2*offset] = denoised[i];
-				samples[2*j + 1 + 2*offset] = denoised_alt[i];
+				samples[2 * (j + offset)] = denoised[i];
+				samples[2 * (j + offset) + 1] = denoised_alt[i];
 				i = i + 1 + empty_samples;
 				j = j + 1;
 			}
