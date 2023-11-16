@@ -8849,138 +8849,80 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 
 #ifdef HAVE_RNNOISE
 static void janus_audiobridge_participant_denoise(janus_audiobridge_participant *participant, char *data, int len) {
-	/* Copy the samples in a float buffer, as that's what RNNoise needs */
-	opus_int16 *encoded = (opus_int16 *)data;
-	float denoised[480];
-	int i = 0, offset = 0;
-	if(participant->stereo)
-		len *= 2;
+	opus_int16 *samples = (opus_int16 *)data;
+	int i = 0, j = 0, offset = 0;
 	int total = len;
+	/* Copy the samples in a float buffer, as that's what RNNoise needs */
+	float denoised[480];
+	/* evaluate chunk size (number of samples per channel) for 10ms of audio */
+	int chunk_size = participant->sampling_rate / 100;
+	/* evaluate the number of empty samples between samples in case of upsampling */
+	int empty_samples = (480 - chunk_size) / chunk_size;
 	if(!participant->stereo) {
 		/* Mono */
 		while(total > 0) {
 			/* Denoise this audio chunk */
-			if(participant->sampling_rate == 8000) {
-				/* RNNoise needs 480 samples, resample */
-				memset(denoised, 0, sizeof(denoised));
-				for(i=0; i<160; i++) {
-					if((offset + i) < len) {
-						denoised[i*3] = encoded[offset + i];
-						denoised[i*3 + 1] = 0;
-						denoised[i*3 + 2] = 0;
-					}
+			i = 0;
+			j = 0;
+			/* RNNoise needs 480 samples @ 48kHz */
+			while(i < 480 && j < chunk_size) {
+				denoised[i] = samples[j + offset];
+				/* Upsample with zero filling */
+				if(empty_samples > 0) {
+					memset(&(denoised[i+1]), 0, empty_samples*sizeof(float));
 				}
-			} else if(participant->sampling_rate == 16000) {
-				/* RNNoise needs 480 samples, resample */
-				memset(denoised, 0, sizeof(denoised));
-				for(i=0; i<160; i++) {
-					if((offset + i*2) < len) {
-						denoised[i*3] = encoded[offset + i*2];
-						denoised[i*3 + 1] = encoded[offset + i*2 + 1];
-						denoised[i*3 + 2] = 0;
-					}
-				}
-			} else {
-				/* Just copy the samples */
-				for(i=0; i<480; i++) {
-					if((offset + i) < len)
-						denoised[i] = encoded[offset + i];
-					else
-						denoised[i] = 0;
-				}
+				i = i + 1 + empty_samples;
+				j = j + 1;
 			}
 			/* Denoise */
 			rnnoise_process_frame(participant->rnnoise[0], denoised, denoised);
 			/* Replace the audio data with the one we just denoised */
-			if(participant->sampling_rate == 8000) {
-				/* RNNoise generated 480 samples, resample */
-				for(i=0; i<160; i++) {
-					if((offset + i) < len)
-						encoded[offset + i] = denoised[i*3];
-				}
-			} else if(participant->sampling_rate == 16000) {
-				/* RNNoise generated 480 samples, resample */
-				for(i=0; i<160; i++) {
-					if((offset + i*2) < len) {
-						encoded[offset + i*2] = denoised[i*3];
-						encoded[offset + i*2 + 1] = denoised[i*3 + 1];
-					}
-				}
-			} else {
-				/* Just copy the denoised samples */
-				for(i=0; i<480; i++) {
-					if((offset + i) < len)
-						encoded[offset + i] = denoised[i];
-				}
+			i = 0;
+			j = 0;
+			/* Downsample to the original rate */
+			while(i < 480 && j < chunk_size) {
+				samples[j + offset] = denoised[i];
+				i = i + 1 + empty_samples;
+				j = j + 1;
 			}
-			total -= 480;
-			offset += 480;
+			total -= chunk_size;
+			offset += chunk_size;
 		}
 	} else {
 		/* Stereo (interleaved) */
-		int step = 0;
-		while(total > 0 && step < 2) {
+		float denoised_alt[480];
+		while(total > 0) {
 			/* Denoise this audio chunk */
-			if(participant->sampling_rate == 8000) {
-				/* RNNoise needs 480 samples, resample */
-				memset(denoised, 0, sizeof(denoised));
-				for(i=0; i<160; i++) {
-					if((offset + i*2 + step) < len) {
-						denoised[i*3] = encoded[offset + i*2 + step];
-						denoised[i*3 + 1] = 0;
-						denoised[i*3 + 2] = 0;
-					}
+			i = 0;
+			j = 0;
+			/* RNNoise needs 480 samples @ 48kHz */
+			while(i < 480 && j < chunk_size) {
+				denoised[i] = samples[2*j + 2*offset];
+				denoised_alt[i] = samples[2*j + 1 + 2*offset];
+				/* Upsample with zero filling */
+				if(empty_samples > 0) {
+					memset(&(denoised[i+1]), 0, empty_samples*sizeof(float));
+					memset(&(denoised_alt[i+1]), 0, empty_samples*sizeof(float));
 				}
-			} else if(participant->sampling_rate == 16000) {
-				/* RNNoise needs 480 samples, resample */
-				memset(denoised, 0, sizeof(denoised));
-				for(i=0; i<160; i++) {
-					if((offset + i*4 + step + 2) < len) {
-						denoised[i*3] = encoded[offset + i*4 + step];
-						denoised[i*3 + 1] = encoded[offset + i*4 + step + 2];
-						denoised[i*3 + 2] = 0;
-					}
-				}
-			} else {
-				/* Just copy the samples */
-				for(i=0; i<480; i++) {
-					if((offset + i*2 + step) < len)
-						denoised[i] = encoded[offset + i*2 + step];
-					else
-						denoised[i] = 0;
-				}
+				i = i + 1 + empty_samples;
+				j = j + 1;
 			}
-			/* Denoise */
-			rnnoise_process_frame(participant->rnnoise[step], denoised, denoised);
+			/* Denoise channel 1 */
+			rnnoise_process_frame(participant->rnnoise[0], denoised, denoised);
+			/* Denoise channel 2 */
+			rnnoise_process_frame(participant->rnnoise[1], denoised_alt, denoised_alt);
 			/* Replace the audio data with the one we just denoised */
-			if(participant->sampling_rate == 8000) {
-				/* RNNoise generated 480 samples, resample */
-				for(i=0; i<160; i++) {
-					if((offset + i*2 + step) < len)
-						encoded[offset + i*2 + step] = denoised[i*3];
-				}
-			} else if(participant->sampling_rate == 16000) {
-				/* RNNoise generated 480 samples, resample */
-				for(i=0; i<160; i++) {
-					if((offset + i*4 + step + 2) < len) {
-						encoded[offset + i*4 + step] = denoised[i*3];
-						encoded[offset + i*4 + step + 2] = denoised[i*3 + 1];
-					}
-				}
-			} else {
-				/* Just copy the denoised samples */
-				for(i=0; i<480; i++) {
-					if((offset + i*2 + step) < len)
-						encoded[offset + i*2 + step] = denoised[i];
-				}
+			i = 0;
+			j = 0;
+			/* Downsample to the original rate */
+			while(i < 480 && j < chunk_size) {
+				samples[2*j + 2*offset] = denoised[i];
+				samples[2*j + 1 + 2*offset] = denoised_alt[i];
+				i = i + 1 + empty_samples;
+				j = j + 1;
 			}
-			total -= 960;
-			offset += 960;
-			if(total <= 0) {
-				total = len;
-				offset = 0;
-				step++;
-			}
+			total -= chunk_size;
+			offset += chunk_size;
 		}
 	}
 }
