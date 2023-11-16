@@ -2034,7 +2034,7 @@ static int janus_nosip_bind_socket(int fd, int port) {
 		(janus_network_address_is_null(&janus_network_local_ip) || janus_network_local_ip.family == AF_INET6);
 	socklen_t addrlen = use_ipv6_address_family? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
 	struct sockaddr_storage rtp_address = { 0 };
-	if(!ipv6_disabled) {
+	if(use_ipv6_address_family) {
 		struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&rtp_address;
 		addr->sin6_family = AF_INET6;
 		addr->sin6_port = htons(port);
