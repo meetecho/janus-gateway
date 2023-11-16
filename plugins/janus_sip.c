@@ -6809,7 +6809,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			JANUS_LOG(LOG_VERB, "Video RTP listener bound to [%s]:%d(%d)\n",
 				janus_network_address_is_null(&janus_network_local_media_ip) ? "any" : local_media_ip, rtp_port, session->media.video_rtp_fd);
 			int rtcp_port = rtp_port+1;
-			if(!ipv6_disabled) {
+			if(use_ipv6_address_family) {
 				struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&video_rtcp_address;
 				addr->sin6_family = AF_INET6;
 				addr->sin6_port = htons(rtcp_port);
