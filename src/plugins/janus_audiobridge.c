@@ -8442,7 +8442,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 #ifdef HAVE_RNNOISE
 						/* Check if we need to denoise this packet */
 						if(participant->rnnoise[0] && participant->denoise)
-							janus_audiobridge_participant_denoise(participant, pkt->data, pkt->length);
+							janus_audiobridge_participant_denoise(participant, (char *)pkt->data, pkt->length);
 #endif
 						/* Queue the decoded redundant packet for the mixer */
 						janus_mutex_lock(&participant->qmutex);
@@ -8486,7 +8486,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 #ifdef HAVE_RNNOISE
 					/* Check if we need to denoise this packet */
 					if(participant->rnnoise[0] && participant->denoise)
-						janus_audiobridge_participant_denoise(participant, pkt->data, pkt->length);
+						janus_audiobridge_participant_denoise(participant, (char *)pkt->data, pkt->length);
 #endif
 					/* Get rid of the buffered packet */
 					janus_audiobridge_buffer_packet_destroy(bpkt);
@@ -8848,29 +8848,30 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 }
 
 #ifdef HAVE_RNNOISE
+#define FRAME_SIZE 480
 static void janus_audiobridge_participant_denoise(janus_audiobridge_participant *participant, char *data, int len) {
 	opus_int16 *samples = (opus_int16 *)data;
 	int i = 0, j = 0, offset = 0;
 	int total = len;
 	/* Copy the samples in a float buffer, as that's what RNNoise needs */
-	float denoised[480];
+	float denoised[FRAME_SIZE];
 	/* evaluate chunk size (number of samples per channel) for 10ms of audio */
 	int chunk_size = participant->sampling_rate / 100;
 	/* evaluate the number of empty samples between samples in case of upsampling */
-	int empty_samples = (480 - chunk_size) / chunk_size;
+	int empty_samples = (FRAME_SIZE - chunk_size) / chunk_size;
 	if(!participant->stereo) {
 		/* Mono */
 		while(total > 0) {
+			if(empty_samples > 0) {
+				/* Upsample with zero filling */
+				memset(denoised, 0, sizeof(denoised));
+			}
 			/* Denoise this audio chunk */
 			i = 0;
 			j = 0;
 			/* RNNoise needs 480 samples @ 48kHz */
-			while(i < 480 && j < chunk_size) {
+			while(i < FRAME_SIZE && j < chunk_size) {
 				denoised[i] = samples[j + offset];
-				/* Upsample with zero filling */
-				if(empty_samples > 0) {
-					memset(&(denoised[i+1]), 0, empty_samples*sizeof(float));
-				}
 				i = i + 1 + empty_samples;
 				j = j + 1;
 			}
@@ -8880,7 +8881,7 @@ static void janus_audiobridge_participant_denoise(janus_audiobridge_participant 
 			i = 0;
 			j = 0;
 			/* Downsample to the original rate */
-			while(i < 480 && j < chunk_size) {
+			while(i < FRAME_SIZE && j < chunk_size) {
 				samples[j + offset] = denoised[i];
 				i = i + 1 + empty_samples;
 				j = j + 1;
@@ -8890,20 +8891,20 @@ static void janus_audiobridge_participant_denoise(janus_audiobridge_participant 
 		}
 	} else {
 		/* Stereo (interleaved) */
-		float denoised_alt[480];
+		float denoised_alt[FRAME_SIZE];
 		while(total > 0) {
+			if(empty_samples > 0) {
+				/* Upsample with zero filling */
+				memset(denoised, 0, sizeof(denoised));
+				memset(denoised_alt, 0, sizeof(denoised_alt));
+			}
 			/* Denoise this audio chunk */
 			i = 0;
 			j = 0;
 			/* RNNoise needs 480 samples @ 48kHz */
-			while(i < 480 && j < chunk_size) {
+			while(i < FRAME_SIZE && j < chunk_size) {
 				denoised[i] = samples[2*j + 2*offset];
 				denoised_alt[i] = samples[2*j + 1 + 2*offset];
-				/* Upsample with zero filling */
-				if(empty_samples > 0) {
-					memset(&(denoised[i+1]), 0, empty_samples*sizeof(float));
-					memset(&(denoised_alt[i+1]), 0, empty_samples*sizeof(float));
-				}
 				i = i + 1 + empty_samples;
 				j = j + 1;
 			}
@@ -8915,7 +8916,7 @@ static void janus_audiobridge_participant_denoise(janus_audiobridge_participant 
 			i = 0;
 			j = 0;
 			/* Downsample to the original rate */
-			while(i < 480 && j < chunk_size) {
+			while(i < FRAME_SIZE && j < chunk_size) {
 				samples[2*j + 2*offset] = denoised[i];
 				samples[2*j + 1 + 2*offset] = denoised_alt[i];
 				i = i + 1 + empty_samples;
