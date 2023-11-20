@@ -7408,7 +7408,7 @@ static void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer, in
 		return;
 	int plen = 0;
 	char *payload_buffer = janus_rtp_payload(buffer, len, &plen);
-	if(plen < sizeof(janus_rtp_rfc2833_payload))
+	if(plen < 0 || (size_t)plen < sizeof(janus_rtp_rfc2833_payload))
 		return;
 	janus_rtp_rfc2833_payload *rfc2833_payload = (janus_rtp_rfc2833_payload *)payload_buffer;
 	uint16_t duration = ntohs(rfc2833_payload->duration);
@@ -7423,7 +7423,7 @@ static void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer, in
 
 	/* Parse dtmf key */ 
 	uint16_t dtmf_key;
-	if(rfc2833_payload->event < 0 || rfc2833_payload->event > 15)
+	if(rfc2833_payload->event > 15)
 		return;
   	dtmf_key = dtmf_keys[rfc2833_payload->event];
 	char dtmf_key_str[2];
