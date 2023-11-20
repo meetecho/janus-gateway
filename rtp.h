@@ -71,6 +71,25 @@ typedef struct janus_rtp_header_extension {
 	uint16_t length;
 } janus_rtp_header_extension;
 
+/*! \brief RTP RFC2833 payload */
+typedef struct janus_rtp_rfc2833_payload {
+#if __BYTE_ORDER == __BIG_ENDIAN
+	uint8_t event;
+	uint8_t end:1;
+	uint8_t reserved:1;
+	uint8_t volume:6;
+	uint16_t duration;
+#elif __BYTE_ORDER == __LITTLE_ENDIAN
+	uint8_t event;
+	uint8_t volume:6;
+	uint8_t reserved:1;
+	uint8_t end:1;
+	uint16_t duration;
+#endif
+} janus_rtp_rfc2833_payload;
+
+#define JANUS_RTP_RFC2833_DEFAULT_PAYLOAD_TYPE 101
+
 /*! \brief a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
 #define JANUS_RTP_EXTMAP_AUDIO_LEVEL		"urn:ietf:params:rtp-hdrext:ssrc-audio-level"
 /*! \brief a=extmap:2 urn:ietf:params:rtp-hdrext:toffset */
