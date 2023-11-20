@@ -8247,7 +8247,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					/* If this is Opus, check if there's a packet gap we should fix with FEC */
 					use_fec = FALSE;
 					if(!first && participant->codec == JANUS_AUDIOCODEC_OPUS && participant->fec) {
-						if(ntohs(rtp->seq_number) != participant->expected_seq) {
+						if(ntohs(rtp->seq_number) == participant->expected_seq + 1) {
 							/* Lost a packet here? Use FEC to recover */
 							use_fec = TRUE;
 						}
