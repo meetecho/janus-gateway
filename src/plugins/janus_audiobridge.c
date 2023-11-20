@@ -8400,7 +8400,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 				if(ret == JITTER_BUFFER_OK) {
 					bpkt = (janus_audiobridge_buffer_packet *)jbp.data;
 					janus_mutex_unlock(&participant->qmutex);
-					first = FALSE;
 					locked = FALSE;
 					rtp = (janus_rtp_header *)bpkt->buffer;
 					/* If this is Opus, check if there's a packet gap we should fix with FEC */
@@ -8411,6 +8410,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							use_fec = TRUE;
 						}
 					}
+					first = FALSE;
 					if(!g_atomic_int_compare_and_exchange(&participant->decoding, 0, 1)) {
 						/* This means we're cleaning up, so don't try to decode */
 						janus_audiobridge_buffer_packet_destroy(bpkt);
