@@ -869,6 +869,7 @@ static int dscp_video_rtp = 0;
 static char *sips_certs_dir = NULL;
 #define JANUS_DEFAULT_SIP_TIMER_T1X64 32000
 static int sip_timer_t1x64 = JANUS_DEFAULT_SIP_TIMER_T1X64;
+static uint16_t dtmf_keys[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '#', 'A', 'B', 'C', 'D'};
 
 static gboolean query_contact_header = FALSE;
 
@@ -1048,6 +1049,11 @@ typedef struct janus_sip_media {
 	int audio_level_extension_id;
 } janus_sip_media;
 
+typedef struct janus_sip_dtmf {
+	uint16_t dtmf_event_id;
+	uint32_t timestamp;
+} janus_sip_dtmf;
+
 typedef struct janus_sip_session {
 	janus_plugin_session *handle;
 	ssip_t *stack;
@@ -1080,7 +1086,9 @@ typedef struct janus_sip_session {
 	GList *incoming_header_prefixes;
 	GList *active_calls;
 	janus_refcount ref;
+	janus_sip_dtmf latest_dtmf;
 } janus_sip_session;
+
 static GHashTable *sessions;
 static GHashTable *identities;
 static GHashTable *callids;
@@ -1513,7 +1521,7 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean update);
 static void *janus_sip_relay_thread(void *data);
 static void janus_sip_media_cleanup(janus_sip_session *session);
-
+static void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer, int len);
 
 /* URI parsing utilies */
 
@@ -7186,6 +7194,7 @@ static void *janus_sip_relay_thread(void *data) {
 						continue;
 					}
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
+					janus_sip_check_rfc2833(session, buffer, bytes);
 					if(session->media.audio_ssrc_peer == 0) {
 						session->media.audio_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
@@ -7436,6 +7445,52 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	JANUS_LOG(LOG_VERB, "Leaving sofia loop thread...\n");
 	g_thread_unref(g_thread_self());
 	return NULL;
+}
+
+/* Check peer RTP has RFC2833 and push event */
+static void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer, int len) {
+	janus_rtp_header *rtp_header = (janus_rtp_header *)buffer;
+	if(rtp_header->type != JANUS_RTP_RFC2833_DEFAULT_PAYLOAD_TYPE)
+		return;
+	int plen = 0;
+	char *payload_buffer = janus_rtp_payload(buffer, len, &plen);
+	if(plen < 0 || (size_t)plen < sizeof(janus_rtp_rfc2833_payload))
+		return;
+	janus_rtp_rfc2833_payload *rfc2833_payload = (janus_rtp_rfc2833_payload *)payload_buffer;
+	uint16_t duration = ntohs(rfc2833_payload->duration);
+	if(rfc2833_payload->end == 0)
+		return;
+
+	/* Set up last dtmf to avoid duplication */
+	if(session->latest_dtmf.dtmf_event_id == rfc2833_payload->event && session->latest_dtmf.timestamp == rtp_header->timestamp)
+		return;
+	session->latest_dtmf.dtmf_event_id = rfc2833_payload->event;
+	session->latest_dtmf.timestamp = rtp_header->timestamp;
+
+	/* Parse dtmf key */ 
+	uint16_t dtmf_key;
+	if(rfc2833_payload->event > 15)
+		return;
+  	dtmf_key = dtmf_keys[rfc2833_payload->event];
+	char dtmf_key_str[2];
+	dtmf_key_str[0] = dtmf_key;
+	dtmf_key_str[1] = '\0';
+
+	/* Notify the application */
+	json_t *info = json_object();
+	json_object_set_new(info, "sip", json_string("event"));
+	json_t *result = json_object();
+	json_object_set_new(result, "event", json_string("dtmf"));
+	json_object_set_new(result, "sender", json_string(session->callee));
+	json_object_set_new(result, "signal", json_string(dtmf_key_str));
+	json_object_set_new(result, "duration", json_integer(duration));
+	if(session->callid)
+		json_object_set_new(info, "call_id", json_string(session->callid));
+	json_object_set_new(info, "result", result);
+	int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, info, NULL);
+	JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+	json_decref(info);
+	return;
 }
 
 /* Helper method to send an RTCP PLI to the SIP peer */
