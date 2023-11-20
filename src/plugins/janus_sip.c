@@ -7423,7 +7423,6 @@ static void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer, in
 
 	/* Parse dtmf key */ 
 	uint16_t dtmf_key;
-	uint16_t dtmf_keys[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '#', 'A', 'B', 'C', 'D'};
 	if(rfc2833_payload->event < 0 || rfc2833_payload->event > 15)
 		return;
   	dtmf_key = dtmf_keys[rfc2833_payload->event];
