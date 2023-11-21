@@ -133,9 +133,6 @@ Usage: janus-pp-rec [OPTIONS] source.mjr
 #include "pp-srt.h"
 #include "pp-binary.h"
 
-#define htonll(x) ((1==htonl(1)) ? (x) : ((gint64)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
-#define ntohll(x) ((1==ntohl(1)) ? (x) : ((gint64)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
-
 int janus_log_level = 4;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = TRUE;
@@ -836,7 +833,7 @@ int main(int argc, char *argv[]) {
 				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
 				break;
 			}
-			when = ntohll(when);
+			when = ntohll((uint64_t)when);
 			offset += sizeof(gint64);
 			len -= sizeof(gint64);
 			/* Generate frame packet and insert in the ordered list */
@@ -1172,6 +1169,12 @@ int main(int argc, char *argv[]) {
 		tmp = tmp->next;
 	}
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" frame packets\n", count);
+	if(!data && !video) {
+		double diff = ts - pts;
+		if(diff < -0.5 || diff > 0.5) {
+			JANUS_LOG(LOG_WARN, "Detected audio clock mismatch, consider using skew compensation or restamping (rtp_time=%.2fs, real_time=%.2fs, diff=%.2fs)\n", ts, pts, diff);
+		}
+	}
 	if(rotated != -1) {
 		if(rotated == 0 && last_rotation != 0) {
 			JANUS_LOG(LOG_INFO, "The video is rotated\n");
@@ -1271,7 +1274,11 @@ int main(int argc, char *argv[]) {
 	}
 
 	/* Run restamping */
-	if(!video && !data && options.restamp_multiplier > 0) {
+	gboolean restamping = FALSE;
+	if(options.restamp_multiplier > 0) {
+		restamping = TRUE;
+	}
+	if(!video && !data && restamping) {
 		tmp = list;
 		uint64_t restamping_offset = 0;
 		double restamp_threshold = (double) options.restamp_min_th/1000;
@@ -1433,7 +1440,7 @@ int main(int argc, char *argv[]) {
 	/* Loop */
 	if(!video && !data) {
 		if(opus) {
-			if(janus_pp_opus_process(file, list, &working) < 0) {
+			if(janus_pp_opus_process(file, list, restamping, &working) < 0) {
 				JANUS_LOG(LOG_ERR, "Error processing Opus RTP frames...\n");
 			}
 		} else if(g711) {

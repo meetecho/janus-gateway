@@ -76,7 +76,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	janus_rtp_header_extension_parse_audio_level((char *)data, size, 1, NULL, NULL);
 	janus_rtp_header_extension_parse_playout_delay((char *)data, size, 1, NULL, NULL);
 	janus_rtp_header_extension_parse_transport_wide_cc((char *)data, size, 1, &transport_seq_num);
-	janus_rtp_header_extension_parse_abs_sent_time((char *)data, size, 1, NULL);
+	janus_rtp_header_extension_parse_abs_send_time((char *)data, size, 1, NULL);
+	janus_rtp_header_extension_parse_abs_capture_time((char *)data, size, 1, NULL);
 	janus_rtp_header_extension_parse_video_orientation((char * )data, size, 1, &c, &f, &r1, &r0);
 	janus_rtp_header_extension_parse_dependency_desc((char *)data, size, 1, (uint8_t *)&dd, &sizedd);
 

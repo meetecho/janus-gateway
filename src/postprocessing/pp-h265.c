@@ -513,7 +513,7 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			memcpy(&unit, buffer, sizeof(uint16_t));
 			unit = ntohs(unit);
 			uint8_t type = (unit & 0x7E00) >> 9;
-			if(type == 32 || type == 33 || type == 34) {
+			if(type == 32 || type == 33 || type == 34 || type == 1) {
 				if(type == 32 || type == 33) {
 					keyFrame = 1;
 					if(!keyframe_found) {

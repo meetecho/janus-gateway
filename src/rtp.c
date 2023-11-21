@@ -103,6 +103,8 @@ const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id) {
 						return JANUS_RTP_EXTMAP_TOFFSET;
 					if(strstr(extension, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
 						return JANUS_RTP_EXTMAP_ABS_SEND_TIME;
+					if(strstr(extension, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME))
+						return JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME;
 					if(strstr(extension, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
 						return JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC;
 					if(strstr(extension, JANUS_RTP_EXTMAP_MID))
@@ -332,7 +334,7 @@ int janus_rtp_header_extension_parse_dependency_desc(char *buf, int len, int id,
 	return 0;
 }
 
-int janus_rtp_header_extension_parse_abs_sent_time(char *buf, int len, int id, uint32_t *abs_ts) {
+int janus_rtp_header_extension_parse_abs_send_time(char *buf, int len, int id, uint32_t *abs_ts) {
 	char *ext = NULL;
 	uint8_t idlen = 0;
 	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
@@ -360,6 +362,37 @@ int janus_rtp_header_extension_set_abs_send_time(char *buf, int len, int id, uin
 		return -3;
 	uint32_t abs24 = htonl(abs_ts) >> 8;
 	memcpy(ext, &abs24, 3);
+	return 0;
+}
+
+int janus_rtp_header_extension_parse_abs_capture_time(char *buf, int len, int id, uint64_t *abs_ts) {
+	char *ext = NULL;
+	uint8_t idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
+		return -1;
+	/* a=extmap:7 http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time */
+	if(ext == NULL)
+		return -2;
+	if(idlen < 8 || idlen > len-(ext-buf)-1)
+		return -3;
+	uint64_t abs64 = 0;
+	memcpy(&abs64, ext, 8);
+	if(abs_ts)
+		*abs_ts = ntohll(abs64);
+	return 0;
+}
+
+int janus_rtp_header_extension_set_abs_capture_time(char *buf, int len, int id, uint64_t abs_ts) {
+	char *ext = NULL;
+	uint8_t idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
+		return -1;
+	if(ext == NULL)
+		return -2;
+	if(idlen < 8 || idlen > len-(ext-buf)-1)
+		return -3;
+	uint64_t abs64 = htonll(abs_ts);
+	memcpy(ext, &abs64, 8);
 	return 0;
 }
 
