@@ -6614,6 +6614,8 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 		}
 		g_list_free(pts_to_remove);
 	}
+	if(codecs != NULL)
+		g_hash_table_destroy(codecs);
 	/* Generate a SDP string out of our changes */
 	return janus_sdp_write(sdp);
 }
@@ -7458,7 +7460,7 @@ static void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer, in
 	session->latest_dtmf.dtmf_event_id = rfc2833_payload->event;
 	session->latest_dtmf.timestamp = rtp_header->timestamp;
 
-	/* Parse dtmf key */ 
+	/* Parse dtmf key */
 	uint16_t dtmf_key;
 	if(rfc2833_payload->event > 15)
 		return;
