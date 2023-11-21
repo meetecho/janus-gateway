@@ -4595,8 +4595,8 @@ static gboolean janus_ice_outgoing_bwe_handle(gpointer user_data) {
 		uint32_t gap = (pc->bwe->probing_buildup_step >= 10000 ? 500000 : 200000);
 		if(now - pc->bwe->probing_buildup_timer >= gap) {
 			pc->bwe->probing_buildup_step += 1000;
-			if(pc->bwe->probing_buildup_step > 20000)
-				pc->bwe->probing_buildup_step = 20000;
+			if(pc->bwe->probing_buildup_step > 10000)
+				pc->bwe->probing_buildup_step = 10000;
 			pc->bwe->probing_buildup += pc->bwe->probing_buildup_step;
 			pc->bwe->probing_buildup_timer = now;
 		}
