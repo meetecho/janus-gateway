@@ -6324,7 +6324,7 @@ static void *janus_audiobridge_handler(void *data) {
 #ifdef HAVE_RNNOISE
 			participant->denoise = denoise ? json_is_true(denoise) : audiobridge->denoise;
 			if(participant->denoise && participant->rnnoise[0] == NULL) {
-				/* Create RNNoise context */
+				/* Create RNNoise context(s) */
 				participant->rnnoise[0] = rnnoise_create(NULL);
 				if(participant->stereo)
 					participant->rnnoise[1] = rnnoise_create(NULL);
@@ -6739,7 +6739,7 @@ static void *janus_audiobridge_handler(void *data) {
 				}
 				participant->group = group_id;
 			}
-			if(muted || display || (participant->stereo && spatial)) {
+			if(muted || display || (participant->stereo && spatial) || denoise) {
 				if(muted) {
 					participant->muted = json_is_true(muted);
 					JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %s, user %s)\n",
@@ -6783,7 +6783,7 @@ static void *janus_audiobridge_handler(void *data) {
 				if(denoise)
 					participant->denoise = json_is_true(denoise);
 				if(participant->denoise && participant->rnnoise[0] == NULL) {
-					/* Create RNNoise context */
+					/* Create RNNoise context(s) */
 					participant->rnnoise[0] = rnnoise_create(NULL);
 					if(participant->stereo)
 						participant->rnnoise[1] = rnnoise_create(NULL);
