@@ -7116,36 +7116,12 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->stereo = audiobridge->spatial_audio;
 				participant->spatial_position = 50;
 				int error = 0;
-#ifdef HAVE_RNNOISE
-				spx_uint32_t channels = !audiobridge->spatial_audio ? 1 : 2;
-				spx_uint32_t from_rate = participant->sampling_rate;
-				spx_uint32_t to_rate = 48000;
-				int quality = 10;
-				SpeexResamplerState *new_upsampler = speex_resampler_init(channels, from_rate, to_rate, quality, &error);
-				if(new_upsampler != NULL)
-					JANUS_LOG(LOG_INFO, "Created resampler from %d to %d (channels=%d, quality=%d)\n", from_rate, to_rate, channels, quality);
-				else
-					JANUS_LOG(LOG_ERR, "Error creating resampler %s\n", speex_resampler_strerror(error));
-				SpeexResamplerState *new_downsampler = speex_resampler_init(channels, to_rate, from_rate, quality, &error);
-				if(new_downsampler != NULL)
-					JANUS_LOG(LOG_INFO, "Created resampler from %d to %d (channels=%d, quality=%d)\n", to_rate, from_rate, channels, quality);
-				else
-					JANUS_LOG(LOG_ERR, "Error creating resampler %s\n", speex_resampler_strerror(error));
-#endif
 				OpusEncoder *new_encoder = opus_encoder_create(audiobridge->sampling_rate,
 					audiobridge->spatial_audio ? 2 : 1, OPUS_APPLICATION_VOIP, &error);
 				if(error != OPUS_OK) {
 					if(user_id_allocated)
 						g_free(user_id_str);
 					janus_refcount_decrease(&audiobridge->ref);
-#ifdef HAVE_RNNOISE
-					if(new_upsampler)
-						speex_resampler_destroy(new_upsampler);
-					new_upsampler = NULL;
-					if(new_downsampler)
-						speex_resampler_destroy(new_downsampler);
-					new_downsampler = NULL;
-#endif
 					if(new_encoder)
 						opus_encoder_destroy(new_encoder);
 					new_encoder = NULL;
@@ -7185,14 +7161,6 @@ static void *janus_audiobridge_handler(void *data) {
 					if(user_id_allocated)
 						g_free(user_id_str);
 					janus_refcount_decrease(&audiobridge->ref);
-#ifdef HAVE_RNNOISE
-					if(new_upsampler)
-						speex_resampler_destroy(new_upsampler);
-					new_upsampler = NULL;
-					if(new_downsampler)
-						speex_resampler_destroy(new_downsampler);
-					new_downsampler = NULL;
-#endif
 					if(new_encoder)
 						opus_encoder_destroy(new_encoder);
 					new_encoder = NULL;
@@ -7214,12 +7182,30 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->reset = FALSE;
 				/* Destroy the previous encoder/decoder and update the references */
 #ifdef HAVE_RNNOISE
-				if(participant->upsampler)
-					speex_resampler_destroy(participant->upsampler);
-				participant->upsampler = new_upsampler;
-				if(participant->downsampler)
-					speex_resampler_destroy(participant->downsampler);
-				participant->downsampler = new_downsampler;
+				spx_uint32_t channels = !audiobridge->spatial_audio ? 1 : 2;
+				spx_uint32_t from_rate = participant->sampling_rate;
+				spx_uint32_t to_rate = 48000;
+				int quality = 10;
+				SpeexResamplerState *new_upsampler = speex_resampler_init(channels, from_rate, to_rate, quality, &error);
+				if(new_upsampler != NULL)
+					JANUS_LOG(LOG_INFO, "Created resampler from %d to %d (channels=%d, quality=%d)\n", from_rate, to_rate, channels, quality);
+				else
+					JANUS_LOG(LOG_ERR, "Error creating resampler %s\n", speex_resampler_strerror(error));
+				SpeexResamplerState *new_downsampler = speex_resampler_init(channels, to_rate, from_rate, quality, &error);
+				if(new_downsampler != NULL)
+					JANUS_LOG(LOG_INFO, "Created resampler from %d to %d (channels=%d, quality=%d)\n", to_rate, from_rate, channels, quality);
+				else
+					JANUS_LOG(LOG_ERR, "Error creating resampler %s\n", speex_resampler_strerror(error));
+				if(new_upsampler != NULL) {
+					if(participant->upsampler)
+						speex_resampler_destroy(participant->upsampler);
+					participant->upsampler = new_upsampler;
+				}
+				if(new_downsampler != NULL) {
+					if(participant->downsampler)
+						speex_resampler_destroy(participant->downsampler);
+					participant->downsampler = new_downsampler;
+				}
 #endif
 				if(participant->encoder)
 					opus_encoder_destroy(participant->encoder);
