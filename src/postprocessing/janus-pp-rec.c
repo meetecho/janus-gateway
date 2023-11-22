@@ -133,9 +133,6 @@ Usage: janus-pp-rec [OPTIONS] source.mjr
 #include "pp-srt.h"
 #include "pp-binary.h"
 
-#define htonll(x) ((1==htonl(1)) ? (x) : ((gint64)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
-#define ntohll(x) ((1==ntohl(1)) ? (x) : ((gint64)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
-
 int janus_log_level = 4;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = TRUE;
@@ -836,7 +833,7 @@ int main(int argc, char *argv[]) {
 				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
 				break;
 			}
-			when = ntohll(when);
+			when = ntohll((uint64_t)when);
 			offset += sizeof(gint64);
 			len -= sizeof(gint64);
 			/* Generate frame packet and insert in the ordered list */

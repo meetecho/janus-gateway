@@ -32,6 +32,14 @@ struct janus_json_parameter {
 	unsigned int flags;
 };
 
+#ifndef htonll
+#define htonll(x) ((1==htonl(1)) ? (x) : ((guint64)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
+#endif
+#ifndef ntohll
+#define ntohll(x) ((1==ntohl(1)) ? (x) : ((guint64)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
+#endif
+
+
 /*! \brief Helper to retrieve the system monotonic time, as Glib's
  * g_get_monotonic_time may not be available (only since 2.28)
  * @returns The system monotonic time */

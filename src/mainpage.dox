@@ -4070,7 +4070,9 @@ ldd janus | grep asan
  *    - Presentation on SFU/VideoRoom cascading at <a href="https://www.youtube.com/watch?v=z7SvEQcDEgM">IIT RTC 2022</a>;
  *    - Presentation on Social audio applications with Janus at <a href="https://fosdem.org/2023/schedule/event/janus/">FOSDEM 2023</a>;
  *    - Presentation on Real-Time Text in SIP and WebRTC at <a href="https://www.youtube.com/watch?v=yehYE34d3mI&t=10957s">Kamailio World 2023</a>;
- *    - Presentation on Hybrid meetings using Janus at <a href="https://www.youtube.com/watch?v=ZqRvUxgf00s">CommCon 2023</a>. \n\n
+ *    - Presentation on Hybrid meetings using Janus at <a href="https://www.youtube.com/watch?v=ZqRvUxgf00s">CommCon 2023</a>;
+ *    - Presentation on Bandwidth Estimation (BWE) in Janus at <a href="https://www.youtube.com/watch?v=7L35Q_5aqCc">RTC.ON 2023</a>;
+ *    - Presentation on WHIP, WHEP and WebRTC broadcasting at <a href="https://www.youtube.com/watch?v=L0JkNphlEmw">TADSummit Paris 2023</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
  *    and presentations from <a href="https://januscon.it/2019">JanusCon</a>,
  *    the Janus conference we hosted here in Napoli.
