@@ -1685,10 +1685,6 @@ static void janus_audiobridge_participant_free(const janus_refcount *participant
 	/* This participant can be destroyed, free all the resources */
 	g_free(participant->user_id_str);
 	g_free(participant->display);
-	if(participant->upsampler)
-		speex_resampler_destroy(participant->upsampler);
-	if(participant->downsampler)
-		speex_resampler_destroy(participant->downsampler);
 	if(participant->encoder)
 		opus_encoder_destroy(participant->encoder);
 	if(participant->decoder)
@@ -1716,14 +1712,18 @@ static void janus_audiobridge_participant_free(const janus_refcount *participant
 		rnnoise_destroy(participant->rnnoise[0]);
 	if(participant->rnnoise[1])
 		rnnoise_destroy(participant->rnnoise[1]);
-	if(participant->upsample_buffer)
-		g_free(participant->upsample_buffer);
-	if(participant->downsample_buffer)
-		g_free(participant->downsample_buffer);
 	if(participant->denoiser_buffer[0])
 		g_free(participant->denoiser_buffer[0]);
 	if(participant->denoiser_buffer[1])
 		g_free(participant->denoiser_buffer[1]);
+	if(participant->upsampler)
+		speex_resampler_destroy(participant->upsampler);
+	if(participant->downsampler)
+		speex_resampler_destroy(participant->downsampler);
+	if(participant->upsample_buffer)
+		g_free(participant->upsample_buffer);
+	if(participant->downsample_buffer)
+		g_free(participant->downsample_buffer);
 #endif
 	g_free(participant->mjr_base);
 #ifdef HAVE_LIBOGG
@@ -6320,13 +6320,30 @@ static void *janus_audiobridge_handler(void *data) {
 			if(participant->denoise && participant->rnnoise[0] == NULL) {
 				/* Create RNNoise context(s) */
 				participant->rnnoise[0] = rnnoise_create(NULL);
-				if(participant->stereo)
-					participant->rnnoise[1] = rnnoise_create(NULL);
-				participant->upsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
-				participant->downsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
 				participant->denoiser_buffer[0] = g_malloc(FRAME_SIZE * sizeof(float));
-				if(participant->stereo)
+				if(participant->stereo) {
+					participant->rnnoise[1] = rnnoise_create(NULL);
 					participant->denoiser_buffer[1] = g_malloc(FRAME_SIZE * sizeof(float));
+				}
+				if(audiobridge->sampling_rate != 48000) {
+					spx_uint32_t channels = !audiobridge->spatial_audio ? 1 : 2;
+					spx_uint32_t from_rate = audiobridge->sampling_rate;
+					spx_uint32_t to_rate = 48000;
+					int quality = 10;
+					int error;
+					participant->upsampler = speex_resampler_init(channels, from_rate, to_rate, quality, &error);
+					if(participant->upsampler != NULL)
+						JANUS_LOG(LOG_INFO, "Created resampler from %d to %d (channels=%d, quality=%d)\n", from_rate, to_rate, channels, quality);
+					else
+						JANUS_LOG(LOG_ERR, "Error creating resampler %s\n", speex_resampler_strerror(error));
+					participant->downsampler = speex_resampler_init(channels, to_rate, from_rate, quality, &error);
+					if(participant->downsampler != NULL)
+						JANUS_LOG(LOG_INFO, "Created resampler from %d to %d (channels=%d, quality=%d)\n", to_rate, from_rate, channels, quality);
+					else
+						JANUS_LOG(LOG_ERR, "Error creating resampler %s\n", speex_resampler_strerror(error));
+					participant->upsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
+					participant->downsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
+				}
 			}
 #else
 			if(denoise && json_is_true(denoise)) {
@@ -6351,22 +6368,6 @@ static void *janus_audiobridge_handler(void *data) {
 			int error = 0;
 			if(participant->encoder == NULL) {
 				participant->sampling_rate = audiobridge->sampling_rate;
-				if(audiobridge->sampling_rate != 48000) {
-					spx_uint32_t channels = !audiobridge->spatial_audio ? 1 : 2;
-					spx_uint32_t from_rate = participant->sampling_rate;
-					spx_uint32_t to_rate = 48000;
-					int quality = 10;
-					participant->upsampler = speex_resampler_init(channels, from_rate, to_rate, quality, &error);
-					if(participant->upsampler != NULL)
-						JANUS_LOG(LOG_INFO, "Created resampler from %d to %d (channels=%d, quality=%d)\n", from_rate, to_rate, channels, quality);
-					else
-						JANUS_LOG(LOG_ERR, "Error creating resampler %s\n", speex_resampler_strerror(error));
-					participant->downsampler = speex_resampler_init(channels, to_rate, from_rate, quality, &error);
-					if(participant->downsampler != NULL)
-						JANUS_LOG(LOG_INFO, "Created resampler from %d to %d (channels=%d, quality=%d)\n", to_rate, from_rate, channels, quality);
-					else
-						JANUS_LOG(LOG_ERR, "Error creating resampler %s\n", speex_resampler_strerror(error));
-				}
 				participant->encoder = opus_encoder_create(audiobridge->sampling_rate,
 					audiobridge->spatial_audio ? 2 : 1, OPUS_APPLICATION_VOIP, &error);
 				if(error != OPUS_OK) {
@@ -6417,12 +6418,14 @@ static void *janus_audiobridge_handler(void *data) {
 					janus_mutex_unlock(&audiobridge->mutex);
 					janus_refcount_decrease(&audiobridge->ref);
 					g_free(participant->display);
+#ifdef HAVE_RNNOISE
 					if(participant->upsampler)
 						speex_resampler_destroy(participant->upsampler);
 					participant->upsampler = NULL;
 					if(participant->downsampler)
 						speex_resampler_destroy(participant->downsampler);
 					participant->downsampler = NULL;
+#endif
 					if(participant->encoder)
 						opus_encoder_destroy(participant->encoder);
 					participant->encoder = NULL;
@@ -7113,6 +7116,7 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->stereo = audiobridge->spatial_audio;
 				participant->spatial_position = 50;
 				int error = 0;
+#ifdef HAVE_RNNOISE
 				spx_uint32_t channels = !audiobridge->spatial_audio ? 1 : 2;
 				spx_uint32_t from_rate = participant->sampling_rate;
 				spx_uint32_t to_rate = 48000;
@@ -7127,18 +7131,21 @@ static void *janus_audiobridge_handler(void *data) {
 					JANUS_LOG(LOG_INFO, "Created resampler from %d to %d (channels=%d, quality=%d)\n", to_rate, from_rate, channels, quality);
 				else
 					JANUS_LOG(LOG_ERR, "Error creating resampler %s\n", speex_resampler_strerror(error));
+#endif
 				OpusEncoder *new_encoder = opus_encoder_create(audiobridge->sampling_rate,
 					audiobridge->spatial_audio ? 2 : 1, OPUS_APPLICATION_VOIP, &error);
 				if(error != OPUS_OK) {
 					if(user_id_allocated)
 						g_free(user_id_str);
 					janus_refcount_decrease(&audiobridge->ref);
+#ifdef HAVE_RNNOISE
 					if(new_upsampler)
 						speex_resampler_destroy(new_upsampler);
 					new_upsampler = NULL;
 					if(new_downsampler)
 						speex_resampler_destroy(new_downsampler);
 					new_downsampler = NULL;
+#endif
 					if(new_encoder)
 						opus_encoder_destroy(new_encoder);
 					new_encoder = NULL;
@@ -7178,12 +7185,14 @@ static void *janus_audiobridge_handler(void *data) {
 					if(user_id_allocated)
 						g_free(user_id_str);
 					janus_refcount_decrease(&audiobridge->ref);
+#ifdef HAVE_RNNOISE
 					if(new_upsampler)
 						speex_resampler_destroy(new_upsampler);
 					new_upsampler = NULL;
 					if(new_downsampler)
 						speex_resampler_destroy(new_downsampler);
 					new_downsampler = NULL;
+#endif
 					if(new_encoder)
 						opus_encoder_destroy(new_encoder);
 					new_encoder = NULL;
@@ -7204,12 +7213,14 @@ static void *janus_audiobridge_handler(void *data) {
 				}
 				participant->reset = FALSE;
 				/* Destroy the previous encoder/decoder and update the references */
+#ifdef HAVE_RNNOISE
 				if(participant->upsampler)
 					speex_resampler_destroy(participant->upsampler);
 				participant->upsampler = new_upsampler;
 				if(participant->downsampler)
 					speex_resampler_destroy(participant->downsampler);
 				participant->downsampler = new_downsampler;
+#endif
 				if(participant->encoder)
 					opus_encoder_destroy(participant->encoder);
 				participant->sampling_rate = audiobridge->sampling_rate;
