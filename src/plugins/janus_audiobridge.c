@@ -5924,12 +5924,6 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 	/* Make sure we're not using the encoder/decoder right now, we're going to destroy them */
 	while(!g_atomic_int_compare_and_exchange(&participant->encoding, 0, 1))
 		g_usleep(5000);
-	if(participant->upsampler)
-		speex_resampler_destroy(participant->upsampler);
-	participant->upsampler = NULL;
-	if(participant->downsampler)
-		speex_resampler_destroy(participant->downsampler);
-	participant->downsampler = NULL;
 	if(participant->encoder)
 		opus_encoder_destroy(participant->encoder);
 	participant->encoder = NULL;
