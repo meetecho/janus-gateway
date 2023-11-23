@@ -942,7 +942,10 @@ room-<unique room ID>: {
 	"muted" : <true|false, whether to start unmuted or muted>,
 	"bitrate" : <bitrate to use for the Opus stream in bps; optional, default=0 (libopus decides)>,
 	"quality" : <0-10, Opus-related complexity to use, higher is higher quality; optional, default is 4>,
-	"expected_loss" : <0-20, a percentage of the expected loss (capped at 20%), only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>
+	"expected_loss" : <0-20, a percentage of the expected loss (capped at 20%), only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>,
+	"volume" : <new volume percent value (see "join" for more info)>,
+	"spatial_position" : <in case spatial audio is enabled for the room, new panning of this participant (0=left, 50=center, 100=right)>,
+	"denoise" : <true|false, whether denoising via RNNoise should be performed for this participant (default=room value, or whether it was active before)>
 }
 \endverbatim
  *
@@ -1577,14 +1580,16 @@ typedef struct janus_audiobridge_participant {
 	gboolean stereo;		/* Whether stereo will be used for spatial audio */
 	int spatial_position;	/* Panning of this participant in the mix */
 #ifdef HAVE_RNNOISE
-#define FRAME_SIZE 480
+#define DENOISER_FRAME_SIZE 480
+	gboolean denoise;					/* Whether we should denoise this participant */
+	DenoiseState *rnnoise[2];			/* RNNoise states (we'll need two for stereo) */
+	uint32_t resampler_rate;			/* Sampling rate of the resamplers */
+	gboolean resampler_stereo;			/* Whether the current resamplers are stereo */
 	SpeexResamplerState *upsampler; 	/* Speex upsampler used for denoising */
 	SpeexResamplerState *downsampler;	/* Speex downsampler used for denoising*/
-	gboolean denoise;			/* Whether we should denoise this participant */
-	DenoiseState *rnnoise[2];	/* RNNoise states (we'll need two for stereo) */
-	opus_int16 *upsample_buffer; /* buffer for upsampling */
-	opus_int16 *downsample_buffer; /* buffer for downsampling */
-	float *denoiser_buffer[2];		/* buffer for denoising*/
+	opus_int16 *upsample_buffer;		/* Buffer for upsampling */
+	opus_int16 *downsample_buffer;		/* Buffer for downsampling */
+	float *denoiser_buffer[2];			/* Buffer for denoising */
 #endif
 	/* RTP stuff */
 	JitterBuffer *jitter;	/* Jitter buffer of incoming audio packets */
@@ -2885,8 +2890,7 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 		if(participant->stereo)
 			json_object_set_new(info, "spatial_position", json_integer(participant->spatial_position));
 #ifdef HAVE_RNNOISE
-		if(participant->denoise)
-			json_object_set_new(info, "denoise", json_true());
+		json_object_set_new(info, "denoise",  participant->denoise ? json_true() : json_false());
 #endif
 		if(participant->arc && participant->arc->filename)
 			json_object_set_new(info, "audio-recording", json_string(participant->arc->filename));
@@ -4381,17 +4385,6 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 
 		participant->denoise = denoise;
-		if(participant->denoise && participant->rnnoise[0] == NULL) {
-			/* Create RNNoise context(s) */
-			participant->rnnoise[0] = rnnoise_create(NULL);
-			if(participant->stereo)
-				participant->rnnoise[1] = rnnoise_create(NULL);
-			participant->upsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
-			participant->downsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
-			participant->denoiser_buffer[0] = g_malloc(FRAME_SIZE * sizeof(float));
-			if(participant->stereo)
-				participant->denoiser_buffer[1] = g_malloc(FRAME_SIZE * sizeof(float));
-		}
 
 		/* Prepare response */
 		response = json_object();
@@ -6315,41 +6308,6 @@ static void *janus_audiobridge_handler(void *data) {
 					spatial_position = 100;
 				participant->spatial_position = spatial_position;
 			}
-#ifdef HAVE_RNNOISE
-			participant->denoise = denoise ? json_is_true(denoise) : audiobridge->denoise;
-			if(participant->denoise && participant->rnnoise[0] == NULL) {
-				/* Create RNNoise context(s) */
-				participant->rnnoise[0] = rnnoise_create(NULL);
-				participant->denoiser_buffer[0] = g_malloc(FRAME_SIZE * sizeof(float));
-				if(participant->stereo) {
-					participant->rnnoise[1] = rnnoise_create(NULL);
-					participant->denoiser_buffer[1] = g_malloc(FRAME_SIZE * sizeof(float));
-				}
-				if(audiobridge->sampling_rate != 48000) {
-					spx_uint32_t channels = !audiobridge->spatial_audio ? 1 : 2;
-					spx_uint32_t from_rate = audiobridge->sampling_rate;
-					spx_uint32_t to_rate = 48000;
-					int quality = 10;
-					int error;
-					participant->upsampler = speex_resampler_init(channels, from_rate, to_rate, quality, &error);
-					if(participant->upsampler != NULL)
-						JANUS_LOG(LOG_INFO, "Created resampler from %d to %d (channels=%d, quality=%d)\n", from_rate, to_rate, channels, quality);
-					else
-						JANUS_LOG(LOG_ERR, "Error creating resampler %s\n", speex_resampler_strerror(error));
-					participant->downsampler = speex_resampler_init(channels, to_rate, from_rate, quality, &error);
-					if(participant->downsampler != NULL)
-						JANUS_LOG(LOG_INFO, "Created resampler from %d to %d (channels=%d, quality=%d)\n", to_rate, from_rate, channels, quality);
-					else
-						JANUS_LOG(LOG_ERR, "Error creating resampler %s\n", speex_resampler_strerror(error));
-					participant->upsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
-					participant->downsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
-				}
-			}
-#else
-			if(denoise && json_is_true(denoise)) {
-				JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
-			}
-#endif
 			participant->user_audio_active_packets = json_integer_value(user_audio_active_packets);
 			participant->user_audio_level_average = json_integer_value(user_audio_level_average);
 			if(participant->outbuf == NULL)
@@ -6418,14 +6376,6 @@ static void *janus_audiobridge_handler(void *data) {
 					janus_mutex_unlock(&audiobridge->mutex);
 					janus_refcount_decrease(&audiobridge->ref);
 					g_free(participant->display);
-#ifdef HAVE_RNNOISE
-					if(participant->upsampler)
-						speex_resampler_destroy(participant->upsampler);
-					participant->upsampler = NULL;
-					if(participant->downsampler)
-						speex_resampler_destroy(participant->downsampler);
-					participant->downsampler = NULL;
-#endif
 					if(participant->encoder)
 						opus_encoder_destroy(participant->encoder);
 					participant->encoder = NULL;
@@ -6439,6 +6389,13 @@ static void *janus_audiobridge_handler(void *data) {
 					goto error;
 				}
 			}
+#ifdef HAVE_RNNOISE
+			participant->denoise = denoise ? json_is_true(denoise) : audiobridge->denoise;
+#else
+			if(denoise && json_is_true(denoise)) {
+				JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
+			}
+#endif
 			participant->reset = FALSE;
 			/* If this is a plain RTP participant, create the socket */
 			if(rtp != NULL) {
@@ -6779,17 +6736,6 @@ static void *janus_audiobridge_handler(void *data) {
 #ifdef HAVE_RNNOISE
 				if(denoise)
 					participant->denoise = json_is_true(denoise);
-				if(participant->denoise && participant->rnnoise[0] == NULL) {
-					/* Create RNNoise context(s) */
-					participant->rnnoise[0] = rnnoise_create(NULL);
-					if(participant->stereo)
-						participant->rnnoise[1] = rnnoise_create(NULL);
-					participant->upsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
-					participant->downsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
-					participant->denoiser_buffer[0] = g_malloc(FRAME_SIZE * sizeof(float));
-					if(participant->stereo)
-						participant->denoiser_buffer[1] = g_malloc(FRAME_SIZE * sizeof(float));
-				}
 #else
 				if(denoise && json_is_true(denoise)) {
 					JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
@@ -7018,8 +6964,9 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *bitrate = json_object_get(root, "bitrate");
 			json_t *quality = json_object_get(root, "quality");
 			json_t *exploss = json_object_get(root, "expected_loss");
+			json_t *denoise = json_object_get(root, "denoise");
 			int volume = gain ? json_integer_value(gain) : 100;
-			int spatial_position = spatial ? json_integer_value(spatial) : 64;
+			int spatial_position = spatial ? json_integer_value(spatial) : 50;
 			int32_t opus_bitrate = audiobridge->default_bitrate;
 			if(bitrate) {
 				opus_bitrate = json_integer_value(bitrate);
@@ -7113,8 +7060,6 @@ static void *janus_audiobridge_handler(void *data) {
 			if(old_audiobridge->sampling_rate != audiobridge->sampling_rate ||
 					old_audiobridge->spatial_audio != audiobridge->spatial_audio) {
 				/* Create a new one that takes into account the sampling rate we want now */
-				participant->stereo = audiobridge->spatial_audio;
-				participant->spatial_position = 50;
 				int error = 0;
 				OpusEncoder *new_encoder = opus_encoder_create(audiobridge->sampling_rate,
 					audiobridge->spatial_audio ? 2 : 1, OPUS_APPLICATION_VOIP, &error);
@@ -7181,39 +7126,19 @@ static void *janus_audiobridge_handler(void *data) {
 				}
 				participant->reset = FALSE;
 				/* Destroy the previous encoder/decoder and update the references */
-#ifdef HAVE_RNNOISE
-				spx_uint32_t channels = !audiobridge->spatial_audio ? 1 : 2;
-				spx_uint32_t from_rate = participant->sampling_rate;
-				spx_uint32_t to_rate = 48000;
-				int quality = 10;
-				SpeexResamplerState *new_upsampler = speex_resampler_init(channels, from_rate, to_rate, quality, &error);
-				if(new_upsampler != NULL)
-					JANUS_LOG(LOG_INFO, "Created resampler from %d to %d (channels=%d, quality=%d)\n", from_rate, to_rate, channels, quality);
-				else
-					JANUS_LOG(LOG_ERR, "Error creating resampler %s\n", speex_resampler_strerror(error));
-				SpeexResamplerState *new_downsampler = speex_resampler_init(channels, to_rate, from_rate, quality, &error);
-				if(new_downsampler != NULL)
-					JANUS_LOG(LOG_INFO, "Created resampler from %d to %d (channels=%d, quality=%d)\n", to_rate, from_rate, channels, quality);
-				else
-					JANUS_LOG(LOG_ERR, "Error creating resampler %s\n", speex_resampler_strerror(error));
-				if(new_upsampler != NULL) {
-					if(participant->upsampler)
-						speex_resampler_destroy(participant->upsampler);
-					participant->upsampler = new_upsampler;
-				}
-				if(new_downsampler != NULL) {
-					if(participant->downsampler)
-						speex_resampler_destroy(participant->downsampler);
-					participant->downsampler = new_downsampler;
-				}
-#endif
+				while(!g_atomic_int_compare_and_exchange(&participant->encoding, 0, 1))
+					g_usleep(5000);
 				if(participant->encoder)
 					opus_encoder_destroy(participant->encoder);
 				participant->sampling_rate = audiobridge->sampling_rate;
 				participant->encoder = new_encoder;
+				g_atomic_int_set(&participant->encoding, 0);
+				while(!g_atomic_int_compare_and_exchange(&participant->decoding, 0, 1))
+					g_usleep(5000);
 				if(participant->decoder)
 					opus_decoder_destroy(participant->decoder);
 				participant->decoder = new_decoder;
+				g_atomic_int_set(&participant->decoding, 0);
 			}
 			if(quality)
 				opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
@@ -7287,6 +7212,14 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->expected_loss = expected_loss;
 				opus_encoder_ctl(participant->encoder, OPUS_SET_PACKET_LOSS_PERC(participant->expected_loss));
 			}
+#ifdef HAVE_RNNOISE
+			/* Check if a denoiser is needed now */
+			participant->denoise = denoise ? json_is_true(denoise) : audiobridge->denoise;
+#else
+			if(denoise && json_is_true(denoise)) {
+				JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
+			}
+#endif
 			g_hash_table_insert(audiobridge->participants,
 				string_ids ? (gpointer)g_strdup(participant->user_id_str) : (gpointer)janus_uint64_dup(participant->user_id),
 				participant);
@@ -8528,7 +8461,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)pkt->data, output_samples, 1);
 #ifdef HAVE_RNNOISE
 						/* Check if we need to denoise this packet */
-						if(participant->rnnoise[0] && participant->denoise)
+						if(participant->denoise)
 							janus_audiobridge_participant_denoise(participant, (char *)pkt->data, pkt->length);
 #endif
 						/* Queue the decoded redundant packet for the mixer */
@@ -8572,7 +8505,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					}
 #ifdef HAVE_RNNOISE
 					/* Check if we need to denoise this packet */
-					if(participant->rnnoise[0] && participant->denoise)
+					if(participant->denoise)
 						janus_audiobridge_participant_denoise(participant, (char *)pkt->data, pkt->length);
 #endif
 					/* Get rid of the buffered packet */
@@ -8938,15 +8871,77 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 static void janus_audiobridge_participant_denoise(janus_audiobridge_participant *participant, char *data, int len) {
 	if(len < 0 || data == NULL)
 		return;
+	/* Create a denoiser if we still don't have one */
+	if(participant->rnnoise[0] == NULL) {
+		/* Create RNNoise context */
+		participant->rnnoise[0] = rnnoise_create(NULL);
+		/* If we still don't have a denoiser, give up */
+		if(participant->rnnoise[0] == NULL)
+			return;
+		/* Allocate the buffer for the denoiser */
+		if(participant->denoiser_buffer[0] == NULL)
+			participant->denoiser_buffer[0] = g_malloc(DENOISER_FRAME_SIZE * sizeof(float));
+	}
+	/* Check if we need a denoiser for stereo channel too */
+	if(participant->stereo && participant->rnnoise[1] == NULL) {
+		/* Create RNNoise context */
+		participant->rnnoise[1] = rnnoise_create(NULL);
+		/* If we still don't have a denoiser, give up */
+		if(participant->rnnoise[1] == NULL)
+			return;
+		/* Allocate the buffer for the denoiser */
+		if(participant->denoiser_buffer[1] == NULL)
+			participant->denoiser_buffer[1] = g_malloc(DENOISER_FRAME_SIZE * sizeof(float));
+	}
+	/* Check if we need to (re)create resamplers too */
+	if(participant->sampling_rate != participant->resampler_rate ||
+			participant->stereo != participant->resampler_stereo) {
+		participant->resampler_rate = participant->sampling_rate;
+		participant->resampler_stereo = participant->stereo;
+		if(participant->upsampler)
+			speex_resampler_destroy(participant->upsampler);
+		participant->upsampler = NULL;
+		if(participant->downsampler)
+			speex_resampler_destroy(participant->downsampler);
+		participant->downsampler = NULL;
+		/* We need resamplers only if rate is not 48kHz */
+		if(participant->resampler_rate != 48000) {
+			spx_uint32_t channels = !participant->resampler_stereo ? 1 : 2;
+			spx_uint32_t from_rate = participant->resampler_rate;
+			spx_uint32_t to_rate = 48000;
+			int quality = 8, error = 0;
+			participant->upsampler = speex_resampler_init(channels, from_rate, to_rate, quality, &error);
+			if(participant->upsampler != NULL) {
+				JANUS_LOG(LOG_INFO, "Created %s resampler from %d to %d (channels=%d, quality=%d)\n",
+					(participant->resampler_stereo ? "stereo" : "mono"), from_rate, to_rate, channels, quality);
+			} else {
+				/* We couldn't create a resampler, don't do anything */
+				return;
+			}
+			participant->downsampler = speex_resampler_init(channels, to_rate, from_rate, quality, &error);
+			if(participant->downsampler != NULL) {
+				JANUS_LOG(LOG_INFO, "Created %s resampler from %d to %d (channels=%d, quality=%d)\n",
+					(participant->resampler_stereo ? "stereo" : "mono"), to_rate, from_rate, channels, quality);
+			} else {
+				/* We couldn't create a resampler, don't do anything */
+				return;
+			}
+			if(participant->upsample_buffer == NULL)
+				participant->upsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
+			if(participant->downsample_buffer == NULL)
+				participant->downsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
+		}
+	}
+
 	/* Opus int16 original samples */
 	opus_int16 *samples = (opus_int16 *)data;
 	/* Number of original samples, should be: 160 (8kHz), 320 (16kHz), 480 (24kHz), 960 (48kHz) */
 	int samples_count = len;
 	/* Actual length of the resampled array (double size for stereo) */
-	const int samples_len = !participant->stereo ? samples_count : 2*samples_count;
+	const int samples_len = !participant->resampler_stereo ? samples_count : 2*samples_count;
 
 	/* Should be 960 */
-	int upsample_buffer_count = len * (48000/participant->sampling_rate);
+	int upsample_buffer_count = len * (48000/participant->resampler_rate);
 	/* Upsampled buffer */
 	opus_int16 *upsample_buffer = samples;
 
@@ -8956,7 +8951,7 @@ static void janus_audiobridge_participant_denoise(janus_audiobridge_participant 
 	opus_int16 *downsample_buffer = upsample_buffer;
 
 	/* Upsample */
-	if(participant->sampling_rate != 48000) {
+	if(participant->resampler_rate != 48000) {
 		upsample_buffer = participant->upsample_buffer;
 		janus_audiobridge_participant_upsample(participant, samples, &samples_count, upsample_buffer, &upsample_buffer_count);
 	}
@@ -8966,25 +8961,25 @@ static void janus_audiobridge_participant_denoise(janus_audiobridge_participant 
 	float *denoiser_buffer_alt = participant->denoiser_buffer[1];
 
 	/* Denoise in chunks of 480 samples */
-	if(!participant->stereo) {
-		for(i=0; i<upsample_buffer_count; i+= FRAME_SIZE) {
-			for(j=0; j<FRAME_SIZE; j++) {
+	if(!participant->resampler_stereo) {
+		for(i=0; i<upsample_buffer_count; i+= DENOISER_FRAME_SIZE) {
+			for(j=0; j<DENOISER_FRAME_SIZE; j++) {
 				denoiser_buffer[j] = upsample_buffer[i + j];
 			}
-			rnnoise_process_frame(participant->rnnoise[0], denoiser_buffer,denoiser_buffer);
-			for(j=0; j<FRAME_SIZE; j++) {
+			rnnoise_process_frame(participant->rnnoise[0], denoiser_buffer, denoiser_buffer);
+			for(j=0; j<DENOISER_FRAME_SIZE; j++) {
 				upsample_buffer[i + j] = denoiser_buffer[j];
 			}
 		}
 	} else {
-		for(i=0; i<upsample_buffer_count; i+= FRAME_SIZE) {
-			for(j=0; j<FRAME_SIZE; j++) {
+		for(i=0; i<upsample_buffer_count; i+= DENOISER_FRAME_SIZE) {
+			for(j=0; j<DENOISER_FRAME_SIZE; j++) {
 				denoiser_buffer[j] = upsample_buffer[2*i + 2*j];
 				denoiser_buffer_alt[j] = upsample_buffer[2*i + 2*j + 1];
 			}
 			rnnoise_process_frame(participant->rnnoise[0], denoiser_buffer, denoiser_buffer);
 			rnnoise_process_frame(participant->rnnoise[1], denoiser_buffer_alt, denoiser_buffer_alt);
-			for(j=0; j<FRAME_SIZE; j++) {
+			for(j=0; j<DENOISER_FRAME_SIZE; j++) {
 				upsample_buffer[2*i + 2*j] = denoiser_buffer[j];
 				upsample_buffer[2*i + 2*j + 1] = denoiser_buffer_alt[j];
 			}
@@ -8992,7 +8987,7 @@ static void janus_audiobridge_participant_denoise(janus_audiobridge_participant 
 	}
 
 	/* Downsample */
-	if(participant->sampling_rate != 48000) {
+	if(participant->resampler_rate != 48000) {
 		downsample_buffer = participant->downsample_buffer;
 		janus_audiobridge_participant_downsample(participant, upsample_buffer, &upsample_buffer_count, downsample_buffer, &downsample_buffer_count);
 	}
@@ -9002,7 +8997,7 @@ static void janus_audiobridge_participant_denoise(janus_audiobridge_participant 
 }
 
 static void janus_audiobridge_participant_upsample(janus_audiobridge_participant *participant, opus_int16 *input, int *in_len, opus_int16 *output, int *out_len) {
-	if(!participant->stereo) {
+	if(!participant->resampler_stereo) {
 		int err = speex_resampler_process_int(participant->upsampler, 0, (spx_int16_t *)input, (spx_uint32_t *)in_len, (spx_int16_t *)output, (spx_uint32_t *)out_len);
 		if(err != 0) {
 			//TODO
@@ -9015,7 +9010,7 @@ static void janus_audiobridge_participant_upsample(janus_audiobridge_participant
 	}
 }
 static void janus_audiobridge_participant_downsample(janus_audiobridge_participant *participant, opus_int16 *input, int *in_len, opus_int16 *output, int *out_len) {
-	if(!participant->stereo) {
+	if(!participant->resampler_stereo) {
 		int err = speex_resampler_process_int(participant->downsampler, 0, (spx_int16_t *)input, (spx_uint32_t *)in_len, (spx_int16_t *)output, (spx_uint32_t *)out_len);
 		if(err != 0) {
 			//TODO
