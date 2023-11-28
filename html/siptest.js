@@ -177,7 +177,7 @@ $(document).ready(function() {
 												$('#registerset').parent().addClass('hide').hide();
 												$('#username').parent().parent().append(
 													'<button id="addhelper" class="btn btn-xs btn-info pull-right" title="Add a new line">' +
-														'<i class="fa fa-plus"></i>' +
+														'<i class="fa-solid fa-plus"></i>' +
 													'</button>'
 												);
 												$('#addhelper').click(addHelper);
@@ -471,7 +471,7 @@ $(document).ready(function() {
 												if($('#videoleft .no-video-container').length === 0) {
 													$('#videoleft').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video-camera fa-5 no-video-icon"></i>' +
 															'<span class="no-video-text">No webcam available</span>' +
 														'</div>');
 												}
@@ -496,7 +496,7 @@ $(document).ready(function() {
 											if($('#videoleft .no-video-container').length === 0) {
 												$('#videoleft').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video-camera fa-5 no-video-icon"></i>' +
 														'<span class="no-video-text">No webcam available</span>' +
 													'</div>');
 											}
@@ -535,7 +535,7 @@ $(document).ready(function() {
 												if($('#videoright .no-video-container').length === 0) {
 													$('#videoright').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video-camera fa-5 no-video-icon"></i>' +
 															'<span class="no-video-text">No remote video available</span>' +
 														'</div>');
 												}
@@ -550,9 +550,9 @@ $(document).ready(function() {
 										$('#videoright').parent().find('h3').html(
 											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>' +
 											'<span id="ctrls" class="pull-right btn-group btn-group-xs">' +
-												'<button id="msg" title="Send message" class="btn btn-info"><i class="fa fa-envelope"></i></button>' +
-												'<button id="info" title="Send INFO" class="btn btn-info"><i class="fa fa-info"></i></button>' +
-												'<button id="transfer" title="Transfer call" class="btn btn-info"><i class="fa fa-mail-forward"></i></button>' +
+												'<button id="msg" title="Send message" class="btn btn-info"><i class="fa-solid fa-envelope"></i></button>' +
+												'<button id="info" title="Send INFO" class="btn btn-info"><i class="fa-solid fa-info"></i></button>' +
+												'<button id="transfer" title="Transfer call" class="btn btn-info"><i class="fa-solid fa-mail-forward"></i></button>' +
 											'</span>');
 										for(let i=0; i<12; i++) {
 											if(i<10)
@@ -659,7 +659,7 @@ $(document).ready(function() {
 											if($('#videoright .no-video-container').length === 0) {
 												$('#videoright').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video-camera fa-5 no-video-icon"></i>' +
 														'<span class="no-video-text">No remote video available</span>' +
 													'</div>');
 											}
@@ -1018,12 +1018,12 @@ function addHelper(helperCreated) {
 		'		<div class="col-md-12">' +
 		'			<div class="col-md-6 container">' +
 		'				<span class="label label-info">Helper #' + helperId +
-		'					<i class="fa fa-window-close" id="rmhelper' + helperId + '" style="cursor: pointer;" title="Remove this helper"></i>' +
+		'					<i class="fa-solid fa-window-close" id="rmhelper' + helperId + '" style="cursor: pointer;" title="Remove this helper"></i>' +
 		'				</span>' +
 		'			</div>' +
 		'			<div class="col-md-6 container" id="phone' + helperId + '">' +
 		'				<div class="input-group margin-bottom-sm">' +
-		'					<span class="input-group-addon"><i class="fa fa-phone fa-fw"></i></span>' +
+		'					<span class="input-group-addon"><i class="fa-solid fa-phone fa-fw"></i></span>' +
 		'					<input disabled class="form-control" type="text" placeholder="SIP URI to call (e.g., sip:1000@example.com)" autocomplete="off" id="peer' + helperId + '" onkeypress="return checkEnter(this, event, ' + helperId + ');"></input>' +
 		'				</div>' +
 		'				<button disabled class="btn btn-success margin-bottom-sm" autocomplete="off" id="call' + helperId + '">Call</button> <input autocomplete="off" id="dovideo' + helperId + '" type="checkbox">Use Video</input>' +
@@ -1439,7 +1439,7 @@ function addHelper(helperCreated) {
 							if($('#videoleft' + helperId + ' .no-video-container').length === 0) {
 								$('#videoleft' + helperId).append(
 									'<div class="no-video-container">' +
-										'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+										'<i class="fa-solid fa-video-camera fa-5 no-video-icon"></i>' +
 										'<span class="no-video-text">No webcam available</span>' +
 									'</div>');
 							}
@@ -1464,7 +1464,7 @@ function addHelper(helperCreated) {
 						if($('#videoleft' + helperId + ' .no-video-container').length === 0) {
 							$('#videoleft' + helperId).append(
 								'<div class="no-video-container">' +
-									'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+									'<i class="fa-solid fa-video-camera fa-5 no-video-icon"></i>' +
 									'<span class="no-video-text">No webcam available</span>' +
 								'</div>');
 						}
@@ -1503,7 +1503,7 @@ function addHelper(helperCreated) {
 							if($('#videoright' + helperId + ' .no-video-container').length === 0) {
 								$('#videoright').append(
 									'<div class="no-video-container">' +
-										'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+										'<i class="fa-solid fa-video-camera fa-5 no-video-icon"></i>' +
 										'<span class="no-video-text">No remote video available</span>' +
 									'</div>');
 							}
@@ -1518,9 +1518,9 @@ function addHelper(helperCreated) {
 					$('#videoright' + helperId).parent().find('h3').html(
 						'Send DTMF: <span id="dtmf' + helperId + '" class="btn-group btn-group-xs"></span>' +
 						'<span id="ctrls" class="pull-right btn-group btn-group-xs">' +
-							'<button id="msg' + helperId + '" title="Send message" class="btn btn-info"><i class="fa fa-envelope"></i></button>' +
-							'<button id="info' + helperId + '" title="Send INFO" class="btn btn-info"><i class="fa fa-info"></i></button>' +
-							'<button id="transfer' + helperId + '" title="Transfer call" class="btn btn-info"><i class="fa fa-mail-forward"></i></button>' +
+							'<button id="msg' + helperId + '" title="Send message" class="btn btn-info"><i class="fa-solid fa-envelope"></i></button>' +
+							'<button id="info' + helperId + '" title="Send INFO" class="btn btn-info"><i class="fa-solid fa-info"></i></button>' +
+							'<button id="transfer' + helperId + '" title="Transfer call" class="btn btn-info"><i class="fa-solid fa-mail-forward"></i></button>' +
 						'</span>');
 					for(let i=0; i<12; i++) {
 						if(i<10)
@@ -1634,7 +1634,7 @@ function addHelper(helperCreated) {
 						if($('#videoright' + helperId + ' .no-video-container').length === 0) {
 							$('#videoright' + helperId).append(
 								'<div class="no-video-container">' +
-									'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+									'<i class="fa-solid fa-video-camera fa-5 no-video-icon"></i>' +
 									'<span class="no-video-text">No remote video available</span>' +
 								'</div>');
 						}

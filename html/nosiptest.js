@@ -194,7 +194,7 @@ $(document).ready(function() {
 												if($('#videoleft .no-video-container').length === 0) {
 													$('#videoleft').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video-camera fa-5 no-video-icon"></i>' +
 															'<span class="no-video-text">No webcam available</span>' +
 														'</div>');
 												}
@@ -219,7 +219,7 @@ $(document).ready(function() {
 											if($('#videoleft .no-video-container').length === 0) {
 												$('#videoleft').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video-camera fa-5 no-video-icon"></i>' +
 														'<span class="no-video-text">No webcam available</span>' +
 													'</div>');
 											}
@@ -258,7 +258,7 @@ $(document).ready(function() {
 												if($('#videoright .no-video-container').length === 0) {
 													$('#videoright').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video-camera fa-5 no-video-icon"></i>' +
 															'<span class="no-video-text">No remote video available</span>' +
 														'</div>');
 												}
@@ -299,7 +299,7 @@ $(document).ready(function() {
 											if($('#videoright .no-video-container').length === 0) {
 												$('#videoright').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video-camera fa-5 no-video-icon"></i>' +
 														'<span class="no-video-text">No remote video available</span>' +
 													'</div>');
 											}

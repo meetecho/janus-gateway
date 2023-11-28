@@ -50,11 +50,11 @@ function promptAccessDetails() {
 	let secretPlaceholder = "Insert the Admin API secret";
 	bootbox.alert({
 		message: "<div class='input-group margin-bottom-sm'>" +
-			"	<span class='input-group-addon'><i class='fa fa-cloud-upload fa-fw'></i></span>" +
+			"	<span class='input-group-addon'><i class='fa-solid fa-cloud-upload fa-fw'></i></span>" +
 			"	<input class='form-control' type='text' value='" + server + "' placeholder='" + serverPlaceholder + "' autocomplete='off' id='server'></input>" +
 			"</div>" +
 			"<div class='input-group margin-bottom-sm'>" +
-			"	<span class='input-group-addon'><i class='fa fa-key fa-fw'></i></span>" +
+			"	<span class='input-group-addon'><i class='fa-solid fa-key fa-fw'></i></span>" +
 			"	<input class='form-control' type='password'  value='" + secret + "'placeholder='" + secretPlaceholder + "' autocomplete='off' id='secret'></input>" +
 			"</div>",
 		closeButton: false,
@@ -593,7 +593,7 @@ function resetPluginRequest() {
 		'	<th></th>' +
 		'</tr>' +
 		'<tr>' +
-		'	<td><i id="addattr" class="fa fa-plus-circle" style="cursor: pointer;"></i></td>' +
+		'	<td><i id="addattr" class="fa-solid fa-plus-circle" style="cursor: pointer;"></i></td>' +
 		'	<td></td>' +
 		'	<td></td>' +
 		'	<td><button id="sendmsg" type="button" class="btn btn-xs btn-success pull-right">Send message</button></td>' +
@@ -659,7 +659,7 @@ function addPluginMessageAttribute() {
 		'			<option>boolean</option>' +
 		'		</select>' +
 		'	</td>' +
-		'	<td><i id="rmattr' + num + '" class="fa fa-window-close" style="cursor: pointer;"></i></td>' +
+		'	<td><i id="rmattr' + num + '" class="fa-solid fa-window-close" style="cursor: pointer;"></i></td>' +
 		'</tr>'
 	);
 	$('#rmattr' + num).click(function() {
@@ -724,7 +724,7 @@ function resetTransportRequest() {
 		'	<th></th>' +
 		'</tr>' +
 		'<tr>' +
-		'	<td><i id="traddattr" class="fa fa-plus-circle" style="cursor: pointer;"></i></td>' +
+		'	<td><i id="traddattr" class="fa-solid fa-plus-circle" style="cursor: pointer;"></i></td>' +
 		'	<td></td>' +
 		'	<td></td>' +
 		'	<td><button id="trsendmsg" type="button" class="btn btn-xs btn-success pull-right">Send message</button></td>' +
@@ -790,7 +790,7 @@ function addTransportMessageAttribute() {
 		'			<option>boolean</option>' +
 		'		</select>' +
 		'	</td>' +
-		'	<td><i id="rmtrattr' + num + '" class="fa fa-window-close" style="cursor: pointer;"></i></td>' +
+		'	<td><i id="rmtrattr' + num + '" class="fa-solid fa-window-close" style="cursor: pointer;"></i></td>' +
 		'</tr>'
 	);
 	$('#rmtrattr' + num).click(function() {
