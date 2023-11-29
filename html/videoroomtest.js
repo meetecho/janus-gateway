@@ -64,8 +64,8 @@ $(document).ready(function() {
 									Janus.log("Plugin attached! (" + sfutest.getPlugin() + ", id=" + sfutest.getId() + ")");
 									Janus.log("  -- This is a publisher/manager");
 									// Prepare the username registration
-									$('#videojoin').removeClass('hide');
-									$('#registernow').removeClass('hide');
+									$('#videojoin').removeClass('hide').removeClass('hide');
+									$('#registernow').removeClass('hide').removeClass('hide');
 									$('#register').click(registerUsername);
 									$('#username').focus();
 									$('#start').removeAttr('disabled').html("Stop")
@@ -91,7 +91,7 @@ $(document).ready(function() {
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+												left: '100px'
 											} });
 									} else {
 										// Restore screen
@@ -111,7 +111,7 @@ $(document).ready(function() {
 										return;
 									$('#publish').remove();
 									// This controls allows us to override the global room bitrate cap
-									$('#bitrate').parent().parent().removeClass('hide');
+									$('#bitrate').parent().parent().removeClass('hide').removeClass('hide');
 									$('#bitrate a').click(function() {
 										$('.dropdown-toggle').dropdown('hide');
 										let id = $(this).attr("id");
@@ -121,7 +121,7 @@ $(document).ready(function() {
 										} else {
 											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
 										}
-										$('#bitrateset').html($(this).html() + '<span class="caret"></span>').parent().removeClass('open');
+										$('#bitrateset').text($(this).text()).parent().removeClass('open');
 										sfutest.send({ message: { request: "configure", bitrate: bitrate }});
 										return false;
 									});
@@ -142,7 +142,7 @@ $(document).ready(function() {
 											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
 											if(subscriber_mode) {
 												$('#videojoin').addClass('hide');
-												$('#videos').removeClass('hide');
+												$('#videos').removeClass('hide').removeClass('hide');
 											} else {
 												publishOwnFeed(true);
 											}
@@ -322,7 +322,7 @@ $(document).ready(function() {
 										// We've been here already
 										return;
 									}
-									$('#videos').removeClass('hide');
+									$('#videos').removeClass('hide').removeClass('hide');
 									if($('#mute').length === 0) {
 										// Add a 'mute' button
 										$('#videolocal').append('<button class="btn btn-warning btn-sm bottom-left m-2" id="mute">Mute</button>');
@@ -422,7 +422,7 @@ function registerUsername() {
 		let username = $('#username').val();
 		if(username === "") {
 			$('#you')
-				.removeClass().addClass('badge badge-warning')
+				.removeClass().addClass('badge bg-warning')
 				.html("Insert your display name (e.g., pippo)");
 			$('#username').removeAttr('disabled');
 			$('#register').removeAttr('disabled').click(registerUsername);
@@ -430,7 +430,7 @@ function registerUsername() {
 		}
 		if(/[^a-zA-Z0-9]/.test(username)) {
 			$('#you')
-				.removeClass().addClass('badge badge-warning')
+				.removeClass().addClass('badge bg-warning')
 				.html('Input is not alphanumeric');
 			$('#username').removeAttr('disabled').val("");
 			$('#register').removeAttr('disabled').click(registerUsername);
@@ -734,12 +734,12 @@ function newRemoteFeed(id, display, streams) {
 					Janus.log("Created remote video stream:", stream);
 					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" width=100% autoplay playsinline/>');
 					$('#videoremote'+remoteFeed.rfindex).append(
-						'<span class="badge badge-primary bottom-left m-3 hide" id="curres'+remoteFeed.rfindex+'"></span>' +
-						'<span class="badge badge-info bottom-right m-3 hide" id="curbitrate'+remoteFeed.rfindex+'"></span>');
+						'<span class="badge bg-primary bottom-left m-3 hide" id="curres'+remoteFeed.rfindex+'"></span>' +
+						'<span class="badge bg-info bottom-right m-3 hide" id="curbitrate'+remoteFeed.rfindex+'"></span>');
 					Janus.attachMediaStream($('#remotevideo' + remoteFeed.rfindex + '-' + mid).get(0), stream);
 					// Note: we'll need this for additional videos too
 					if(!bitrateTimer[remoteFeed.rfindex]) {
-						$('#curbitrate'+remoteFeed.rfindex).removeClass('hide');
+						$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').removeClass('hide');
 						bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
 							if(!$("#videoremote" + remoteFeed.rfindex + ' video').get(0))
 								return;
@@ -809,14 +809,14 @@ function addSimulcastSvcButtons(feed, temporal) {
 	$('#remote'+index).parent().append(
 		'<div id="simulcast'+index+'" class="btn-group-vertical btn-group-xs top-right">' +
 		'	<div class="btn-group btn-group-xs d-flex" style="width: 100%">' +
-		'		<button id="sl'+index+'-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality">SL 2</button>' +
-		'		<button id="sl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality">SL 1</button>' +
-		'		<button id="sl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality">SL 0</button>' +
+		'		<button id="sl'+index+'-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to higher quality">SL 2</button>' +
+		'		<button id="sl'+index+'-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to normal quality">SL 1</button>' +
+		'		<button id="sl'+index+'-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to lower quality">SL 0</button>' +
 		'	</div>' +
 		'	<div class="btn-group btn-group-xs d-flex hide" style="width: 100%">' +
-		'		<button id="tl'+index+'-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2">TL 2</button>' +
-		'		<button id="tl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1">TL 1</button>' +
-		'		<button id="tl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0">TL 0</button>' +
+		'		<button id="tl'+index+'-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 2">TL 2</button>' +
+		'		<button id="tl'+index+'-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 1">TL 1</button>' +
+		'		<button id="tl'+index+'-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 0">TL 0</button>' +
 		'	</div>' +
 		'</div>'
 	);

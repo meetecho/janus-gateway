@@ -7,9 +7,10 @@
 <title>Janus WebRTC Server (multistream): Screen Sharing Demo</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.2/js/bootstrap.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.4.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="settings.js" ></script>
 <script type="text/javascript" src="janus.js" ></script>
@@ -23,7 +24,7 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/4.6.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
 </head>
@@ -70,9 +71,7 @@
 			<div class="container mt-5 hide" id="screenmenu">
 				<div class="row col-md-12">
 					<div class="input-group mt-3 mb-1 hide" id="createnow">
-						<div class="input-group-prepend">
-							<span class="input-group-text"><i class="fa fa-users fa-1"></i></span>
-						</div>
+						<span class="input-group-text"><i class="fa fa-users fa-1"></i></span>
 						<input class="form-control" type="text" placeholder="Insert a title for the session" autocomplete="off" id="desc" onkeypress="return checkEnterShare(this, event);" />
 						<span class="input-group-btn">
 							<button class="btn btn-success" autocomplete="off" id="create">Share your screen</button>
@@ -84,9 +83,7 @@
 				</div>
 				<div class="row col-md-12">
 					<div class="input-group mt-1 mb-1 hide" id="joinnow">
-						<div class="input-group-prepend">
-							<span class="input-group-text"><i class="fa fa-play-circle fa-1"></i></span>
-						</div>
+						<span class="input-group-text"><i class="fa fa-play-circle fa-1"></i></span>
 						<input class="form-control" type="text" placeholder="Insert the numeric session identifier" autocomplete="off" id="roomid" onkeypress="return checkEnterJoin(this, event);" />
 						<span class="input-group-btn">
 							<button class="btn btn-success" autocomplete="off" id="join">Join an existing session</button>
@@ -99,7 +96,7 @@
 					<div class="col-md-12">
 						<div class="card">
 							<div class="card-header">
-								<span class="card-title">Screen Capture <span class="badge badge-info" id="title"></span> <span class="badge badge-success" id="session"></span></span>
+								<span class="card-title">Screen Capture <span class="badge bg-info" id="title"></span> <span class="badge bg-success" id="session"></span></span>
 							</div>
 							<div class="card-body" id="screencapture"></div>
 						</div>

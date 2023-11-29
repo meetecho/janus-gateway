@@ -87,7 +87,7 @@ $(document).ready(function() {
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+												left: '100px'
 											} });
 									} else {
 										// Restore screen
@@ -334,7 +334,7 @@ $(document).ready(function() {
 										} else {
 											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
 										}
-										$('#bitrateset').html($(this).html() + '<span class="caret"></span>').parent().removeClass('open');
+										$('#bitrateset').text($(this).text()).parent().removeClass('open');
 										echotest.send({ message: { bitrate: bitrate }});
 										return false;
 									});
@@ -427,14 +427,14 @@ function addSimulcastButtons(temporal) {
 	$('#curres').parent().append(
 		'<div id="simulcast" class="btn-group-vertical btn-group-xs top-right">' +
 		'	<div class="btn-group btn-group-xs d-flex" style="width: 100%">' +
-		'		<button id="sl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality">SL 2</button>' +
-		'		<button id="sl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality">SL 1</button>' +
-		'		<button id="sl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality">SL 0</button>' +
+		'		<button id="sl-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to higher quality">SL 2</button>' +
+		'		<button id="sl-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to normal quality">SL 1</button>' +
+		'		<button id="sl-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to lower quality">SL 0</button>' +
 		'	</div>' +
 		'	<div class="btn-group btn-group-xs d-flex hide" style="width: 100%">' +
-		'		<button id="tl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2">TL 2</button>' +
-		'		<button id="tl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1">TL 1</button>' +
-		'		<button id="tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0">TL 0</button>' +
+		'		<button id="tl-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 2">TL 2</button>' +
+		'		<button id="tl-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 1">TL 1</button>' +
+		'		<button id="tl-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 0">TL 0</button>' +
 		'	</div>' +
 		'</div>');
 	if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {

@@ -7,10 +7,10 @@
 <title>Janus WebRTC Server (multistream): Video Room Demo (multistream)</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.11.0/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.2/js/bootstrap.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.4.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
 <script type="text/javascript" src="settings.js" ></script>
@@ -25,7 +25,7 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/4.6.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
@@ -66,12 +66,10 @@
 			</div>
 			<div class="container mt-4 hide" id="videojoin">
 				<div class="row">
-					<span class="badge badge-info" id="you"></span>
+					<span class="badge bg-info" id="you"></span>
 					<div class="col-md-12" id="controls">
 						<div class="input-group mt-3 mb-1 hide" id="registernow">
-							<div class="input-group-prepend">
-								<span class="input-group-text">@</span>
-							</div>
+							<span class="input-group-text"><i class="fa fa-user fa-fw"></i></span>
 							<input autocomplete="off" class="form-control" autocomplete="off" type="text" placeholder="Choose a display name" id="username" onkeypress="return checkEnter(this, event);"></input>
 							<span class="input-group-btn">
 								<button class="btn btn-success" autocomplete="off" id="register">Join the room</button>
@@ -85,11 +83,11 @@
 					<div class="col-md-4">
 						<div class="card">
 							<div class="card-header">
-								<span class="card-title">Local Video <span class="badge badge-primary hide" id="publisher"></span>
+								<span class="card-title">Local Video <span class="badge bg-primary hide" id="publisher"></span>
 									<div class="btn-group btn-group-sm top-right hide">
 										<div class="btn-group btn-group-sm">
-											<button id="bitrateset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
-												Bandwidth<span class="caret"></span>
+											<button id="bitrateset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+												Bandwidth
 											</button>
 											<ul id="bitrate" class="dropdown-menu" role="menu">
 												<a class="dropdown-item" href="#" id="0">No limit</a>
@@ -110,7 +108,7 @@
 					<div class="col-md-4">
 						<div class="card">
 							<div class="card-header">
-								<span class="card-title">Remote Video #1 <span class="badge badge-info hide" id="remote1"></span></span>
+								<span class="card-title">Remote Video #1 <span class="badge bg-info hide" id="remote1"></span></span>
 							</div>
 							<div class="card-body relative" id="videoremote1"></div>
 						</div>
@@ -118,7 +116,7 @@
 					<div class="col-md-4">
 						<div class="card">
 							<div class="card-header">
-								<span class="card-title">Remote Video #2 <span class="badge badge-info hide" id="remote2"></span></span>
+								<span class="card-title">Remote Video #2 <span class="badge bg-info hide" id="remote2"></span></span>
 							</div>
 							<div class="card-body relative" id="videoremote2"></div>
 						</div>
@@ -128,7 +126,7 @@
 					<div class="col-md-4">
 						<div class="card">
 							<div class="card-header">
-								<span class="card-title">Remote Video #3 <span class="badge badge-info hide" id="remote3"></span></span>
+								<span class="card-title">Remote Video #3 <span class="badge bg-info hide" id="remote3"></span></span>
 							</div>
 							<div class="card-body relative" id="videoremote3"></div>
 						</div>
@@ -136,7 +134,7 @@
 					<div class="col-md-4">
 						<div class="card">
 							<div class="card-header">
-								<span class="card-title">Remote Video #4 <span class="badge badge-info hide" id="remote4"></span></span>
+								<span class="card-title">Remote Video #4 <span class="badge bg-info hide" id="remote4"></span></span>
 							</div>
 							<div class="card-body relative" id="videoremote4"></div>
 						</div>
@@ -144,7 +142,7 @@
 					<div class="col-md-4">
 						<div class="card">
 							<div class="card-header">
-								<span class="card-title">Remote Video #5 <span class="badge badge-info hide" id="remote5"></span></span>
+								<span class="card-title">Remote Video #5 <span class="badge bg-info hide" id="remote5"></span></span>
 							</div>
 							<div class="card-body relative" id="videoremote5"></div>
 						</div>

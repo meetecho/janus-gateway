@@ -85,7 +85,7 @@ $(document).ready(function() {
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+												left: '100px'
 											} });
 									} else {
 										// Restore screen
@@ -392,7 +392,7 @@ function registerUsername() {
 		let username = $('#username').val();
 		if(username === "") {
 			$('#you')
-				.removeClass().addClass('badge badge-warning')
+				.removeClass().addClass('badge bg-warning')
 				.html("Insert your display name (e.g., pippo)");
 			$('#username').removeAttr('disabled');
 			$('#register').removeAttr('disabled').click(registerUsername);
@@ -400,7 +400,7 @@ function registerUsername() {
 		}
 		if(/[^a-zA-Z0-9]/.test(username)) {
 			$('#you')
-				.removeClass().addClass('badge badge-warning')
+				.removeClass().addClass('badge bg-warning')
 				.html('Input is not alphanumeric');
 			$('#username').removeAttr('disabled').val("");
 			$('#register').removeAttr('disabled').click(registerUsername);

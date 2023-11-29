@@ -482,9 +482,9 @@ function addPanel(panelId, mid, desc) {
 		'	<div class="card w-100">' +
 		'		<div class="card-header">' +
 		'			<span class="card-title">' + (desc ? desc : "Stream") +
-		'				<span class="badge badge-info hide" id="status' + mid + '"></span>' +
-		'				<span class="badge badge-primary hide" id="curres' + mid + '"></span>' +
-		'				<span class="badge badge-info hide" id="curbitrate' + mid + '"></span>' +
+		'				<span class="badge bg-info hide" id="status' + mid + '"></span>' +
+		'				<span class="badge bg-primary hide" id="curres' + mid + '"></span>' +
+		'				<span class="badge bg-info hide" id="curbitrate' + mid + '"></span>' +
 		'			</span>' +
 		'		</div>' +
 		'		<div class="card-body" id="mstream' + panelId + '"></div>' +
@@ -498,14 +498,14 @@ function addSimulcastButtons(mid) {
 	$('#curres'+mid).parent().append(
 		'<div id="simulcast'+mid+'" class="btn-group-vertical btn-group-xs top-right">' +
 		'	<div class="btn-group btn-group-xs d-flex" style="width: 100%">' +
-		'		<button id="m-'+mid+'-sl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality">SL 2</button>' +
-		'		<button id="m-'+mid+'-sl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality">SL 1</button>' +
-		'		<button id="m-'+mid+'-sl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality">SL 0</button>' +
+		'		<button id="m-'+mid+'-sl-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to higher quality">SL 2</button>' +
+		'		<button id="m-'+mid+'-sl-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to normal quality">SL 1</button>' +
+		'		<button id="m-'+mid+'-sl-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to lower quality">SL 0</button>' +
 		'	</div>' +
 		'	<div class="btn-group btn-group-xs d-flex hide" style="width: 100%">' +
-		'		<button id="m-'+mid+'-tl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2">TL 2</button>' +
-		'		<button id="m-'+mid+'-tl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1">TL 1</button>' +
-		'		<button id="m-'+mid+'-tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0">TL 0</button>' +
+		'		<button id="m-'+mid+'-tl-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 2">TL 2</button>' +
+		'		<button id="m-'+mid+'-tl-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 1">TL 1</button>' +
+		'		<button id="m-'+mid+'-tl-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 0">TL 0</button>' +
 		'	</div>' +
 		'</div>');
 	// Enable the simulcast selection buttons
@@ -618,15 +618,15 @@ function addSvcButtons(mid) {
 		'<div id="svc'+mid+'" class="btn-group-vertical btn-group-vertical-xs top-right">' +
 		'	<div class"row">' +
 		'		<div class="btn-group btn-group-xs d-flex" style="width: 100%">' +
-		'			<button id="m-'+mid+'-sl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal resolution">SL 1</button>' +
-		'			<button id="m-'+mid+'-sl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to low resolution">SL 0</button>' +
+		'			<button id="m-'+mid+'-sl-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to normal resolution">SL 1</button>' +
+		'			<button id="m-'+mid+'-sl-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to low resolution">SL 0</button>' +
 		'		</div>' +
 		'	</div>' +
 		'	<div class"row">' +
 		'		<div class="btn-group btn-group-xs d-flex" style="width: 100%">' +
-		'			<button id="m-'+mid+'-tl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2 (high FPS)">TL 2</button>' +
-		'			<button id="m-'+mid+'-tl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1 (medium FPS)">TL 1</button>' +
-		'			<button id="m-'+mid+'-tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0 (low FPS)">TL 0</button>' +
+		'			<button id="m-'+mid+'-tl-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 2 (high FPS)">TL 2</button>' +
+		'			<button id="m-'+mid+'-tl-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 1 (medium FPS)">TL 1</button>' +
+		'			<button id="m-'+mid+'-tl-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 0 (low FPS)">TL 0</button>' +
 		'		</div>' +
 		'	</div>' +
 		'</div>'

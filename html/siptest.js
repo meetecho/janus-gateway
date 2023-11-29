@@ -102,7 +102,7 @@ $(document).ready(function() {
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+												left: '100px'
 											} });
 									} else {
 										// Restore screen
@@ -1013,15 +1013,13 @@ function addHelper(helperCreated) {
 		'<div class="container" id="sipcall' + helperId + '">' +
 		'	<div class="row">' +
 		'		<div class="col-md-6 container">' +
-		'			<span class="badge badge-info">Helper #' + helperId +
+		'			<span class="badge bg-info">Helper #' + helperId +
 		'				<i class="fa fa-window-close" id="rmhelper' + helperId + '" style="cursor: pointer;" title="Remove this helper"></i>' +
 		'			</span>' +
 		'		</div>' +
 		'		<div class="col-md-6 container" id="phone' + helperId + '">' +
 		'			<div class="input-group mt-1 mb-1">' +
-		'				<div class="input-group-prepend">' +
-		'					<span class="input-group-text"><i class="fa fa-phone fa-fw"></i></span>' +
-		'				</div>' +
+		'				<span class="input-group-text"><i class="fa fa-phone fa-fw"></i></span>' +
 		'				<input disabled class="form-control" type="text" placeholder="SIP URI to call (e.g., sip:1000@example.com)" autocomplete="off" id="peer' + helperId + '" onkeypress="return checkEnter(this, event, ' + helperId + ');"></input>' +
 		'			</div>' +
 		'			<button disabled class="btn btn-success margin-bottom-sm" autocomplete="off" id="call' + helperId + '">Call</button> <input autocomplete="off" id="dovideo' + helperId + '" type="checkbox">Use Video</input>' +
@@ -1088,7 +1086,7 @@ function addHelper(helperCreated) {
 							backgroundColor: 'transparent',
 							color: '#aaa',
 							top: '10px',
-							left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+							left: '100px'
 						} });
 				} else {
 					// Restore screen

@@ -7,9 +7,10 @@
 <title>Janus WebRTC Server (multistream): Audio Bridge Demo</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.2/js/bootstrap.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.4.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-slider/10.6.2/bootstrap-slider.min.js"></script>
 <script type="text/javascript" src="settings.js" ></script>
@@ -24,7 +25,7 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/4.6.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-slider/10.6.2/css/bootstrap-slider.css" type="text/css"/>
@@ -65,12 +66,10 @@
 			</div>
 			<div class="container mt-4 hide" id="audiojoin">
 				<div class="row">
-					<span class="badge badge-info" id="you"></span>
+					<span class="badge bg-info" id="you"></span>
 					<div class="col-md-12" id="controls">
 						<div class="input-group mt-3 mb-1 hide" id="registernow">
-							<div class="input-group-prepend">
-								<span class="input-group-text">@</span>
-							</div>
+							<span class="input-group-text"><i class="fa fa-user fa-fw"></i></span>
 							<input class="form-control" type="text" placeholder="Choose a display name" autocomplete="off" id="username" onkeypress="return checkEnter(this, event);" />
 							<span class="input-group-btn">
 								<button class="btn btn-success" autocomplete="off" id="register">Join the room</button>
@@ -84,7 +83,7 @@
 					<div class="col-md-6">
 						<div class="card">
 							<div class="card-header">
-								<span class="card-title">Participants <span class="badge badge-info hide" id="participant"></span>
+								<span class="card-title">Participants <span class="badge bg-info hide" id="participant"></span>
 								<div class="btn-group btn-group-sm top-right">
 									<button class="btn btn-danger hide" autocomplete="off" id="toggleaudio">Mute</button>
 									<button class="btn btn-primary hide" autocomplete="off" id="position">Position</button>

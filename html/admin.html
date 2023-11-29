@@ -6,8 +6,9 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server (multistream): Admin/Monitor</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.2/js/bootstrap.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.4.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
 <script type="text/javascript" src="admin.js"></script>
 <script>
 	$(function() {
@@ -18,7 +19,7 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/4.6.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
 </head>
@@ -38,13 +39,13 @@
 
 			<div class="mt-4">
 				<ul id="admintabs" class="nav nav-tabs" role="tablist">
-					<li role="presentation" class="nav-item"><a class="nav-link active" href="#home" aria-controls="home" role="tab" data-toggle="tab">Home</a></li>
-					<li role="presentation" class="nav-item"><a class="nav-link disabled" href="#serverinfo" aria-controls="serverinfo" role="tab" data-toggle="tab">Server Info</a></li>
-					<li role="presentation" class="nav-item"><a class="nav-link disabled" href="#settings" aria-controls="settings" role="tab" data-toggle="tab">Settings</a></li>
-					<li role="presentation" class="nav-item"><a class="nav-link disabled" href="#plugins" aria-controls="plugins" role="tab" data-toggle="tab">Plugins</a></li>
-					<li role="presentation" class="nav-item"><a class="nav-link disabled" href="#transports" aria-controls="transports" role="tab" data-toggle="tab">Transports</a></li>
-					<li role="presentation" class="nav-item"><a class="nav-link disabled" href="#handlesinfo" aria-controls="handlesinfo" role="tab" data-toggle="tab">Handles</a></li>
-					<li role="presentation" class="nav-item"><a class="nav-link disabled" href="#tokens" aria-controls="tokens" role="tab" data-toggle="tab">Stored Tokens</a></li>
+					<li role="presentation" class="nav-item"><a class="nav-link active" href="#home" aria-controls="home" role="tab" data-bs-toggle="tab">Home</a></li>
+					<li role="presentation" class="nav-item"><a class="nav-link disabled" href="#serverinfo" aria-controls="serverinfo" role="tab" data-bs-toggle="tab">Server Info</a></li>
+					<li role="presentation" class="nav-item"><a class="nav-link disabled" href="#settings" aria-controls="settings" role="tab" data-bs-toggle="tab">Settings</a></li>
+					<li role="presentation" class="nav-item"><a class="nav-link disabled" href="#plugins" aria-controls="plugins" role="tab" data-bs-toggle="tab">Plugins</a></li>
+					<li role="presentation" class="nav-item"><a class="nav-link disabled" href="#transports" aria-controls="transports" role="tab" data-bs-toggle="tab">Transports</a></li>
+					<li role="presentation" class="nav-item"><a class="nav-link disabled" href="#handlesinfo" aria-controls="handlesinfo" role="tab" data-bs-toggle="tab">Handles</a></li>
+					<li role="presentation" class="nav-item"><a class="nav-link disabled" href="#tokens" aria-controls="tokens" role="tab" data-bs-toggle="tab">Stored Tokens</a></li>
 				</ul>
 
 				<div class="tab-content" style="padding: 20px;">
@@ -125,8 +126,8 @@
 						<h5>Plugins</h5>
 						<div class="row">
 							<div class="col-md-3">
-								<table class="table" id="plugins-list">
-								</table>
+								<ul class="list-group" id="plugins-list">
+								</ul>
 							</div>
 							<div id="plugin-message" class="col-md-9 hide">
 								<div class="row">
@@ -145,8 +146,8 @@
 						<h5>Transports</h5>
 						<div class="row">
 							<div class="col-md-3">
-								<table class="table" id="transports-list">
-								</table>
+								<ul class="list-group" id="transports-list">
+								</ul>
 							</div>
 							<div id="transport-message" class="col-md-9 hide">
 								<div class="row">

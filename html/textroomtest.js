@@ -229,7 +229,7 @@ function registerUsername() {
 		let username = $('#username').val();
 		if(username === "") {
 			$('#you')
-				.removeClass().addClass('badge badge-warning')
+				.removeClass().addClass('badge bg-warning')
 				.html("Insert your display name (e.g., pippo)");
 			$('#username').removeAttr('disabled');
 			$('#register').removeAttr('disabled').click(registerUsername);

@@ -2,6 +2,10 @@ body {
 	padding-top: 80px;
 }
 
+a {
+	text-decoration: none;
+}
+
 .hide {
 	display: none !important;
 }

@@ -15,8 +15,8 @@ $(document).ready(function() {
 	$('li > a[href="functions_vars.html"] > span').before("<i class='fa fa-list'></i> ");
 	$('li > a[href="functions_enum.html"] > span').before("<i class='fa fa-list'></i> ");
 	$('li > a[href="functions_eval.html"] > span').before("<i class='fa fa-list'></i> ");
-	$('img[src="ftv2ns.png"]').replaceWith('<span class="badge badge-danger">N</span> ');
-	$('img[src="ftv2cl.png"]').replaceWith('<span class="badge badge-danger">C</span> ');
+	$('img[src="ftv2ns.png"]').replaceWith('<span class="badge bg-danger">N</span> ');
+	$('img[src="ftv2cl.png"]').replaceWith('<span class="badge bg-danger">C</span> ');
 
 	$("ul.tablist").addClass("nav nav-pills nav-fill");
 	$("ul.tablist").css("margin-top", "0.5em");
@@ -42,7 +42,7 @@ $(document).ready(function() {
 	$(".memitem").addClass("card");
 	$(".memproto").addClass("card-header");
 	$(".memdoc").addClass("card-body");
-	$("span.mlabel").addClass("badge badge-info");
+	$("span.mlabel").addClass("badge bg-info");
 
 	$("table.memberdecls").addClass("table");
 	$("[class^=memitem]").addClass("active");

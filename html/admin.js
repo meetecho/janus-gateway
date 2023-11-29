@@ -50,15 +50,11 @@ function promptAccessDetails() {
 	let secretPlaceholder = "Insert the Admin API secret";
 	bootbox.alert({
 		message: "<div class='input-group mt-3 mb-1'>" +
-			"	<div class='input-group-prepend'>" +
-			"		<span class='input-group-text'><i class='fa fa-cloud-upload fa-fw'></i></span>" +
-			"	</div>" +
+			"	<span class='input-group-text'><i class='fa fa-cloud-upload fa-fw'></i></span>" +
 			"	<input class='form-control' type='text' value='" + server + "' placeholder='" + serverPlaceholder + "' autocomplete='off' id='server'></input>" +
 			"</div>" +
 			"<div class='input-group mt-3 mb-1'>" +
-			"	<div class='input-group-prepend'>" +
-			"		<span class='input-group-text'><i class='fa fa-key fa-fw'></i></span>" +
-			"	</div>" +
+			"	<span class='input-group-text'><i class='fa fa-key fa-fw'></i></span>" +
 			"	<input class='form-control' type='password'  value='" + secret + "'placeholder='" + secretPlaceholder + "' autocomplete='off' id='secret'></input>" +
 			"</div>",
 		closeButton: false,
@@ -1412,17 +1408,17 @@ function updateTokens() {
 			}
 			$('#auth-tokens').append(
 				'<tr>' +
-				'	<td><input type="text" id="token" placeholder="Token to add" onkeypress="return checkEnter(this, event);" style="width: 100%;"></td>' +
+				'	<td><input type="text" class="form-control" id="token" placeholder="Token to add" onkeypress="return checkEnter(this, event);" style="width: 100%;"></td>' +
 				'	<td><div id="permissions"></div></td>' +
 				'	<td><button id="addtoken" type="button" class="btn btn-xs btn-success">Add token</button></td>' +
 				'</tr>');
-			let pluginsCheckboxes = "";
+			let pluginsCheckboxes = '';
 			for(let i in plugins) {
 				let plugin = plugins[i];
 				pluginsCheckboxes +=
-					'<div class="checkbox">' +
-					'	<label>' +
-					'		<input checked type="checkbox" value="' + plugin + '">' + plugin + '</input>' +
+					'<div class="form-check">' +
+					'	<input checked class="form-check-input" type="checkbox" value="' + plugin + '">' +
+					'	<label class="form-check-label" for="' + plugin + '">' + plugin + '</label>' +
 					'</div>';
 			}
 			$('#permissions').html(pluginsCheckboxes);

@@ -7,10 +7,10 @@
 <title>Janus WebRTC Server (multistream): Web Audio Processing</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.11.0/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.2/js/bootstrap.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.4.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
 <script type="text/javascript" src="settings.js" ></script>
@@ -25,7 +25,7 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/4.6.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
@@ -72,33 +72,23 @@
 							</div>
 							<div class="card-body">
 								<div class="input-group mb-2">
-									<div class="input-group-prepend w-25">
-										<span class="input-group-text w-100">Threshold</span>
-									</div>
+									<span class="input-group-text w-100">Threshold</span>
 									<input type="text" class="form-control" id="threshold" name="threshold" placeholder="Threshold" value="" onkeypress="return checkEnter(event);" disabled></input>
 								</div>
 								<div class="input-group mt-2 mb-2">
-									<div class="input-group-prepend w-25">
-										<span class="input-group-text w-100">Knee</span>
-									</div>
+									<span class="input-group-text w-100">Knee</span>
 									<input type="text" class="form-control" id="knee" name="knee" placeholder="Knee" value="" onkeypress="return checkEnter(event);" disabled></input>
 								</div>
 								<div class="input-group mt-2 mb-2">
-									<div class="input-group-prepend w-25">
-										<span class="input-group-text w-100">Ratio</span>
-									</div>
+									<span class="input-group-text w-100">Ratio</span>
 									<input type="text" class="form-control" id="ratio" name="ratio" placeholder="Ratio" value="" onkeypress="return checkEnter(event);" disabled></input>
 								</div>
 								<div class="input-group mt-2 mb-2">
-									<div class="input-group-prepend w-25">
-										<span class="input-group-text w-100">Attack</span>
-									</div>
+									<span class="input-group-text w-100">Attack</span>
 									<input type="text" class="form-control" id="attack" name="attack" placeholder="Attack" value="" onkeypress="return checkEnter(event);" disabled></input>
 								</div>
 								<div class="input-group mt-2 mb-2">
-									<div class="input-group-prepend w-25">
-										<span class="input-group-text w-100">Release</span>
-									</div>
+									<span class="input-group-text w-100">Release</span>
 									<input type="text" class="form-control" id="release" name="release" placeholder="Release" value="" onkeypress="return checkEnter(event);" disabled></input>
 								</div>
 							</div>

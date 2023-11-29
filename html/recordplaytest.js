@@ -86,7 +86,7 @@ $(document).ready(function() {
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+												left: '100px'
 											} });
 									} else {
 										// Restore screen
@@ -339,8 +339,8 @@ $(document).ready(function() {
 										Janus.attachMediaStream($('#thevideo' + mid).get(0), stream);
 										if($('#curres').length === 0) {
 											$('#videobox').append(
-												'<span class="badge badge-primary bottom-left m-3" id="curres' +'"></span>' +
-												'<span class="badge badge-info bottom-right m-3" id="curbw' +'"></span>');
+												'<span class="badge bg-primary bottom-left m-3" id="curres' +'"></span>' +
+												'<span class="badge bg-info bottom-right m-3" id="curbw' +'"></span>');
 											$('#thevideo' + mid).bind("playing", function () {
 												let width = this.videoWidth;
 												let height = this.videoHeight;

@@ -69,7 +69,7 @@ function initDevices(devices) {
 					$('#peervideo1').get(0).setSinkId(deviceId)
 						.then(function() {
 							Janus.log('Audio output device attached:', deviceId);
-							$('#outputdeviceset').html(label + '<span class="caret"></span>').parent().removeClass('open');
+							$('#outputdeviceset').text(label).parent().removeClass('open');
 						}).catch(function(error) {
 							Janus.error(error);
 							bootbox.alert(error);
@@ -233,7 +233,7 @@ $(document).ready(function() {
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+												left: '100px'
 											} });
 									} else {
 										// Restore screen
@@ -275,7 +275,7 @@ $(document).ready(function() {
 											videoenabled = true;
 											$('#togglevideo').attr('disabled', true).html("Disable video").removeClass("btn-success").addClass("btn-danger");
 											$('#bitrate').attr('disabled', true);
-											$('#bitrateset').html('Bandwidth<span class="caret"></span>');
+											$('#bitrateset').text('Bandwidth');
 											$('#curbitrate').addClass('hide');
 											if(bitrateTimer)
 												clearInterval(bitrateTimer);
@@ -283,7 +283,7 @@ $(document).ready(function() {
 											$('#curres').addClass('hide');
 											$('#datasend').val('').attr('disabled', true);
 											$('#datarecv').val('');
-											$('#outputdeviceset').html('Output device<span class="caret"></span>');
+											$('#outputdeviceset').text('Output device');
 											return;
 										}
 										// Any loss?
@@ -490,7 +490,7 @@ $(document).ready(function() {
 										} else {
 											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
 										}
-										$('#bitrateset').html($(this).html() + '<span class="caret"></span>').parent().removeClass('open');
+										$('#bitrateset').text($(this).text()).parent().removeClass('open');
 										echotest.send({ message: { bitrate: bitrate }});
 										return false;
 									});
@@ -520,7 +520,7 @@ $(document).ready(function() {
 									videoenabled = true;
 									$('#togglevideo').attr('disabled', true).html("Disable video").removeClass("btn-success").addClass("btn-danger");
 									$('#bitrate').attr('disabled', true);
-									$('#bitrateset').html('Bandwidth<span class="caret"></span>');
+									$('#bitrateset').html('Bandwidth');
 									$('#curbitrate').addClass('hide');
 									if(bitrateTimer)
 										clearInterval(bitrateTimer);
@@ -528,7 +528,7 @@ $(document).ready(function() {
 									$('#curres').addClass('hide');
 									$('#datasend').val('').attr('disabled', true);
 									$('#datarecv').val('');
-									$('#outputdeviceset').html('Output device<span class="caret"></span>');
+									$('#outputdeviceset').html('Output device');
 									simulcastStarted = false;
 									$('#simulcast').remove();
 									localTracks = {};
@@ -588,14 +588,14 @@ function getQueryStringValue(name) {
 function addSimulcastButtons(temporal) {
 	$(	'<div id="simulcast" class="btn-group-vertical btn-group-xs top-right">' +
 		'	<div class="btn-group btn-group-xs d-flex" style="width: 100%">' +
-		'		<button id="sl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality">SL 2</button>' +
-		'		<button id="sl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality">SL 1</button>' +
-		'		<button id="sl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality">SL 0</button>' +
+		'		<button id="sl-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to higher quality">SL 2</button>' +
+		'		<button id="sl-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to normal quality">SL 1</button>' +
+		'		<button id="sl-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to lower quality">SL 0</button>' +
 		'	</div>' +
 		'	<div class="btn-group btn-group-xs d-flex hide" style="width: 100%">' +
-		'		<button id="tl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2">TL 2</button>' +
-		'		<button id="tl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1">TL 1</button>' +
-		'		<button id="tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0">TL 0</button>' +
+		'		<button id="tl-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 2">TL 2</button>' +
+		'		<button id="tl-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 1">TL 1</button>' +
+		'		<button id="tl-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 0">TL 0</button>' +
 		'	</div>' +
 		'</div>').insertBefore('#output-devices');
 	if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {

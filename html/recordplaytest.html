@@ -7,10 +7,10 @@
 <title>Janus WebRTC Server (multistream): Recorder/Playout Demo</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.11.0/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.2/js/bootstrap.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.4.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="settings.js" ></script>
 <script type="text/javascript" src="janus.js" ></script>
@@ -24,7 +24,7 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/4.6.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
 </head>
@@ -77,8 +77,8 @@
 								</div>
 								<br/>
 								<div class="btn-group btn-group-sm w-100">
-									<button autocomplete="off" id="recset" class="btn btn-secondary dropdown-toggle" data-toggle="dropdown">
-										Recordings list<span class="caret"></span>
+									<button autocomplete="off" id="recset" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown">
+										Recordings list
 									</button>
 									<ul id="recslist" class="dropdown-menu" role="menu" style="max-height: 300px; overflow: auto;">
 									</ul>
@@ -100,9 +100,7 @@
 							<div class="card-body" id="videobox"></div>
 						</div>
 						<div class="input-group mt-3 mb-3 hide">
-							<div class="input-group-prepend">
-								<span class="input-group-text"><i class="fa fa-cloud-upload fa-fw"></i></span>
-							</div>
+							<span class="input-group-text"><i class="fa fa-cloud-upload fa-fw"></i></span>
 							<input type="text" class="form-control" id="datafield" disabled>
 						</div>
 					</div>
