@@ -234,7 +234,7 @@ $(document).ready(function() {
 												if($('#screencapture .no-video-container').length === 0) {
 													$('#screencapture').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 															'<span class="no-video-text">No webcam available</span>' +
 														'</div>');
 												}
@@ -258,7 +258,7 @@ $(document).ready(function() {
 											if($('#screencapture .no-video-container').length === 0) {
 												$('#screencapture').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 														'<span class="no-video-text">No webcam available</span>' +
 													'</div>');
 											}
@@ -528,7 +528,7 @@ function newRemoteFeed(id, display) {
 							if($('#screencapture .no-video-container').length === 0) {
 								$('#screencapture').append(
 									'<div class="no-video-container">' +
-										'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+										'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 										'<span class="no-video-text">No remote video available</span>' +
 									'</div>');
 							}
@@ -557,7 +557,7 @@ function newRemoteFeed(id, display) {
 						if($('#screencapture .no-video-container').length === 0) {
 							$('#screencapture').append(
 								'<div class="no-video-container">' +
-									'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+									'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 									'<span class="no-video-text">No remote video available</span>' +
 								'</div>');
 						}

@@ -157,8 +157,8 @@ $(document).ready(function() {
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
 															slider +
 															display +
-															' <i class="absetup fa fa-chain-broken"></i>' +
-															' <i class="abmuted fa fa-microphone-slash"></i></li>');
+															' <i class="absetup fa-solid fa-link-slash"></i>' +
+															' <i class="abmuted fa-solid fa-microphone-slash"></i></li>');
 														if(spatial !== null && spatial !== undefined) {
 															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
 															$('#position').removeClass('hide');
@@ -201,8 +201,8 @@ $(document).ready(function() {
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
 															slider +
 															display +
-															' <i class="absetup fa fa-chain-broken"></i>' +
-															' <i class="abmuted fa fa-microphone-slash"></i></li>');
+															' <i class="absetup fa-solid fa-link-slash"></i>' +
+															' <i class="abmuted fa-solid fa-microphone-slash"></i></li>');
 														if(spatial !== null && spatial !== undefined) {
 															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
 															$('#position').removeClass('hide');
@@ -246,8 +246,8 @@ $(document).ready(function() {
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
 															slider +
 															display +
-															' <i class="absetup fa fa-chain-broken"></i>' +
-															' <i class="abmuted fa fa-microphone-slash"></i></li>');
+															' <i class="absetup fa-solid fa-link-slash"></i>' +
+															' <i class="abmuted fa-solid fa-microphone-slash"></i></li>');
 														if(spatial !== null && spatial !== undefined) {
 															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
 															$('#position').removeClass('hide');

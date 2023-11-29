@@ -278,7 +278,7 @@ $(document).ready(function() {
 											$('#myvideo').addClass('hide');
 											$('#videolocal').append(
 												'<div class="no-video-container">' +
-													'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
+													'<i class="fa-solid fa-video fa-xl no-video-icon" style="height: 100%;"></i>' +
 													'<span class="no-video-text" style="font-size: 16px;">Video rejected, no webcam</span>' +
 												'</div>');
 										}
@@ -310,7 +310,7 @@ $(document).ready(function() {
 												if($('#videolocal .no-video-container').length === 0) {
 													$('#videolocal').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 															'<span class="no-video-text">No webcam available</span>' +
 														'</div>');
 												}
@@ -341,7 +341,7 @@ $(document).ready(function() {
 											if($('#videolocal .no-video-container').length === 0) {
 												$('#videolocal').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 														'<span class="no-video-text">No webcam available</span>' +
 													'</div>');
 											}
@@ -797,7 +797,7 @@ function subscribeTo(sources) {
 							if($('#videoremote' + slot + ' .no-video-container').length === 0) {
 								$('#videoremote' + slot).append(
 									'<div class="no-video-container">' +
-										'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+										'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 										'<span class="no-video-text">No remote video available</span>' +
 									'</div>');
 							}
@@ -827,7 +827,7 @@ function subscribeTo(sources) {
 						if($('#videoremote' + slot + ' .no-video-container').length === 0) {
 							$('#videoremote' + slot).append(
 								'<div class="no-video-container">' +
-									'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+									'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 									'<span class="no-video-text">No remote video available</span>' +
 								'</div>');
 						}

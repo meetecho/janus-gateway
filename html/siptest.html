@@ -28,7 +28,7 @@
 </script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
 </head>
 <body>
@@ -71,26 +71,26 @@
 				<div class="row">
 					<div class="col-md-6 container invisible" id="login">
 						<div class="input-group mt-1 mb-1">
-							<span class="input-group-text"><i class="fa fa-cloud-upload fa-fw"></i></span>
+							<span class="input-group-text"><i class="fa-solid fa-cloud-arrow-up"></i></span>
 							<input class="form-control" type="text" placeholder="SIP Registrar (e.g., sip:host:port)" autocomplete="off" id="server" onkeypress="return checkEnter(this, event);" />
 						</div>
 						<div class="input-group mt-1 mb-1">
-							<span class="input-group-text"><i class="fa fa-user fa-fw"></i></span>
+							<span class="input-group-text"><i class="fa-solid fa-user"></i></span>
 							<input class="form-control" type="text" placeholder="SIP Identity (e.g., sip:goofy@example.com)" autocomplete="off" id="username" onkeypress="return checkEnter(this, event);" />
 							<button id="addhelper" class="btn btn-xs btn-info hide" title="Add a new line">
-								<i class="fa fa-plus"></i>
+								<i class="fa-solid fa-plus"></i>
 							</button>
 						</div>
 						<div class="input-group mt-1 mb-1">
-							<span class="input-group-text"><i class="fa fa-user-plus fa-fw"></i></span>
+							<span class="input-group-text"><i class="fa-solid fa-user-plus"></i></span>
 							<input class="form-control" type="text" placeholder="Username (e.g., goofy, overrides the one in the SIP identity if provided)" autocomplete="off" id="authuser" onkeypress="return checkEnter(this, event);" />
 						</div>
 						<div class="input-group mt-1 mb-1">
-							<span class="input-group-text"><i class="fa fa-key fa-fw"></i></span>
+							<span class="input-group-text"><i class="fa-solid fa-key"></i></span>
 							<input class="form-control" type="password" placeholder="Secret (e.g., mysupersecretpassword)" autocomplete="off" id="password" onkeypress="return checkEnter(this, event);" />
 						</div>
 						<div class="input-group mt-1 mb-1">
-							<span class="input-group-text"><i class="fa fa-quote-right fa-fw"></i></span>
+							<span class="input-group-text"><i class="fa-solid fa-quote-right"></i></span>
 							<input class="form-control" type="text" placeholder="Display name (e.g., Alice Smith)" autocomplete="off" id="displayname" onkeypress="return checkEnter(this, event);" />
 						</div>
 						<div class="btn-group btn-group-sm w-100">
@@ -109,7 +109,7 @@
 					</div>
 					<div class="col-md-6 container invisible" id="phone">
 						<div class="input-group mt-1 mb-1">
-							<span class="input-group-text"><i class="fa fa-phone fa-fw"></i></span>
+							<span class="input-group-text"><i class="fa-solid fa-phone"></i></span>
 							<input class="form-control" type="text" placeholder="SIP URI to call (e.g., sip:1000@example.com)" autocomplete="off" id="peer" onkeypress="return checkEnter(this, event);" />
 						</div>
 						<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="call">Call</button> <input autocomplete="off" id="dovideo" type="checkbox" />Use Video
