@@ -6,32 +6,32 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server (multistream): About Janus</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.2/js/bootstrap.min.js"></script>
 <script>
 	$(function() {
-		$(".navbar-static-top").load("navbar.html", function() {
-			$(".navbar-static-top a[href='index.html']").parent().addClass("active");
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top a[href='index.html']").addClass("active");
 		});
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/4.6.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 </head>
 <body>
 
-<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
 
-<nav class="navbar navbar-default navbar-static-top">
-</nav>
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
 
 <div class="container">
 	<div class="row">
 		<div class="col-md-12">
-			<div class="page-header">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
 				<h1>About</h1>
 			</div>
-			<h3>Janus: the general purpose WebRTC server</h3>
+			<h3 class="mt-3">Janus: the general purpose WebRTC server</h3>
 			<div class="alert alert-warning">
 				<b>Note Well:</b> these are the demos and documentation for the <code>multistream</code> version
 				of Janus, which is a new version. If you want to check the previous version of

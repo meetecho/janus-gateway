@@ -86,6 +86,7 @@ $(document).ready(function() {
 										// Darken screen and show hint
 										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',

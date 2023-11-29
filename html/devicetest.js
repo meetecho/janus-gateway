@@ -49,23 +49,24 @@ function initDevices(devices) {
 			// https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/setSinkId
 			// Definitely missing in Safari at the moment: https://bugs.webkit.org/show_bug.cgi?id=179415
 			$('#output-devices').removeClass('hide');
-			$('#audiooutput').append('<li><a href="#" id="' + device.deviceId + '">' + label + '</a></li>');
+			$('#audiooutput').append('<a class="dropdown-item" href="#" id="' + device.deviceId + '">' + label + '</a>');
 			$('#audiooutput a').unbind('click')
 				.click(function() {
+					$('.dropdown-toggle').dropdown('hide');
 					let deviceId = $(this).attr("id");
 					let label = $(this).text();
 					Janus.log("Trying to set device " + deviceId + " (" + label + ") as sink for the output");
-					if($('#peervideo').length === 0) {
+					if($('#peervideo1').length === 0) {
 						Janus.error("No remote video element available");
 						bootbox.alert("No remote video element available");
 						return false;
 					}
-					if(!$('#peervideo').get(0).setSinkId) {
+					if(!$('#peervideo1').get(0).setSinkId) {
 						Janus.error("SetSinkId not supported");
 						bootbox.warn("SetSinkId not supported");
 						return false;
 					}
-					$('#peervideo').get(0).setSinkId(deviceId)
+					$('#peervideo1').get(0).setSinkId(deviceId)
 						.then(function() {
 							Janus.log('Audio output device attached:', deviceId);
 							$('#outputdeviceset').html(label + '<span class="caret"></span>').parent().removeClass('open');
@@ -95,6 +96,9 @@ function restartCapture() {
 	audioDeviceId = $('#audio-device').val();
 	let replaceVideo = $('#video-device').val() !== videoDeviceId;
 	videoDeviceId = $('#video-device').val();
+	Janus.warn(videoDeviceId);
+	let width = doSimulcast ? 1280 : 640;
+	let height = doSimulcast ? 720 : 480;
 	if(!firstOffer) {
 		if(!replaceAudio && !replaceVideo) {
 			// Nothing to do, reset devices controls
@@ -115,7 +119,11 @@ function restartCapture() {
 			tracks.push({
 				type: 'video',
 				mid: '1',	// We assume mid 1 is video
-				capture: { deviceId: { exact: videoDeviceId } }
+				capture: {
+					deviceId: { exact: videoDeviceId },
+					width: { ideal: width },
+					height: { ideal: height }
+				}
 			});
 		}
 		// We use the replaceTracks helper function, that will in turn
@@ -151,7 +159,8 @@ function restartCapture() {
 			// We provide a specific device ID for both audio and video
 			tracks: [
 				{ type: 'audio', capture: { deviceId: { exact: audioDeviceId }}, recv: true },
-				{ type: 'video', capture: { deviceId: { exact: videoDeviceId }}, recv: true, simulcast: doSimulcast },
+				{ type: 'video', capture: { deviceId: { exact: videoDeviceId },
+					width: { ideal: width }, height: { ideal: height }}, recv: true, simulcast: doSimulcast },
 				{ type: 'data' }	// Let's negotiate data channels as well
 			],
 			success: function(jsep) {
@@ -217,6 +226,7 @@ $(document).ready(function() {
 										// Darken screen and show hint
 										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',
@@ -266,11 +276,11 @@ $(document).ready(function() {
 											$('#togglevideo').attr('disabled', true).html("Disable video").removeClass("btn-success").addClass("btn-danger");
 											$('#bitrate').attr('disabled', true);
 											$('#bitrateset').html('Bandwidth<span class="caret"></span>');
-											$('#curbitrate').hide();
+											$('#curbitrate').addClass('hide');
 											if(bitrateTimer)
 												clearInterval(bitrateTimer);
 											bitrateTimer = null;
-											$('#curres').hide();
+											$('#curres').addClass('hide');
 											$('#datasend').val('').attr('disabled', true);
 											$('#datarecv').val('');
 											$('#outputdeviceset').html('Output device<span class="caret"></span>');
@@ -335,7 +345,7 @@ $(document).ready(function() {
 										return;
 									}
 									if($('#videoleft video').length === 0) {
-										$('#videos').removeClass('hide').show();
+										$('#videos').removeClass('hide');
 									}
 									if(track.kind === "audio") {
 										// We ignore local audio tracks, they'd generate echo anyway
@@ -399,7 +409,7 @@ $(document).ready(function() {
 									let addButtons = false;
 									if($('#videoright audio').length === 0 && $('#videoright video').length === 0) {
 										addButtons = true;
-										$('#videos').removeClass('hide').show();
+										$('#videos').removeClass('hide');
 									}
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
@@ -431,7 +441,7 @@ $(document).ready(function() {
 										Janus.attachMediaStream($('#peervideo' + mid).get(0), stream);
 										// FIXME we'll need this for additional videos too
 										if(!bitrateTimer) {
-											$('#curbitrate').removeClass('hide').show();
+											$('#curbitrate').removeClass('hide');
 											bitrateTimer = setInterval(function() {
 												if(!$("#peervideo" + mid).get(0))
 													return;
@@ -443,7 +453,7 @@ $(document).ready(function() {
 												let width = $("#peervideo" + mid).get(0).videoWidth;
 												let height = $("#peervideo" + mid).get(0).videoHeight;
 												if(width > 0 && height > 0)
-													$('#curres').removeClass('hide').text(width+'x'+height).show();
+													$('#curres').removeClass('hide').text(width+'x'+height).removeClass('hide');
 											}, 1000);
 										}
 									}
@@ -470,8 +480,9 @@ $(document).ready(function() {
 												$('#togglevideo').html("Enable video").removeClass("btn-danger").addClass("btn-success");
 											echotest.send({ message: { video: videoenabled }});
 										});
-									$('#toggleaudio').parent().removeClass('hide').show();
+									$('#toggleaudio').parent().removeClass('hide');
 									$('#bitrate a').click(function() {
+										$('.dropdown-toggle').dropdown('hide');
 										let id = $(this).attr("id");
 										let bitrate = parseInt(id)*1000;
 										if(bitrate === 0) {
@@ -487,7 +498,7 @@ $(document).ready(function() {
 								// eslint-disable-next-line no-unused-vars
 								ondataopen: function(label, protocol) {
 									Janus.log("The DataChannel is available!");
-									$('#videos').removeClass('hide').show();
+									$('#videos').removeClass('hide');
 									$('#datasend').removeAttr('disabled');
 								},
 								ondata: function(data) {
@@ -510,11 +521,11 @@ $(document).ready(function() {
 									$('#togglevideo').attr('disabled', true).html("Disable video").removeClass("btn-success").addClass("btn-danger");
 									$('#bitrate').attr('disabled', true);
 									$('#bitrateset').html('Bandwidth<span class="caret"></span>');
-									$('#curbitrate').hide();
+									$('#curbitrate').addClass('hide');
 									if(bitrateTimer)
 										clearInterval(bitrateTimer);
 									bitrateTimer = null;
-									$('#curres').hide();
+									$('#curres').addClass('hide');
 									$('#datasend').val('').attr('disabled', true);
 									$('#datarecv').val('');
 									$('#outputdeviceset').html('Output device<span class="caret"></span>');
@@ -575,27 +586,21 @@ function getQueryStringValue(name) {
 
 // Helpers to create Simulcast-related UI, if enabled
 function addSimulcastButtons(temporal) {
-	$(	'<div id="simulcast" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
-		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
-		'			<button id="sl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality" style="width: 33%">SL 2</button>' +
-		'			<button id="sl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality" style="width: 33%">SL 1</button>' +
-		'			<button id="sl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality" style="width: 34%">SL 0</button>' +
-		'		</div>' +
+	$(	'<div id="simulcast" class="btn-group-vertical btn-group-xs top-right">' +
+		'	<div class="btn-group btn-group-xs d-flex" style="width: 100%">' +
+		'		<button id="sl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality">SL 2</button>' +
+		'		<button id="sl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality">SL 1</button>' +
+		'		<button id="sl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality">SL 0</button>' +
 		'	</div>' +
-		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs hide" style="width: 100%">' +
-		'			<button id="tl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2" style="width: 34%">TL 2</button>' +
-		'			<button id="tl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1" style="width: 33%">TL 1</button>' +
-		'			<button id="tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0" style="width: 33%">TL 0</button>' +
-		'		</div>' +
+		'	<div class="btn-group btn-group-xs d-flex hide" style="width: 100%">' +
+		'		<button id="tl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2">TL 2</button>' +
+		'		<button id="tl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1">TL 1</button>' +
+		'		<button id="tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0">TL 0</button>' +
 		'	</div>' +
 		'</div>').insertBefore('#output-devices');
 	if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
 		// Chromium-based browsers only have two temporal layers
 		$('#tl-2').remove();
-		$('#tl-1').css('width', '50%');
-		$('#tl-0').css('width', '50%');
 	}
 	// Enable the simulcast selection buttons
 	$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary')

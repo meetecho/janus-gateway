@@ -52,10 +52,10 @@ $(document).ready(function() {
 									screentest = pluginHandle;
 									Janus.log("Plugin attached! (" + screentest.getPlugin() + ", id=" + screentest.getId() + ")");
 									// Prepare the username registration
-									$('#screenmenu').removeClass('hide').show();
-									$('#createnow').removeClass('hide').show();
+									$('#screenmenu').removeClass('hide');
+									$('#createnow').removeClass('hide');
 									$('#create').click(preShareScreen);
-									$('#joinnow').removeClass('hide').show();
+									$('#joinnow').removeClass('hide');
 									$('#join').click(joinScreen);
 									$('#desc').focus();
 									$('#start').removeAttr('disabled').html("Stop")
@@ -74,6 +74,7 @@ $(document).ready(function() {
 										// Darken screen
 										$.blockUI({
 											message: '',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',
@@ -248,8 +249,8 @@ $(document).ready(function() {
 										// We've been here already
 										return;
 									}
-									$('#screenmenu').hide();
-									$('#room').removeClass('hide').show();
+									$('#screenmenu').addClass('hide');
+									$('#room').removeClass('hide');
 									if(track.kind === "audio") {
 										// We ignore local audio tracks, they'd generate echo anyway
 										if(localVideos === 0) {
@@ -292,7 +293,7 @@ $(document).ready(function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#screencapture').empty();
 									$("#screencapture").parent().unblock();
-									$('#room').hide();
+									$('#room').addClass('hide');
 									localTracks = {};
 									localVideos = 0;
 								}
@@ -469,8 +470,8 @@ function newRemoteFeed(id, display) {
 							spinner.spin();
 						}
 						Janus.log("Successfully attached to feed " + id + " (" + display + ") in room " + msg["room"]);
-						$('#screenmenu').hide();
-						$('#room').removeClass('hide').show();
+						$('#screenmenu').addClass('hide');
+						$('#room').removeClass('hide');
 					} else {
 						// What has just happened?
 					}

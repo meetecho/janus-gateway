@@ -64,8 +64,8 @@ $(document).ready(function() {
 									Janus.log("Plugin attached! (" + sfutest.getPlugin() + ", id=" + sfutest.getId() + ")");
 									Janus.log("  -- This is a publisher/manager");
 									// Prepare the username registration
-									$('#videojoin').removeClass('hide').show();
-									$('#registernow').removeClass('hide').show();
+									$('#videojoin').removeClass('hide');
+									$('#registernow').removeClass('hide');
 									$('#register').click(registerUsername);
 									$('#username').focus();
 									$('#start').removeAttr('disabled').html("Stop")
@@ -84,6 +84,7 @@ $(document).ready(function() {
 										// Darken screen and show hint
 										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',
@@ -110,8 +111,9 @@ $(document).ready(function() {
 										return;
 									$('#publish').remove();
 									// This controls allows us to override the global room bitrate cap
-									$('#bitrate').parent().parent().removeClass('hide').show();
+									$('#bitrate').parent().parent().removeClass('hide');
 									$('#bitrate a').click(function() {
+										$('.dropdown-toggle').dropdown('hide');
 										let id = $(this).attr("id");
 										let bitrate = parseInt(id)*1000;
 										if(bitrate === 0) {
@@ -139,8 +141,8 @@ $(document).ready(function() {
 											mypvtid = msg["private_id"];
 											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
 											if(subscriber_mode) {
-												$('#videojoin').hide();
-												$('#videos').removeClass('hide').show();
+												$('#videojoin').addClass('hide');
+												$('#videos').removeClass('hide');
 											} else {
 												publishOwnFeed(true);
 											}
@@ -211,7 +213,7 @@ $(document).ready(function() {
 												}
 												if(remoteFeed) {
 													Janus.debug("Feed " + remoteFeed.rfid + " (" + remoteFeed.rfdisplay + ") has left the room, detaching");
-													$('#remote'+remoteFeed.rfindex).empty().hide();
+													$('#remote'+remoteFeed.rfindex).empty().addClass('hide');
 													$('#videoremote'+remoteFeed.rfindex).empty();
 													feeds[remoteFeed.rfindex] = null;
 													remoteFeed.detach();
@@ -235,7 +237,7 @@ $(document).ready(function() {
 												}
 												if(remoteFeed) {
 													Janus.debug("Feed " + remoteFeed.rfid + " (" + remoteFeed.rfdisplay + ") has left the room, detaching");
-													$('#remote'+remoteFeed.rfindex).empty().hide();
+													$('#remote'+remoteFeed.rfindex).empty().addClass('hide');
 													$('#videoremote'+remoteFeed.rfindex).empty();
 													feeds[remoteFeed.rfindex] = null;
 													remoteFeed.detach();
@@ -271,7 +273,7 @@ $(document).ready(function() {
 											// Video has been rejected
 											toastr.warning("Our video stream has been rejected, viewers won't see us");
 											// Hide the webcam video
-											$('#myvideo').hide();
+											$('#myvideo').addClass('hide');
 											$('#videolocal').append(
 												'<div class="no-video-container">' +
 													'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
@@ -320,13 +322,13 @@ $(document).ready(function() {
 										// We've been here already
 										return;
 									}
-									$('#videos').removeClass('hide').show();
+									$('#videos').removeClass('hide');
 									if($('#mute').length === 0) {
 										// Add a 'mute' button
-										$('#videolocal').append('<button class="btn btn-warning btn-xs" id="mute" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;">Mute</button>');
+										$('#videolocal').append('<button class="btn btn-warning btn-sm bottom-left m-2" id="mute">Mute</button>');
 										$('#mute').click(toggleMute);
 										// Add an 'unpublish' button
-										$('#videolocal').append('<button class="btn btn-warning btn-xs" id="unpublish" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;">Unpublish</button>');
+										$('#videolocal').append('<button class="btn btn-warning btn-sm bottom-right m-2" id="unpublish">Unpublish</button>');
 										$('#unpublish').click(unpublishOwnFeed);
 									}
 									if(track.kind === "audio") {
@@ -420,7 +422,7 @@ function registerUsername() {
 		let username = $('#username').val();
 		if(username === "") {
 			$('#you')
-				.removeClass().addClass('label label-warning')
+				.removeClass().addClass('badge badge-warning')
 				.html("Insert your display name (e.g., pippo)");
 			$('#username').removeAttr('disabled');
 			$('#register').removeAttr('disabled').click(registerUsername);
@@ -428,7 +430,7 @@ function registerUsername() {
 		}
 		if(/[^a-zA-Z0-9]/.test(username)) {
 			$('#you')
-				.removeClass().addClass('label label-warning')
+				.removeClass().addClass('badge badge-warning')
 				.html('Input is not alphanumeric');
 			$('#username').removeAttr('disabled').val("");
 			$('#register').removeAttr('disabled').click(registerUsername);
@@ -607,7 +609,7 @@ function newRemoteFeed(id, display, streams) {
 							remoteFeed.spinner.spin();
 						}
 						Janus.log("Successfully attached to feed in room " + msg["room"]);
-						$('#remote'+remoteFeed.rfindex).removeClass('hide').html(remoteFeed.rfdisplay).show();
+						$('#remote'+remoteFeed.rfindex).removeClass('hide').html(remoteFeed.rfdisplay).removeClass('hide');
 					} else if(event === "event") {
 						// Check if we got a simulcast-related event from this publisher
 						let substream = msg["substream"];
@@ -732,12 +734,12 @@ function newRemoteFeed(id, display, streams) {
 					Janus.log("Created remote video stream:", stream);
 					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" width=100% autoplay playsinline/>');
 					$('#videoremote'+remoteFeed.rfindex).append(
-						'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
-						'<span class="label label-info hide" id="curbitrate'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
+						'<span class="badge badge-primary bottom-left m-3 hide" id="curres'+remoteFeed.rfindex+'"></span>' +
+						'<span class="badge badge-info bottom-right m-3 hide" id="curbitrate'+remoteFeed.rfindex+'"></span>');
 					Janus.attachMediaStream($('#remotevideo' + remoteFeed.rfindex + '-' + mid).get(0), stream);
 					// Note: we'll need this for additional videos too
 					if(!bitrateTimer[remoteFeed.rfindex]) {
-						$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
+						$('#curbitrate'+remoteFeed.rfindex).removeClass('hide');
 						bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
 							if(!$("#videoremote" + remoteFeed.rfindex + ' video').get(0))
 								return;
@@ -753,7 +755,7 @@ function newRemoteFeed(id, display, streams) {
 									res += ' (simulcast)';
 								else if(remoteFeed.svcStarted)
 									res += ' (SVC)';
-								$('#curres'+remoteFeed.rfindex).removeClass('hide').text(res).show();
+								$('#curres'+remoteFeed.rfindex).removeClass('hide').text(res).removeClass('hide');
 							}
 						}, 1000);
 					}
@@ -805,28 +807,22 @@ function addSimulcastSvcButtons(feed, temporal) {
 	let what = (simulcast ? 'simulcast' : 'SVC');
 	let layer = (simulcast ? 'substream' : 'layer');
 	$('#remote'+index).parent().append(
-		'<div id="simulcast'+index+'" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
-		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
-		'			<button id="sl'+index+'-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality" style="width: 33%">SL 2</button>' +
-		'			<button id="sl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality" style="width: 33%">SL 1</button>' +
-		'			<button id="sl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality" style="width: 34%">SL 0</button>' +
-		'		</div>' +
+		'<div id="simulcast'+index+'" class="btn-group-vertical btn-group-xs top-right">' +
+		'	<div class="btn-group btn-group-xs d-flex" style="width: 100%">' +
+		'		<button id="sl'+index+'-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality">SL 2</button>' +
+		'		<button id="sl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality">SL 1</button>' +
+		'		<button id="sl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality">SL 0</button>' +
 		'	</div>' +
-		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs hide" style="width: 100%">' +
-		'			<button id="tl'+index+'-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2" style="width: 34%">TL 2</button>' +
-		'			<button id="tl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1" style="width: 33%">TL 1</button>' +
-		'			<button id="tl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0" style="width: 33%">TL 0</button>' +
-		'		</div>' +
+		'	<div class="btn-group btn-group-xs d-flex hide" style="width: 100%">' +
+		'		<button id="tl'+index+'-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2">TL 2</button>' +
+		'		<button id="tl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1">TL 1</button>' +
+		'		<button id="tl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0">TL 0</button>' +
 		'	</div>' +
 		'</div>'
 	);
 	if(simulcast && Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
 		// Chromium-based browsers only have two temporal layers, when doing simulcast
 		$('#tl'+index+'-2').remove();
-		$('#tl'+index+'-1').css('width', '50%');
-		$('#tl'+index+'-0').css('width', '50%');
 	}
 	// Enable the simulcast/SVC selection buttons
 	$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')

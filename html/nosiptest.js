@@ -94,6 +94,7 @@ $(document).ready(function() {
 										// Darken screen and show hint
 										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',
@@ -210,7 +211,7 @@ $(document).ready(function() {
 										return;
 									}
 									if($('#videoleft video').length === 0) {
-										$('#videos').removeClass('hide').show();
+										$('#videos').removeClass('hide');
 									}
 									if(track.kind === "audio") {
 										// We ignore local audio tracks, they'd generate echo anyway
@@ -271,7 +272,7 @@ $(document).ready(function() {
 										return;
 									// If we're here, a new track was added
 									if($('#videoright audio').length === 0 && $('#videoright video').length === 0) {
-										$('#videos').removeClass('hide').show();
+										$('#videos').removeClass('hide');
 										$('#videoright').parent().find('h3').html(
 											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
 										for(let i=0; i<12; i++) {
@@ -348,6 +349,7 @@ $(document).ready(function() {
 										// Darken screen and show hint
 										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',
