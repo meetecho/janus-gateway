@@ -10528,6 +10528,11 @@ static void *janus_videoroom_handler(void *data) {
 								JANUS_LOG(LOG_WARN, "Skipping disabled m-line...\n");
 								continue;
 							}
+							if((ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO && ps->acodec == JANUS_AUDIOCODEC_NONE) ||
+									(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO && ps->vcodec == JANUS_VIDEOCODEC_NONE)) {
+								JANUS_LOG(LOG_WARN, "Skipping rejected publisher stream...\n");
+								continue;
+							}
 							janus_videoroom_subscriber_stream *stream = janus_videoroom_subscriber_stream_add_or_replace(subscriber, ps, crossrefid);
 							if(stream) {
 								changes++;
@@ -10589,6 +10594,11 @@ static void *janus_videoroom_handler(void *data) {
 								if(ps->disabled) {
 									JANUS_LOG(LOG_WARN, "Skipping disabled m-line...\n");
 									temp = temp->next;
+									continue;
+								}
+								if((ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO && ps->acodec == JANUS_AUDIOCODEC_NONE) ||
+										(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO && ps->vcodec == JANUS_VIDEOCODEC_NONE)) {
+									JANUS_LOG(LOG_WARN, "Skipping rejected publisher stream...\n");
 									continue;
 								}
 								janus_videoroom_subscriber_stream *stream = janus_videoroom_subscriber_stream_add_or_replace(subscriber, ps, crossrefid);
