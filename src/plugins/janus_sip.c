@@ -1505,6 +1505,7 @@ static void janus_sip_media_reset(janus_sip_session *session) {
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	session->media.video_orientation_extension_id = -1;
 	session->media.audio_level_extension_id = -1;
+	session->media.dtmf_pt = -1;
 	janus_rtp_switching_context_reset(&session->media.acontext);
 	janus_rtp_switching_context_reset(&session->media.vcontext);
 }
@@ -6384,7 +6385,7 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 				session->media.has_audio = TRUE;
 				session->media.remote_audio_rtp_port = m->port;
 				session->media.remote_audio_rtcp_port = m->port+1;	/* FIXME We're assuming RTCP is on the next port */
-				session->media.dtmf_pt = janus_sdp_get_codec_pt(sdp, 0, "dtmf"); 
+				session->media.dtmf_pt = janus_sdp_get_codec_pt(sdp, -1, "dtmf"); 
 				if(m->direction == JANUS_SDP_SENDONLY || m->direction == JANUS_SDP_INACTIVE)
 					session->media.audio_send = FALSE;
 				else
