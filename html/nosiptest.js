@@ -75,6 +75,13 @@ $(document).ready(function() {
 														srtp: srtp
 													};
 													caller.send({ message: body, jsep: jsep });
+													// Create a spinner waiting for the remote video
+													$('#videoright').html(
+														'<div class="text-center">' +
+														'	<div id="spinner" class="spinner-border" role="status">' +
+														'		<span class="visually-hidden">Loading...</span>' +
+														'	</div>' +
+														'</div>');
 												},
 												error: function(error) {
 													Janus.error("WebRTC error:", error);
@@ -270,6 +277,7 @@ $(document).ready(function() {
 									if($('#peervideo' + mid).length > 0)
 										return;
 									// If we're here, a new track was added
+									$('#spinner').remove();
 									if($('#videoright audio').length === 0 && $('#videoright video').length === 0) {
 										$('#videos').removeClass('hide');
 										$('#videoright').parent().find('h3').html(

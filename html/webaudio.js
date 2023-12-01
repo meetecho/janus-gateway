@@ -152,6 +152,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
+									$('#spinner').remove();
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
 										let stream = new MediaStream([track]);
@@ -309,6 +310,13 @@ function setupWebAudioDemo() {
 						Janus.debug("Got SDP!", jsep);
 						let body = { audio: true, video: true };
 						echotest.send({ message: body, jsep: jsep });
+						// Create a spinner waiting for the remote video
+						$('#remote').html(
+							'<div class="text-center">' +
+							'	<div id="spinner" class="spinner-border" role="status">' +
+							'		<span class="visually-hidden">Loading...</span>' +
+							'	</div>' +
+							'</div>');
 					},
 					error: function(error) {
 						Janus.error("WebRTC error:", error);

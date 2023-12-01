@@ -184,6 +184,7 @@ $(document).ready(function() {
 									if($('#remotevideo' + mid).length > 0)
 										return;
 									// If we're here, a new track was added
+									$('#spinner' + mid).remove();
 									let stream = null;
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
@@ -265,6 +266,7 @@ $(document).ready(function() {
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#videos').empty();
+									$('#info').addClass('hide');
 									for(let i in bitrateTimer)
 										clearInterval(bitrateTimer[i]);
 									bitrateTimer = {};
@@ -459,7 +461,13 @@ function addPanel(panelId, mid, desc) {
 		'				<span class="badge bg-info hide" id="curbitrate' + mid + '"></span>' +
 		'			</span>' +
 		'		</div>' +
-		'		<div class="card-body" id="mstream' + panelId + '"></div>' +
+		'		<div class="card-body" id="mstream' + panelId + '">' +
+		'			<div class="text-center">' +
+		'				<div id="spinner' + mid + '" class="spinner-border" role="status">' +
+		'					<span class="visually-hidden">Loading...</span>' +
+		'				</div>' +
+		'			</div>' +
+		'		</div>' +
 		'	</div>' +
 		'</div>'
 	);

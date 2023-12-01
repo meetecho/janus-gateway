@@ -124,6 +124,13 @@ $(document).ready(function() {
 																if(stereo && jsep.sdp.indexOf("stereo=1") == -1) {
 																	// Make sure that our offer contains stereo too
 																	jsep.sdp = jsep.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1");
+																	// Create a spinner waiting for the remote video
+																	$('#mixedaudio').html(
+																		'<div class="text-center">' +
+																		'	<div id="spinner" class="spinner-border" role="status">' +
+																		'		<span class="visually-hidden">Loading...</span>' +
+																		'	</div>' +
+																		'</div>');
 																}
 															},
 															success: function(jsep) {
@@ -314,12 +321,16 @@ $(document).ready(function() {
 										$('#roomaudio').remove();
 										return;
 									}
+									$('#spinner').remove();
 									remoteStream = new MediaStream([track]);
 									$('#room').removeClass('hide');
 									if($('#roomaudio').length === 0) {
-										$('#mixedaudio').append('<audio class="rounded centered" id="roomaudio" width="100%" height="100%" autoplay/>');
+										$('#mixedaudio').append('<audio class="rounded centered w-100" id="roomaudio" controls autoplay/>');
+										$('#roomaudio').get(0).volume = 0;
 									}
 									Janus.attachMediaStream($('#roomaudio').get(0), remoteStream);
+									$('#roomaudio').get(0).play();
+									$('#roomaudio').get(0).volume = 1;
 									// Mute button
 									audioenabled = true;
 									$('#toggleaudio').click(

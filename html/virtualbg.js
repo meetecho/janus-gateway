@@ -257,6 +257,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
+									$('#spinner').remove();
 									let addButtons = false;
 									if($('#videoright audio').length === 0 && $('#videoright video').length === 0) {
 										addButtons = true;
@@ -461,6 +462,13 @@ function createCanvas() {
 						success: function(jsep) {
 							Janus.debug("Got SDP!", jsep);
 							echotest.send({ message: body, jsep: jsep });
+							// Create a spinner waiting for the remote video
+							$('#videoright').html(
+								'<div class="text-center">' +
+								'	<div id="spinner" class="spinner-border" role="status">' +
+								'		<span class="visually-hidden">Loading...</span>' +
+								'	</div>' +
+								'</div>');
 						},
 						error: function(error) {
 							Janus.error("WebRTC error:", error);
