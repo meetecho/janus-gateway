@@ -809,10 +809,6 @@ function subscribeTo(sources) {
 					return;
 				}
 				// If we're here, a new track was added
-				if(feed.spinner) {
-					feed.spinner.stop();
-					feed.spinner = null;
-				}
 				if($('#remotevideo' + slot + '-' + mid).length > 0)
 					return;
 				if(track.kind === "audio") {

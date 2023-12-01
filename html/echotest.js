@@ -12,7 +12,6 @@ var opaqueId = "echotest-"+Janus.randomString(12);
 var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
 var bitrateTimer = null;
-var spinner = null;
 
 var audioenabled = false;
 var videoenabled = false;
@@ -180,9 +179,6 @@ $(document).ready(function() {
 										if(result === "done") {
 											// The plugin closed the echo test
 											bootbox.alert("The Echo Test is over");
-											if(spinner)
-												spinner.stop();
-											spinner = null;
 											$('video').remove();
 											$('#waitingvideo').remove();
 											$('#toggleaudio').attr('disabled', true);
@@ -425,9 +421,6 @@ $(document).ready(function() {
 								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
-									if(spinner)
-										spinner.stop();
-									spinner = null;
 									if(bitrateTimer)
 										clearInterval(bitrateTimer);
 									bitrateTimer = null;

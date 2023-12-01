@@ -602,12 +602,6 @@ function newRemoteFeed(id, display, streams) {
 								break;
 							}
 						}
-						if(!remoteFeed.spinner) {
-							let target = document.getElementById('videoremote'+remoteFeed.rfindex);
-							remoteFeed.spinner = new Spinner({top:100}).spin(target);
-						} else {
-							remoteFeed.spinner.spin();
-						}
 						Janus.log("Successfully attached to feed in room " + msg["room"]);
 						$('#remote'+remoteFeed.rfindex).removeClass('hide').html(remoteFeed.rfdisplay).removeClass('hide');
 					} else if(event === "event") {
@@ -702,10 +696,6 @@ function newRemoteFeed(id, display, streams) {
 					return;
 				}
 				// If we're here, a new track was added
-				if(remoteFeed.spinner) {
-					remoteFeed.spinner.stop();
-					remoteFeed.spinner = null;
-				}
 				if($('#remotevideo' + remoteFeed.rfindex + '-' + mid).length > 0)
 					return;
 				if(track.kind === "audio") {
@@ -763,9 +753,6 @@ function newRemoteFeed(id, display, streams) {
 			},
 			oncleanup: function() {
 				Janus.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
-				if(remoteFeed.spinner)
-					remoteFeed.spinner.stop();
-				remoteFeed.spinner = null;
 				$('#remotevideo'+remoteFeed.rfindex).remove();
 				$('#waitingvideo'+remoteFeed.rfindex).remove();
 				$('#novideo'+remoteFeed.rfindex).remove();

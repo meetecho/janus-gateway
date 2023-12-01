@@ -11,7 +11,6 @@ var opaqueId = "recordplaytest-"+Janus.randomString(12);
 
 var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
-var spinner = null;
 var bandwidth = 1024 * 1024;
 
 var myname = null;
@@ -378,9 +377,6 @@ $(document).ready(function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									// FIXME Reset status
 									$('#waitingvideo').remove();
-									if(spinner)
-										spinner.stop();
-									spinner = null;
 									if(recordplay.bitrateTimer)
 										clearInterval(recordplay.bitrateTimer);
 									delete recordplay.bitrateTimer;

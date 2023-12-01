@@ -11,7 +11,6 @@ var opaqueId = "streamingtest-"+Janus.randomString(12);
 
 var remoteTracks = {}, remoteVideos = 0, dataMid = null;
 var bitrateTimer = {};
-var spinner = {};
 
 var simulcastStarted = {}, svcStarted = {};
 
@@ -229,12 +228,9 @@ $(document).ready(function() {
 											}, 1000);
 										}
 									}
-									// Play the stream and hide the spinner when we get a playing event
+									// Play the stream when we get a playing event
 									$("#remotevideo" + mid).bind("playing", function (ev) {
 										$('.waitingvideo').remove();
-										if(spinner[mid])
-											spinner[mid].stop();
-										spinner[mid] = null;
 										if(!this.videoWidth)
 											return;
 										$('#'+ev.target.id).removeClass('hide');
@@ -261,11 +257,6 @@ $(document).ready(function() {
 									$('#mstream' + dataMid).append(
 										'<input class="form-control" type="text" id="datarecv" disabled></input>'
 									);
-									for(let i in spinner) {
-										if(spinner[i])
-											spinner[i].stop();
-									}
-									spinner = {};
 								},
 								ondata: function(data) {
 									Janus.debug("We got data from the DataChannel!", data);
@@ -277,11 +268,6 @@ $(document).ready(function() {
 									for(let i in bitrateTimer)
 										clearInterval(bitrateTimer[i]);
 									bitrateTimer = {};
-									for(let i in spinner) {
-										if(spinner[i])
-											spinner[i].stop();
-									}
-									spinner = {};
 									simulcastStarted = false;
 									remoteTracks = {};
 									remoteVideos = 0;
@@ -412,14 +398,6 @@ function startStream() {
 			// No remote video yet
 			$('#mstream0').append('<video class="rounded centered waitingvideo" id="waitingvideo0" width="100%" height="100%" />');
 		}
-		if(mid) {
-			if(spinner[mid] == null) {
-				let target = document.getElementById('mstream0');
-				spinner[mid] = new Spinner({top:100}).spin(target);
-			} else {
-				spinner[mid].spin();
-			}
-		}
 		dataMid = "0";
 	} else {
 		// Multistream mountpoint, create a panel for each stream
@@ -432,12 +410,6 @@ function startStream() {
 				addPanel(mid, mid, label);
 				// No remote media yet
 				$('#mstream'+mid).append('<video class="rounded centered waitingvideo" id="waitingvideo'+mid+'" width="100%" height="100%" />');
-			}
-			if(spinner[mid] == null) {
-				let target = document.getElementById('mstream'+mid);
-				spinner[mid] = new Spinner({top:100}).spin(target);
-			} else {
-				spinner[mid].spin();
 			}
 			if(type === 'data')
 				dataMid = mid;

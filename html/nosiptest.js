@@ -13,7 +13,6 @@ var opaqueId = Janus.randomString(12);
 // The local and remote tracks only refer to the caller, though (we ignore the callee)
 var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
-var spinner = null;
 
 var callstarted = false, videoenabled = true;
 var srtp = undefined ; // use "sdes_mandatory" to test SRTP-SDES
@@ -318,9 +317,6 @@ $(document).ready(function() {
 								},
 								oncleanup: function() {
 									Janus.log("[caller]  ::: Got a cleanup notification :::");
-									if(spinner)
-										spinner.stop();
-									spinner = null;
 									$("#videoleft").empty().parent().unblock();
 									$('#videoright').empty();
 									$('#dtmf').parent().html("Remote UA");

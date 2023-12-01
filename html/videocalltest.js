@@ -12,7 +12,6 @@ var opaqueId = "videocalltest-"+Janus.randomString(12);
 var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
 var bitrateTimer = null;
-var spinner = null;
 
 var audioenabled = false;
 var videoenabled = false;
@@ -227,8 +226,6 @@ $(document).ready(function() {
 												// Reset status
 												bootbox.hideAll();
 												videocall.hangup();
-												if(spinner)
-													spinner.stop();
 												$('#waitingvideo').remove();
 												$('#videos').addClass('hide');
 												$('#peer').removeAttr('disabled').val('');
@@ -265,8 +262,6 @@ $(document).ready(function() {
 										}
 										// TODO Reset status
 										videocall.hangup();
-										if(spinner)
-											spinner.stop();
 										$('#waitingvideo').remove();
 										$('#videos').addClass('hide');
 										$('#peer').removeAttr('disabled').val('');

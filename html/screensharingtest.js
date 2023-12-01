@@ -19,7 +19,6 @@ var source = null;
 
 var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
-var spinner = null;
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -463,12 +462,6 @@ function newRemoteFeed(id, display) {
 				if(event) {
 					if(event === "attached") {
 						// Subscriber created and attached
-						if(!spinner) {
-							let target = document.getElementById('#screencapture');
-							spinner = new Spinner({top:100}).spin(target);
-						} else {
-							spinner.spin();
-						}
 						Janus.log("Successfully attached to feed " + id + " (" + display + ") in room " + msg["room"]);
 						$('#screenmenu').addClass('hide');
 						$('#room').removeClass('hide');
@@ -538,10 +531,6 @@ function newRemoteFeed(id, display) {
 					return;
 				}
 				// If we're here, a new track was added
-				if(spinner !== undefined && spinner !== null) {
-					spinner.stop();
-					spinner = null;
-				}
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
 					let stream = new MediaStream([track]);
@@ -579,9 +568,6 @@ function newRemoteFeed(id, display) {
 			oncleanup: function() {
 				Janus.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
 				$('#waitingvideo').remove();
-				if(spinner)
-					spinner.stop();
-				spinner = null;
 				remoteFeed.remoteTracks = {};
 				remoteFeed.remoteVideos = 0;
 			}
