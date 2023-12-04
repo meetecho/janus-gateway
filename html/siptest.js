@@ -1022,7 +1022,7 @@ function addHelper(helperCreated) {
 		'				<span class="input-group-text"><i class="fa-solid fa-phone"></i></span>' +
 		'				<input disabled class="form-control" type="text" placeholder="SIP URI to call (e.g., sip:1000@example.com)" autocomplete="off" id="peer' + helperId + '" onkeypress="return checkEnter(this, event, ' + helperId + ');"></input>' +
 		'			</div>' +
-		'			<button disabled class="btn btn-success margin-bottom-sm" autocomplete="off" id="call' + helperId + '">Call</button> <input autocomplete="off" id="dovideo' + helperId + '" type="checkbox">Use Video</input>' +
+		'			<button disabled class="btn btn-success mb-1" autocomplete="off" id="call' + helperId + '">Call</button> <input autocomplete="off" id="dovideo' + helperId + '" type="checkbox">Use Video</input>' +
 		'		</div>' +
 		'	</div>' +
 		'	<div id="videos' + helperId + '" class="row mt-2 mb-2 hide">' +
