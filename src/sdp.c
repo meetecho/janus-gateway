@@ -1485,7 +1485,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 	g_free(anon->c_addr);
 	anon->c_addr = NULL;
 	/* bundle: add new global attribute */
-	char buffer[8192], buffer_part[512];
+	char buffer[8192], buffer_part[2048];
 	buffer[0] = '\0';
 	buffer_part[0] = '\0';
 	g_snprintf(buffer, sizeof(buffer), "BUNDLE");
