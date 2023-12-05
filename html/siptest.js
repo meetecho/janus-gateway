@@ -562,7 +562,7 @@ $(document).ready(function() {
 											else if(i == 11)
 												$('#dtmf').append('<button class="btn btn-info dtmf">*</button>');
 										}
-										$('.dtmf').click(function() {
+										$('#dtmf .dtmf').click(function() {
 											// Send DTMF tone (inband)
 											sipcall.dtmf({dtmf: { tones: $(this).text()}});
 											// Notice you can also send DTMF tones using SIP INFO
@@ -1530,7 +1530,7 @@ function addHelper(helperCreated) {
 						else if(i == 11)
 							$('#dtmf' + helperId).append('<button class="btn btn-info dtmf">*</button>');
 					}
-					$('.dtmf' + helperId).click(function() {
+					$('#dtmf' + helperId + ' .dtmf').click(function() {
 						// Send DTMF tone (inband)
 						helpers[helperId].sipcall.dtmf({dtmf: { tones: $(this).text()}});
 						// Notice you can also send DTMF tones using SIP INFO

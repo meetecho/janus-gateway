@@ -177,7 +177,7 @@ janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *va
 	a->direction = JANUS_SDP_DEFAULT;
 	a->value = NULL;
 	if(value) {
-		char buffer[512];
+		char buffer[2048];
 		va_list ap;
 		va_start(ap, value);
 		g_vsnprintf(buffer, sizeof(buffer), value, ap);
@@ -1119,9 +1119,9 @@ char *janus_sdp_write(janus_sdp *imported) {
 	if(!imported)
 		return NULL;
 	janus_refcount_increase(&imported->ref);
-	char *sdp = g_malloc(1024), mline[8192], buffer[512];
+	char *sdp = g_malloc(2560), mline[8192], buffer[2048];
 	*sdp = '\0';
-	size_t sdplen = 1024, mlen = sizeof(mline), offset = 0, moffset = 0;
+	size_t sdplen = 2560, mlen = sizeof(mline), offset = 0, moffset = 0;
 	/* v= */
 	g_snprintf(buffer, sizeof(buffer), "v=%d\r\n", imported->version);
 	janus_strlcat_fast(sdp, buffer, sdplen, &offset);
