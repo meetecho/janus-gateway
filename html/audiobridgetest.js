@@ -287,10 +287,10 @@ $(document).ready(function() {
 														$('#sp' + id).slider('setValue', spatial);
 												}
 											} else if(msg["suspended"]) {
-												var id = msg["suspended"];
+												let id = msg["suspended"];
 												$('#rp' + id + ' > i.absusp').removeClass('hide').show();
 											} else if(msg["resumed"]) {
-												var id = msg["resumed"];
+												let id = msg["resumed"];
 												$('#rp' + id + ' > i.absusp').hide();
 											} else if(msg["error"]) {
 												if(msg["error_code"] === 485) {
