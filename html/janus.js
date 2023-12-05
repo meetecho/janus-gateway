@@ -616,6 +616,10 @@ function Janus(gatewayCallbacks) {
 	this.destroyOnUnload = true;
 	if(typeof gatewayCallbacks.destroyOnUnload !== 'undefined' && gatewayCallbacks.destroyOnUnload !== null)
 		this.destroyOnUnload = (gatewayCallbacks.destroyOnUnload === true);
+	// Whether we should try the other servers when the websocket closed abnormally or the HttpApiCall fails
+	let autoTryOtherServers  = true;
+	if(typeof gatewayCallbacks.autoTryOtherServers  !== 'undefined' && gatewayCallbacks.autoTryOtherServers  !== null)
+		autoTryOtherServers  = (gatewayCallbacks.autoTryOtherServers  === true);
 	// Some timeout-related values
 	let keepAlivePeriod = 25000;
 	if(typeof gatewayCallbacks.keepAlivePeriod !== 'undefined' && gatewayCallbacks.keepAlivePeriod !== null)
@@ -1027,12 +1031,30 @@ function Janus(gatewayCallbacks) {
 					handleEvent(JSON.parse(event.data));
 				},
 
-				'close': function() {
+				'close': function(event) {
+					Janus.debug(event)
 					if(!server || !connected) {
 						return;
 					}
 					connected = false;
-					// FIXME What if this is called when the page is closed?
+					// 1006 is a status code to indicate that the connection was closed abnormally,
+					// so we have to try the other servers
+					if (autoTryOtherServers && event.code === 1006) {
+						if (Janus.isArray(servers) && !callbacks["reconnect"]) {
+							serversIndex++;
+							if (serversIndex === servers.length) {
+								// We tried all the servers the user gave us, and they all failed
+								callbacks.error("Error connecting to any of the provided Janus servers: Is the server down?");
+								return;
+							}
+							// Let's try the next server
+							server = null;
+							setTimeout(function () {
+								createSession(callbacks);
+							}, 200);
+							return;
+						}
+					}
 					gatewayCallbacks.error("Lost connection to the server (is it down?)");
 				}
 			};
@@ -1067,10 +1089,10 @@ function Janus(gatewayCallbacks) {
 			},
 			error: function(textStatus, errorThrown) {
 				Janus.error(textStatus + ":", errorThrown);	// FIXME
-				if(Janus.isArray(servers) && !callbacks["reconnect"]) {
+				if(autoTryOtherServers && Janus.isArray(servers) && !callbacks["reconnect"]) {
 					serversIndex++;
 					if(serversIndex === servers.length) {
-						// We tried all the servers the user gave us and they all failed
+						// We tried all the servers the user gave us, and they all failed
 						callbacks.error("Error connecting to any of the provided Janus servers: Is the server down?");
 						return;
 					}
