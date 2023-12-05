@@ -294,6 +294,14 @@ nat: {
 	#ice_lite = true
 	#ice_tcp = true
 
+	# By default, Janus implements a grace period when detecting ICE
+	# failures in PeerConnections, to give time to applications to react
+	# to that, e.g., by enforcing an ICE restart. If you want an ICE
+	# failure to result in the PeerConnection being closed right away
+	# (e.g., with the help of consent freshness) then you can do that
+	# by uncommenting the following property and set it to true
+	#hangup_on_failed = true
+
 	# By default Janus tries to resolve mDNS (.local) candidates: even
 	# though this is now done asynchronously and shouldn't keep the API
 	# busy, even in case mDNS resolution takes a long time to timeout,

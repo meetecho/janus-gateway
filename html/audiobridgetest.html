@@ -83,8 +83,12 @@
 						<div class="panel panel-default">
 							<div class="panel-heading">
 								<h3 class="panel-title">Participants <span class="label label-info hide" id="participant"></span>
-								<button class="btn-xs btn-danger hide pull-right" autocomplete="off" id="toggleaudio">Mute</button>
-								<button class="btn-xs btn-primary hide pull-right" autocomplete="off" id="position">Position</button></h3>
+									<div class="btn-group btn-group-xs pull-right">
+										<button class="btn btn-primary hide" autocomplete="off" id="position">Position</button>
+										<button class="btn btn-danger hide" autocomplete="off" id="toggleaudio">Mute</button>
+										<button class="btn btn-danger hide" autocomplete="off" id="togglesuspend">Suspend</button>
+									</div>
+								</h3>
 							</div>
 							<div class="panel-body">
 								<ul id="list" class="list-group">
