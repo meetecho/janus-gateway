@@ -175,6 +175,18 @@ gboolean janus_ice_is_keepalive_conncheck_enabled(void) {
 	return janus_ice_keepalive_connchecks;
 }
 
+/* How to react to ICE failures */
+static gboolean janus_ice_hangup_on_failed = FALSE;
+void janus_ice_set_hangup_on_failed_enabled(gboolean enabled) {
+	janus_ice_hangup_on_failed = enabled;
+	if(janus_ice_hangup_on_failed) {
+		JANUS_LOG(LOG_INFO, "Will hangup PeerConnections immediately on ICE failures\n");
+	}
+}
+gboolean janus_ice_is_hangup_on_failed_enabled(void) {
+	return janus_ice_hangup_on_failed;
+}
+
 /* Opaque IDs set by applications are by default only passed to event handlers
  * for correlation purposes, but not sent back to the user or application in
  * the related Janus API responses or events, unless configured otherwise */
@@ -2143,7 +2155,15 @@ static void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_
 		if(prev_state == NICE_COMPONENT_STATE_CONNECTED || prev_state == NICE_COMPONENT_STATE_READY) {
 			/* Failed after connected/ready means consent freshness detected something broken:
 			 * notify the user via a Janus API event and then fire the 'failed' timer as sual */
-			 janus_ice_notify_ice_failed(handle);
+			janus_ice_notify_ice_failed(handle);
+			/* Check if we need to hangup right away, rather than start the grace period */
+			if(janus_ice_hangup_on_failed && pc->icefailed_detected == 0) {
+				/* We do, hangup the PeerConnection */
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"] ICE failed for component %d in stream %d...\n",
+					handle->handle_id, component_id, stream_id);
+				janus_ice_webrtc_hangup(handle, "ICE failed");
+				return;
+			}
 		}
 		gboolean trickle_recv = (!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES));
 		gboolean answer_recv = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);

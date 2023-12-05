@@ -168,6 +168,12 @@ void janus_ice_set_keepalive_conncheck_enabled(gboolean enabled);
 /*! \brief Method to check whether connectivity checks will be used as keepalives
  * @returns true if enabled, false (default) otherwise */
 gboolean janus_ice_is_keepalive_conncheck_enabled(void);
+/*! \brief Method to enable/disable immediate hangups of PeerConnectionss on ICE failures.
+ * @param[in] enabled Whether the functionality should be enabled or disabled */
+void janus_ice_set_hangup_on_failed_enabled(gboolean enabled);
+/*! \brief Method to check whether ICE failures will result in immediate hangups
+ * @returns true if enabled, false (default) otherwise */
+gboolean janus_ice_is_hangup_on_failed_enabled(void);
 /*! \brief Method to modify the min NACK value (i.e., the minimum time window of packets per handle to store for retransmissions)
  * @param[in] mnq The new min NACK value */
 void janus_set_min_nack_queue(uint16_t mnq);
