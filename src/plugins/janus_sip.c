@@ -1047,6 +1047,7 @@ typedef struct janus_sip_media {
 	gboolean updated;
 	int video_orientation_extension_id;
 	int audio_level_extension_id;
+	int dtmf_pt;
 } janus_sip_media;
 
 typedef struct janus_sip_dtmf {
@@ -1504,6 +1505,7 @@ static void janus_sip_media_reset(janus_sip_session *session) {
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	session->media.video_orientation_extension_id = -1;
 	session->media.audio_level_extension_id = -1;
+	session->media.dtmf_pt = -1;
 	janus_rtp_switching_context_reset(&session->media.acontext);
 	janus_rtp_switching_context_reset(&session->media.vcontext);
 }
@@ -6383,6 +6385,7 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 				session->media.has_audio = TRUE;
 				session->media.remote_audio_rtp_port = m->port;
 				session->media.remote_audio_rtcp_port = m->port+1;	/* FIXME We're assuming RTCP is on the next port */
+				session->media.dtmf_pt = janus_sdp_get_codec_pt(sdp, -1, "dtmf");
 				if(m->direction == JANUS_SDP_SENDONLY || m->direction == JANUS_SDP_INACTIVE)
 					session->media.audio_send = FALSE;
 				else
@@ -7451,8 +7454,10 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 
 /* Check peer RTP has RFC2833 and push event */
 static void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer, int len) {
+	if(session->media.dtmf_pt <= 0)
+		return;
 	janus_rtp_header *rtp_header = (janus_rtp_header *)buffer;
-	if(rtp_header->type != JANUS_RTP_RFC2833_DEFAULT_PAYLOAD_TYPE)
+	if(rtp_header->type != session->media.dtmf_pt)
 		return;
 	int plen = 0;
 	char *payload_buffer = janus_rtp_payload(buffer, len, &plen);
