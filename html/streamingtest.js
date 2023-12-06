@@ -199,7 +199,7 @@ $(document).ready(function() {
 												$('#'+mstreamId).append(
 													'<div class="no-video-container audioonly">' +
 														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
-														'<span class="no-video-text">No webcam available</span>' +
+														'<span class="no-video-text">No video available</span>' +
 													'</div>');
 											}
 										}
@@ -396,7 +396,7 @@ function startStream() {
 			}
 		}
 		if($('#mstream0').length === 0) {
-			addPanel("0", mid);
+			addPanel("0", (mid ? mid : "0"));
 			// No remote video yet
 			$('#mstream0').append('<video class="rounded centered waitingvideo" id="waitingvideo0" width="100%" height="100%" />');
 		}
