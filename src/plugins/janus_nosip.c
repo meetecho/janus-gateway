@@ -731,7 +731,7 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 		}
 		JANUS_LOG(LOG_VERB, "Binding media address set to [%s]...\n", janus_network_address_is_null(&janus_network_local_ip) ? "any" : local_ip);
 		if(!sdp_ip) {
-			char *ip = janus_network_address_is_null(&janus_network_local_ip) ? local_ip : local_ip;
+			char *ip = janus_network_address_is_null(&janus_network_local_ip) ? local_ip : NULL;
 			if(ip) {
 				sdp_ip = g_strdup(ip);
 				JANUS_LOG(LOG_VERB, "IP to advertise in SDP: %s\n", sdp_ip);
