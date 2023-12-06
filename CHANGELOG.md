@@ -5,21 +5,21 @@ All notable changes to this project will be documented in this file.
 
 ## [v1.2.1] - 2023-12-06
 
-Added support for abs-capture-time RTP extension [[PR-3161](https://github.com/meetecho/janus-gateway/pull/3161)]
-Fixed truncated label in datachannels (thanks @veeting!) [[PR-3265](https://github.com/meetecho/janus-gateway/pull/3265)]
-Support larger values for SDP attributes (thanks @petarminchev!) [[PR-3282](https://github.com/meetecho/janus-gateway/pull/3282)]
-Fixed rare crash in VideoRoom plugin (thanks @tmatth!) [[PR-3259](https://github.com/meetecho/janus-gateway/pull/3259)]
-Don't create VideoRoom subscriptions to publisher streams with no associated codecs
-Added suspend/resume participant API to AudioBridge [[PR-3301](https://github.com/meetecho/janus-gateway/pull/3301)]
-Fixed rare crash in AudioBridge
-Fixed rare crash in Streaming plugin when doing ICE restarts [[Issue-3288](https://github.com/meetecho/janus-gateway/issues/3288)]
-Allow SIP and NoSIP plugins to bind media to a specific address (thanks @pawnnail!) [[PR-3263](https://github.com/meetecho/janus-gateway/pull/3263)]
-Removed advertised support for SIP UPDATE in SIP plugin
-Parse RFC2833 DTMF to custom events in SIP plugin (thanks @ywmoyue!) [[PR-3280](https://github.com/meetecho/janus-gateway/pull/3280)]
-Fixed missing Contact header in some dialogs in SIP plugin (thanks @ycherniavskyi!) [[PR-3286](https://github.com/meetecho/janus-gateway/pull/3286)]
-Properly set mid when notifying about ended tracks in janus.js
-Fixed broken restamping in janus-pp-rec
-Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+* Added support for abs-capture-time RTP extension [[PR-3161](https://github.com/meetecho/janus-gateway/pull/3161)]
+* Fixed truncated label in datachannels (thanks @veeting!) [[PR-3265](https://github.com/meetecho/janus-gateway/pull/3265)]
+* Support larger values for SDP attributes (thanks @petarminchev!) [[PR-3282](https://github.com/meetecho/janus-gateway/pull/3282)]
+* Fixed rare crash in VideoRoom plugin (thanks @tmatth!) [[PR-3259](https://github.com/meetecho/janus-gateway/pull/3259)]
+* Don't create VideoRoom subscriptions to publisher streams with no associated codecs
+* Added suspend/resume participant API to AudioBridge [[PR-3301](https://github.com/meetecho/janus-gateway/pull/3301)]
+* Fixed rare crash in AudioBridge
+* Fixed rare crash in Streaming plugin when doing ICE restarts [[Issue-3288](https://github.com/meetecho/janus-gateway/issues/3288)]
+* Allow SIP and NoSIP plugins to bind media to a specific address (thanks @pawnnail!) [[PR-3263](https://github.com/meetecho/janus-gateway/pull/3263)]
+* Removed advertised support for SIP UPDATE in SIP plugin
+* Parse RFC2833 DTMF to custom events in SIP plugin (thanks @ywmoyue!) [[PR-3280](https://github.com/meetecho/janus-gateway/pull/3280)]
+* Fixed missing Contact header in some dialogs in SIP plugin (thanks @ycherniavskyi!) [[PR-3286](https://github.com/meetecho/janus-gateway/pull/3286)]
+* Properly set mid when notifying about ended tracks in janus.js
+* Fixed broken restamping in janus-pp-rec
+* Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
 
 ## [v1.2.0] - 2023-08-09
 
