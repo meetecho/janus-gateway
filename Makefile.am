@@ -25,7 +25,7 @@ demosdir = $(datadir)/janus/demos
 demos_DATA = $(NULL)
 
 jsmodulesdir = $(datadir)/janus/javascript
-jsmodules_DATA = html/janus.js
+jsmodules_DATA = html/demos/janus.js
 
 %.sample: %.sample.in
 	$(MKDIR_P) $(@D)
