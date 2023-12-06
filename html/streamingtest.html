@@ -6,44 +6,44 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server (multistream): Streaming Demo</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.4.0/bootbox.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
 <script type="text/javascript" src="settings.js" ></script>
 <script type="text/javascript" src="janus.js" ></script>
 <script type="text/javascript" src="streamingtest.js"></script>
 <script>
 	$(function() {
-		$(".navbar-static-top").load("navbar.html", function() {
-			$(".navbar-static-top li.dropdown").addClass("active");
-			$(".navbar-static-top a[href='streamingtest.html']").parent().addClass("active");
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='streamingtest.html']").addClass("active");
 		});
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
 </head>
 <body>
 
-<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
 
-<nav class="navbar navbar-default navbar-static-top">
-</nav>
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
 
 <div class="container">
 	<div class="row">
 		<div class="col-md-12">
-			<div class="page-header">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
 				<h1>Plugin Demo: Streaming
-					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
-			<div class="container" id="details">
+			<div class="container mt-5" id="details">
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
@@ -66,39 +66,37 @@
 					</div>
 				</div>
 			</div>
-			<div class="container hide" id="streams">
-				<div class="col-md-6">
-					<div class="row">
-						<div class="panel panel-default">
-							<div class="panel-heading">
-								<h3 class="panel-title">Streams <i id="update-streams" class="fa fa-refresh" title="Update list of streams" style="cursor: pointer;"></i></h3>
+			<div class="container mt-4 hide" id="streams">
+				<div class="row">
+					<div class="col-md-6">
+						<div class="card w-100">
+							<div class="card-header">
+								<span class="card-title">Streams <i id="update-streams" class="fa-solid fa-rotate" title="Update list of streams" style="cursor: pointer;"></i></span>
 							</div>
-							<div class="panel-body" id="list">
+							<div class="card-body" id="list">
 								<div class="btn-group btn-group-sm">
-									<button class="btn btn-primary" autocomplete="off" id="watch">Watch or Listen</button>
+									<button class="btn btn-primary" autocomplete="off" id="watch">Watch</button>
 									<div class="btn-group btn-group-sm">
-										<button autocomplete="off" id="streamset" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
-											Streams list<span class="caret"></span>
+										<button autocomplete="off" id="streamset" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown">
+											Streams list
 										</button>
-										<ul id="streamslist" class="dropdown-menu" role="menu">
+										<ul id="streamslist" class="dropdown-menu" role="menu" style="max-height: 300px; overflow: auto;">
 										</ul>
 									</div>
 								</div>
 							</div>
 						</div>
-					</div>
-					<div class="row hide" id="info">
-						<div class="panel panel-default">
-							<div class="panel-heading">
-								<h3 class="panel-title"><i class="fa fa-info-circle"></i> Metadata</h3>
+						<div class="card mt-4 w-100 hide" id="info">
+							<div class="card-header">
+								<span class="card-title"><i class="fa-solid fa-circle-info"></i> Metadata</span>
 							</div>
-							<div class="panel-body">
-								<pre id="metadata" style="word-break: break-word;"></pre>
+							<div class="card-body">
+								<pre id="metadata" class="card card-body bg-gray mt-3"></pre>
 							</div>
 						</div>
 					</div>
-				</div>
-				<div class="col-md-6" id="videos">
+					<div class="col-md-6" id="videos">
+					</div>
 				</div>
 			</div>
 		</div>

@@ -5,36 +5,37 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server (multistream): Demo Tests</title>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
 <script>
 	$(function() {
-		$(".navbar-static-top").load("navbar.html", function() {
-			$(".navbar-static-top li.dropdown").addClass("active");
-			$(".navbar-static-top a[href='demos.html']").parent().addClass("active");
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='demos.html']").addClass("active");
 		});
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 </head>
 <body>
 
-<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
 
-<nav class="navbar navbar-default navbar-static-top">
-</nav>
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
 
 <div class="container">
 	<div class="row">
 		<div class="col-md-12">
-			<div class="page-header">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
 				<h1>Janus WebRTC Server: Demo Tests</h1>
 			</div>
-			<table class="table table-striped">
+			<table class="table table-striped mt-5">
 				<tr>
-					<td colspan=2><h3>Plugin demos</h3></td>
+					<td class="table-info" colspan=2><h3>Plugin demos</h3></td>
 				</tr>
 				<tr>
 					<td><a href="echotest.html">Echo Test</a></td>
@@ -77,18 +78,18 @@
 					<td>A webinar-like screen sharing session, based on the Video Room plugin.</td>
 				</tr>
 			</table>
-			<table class="table table-striped">
+			<table class="table table-striped mt-5">
 				<tr>
-					<td colspan=2><h3>Other legacy demos</h3></td>
+					<td class="table-info" colspan=2><h3>Other legacy demos</h3></td>
 				</tr>
 				<tr>
 					<td><a href="nosiptest.html">NoSIP (SDP/RTP)</a></td>
 					<td>A legacy interop demo (e.g., with a SIP peer) where signalling is up to the application.</td>
 				</tr>
 			</table>
-			<table class="table table-striped">
+			<table class="table table-striped mt-5">
 				<tr>
-					<td colspan=2><h3>Advanced demos</h3></td>
+					<td class="table-info" colspan=2><h3>Advanced demos</h3></td>
 				</tr>
 				<tr>
 					<td><a href="devicetest.html">Device Selection</a></td>

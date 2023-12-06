@@ -58,8 +58,8 @@ $(document).ready(function() {
 									mixertest = pluginHandle;
 									Janus.log("Plugin attached! (" + mixertest.getPlugin() + ", id=" + mixertest.getId() + ")");
 									// Prepare the username registration
-									$('#audiojoin').removeClass('hide').show();
-									$('#registernow').removeClass('hide').show();
+									$('#audiojoin').removeClass('hide');
+									$('#registernow').removeClass('hide');
 									$('#register').click(registerUsername);
 									$('#username').focus();
 									$('#start').removeAttr('disabled').html("Stop")
@@ -78,13 +78,14 @@ $(document).ready(function() {
 										// Darken screen and show hint
 										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+												left: '100px'
 											} });
 									} else {
 										// Restore screen
@@ -123,6 +124,13 @@ $(document).ready(function() {
 																if(stereo && jsep.sdp.indexOf("stereo=1") == -1) {
 																	// Make sure that our offer contains stereo too
 																	jsep.sdp = jsep.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1");
+																	// Create a spinner waiting for the remote video
+																	$('#mixedaudio').html(
+																		'<div class="text-center">' +
+																		'	<div id="spinner" class="spinner-border" role="status">' +
+																		'		<span class="visually-hidden">Loading...</span>' +
+																		'	</div>' +
+																		'</div>');
 																}
 															},
 															success: function(jsep) {
@@ -157,27 +165,27 @@ $(document).ready(function() {
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
 															slider +
 															display +
-															' <i class="absetup fa fa-chain-broken" title="No PeerConnection"></i>' +
-															' <i class="absusp fa fa-eye-slash" title="Suspended"></i>' +
-															' <i class="abmuted fa fa-microphone-slash" title="Muted"></i></li>');
+															' <i class="absetup fa-solid fa-link-slash" title="No PeerConnection"></i>' +
+															' <i class="absusp fa-solid fa-eye-slash" title="Suspended"></i>' +
+															' <i class="abmuted fa-solid fa-microphone-slash" title="Muted"></i></li>');
 														if(spatial !== null && spatial !== undefined) {
 															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
-															$('#position').removeClass('hide').show();
+															$('#position').removeClass('hide');
 														}
-														$('#rp' + id + ' > i').hide();
+														$('#rp' + id + ' > i').addClass('hide');
 													}
 													if(muted === true || muted === "true")
-														$('#rp' + id + ' > i.abmuted').removeClass('hide').show();
+														$('#rp' + id + ' > i.abmuted').removeClass('hide');
 													else
-														$('#rp' + id + ' > i.abmuted').hide();
+														$('#rp' + id + ' > i.abmuted').addClass('hide');
 													if(setup === true || setup === "true")
-														$('#rp' + id + ' > i.absetup').hide();
+														$('#rp' + id + ' > i.absetup').addClass('hide');
 													else
-														$('#rp' + id + ' > i.absetup').removeClass('hide').show();
+														$('#rp' + id + ' > i.absetup').removeClass('hide');
 													if(suspended === true)
-														$('#rp' + id + ' > i.absusp').removeClass('hide').show();
+														$('#rp' + id + ' > i.absusp').removeClass('hide');
 													else
-														$('#rp' + id + ' > i.absusp').hide();
+														$('#rp' + id + ' > i.absusp').addClass('hide');
 													if(spatial !== null && spatial !== undefined)
 														$('#sp' + id).slider('setValue', spatial);
 												}
@@ -207,27 +215,27 @@ $(document).ready(function() {
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
 															slider +
 															display +
-															' <i class="absetup fa fa-chain-broken" title="No PeerConnection"></i>' +
-															' <i class="absusp fa fa-eye-slash" title="Suspended"></i>' +
-															' <i class="abmuted fa fa-microphone-slash" title="Muted"></i></li>');
+																' <i class="absetup fa-solid fa-link-slash" title="No PeerConnection"></i>' +
+																' <i class="absusp fa-solid fa-eye-slash" title="Suspended"></i>' +
+																' <i class="abmuted fa-solid fa-microphone-slash" title="Muted"></i></li>');
 														if(spatial !== null && spatial !== undefined) {
 															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
-															$('#position').removeClass('hide').show();
+															$('#position').removeClass('hide');
 														}
-														$('#rp' + id + ' > i').hide();
+														$('#rp' + id + ' > i').addClass('hide');
 													}
 													if(muted === true || muted === "true")
-														$('#rp' + id + ' > i.abmuted').removeClass('hide').show();
+														$('#rp' + id + ' > i.abmuted').removeClass('hide');
 													else
-														$('#rp' + id + ' > i.abmuted').hide();
+														$('#rp' + id + ' > i.abmuted').addClass('hide');
 													if(setup === true || setup === "true")
-														$('#rp' + id + ' > i.absetup').hide();
+														$('#rp' + id + ' > i.absetup').addClass('hide');
 													else
-														$('#rp' + id + ' > i.absetup').removeClass('hide').show();
+														$('#rp' + id + ' > i.absetup').removeClass('hide');
 													if(suspended === true)
-														$('#rp' + id + ' > i.absusp').removeClass('hide').show();
+														$('#rp' + id + ' > i.absusp').removeClass('hide');
 													else
-														$('#rp' + id + ' > i.absusp').hide();
+														$('#rp' + id + ' > i.absusp').addClass('hide');
 													if(spatial !== null && spatial !== undefined)
 														$('#sp' + id).slider('setValue', spatial);
 												}
@@ -262,36 +270,36 @@ $(document).ready(function() {
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
 															slider +
 															display +
-															' <i class="absetup fa fa-chain-broken" title="No PeerConnection"></i>' +
-															' <i class="absusp fa fa-eye-slash" title="Suspended"></i>' +
-															' <i class="abmuted fa fa-microphone-slash" title="Muted"></i></li>');
+																' <i class="absetup fa-solid fa-link-slash" title="No PeerConnection"></i>' +
+																' <i class="absusp fa-solid fa-eye-slash" title="Suspended"></i>' +
+																' <i class="abmuted fa-solid fa-microphone-slash" title="Muted"></i></li>');
 														if(spatial !== null && spatial !== undefined) {
 															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
-															$('#position').removeClass('hide').show();
+															$('#position').removeClass('hide');
 														}
-														$('#rp' + id + ' > i').hide();
+														$('#rp' + id + ' > i').addClass('hide');
 													}
 													if(muted === true || muted === "true")
-														$('#rp' + id + ' > i.abmuted').removeClass('hide').show();
+														$('#rp' + id + ' > i.abmuted').removeClass('hide');
 													else
-														$('#rp' + id + ' > i.abmuted').hide();
+														$('#rp' + id + ' > i.abmuted').addClass('hide');
 													if(setup === true || setup === "true")
-														$('#rp' + id + ' > i.absetup').hide();
+														$('#rp' + id + ' > i.absetup').addClass('hide');
 													else
-														$('#rp' + id + ' > i.absetup').removeClass('hide').show();
+														$('#rp' + id + ' > i.absetup').removeClass('hide');
 													if(suspended === true)
-														$('#rp' + id + ' > i.absusp').removeClass('hide').show();
+														$('#rp' + id + ' > i.absusp').removeClass('hide');
 													else
-														$('#rp' + id + ' > i.absusp').hide();
+														$('#rp' + id + ' > i.absusp').addClass('hide');
 													if(spatial !== null && spatial !== undefined)
 														$('#sp' + id).slider('setValue', spatial);
 												}
 											} else if(msg["suspended"]) {
 												let id = msg["suspended"];
-												$('#rp' + id + ' > i.absusp').removeClass('hide').show();
+												$('#rp' + id + ' > i.absusp').removeClass('hide');
 											} else if(msg["resumed"]) {
 												let id = msg["resumed"];
-												$('#rp' + id + ' > i.absusp').hide();
+												$('#rp' + id + ' > i.absusp').addClass('hide');
 											} else if(msg["error"]) {
 												if(msg["error_code"] === 485) {
 													// This is a "no such room" error: give a more meaningful description
@@ -323,9 +331,9 @@ $(document).ready(function() {
 								onlocaltrack: function(track, on) {
 									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
 									// We're not going to attach the local audio stream
-									$('#audiojoin').hide();
-									$('#room').removeClass('hide').show();
-									$('#participant').removeClass('hide').html(myusername).show();
+									$('#audiojoin').addClass('hide');
+									$('#room').removeClass('hide');
+									$('#participant').removeClass('hide').html(myusername).removeClass('hide');
 								},
 								onremotetrack: function(track, mid, on, metadata) {
 									Janus.debug(
@@ -341,12 +349,16 @@ $(document).ready(function() {
 										$('#roomaudio').remove();
 										return;
 									}
+									$('#spinner').remove();
 									remoteStream = new MediaStream([track]);
-									$('#room').removeClass('hide').show();
+									$('#room').removeClass('hide');
 									if($('#roomaudio').length === 0) {
-										$('#mixedaudio').append('<audio class="rounded centered" id="roomaudio" width="100%" height="100%" autoplay/>');
+										$('#mixedaudio').append('<audio class="rounded centered w-100" id="roomaudio" controls autoplay/>');
+										$('#roomaudio').get(0).volume = 0;
 									}
 									Janus.attachMediaStream($('#roomaudio').get(0), remoteStream);
+									$('#roomaudio').get(0).play();
+									$('#roomaudio').get(0).volume = 1;
 									// Mute button
 									audioenabled = true;
 									$('#toggleaudio').click(
@@ -357,22 +369,22 @@ $(document).ready(function() {
 											else
 												$('#toggleaudio').html("Unmute").removeClass("btn-danger").addClass("btn-success");
 											mixertest.send({ message: { request: "configure", muted: !audioenabled }});
-										}).removeClass('hide').show();
+										}).removeClass('hide');
 									// Suspend button
 									audiosuspended = false;
 									$('#togglesuspend').click(
 										function() {
 											audiosuspended = !audiosuspended;
 											if(!audiosuspended)
-												$('#togglesuspend').html("Suspend").removeClass("btn-success").addClass("btn-danger");
+												$('#togglesuspend').html("Suspend").removeClass("btn-info").addClass("btn-secondary");
 											else
-												$('#togglesuspend').html("Resume").removeClass("btn-danger").addClass("btn-success");
+												$('#togglesuspend').html("Resume").removeClass("btn-secondary").addClass("btn-info");
 											mixertest.send({ message: {
 												request: (audiosuspended ? "suspend" : "resume"),
 												room: myroom,
 												id: myid
 											}});
-										}).removeClass('hide').show();
+										}).removeClass('hide');
 									// Spatial position, if enabled
 									$('#position').click(
 										function() {
@@ -389,10 +401,10 @@ $(document).ready(function() {
 								oncleanup: function() {
 									webrtcUp = false;
 									Janus.log(" ::: Got a cleanup notification :::");
-									$('#participant').empty().hide();
+									$('#participant').empty().addClass('hide');
 									$('#list').empty();
 									$('#mixedaudio').empty();
-									$('#room').hide();
+									$('#room').addClass('hide');
 									remoteStream = null;
 								}
 							});
@@ -434,7 +446,7 @@ function registerUsername() {
 		let username = $('#username').val();
 		if(username === "") {
 			$('#you')
-				.removeClass().addClass('label label-warning')
+				.removeClass().addClass('badge bg-warning')
 				.html("Insert your display name (e.g., pippo)");
 			$('#username').removeAttr('disabled');
 			$('#register').removeAttr('disabled').click(registerUsername);
@@ -442,7 +454,7 @@ function registerUsername() {
 		}
 		if(/[^a-zA-Z0-9]/.test(username)) {
 			$('#you')
-				.removeClass().addClass('label label-warning')
+				.removeClass().addClass('badge bg-warning')
 				.html('Input is not alphanumeric');
 			$('#username').removeAttr('disabled').val("");
 			$('#register').removeAttr('disabled').click(registerUsername);

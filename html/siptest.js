@@ -51,9 +51,10 @@ $(document).ready(function() {
 									sipcall = pluginHandle;
 									Janus.log("Plugin attached! (" + sipcall.getPlugin() + ", id=" + sipcall.getId() + ")");
 									// Prepare the username registration
-									$('#sipcall').removeClass('hide').show();
-									$('#login').removeClass('hide').show();
+									$('#sipcall').removeClass('hide');
+									$('#login').removeClass('invisible').removeClass('hide');
 									$('#registerlist a').unbind('click').click(function() {
+										$('.dropdown-toggle').dropdown('hide');
 										selectedApproach = $(this).attr("id");
 										$('#registerset').html($(this).html()).parent().removeClass('open');
 										if(selectedApproach === "guest") {
@@ -94,13 +95,14 @@ $(document).ready(function() {
 										// Darken screen and show hint
 										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+												left: '100px'
 											} });
 									} else {
 										// Restore screen
@@ -164,24 +166,19 @@ $(document).ready(function() {
 										}
 										if(event === 'registered') {
 											Janus.log("Successfully registered as " + result["username"] + "!");
-											$('#you').removeClass('hide').show().text("Registered as '" + result["username"] + "'");
+											$('#you').removeClass('hide').text("Registered as '" + result["username"] + "'");
 											// TODO Enable buttons to call now
 											if(!registered) {
 												registered = true;
 												masterId = result["master_id"];
-												$('#server').parent().addClass('hide').hide();
-												$('#authuser').parent().addClass('hide').hide();
-												$('#displayname').parent().addClass('hide').hide();
-												$('#password').parent().addClass('hide').hide();
-												$('#register').parent().addClass('hide').hide();
-												$('#registerset').parent().addClass('hide').hide();
-												$('#username').parent().parent().append(
-													'<button id="addhelper" class="btn btn-xs btn-info pull-right" title="Add a new line">' +
-														'<i class="fa fa-plus"></i>' +
-													'</button>'
-												);
-												$('#addhelper').click(addHelper);
-												$('#phone').removeClass('hide').show();
+												$('#server').parent().addClass('hide');
+												$('#authuser').parent().addClass('hide');
+												$('#displayname').parent().addClass('hide');
+												$('#password').parent().addClass('hide');
+												$('#register').parent().addClass('hide');
+												$('#registerset').parent().addClass('hide');
+												$('#addhelper').removeClass('hide').click(addHelper);
+												$('#phone').removeClass('invisible').removeClass('hide');
 												$('#call').unbind('click').click(doCall);
 												$('#peer').focus();
 											}
@@ -471,7 +468,7 @@ $(document).ready(function() {
 												if($('#videoleft .no-video-container').length === 0) {
 													$('#videoleft').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 															'<span class="no-video-text">No webcam available</span>' +
 														'</div>');
 												}
@@ -487,7 +484,7 @@ $(document).ready(function() {
 										return;
 									}
 									if($('#videoleft video').length === 0) {
-										$('#videos').removeClass('hide').show();
+										$('#videos').removeClass('hide');
 									}
 									if(track.kind === "audio") {
 										// We ignore local audio tracks, they'd generate echo anyway
@@ -496,7 +493,7 @@ $(document).ready(function() {
 											if($('#videoleft .no-video-container').length === 0) {
 												$('#videoleft').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 														'<span class="no-video-text">No webcam available</span>' +
 													'</div>');
 											}
@@ -535,7 +532,7 @@ $(document).ready(function() {
 												if($('#videoright .no-video-container').length === 0) {
 													$('#videoright').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 															'<span class="no-video-text">No remote video available</span>' +
 														'</div>');
 												}
@@ -546,13 +543,13 @@ $(document).ready(function() {
 									}
 									// If we're here, a new track was added
 									if($('#videoright audio').length === 0 && $('#videoright video').length === 0) {
-										$('#videos').removeClass('hide').show();
-										$('#videoright').parent().find('h3').html(
+										$('#videos').removeClass('hide');
+										$('#videoright').parent().find('span').html(
 											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>' +
-											'<span id="ctrls" class="pull-right btn-group btn-group-xs">' +
-												'<button id="msg" title="Send message" class="btn btn-info"><i class="fa fa-envelope"></i></button>' +
-												'<button id="info" title="Send INFO" class="btn btn-info"><i class="fa fa-info"></i></button>' +
-												'<button id="transfer" title="Transfer call" class="btn btn-info"><i class="fa fa-mail-forward"></i></button>' +
+											'<span id="ctrls" class="top-right btn-group btn-group-xs">' +
+												'<button id="msg" title="Send message" class="btn btn-info"><i class="fa-solid fa-envelope"></i></button>' +
+												'<button id="info" title="Send INFO" class="btn btn-info"><i class="fa-solid fa-info"></i></button>' +
+												'<button id="transfer" title="Transfer call" class="btn btn-info"><i class="fa-solid fa-share"></i></button>' +
 											'</span>');
 										for(let i=0; i<12; i++) {
 											if(i<10)
@@ -585,7 +582,7 @@ $(document).ready(function() {
 												buttons: {
 													cancel: {
 														label: "Cancel",
-														className: "btn-default",
+														className: "btn-secondary",
 														callback: function() {
 															// Do nothing
 														}
@@ -613,7 +610,7 @@ $(document).ready(function() {
 												buttons: {
 													cancel: {
 														label: "Cancel",
-														className: "btn-default",
+														className: "btn-secondary",
 														callback: function() {
 															// Do nothing
 														}
@@ -659,7 +656,7 @@ $(document).ready(function() {
 											if($('#videoright .no-video-container').length === 0) {
 												$('#videoright').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 														'<span class="no-video-text">No remote video available</span>' +
 													'</div>');
 											}
@@ -679,7 +676,7 @@ $(document).ready(function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$("#videoleft").empty().parent().unblock();
 									$('#videoright').empty();
-									$('#videos').hide();
+									$('#videos').addClass('hide');
 									$('#dtmf').parent().html("Remote UA");
 									if(sipcall) {
 										delete sipcall.callId;
@@ -1015,36 +1012,34 @@ function addHelper(helperCreated) {
 	$('.footer').before(
 		'<div class="container" id="sipcall' + helperId + '">' +
 		'	<div class="row">' +
-		'		<div class="col-md-12">' +
-		'			<div class="col-md-6 container">' +
-		'				<span class="label label-info">Helper #' + helperId +
-		'					<i class="fa fa-window-close" id="rmhelper' + helperId + '" style="cursor: pointer;" title="Remove this helper"></i>' +
-		'				</span>' +
+		'		<div class="col-md-6 container">' +
+		'			<span class="badge bg-info">Helper #' + helperId +
+		'				<i class="fa-solid fa-rectangle-xmark" id="rmhelper' + helperId + '" style="cursor: pointer;" title="Remove this helper"></i>' +
+		'			</span>' +
+		'		</div>' +
+		'		<div class="col-md-6 container" id="phone' + helperId + '">' +
+		'			<div class="input-group mt-1 mb-1">' +
+		'				<span class="input-group-text"><i class="fa-solid fa-phone"></i></span>' +
+		'				<input disabled class="form-control" type="text" placeholder="SIP URI to call (e.g., sip:1000@example.com)" autocomplete="off" id="peer' + helperId + '" onkeypress="return checkEnter(this, event, ' + helperId + ');"></input>' +
 		'			</div>' +
-		'			<div class="col-md-6 container" id="phone' + helperId + '">' +
-		'				<div class="input-group margin-bottom-sm">' +
-		'					<span class="input-group-addon"><i class="fa fa-phone fa-fw"></i></span>' +
-		'					<input disabled class="form-control" type="text" placeholder="SIP URI to call (e.g., sip:1000@example.com)" autocomplete="off" id="peer' + helperId + '" onkeypress="return checkEnter(this, event, ' + helperId + ');"></input>' +
-		'				</div>' +
-		'				<button disabled class="btn btn-success margin-bottom-sm" autocomplete="off" id="call' + helperId + '">Call</button> <input autocomplete="off" id="dovideo' + helperId + '" type="checkbox">Use Video</input>' +
-		'			</div>' +
+		'			<button disabled class="btn btn-success mb-1" autocomplete="off" id="call' + helperId + '">Call</button> <input autocomplete="off" id="dovideo' + helperId + '" type="checkbox">Use Video</input>' +
 		'		</div>' +
 		'	</div>' +
-		'	<div id="videos' + helperId + '" class="hide">' +
+		'	<div id="videos' + helperId + '" class="row mt-2 mb-2 hide">' +
 		'		<div class="col-md-6">' +
-		'			<div class="panel panel-default">' +
-		'				<div class="panel-heading">' +
-		'					<h3 class="panel-title">You</h3>' +
+		'			<div class="card">' +
+		'				<div class="card-header">' +
+		'					<span class="card-title">You</span>' +
 		'				</div>' +
-		'				<div class="panel-body" id="videoleft' + helperId + '"></div>' +
+		'				<div class="card-body" id="videoleft' + helperId + '"></div>' +
 		'			</div>' +
 		'		</div>' +
 		'		<div class="col-md-6">' +
-		'			<div class="panel panel-default">' +
-		'				<div class="panel-heading">' +
-		'					<h3 class="panel-title">Remote UA</h3>' +
+		'			<div class="card">' +
+		'				<div class="card-header">' +
+		'					<span class="card-title">Remote UA</span>' +
 		'				</div>' +
-		'				<div class="panel-body" id="videoright' + helperId + '"></div>' +
+		'				<div class="card-body" id="videoright' + helperId + '"></div>' +
 		'			</div>' +
 		'		</div>' +
 		'	</div>' +
@@ -1084,13 +1079,14 @@ function addHelper(helperCreated) {
 					// Darken screen and show hint
 					$.blockUI({
 						message: '<div><img src="up_arrow.png"/></div>',
+						baseZ: 3001,
 						css: {
 							border: 'none',
 							padding: '15px',
 							backgroundColor: 'transparent',
 							color: '#aaa',
 							top: '10px',
-							left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+							left: '100px'
 						} });
 				} else {
 					// Restore screen
@@ -1439,7 +1435,7 @@ function addHelper(helperCreated) {
 							if($('#videoleft' + helperId + ' .no-video-container').length === 0) {
 								$('#videoleft' + helperId).append(
 									'<div class="no-video-container">' +
-										'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+										'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 										'<span class="no-video-text">No webcam available</span>' +
 									'</div>');
 							}
@@ -1455,7 +1451,7 @@ function addHelper(helperCreated) {
 					return;
 				}
 				if($('#videoleft' + helperId + ' video').length === 0) {
-					$('#videos' + helperId).removeClass('hide').show();
+					$('#videos' + helperId).removeClass('hide');
 				}
 				if(track.kind === "audio") {
 					// We ignore local audio tracks, they'd generate echo anyway
@@ -1464,7 +1460,7 @@ function addHelper(helperCreated) {
 						if($('#videoleft' + helperId + ' .no-video-container').length === 0) {
 							$('#videoleft' + helperId).append(
 								'<div class="no-video-container">' +
-									'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+									'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 									'<span class="no-video-text">No webcam available</span>' +
 								'</div>');
 						}
@@ -1503,7 +1499,7 @@ function addHelper(helperCreated) {
 							if($('#videoright' + helperId + ' .no-video-container').length === 0) {
 								$('#videoright').append(
 									'<div class="no-video-container">' +
-										'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+										'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 										'<span class="no-video-text">No remote video available</span>' +
 									'</div>');
 							}
@@ -1514,13 +1510,13 @@ function addHelper(helperCreated) {
 				}
 				// If we're here, a new track was added
 				if($('#videoright' + helperId + ' audio').length === 0 && $('#videoright' + helperId + ' video').length === 0) {
-					$('#videos' + helperId).removeClass('hide').show();
-					$('#videoright' + helperId).parent().find('h3').html(
+					$('#videos' + helperId).removeClass('hide');
+					$('#videoright' + helperId).parent().find('span').html(
 						'Send DTMF: <span id="dtmf' + helperId + '" class="btn-group btn-group-xs"></span>' +
-						'<span id="ctrls" class="pull-right btn-group btn-group-xs">' +
-							'<button id="msg' + helperId + '" title="Send message" class="btn btn-info"><i class="fa fa-envelope"></i></button>' +
-							'<button id="info' + helperId + '" title="Send INFO" class="btn btn-info"><i class="fa fa-info"></i></button>' +
-							'<button id="transfer' + helperId + '" title="Transfer call" class="btn btn-info"><i class="fa fa-mail-forward"></i></button>' +
+						'<span id="ctrls" class="top-right btn-group btn-group-xs">' +
+							'<button id="msg' + helperId + '" title="Send message" class="btn btn-info"><i class="fa-solid fa-envelope"></i></button>' +
+							'<button id="info' + helperId + '" title="Send INFO" class="btn btn-info"><i class="fa-solid fa-info"></i></button>' +
+							'<button id="transfer' + helperId + '" title="Transfer call" class="btn btn-info"><i class="fa-solid fa-share"></i></button>' +
 						'</span>');
 					for(let i=0; i<12; i++) {
 						if(i<10)
@@ -1553,7 +1549,7 @@ function addHelper(helperCreated) {
 							buttons: {
 								cancel: {
 									label: "Cancel",
-									className: "btn-default",
+									className: "btn-secondary",
 									callback: function() {
 										// Do nothing
 									}
@@ -1581,7 +1577,7 @@ function addHelper(helperCreated) {
 							buttons: {
 								cancel: {
 									label: "Cancel",
-									className: "btn-default",
+									className: "btn-secondary",
 									callback: function() {
 										// Do nothing
 									}
@@ -1634,7 +1630,7 @@ function addHelper(helperCreated) {
 						if($('#videoright' + helperId + ' .no-video-container').length === 0) {
 							$('#videoright' + helperId).append(
 								'<div class="no-video-container">' +
-									'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+									'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 									'<span class="no-video-text">No remote video available</span>' +
 								'</div>');
 						}
@@ -1654,7 +1650,7 @@ function addHelper(helperCreated) {
 				Janus.log("[Helper #" + helperId + "]  ::: Got a cleanup notification :::");
 				$('#videoleft' + helperId).empty().parent().unblock();
 				$('#videoleft' + helperId).empty();
-				$('#videos' + helperId).hide();
+				$('#videos' + helperId).addClass('hide');
 				$('#dtmf' + helperId).parent().html("Remote UA");
 				if(helpers[helperId] && helpers[helperId].sipcall) {
 					delete helpers[helperId].sipcall.callId;

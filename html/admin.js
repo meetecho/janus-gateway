@@ -10,7 +10,7 @@ if(window.location.protocol === 'http:')
 else
 	server = "https://" + window.location.hostname + ":7889/admin";
 // If you don't want the page to prompt you for a password, insert it here
-var secret = "";
+var secret = "janusoverlord";
 
 var session = null;		// Selected session
 var handle = null;		// Selected handle
@@ -49,12 +49,12 @@ function promptAccessDetails() {
 	let serverPlaceholder = "Insert the address of the Admin API backend";
 	let secretPlaceholder = "Insert the Admin API secret";
 	bootbox.alert({
-		message: "<div class='input-group margin-bottom-sm'>" +
-			"	<span class='input-group-addon'><i class='fa fa-cloud-upload fa-fw'></i></span>" +
+		message: "<div class='input-group mt-3 mb-1'>" +
+			"	<span class='input-group-text'><i class='fa-solid fa-cloud-arrow-up'></i></span>" +
 			"	<input class='form-control' type='text' value='" + server + "' placeholder='" + serverPlaceholder + "' autocomplete='off' id='server'></input>" +
 			"</div>" +
-			"<div class='input-group margin-bottom-sm'>" +
-			"	<span class='input-group-addon'><i class='fa fa-key fa-fw'></i></span>" +
+			"<div class='input-group mt-3 mb-1'>" +
+			"	<span class='input-group-text'><i class='fa-solid fa-key'></i></span>" +
 			"	<input class='form-control' type='password'  value='" + secret + "'placeholder='" + secretPlaceholder + "' autocomplete='off' id='secret'></input>" +
 			"</div>",
 		closeButton: false,
@@ -103,14 +103,16 @@ function updateServerInfo() {
 			}
 			console.log("Got server info:");
 			console.log(json);
-			var pluginsJson = json.plugins;
+			let pluginsJson = json.plugins;
 			let transportsJson = json.transports;
 			let eventsJson = json.events;
+			let loggersJson = json.loggers;
 			delete json.janus;
 			delete json.transaction;
 			delete json.plugins;
 			delete json.transports;
 			delete json.events;
+			delete json.loggers;
 			$('#server-details').empty();
 			for(let k in json) {
 				if(k === "dependencies") {
@@ -158,7 +160,9 @@ function updateServerInfo() {
 					'</tr>');
 				pluginsIndex.push(p);
 				$('#plugins-list').append(
-					'<a id="plugin-'+(pluginsIndex.length-1)+'" href="#" class="list-group-item">'+p+'</a>'
+					'<a id="plugin-' + (pluginsIndex.length-1) + '" href="#" class="list-group-item list-group-item-action">' +
+						'<small>' + p + '</small>' +
+					'</a>'
 				);
 				$('#plugin-'+(pluginsIndex.length-1)).click(function(event) {
 					event.preventDefault();
@@ -190,7 +194,9 @@ function updateServerInfo() {
 					'</tr>');
 				transportsIndex.push(t);
 				$('#transports-list').append(
-					'<a id="transport-'+(transportsIndex.length-1)+'" href="#" class="list-group-item">'+t+'</a>'
+					'<a id="transport-' + (transportsIndex.length-1) + '" href="#" class="list-group-item list-group-item-action">' +
+						'<small>' + t + '</small>' +
+					'</a>'
 				);
 				$('#transport-'+(transportsIndex.length-1)).click(function(event) {
 					event.preventDefault();
@@ -220,13 +226,31 @@ function updateServerInfo() {
 					'	<td>' + v.version_string + '</td>' +
 					'</tr>');
 			}
+			$('#server-loggers').html(
+				'<tr>' +
+				'	<th>Name</th>' +
+				'	<th>Author</th>' +
+				'	<th>Description</th>' +
+				'	<th>Version</th>' +
+				'</tr>'
+			);
+			for(let e in loggersJson) {
+				let v = loggersJson[e];
+				$('#server-loggers').append(
+					'<tr>' +
+					'	<td>' + v.name + '</td>' +
+					'	<td>' + v.author + '</td>' +
+					'	<td>' + v.description + '</td>' +
+					'	<td>' + v.version_string + '</td>' +
+					'</tr>');
+			}
 			// Unlock tabs
-			$('#admintabs li').removeClass('disabled');
+			$('#admintabs li a').removeClass('disabled');
 			// Refresh settings now
 			updateSettings();
 			// Refresh sessions and handles now
-			$('#handles').hide();
-			$('#info').hide();
+			$('#handles').addClass('hide');
+			$('#info').addClass('hide');
 			$('#update-sessions').click(updateSessions);
 			$('#update-handles').click(updateHandles);
 			$('#update-handle').click(updateHandleInfo);
@@ -256,7 +280,7 @@ function updateServerInfo() {
 			});
 			// Only check tokens if the mechanism is enabled
 			if(!json["auth_token"]) {
-				$('a[href=#tokens]').parent().addClass('disabled');
+				$('a[href=#tokens]').addClass('disabled');
 				$('a[href=#tokens]').attr('href', '#').unbind('click').click(function (e) { e.preventDefault(); return false; });
 			} else {
 				updateTokens();
@@ -593,7 +617,7 @@ function resetPluginRequest() {
 		'	<th></th>' +
 		'</tr>' +
 		'<tr>' +
-		'	<td><i id="addattr" class="fa fa-plus-circle" style="cursor: pointer;"></i></td>' +
+		'	<td><i id="addattr" class="fa-solid fa-plus-circle" style="cursor: pointer;"></i></td>' +
 		'	<td></td>' +
 		'	<td></td>' +
 		'	<td><button id="sendmsg" type="button" class="btn btn-xs btn-success pull-right">Send message</button></td>' +
@@ -659,7 +683,7 @@ function addPluginMessageAttribute() {
 		'			<option>boolean</option>' +
 		'		</select>' +
 		'	</td>' +
-		'	<td><i id="rmattr' + num + '" class="fa fa-window-close" style="cursor: pointer;"></i></td>' +
+		'	<td><i id="rmattr' + num + '" class="fa-solid fa-rectangle-xmark" style="cursor: pointer;"></i></td>' +
 		'</tr>'
 	);
 	$('#rmattr' + num).click(function() {
@@ -724,7 +748,7 @@ function resetTransportRequest() {
 		'	<th></th>' +
 		'</tr>' +
 		'<tr>' +
-		'	<td><i id="traddattr" class="fa fa-plus-circle" style="cursor: pointer;"></i></td>' +
+		'	<td><i id="traddattr" class="fa-solid fa-plus-circle" style="cursor: pointer;"></i></td>' +
 		'	<td></td>' +
 		'	<td></td>' +
 		'	<td><button id="trsendmsg" type="button" class="btn btn-xs btn-success pull-right">Send message</button></td>' +
@@ -790,7 +814,7 @@ function addTransportMessageAttribute() {
 		'			<option>boolean</option>' +
 		'		</select>' +
 		'	</td>' +
-		'	<td><i id="rmtrattr' + num + '" class="fa fa-window-close" style="cursor: pointer;"></i></td>' +
+		'	<td><i id="rmtrattr' + num + '" class="fa-solid fa-rectangle-xmark" style="cursor: pointer;"></i></td>' +
 		'</tr>'
 	);
 	$('#rmtrattr' + num).click(function() {
@@ -880,10 +904,10 @@ function updateSessions() {
 				handle = null;
 				currentHandle = null;
 				$('#handles-list').empty();
-				$('#handles').hide();
+				$('#handles').addClass('hide');
 				$('#handle-info').empty();
-				$('#options').hide();
-				$('#info').hide();
+				$('#options').addClass('hide');
+				$('#info').addClass('hide');
 				return;
 			}
 			console.log("Got sessions:");
@@ -894,7 +918,9 @@ function updateSessions() {
 			for(let i=0; i<sessions.length; i++) {
 				let s = sessions[i];
 				$('#sessions-list').append(
-					'<a id="session-'+s+'" href="#" class="list-group-item">'+s+'</a>'
+					'<a id="session-' + s + '" href="#" class="list-group-item list-group-item-action">' +
+						'<small>' + s + '</small>' +
+					'</a>'
 				);
 				$('#session-'+s).click(function() {
 					let sh = $(this).text();
@@ -905,10 +931,10 @@ function updateSessions() {
 					handle = null;
 					currentHandle = null;
 					$('#handles-list').empty();
-					$('#handles').show();
+					$('#handles').removeClass('hide');
 					$('#handle-info').empty();
-					$('#options').hide();
-					$('#info').hide();
+					$('#options').addClass('hide');
+					$('#info').addClass('hide');
 					updateHandles();
 				});
 			}
@@ -921,10 +947,10 @@ function updateSessions() {
 					handle = null;
 					currentHandle = null;
 					$('#handles-list').empty();
-					$('#handles').hide();
+					$('#handles').addClass('hide');
 					$('#handle-info').empty();
-					$('#options').hide();
-					$('#info').hide();
+					$('#options').addClass('hide');
+					$('#info').addClass('hide');
 				}
 			}
 			setTimeout(function() {
@@ -944,10 +970,10 @@ function updateSessions() {
 			handle = null;
 			currentHandle = null;
 			$('#handles-list').empty();
-			$('#handles').hide();
+			$('#handles').addClass('hide');
 			$('#handle-info').empty();
-			$('#options').hide();
-			$('#info').hide();
+			$('#options').addClass('hide');
+			$('#info').addClass('hide');
 			if(!prompting && !alerted) {
 				alerted = true;
 				bootbox.alert("Couldn't contact the backend: is Janus down, or is the Admin/Monitor interface disabled?", function() {
@@ -1002,7 +1028,9 @@ function updateHandles() {
 			for(let i=0; i<handles.length; i++) {
 				let h = handles[i];
 				$('#handles-list').append(
-					'<a id="handle-'+h+'" href="#" class="list-group-item">'+h+'</a>'
+					'<a id="handle-' + h + '" href="#" class="list-group-item list-group-item-action">' +
+						'<small>' + h + '</small>' +
+					'</a>'
 				);
 				$('#handle-'+h).click(function() {
 					let hi = $(this).text();
@@ -1013,8 +1041,8 @@ function updateHandles() {
 					$('#handles-list a').removeClass('active');
 					$('#handle-'+hi).addClass('active');
 					$('#handle-info').empty();
-					$('#options').hide();
-					$('#info').show();
+					$('#options').addClass('hide');
+					$('#info').removeClass('hide');
 					updateHandleInfo();
 				});
 			}
@@ -1026,8 +1054,8 @@ function updateHandles() {
 					handle = null;
 					currentHandle = null;
 					$('#handle-info').empty();
-					$('#options').hide();
-					$('#info').hide();
+					$('#options').addClass('hide');
+					$('#info').addClass('hide');
 				}
 			}
 			setTimeout(function() {
@@ -1115,7 +1143,7 @@ function updateHandleInfo(refresh) {
 				$('#update-handle').removeClass('fa-spin').click(updateHandleInfo);
 			}, 1000);
 			// Show checkboxes
-			$('#options').removeClass('hide').show();
+			$('#options').removeClass('hide');
 			// If the related box is checked, autorefresh this handle info every tot seconds
 			if($('#autorefresh')[0].checked) {
 				setTimeout(function() {
@@ -1150,13 +1178,13 @@ function updateHandleInfo(refresh) {
 
 function rawHandleInfo() {
 	// Just use <pre> and show the handle info as it is
-	$('#handle-info').html('<pre>' + JSON.stringify(handleInfo, null, 4) + '</pre>');
+	$('#handle-info').html('<pre class="card card-body bg-gray">' + JSON.stringify(handleInfo, null, 4) + '</pre>');
 }
 
 function prettyHandleInfo() {
 	// Prettify the handle info, processing it and turning it into tables
 	$('#handle-info').html('<table class="table table-striped" id="handle-info-table"></table>');
-	$('#options').hide();
+	$('#options').addClass('hide');
 	for(let k in handleInfo) {
 		let v = handleInfo[k];
 		if(k === "plugin_specific") {
@@ -1318,7 +1346,7 @@ function prettyHandleInfo() {
 				'</tr>');
 		}
 	}
-	$('#options').show();
+	$('#options').removeClass('hide');
 }
 
 // Tokens
@@ -1380,17 +1408,17 @@ function updateTokens() {
 			}
 			$('#auth-tokens').append(
 				'<tr>' +
-				'	<td><input type="text" id="token" placeholder="Token to add" onkeypress="return checkEnter(this, event);" style="width: 100%;"></td>' +
+				'	<td><input type="text" class="form-control" id="token" placeholder="Token to add" onkeypress="return checkEnter(this, event);" style="width: 100%;"></td>' +
 				'	<td><div id="permissions"></div></td>' +
 				'	<td><button id="addtoken" type="button" class="btn btn-xs btn-success">Add token</button></td>' +
 				'</tr>');
-			let pluginsCheckboxes = "";
+			let pluginsCheckboxes = '';
 			for(let i in plugins) {
 				let plugin = plugins[i];
 				pluginsCheckboxes +=
-					'<div class="checkbox">' +
-					'	<label>' +
-					'		<input checked type="checkbox" value="' + plugin + '">' + plugin + '</input>' +
+					'<div class="form-check">' +
+					'	<input checked class="form-check-input" type="checkbox" value="' + plugin + '">' +
+					'	<label class="form-check-label" for="' + plugin + '">' + plugin + '</label>' +
 					'</div>';
 			}
 			$('#permissions').html(pluginsCheckboxes);
@@ -1528,7 +1556,7 @@ function captureTrafficPrompt() {
 			},
 			{
 				label: "Close",
-				className: "btn btn-default pull-left",
+				className: "btn btn-secondary pull-left",
 				callback: function() {
 					$('#capture').removeAttr('checked');
 					$('#capturetext').html('Start capture');

@@ -6,43 +6,43 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server (multistream): Screen Sharing Demo</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.4.0/bootbox.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
 <script type="text/javascript" src="settings.js" ></script>
 <script type="text/javascript" src="janus.js" ></script>
 <script type="text/javascript" src="screensharingtest.js"></script>
 <script>
 	$(function() {
-		$(".navbar-static-top").load("navbar.html", function() {
-			$(".navbar-static-top li.dropdown").addClass("active");
-			$(".navbar-static-top a[href='screensharingtest.html']").parent().addClass("active");
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='screensharingtest.html']").addClass("active");
 		});
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
 </head>
 <body>
 
-<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
 
-<nav class="navbar navbar-default navbar-static-top">
-</nav>
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
 
 <div class="container">
 	<div class="row">
 		<div class="col-md-12">
-			<div class="page-header">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
 				<h1>Plugin Demo: Screen Sharing
-					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
-			<div class="container" id="details">
+			<div class="container mt-5" id="details">
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
@@ -67,10 +67,10 @@
 					</div>
 				</div>
 			</div>
-			<div class="container hide" id="screenmenu">
-				<div class="row">
-					<div class="input-group margin-bottom-md hide" id="createnow">
-						<span class="input-group-addon"><i class="fa fa-users fa-1"></i></span>
+			<div class="container mt-5 hide" id="screenmenu">
+				<div class="row col-md-12">
+					<div class="input-group mt-3 mb-1 hide" id="createnow">
+						<span class="input-group-text"><i class="fa-solid fa-users"></i></span>
 						<input class="form-control" type="text" placeholder="Insert a title for the session" autocomplete="off" id="desc" onkeypress="return checkEnterShare(this, event);" />
 						<span class="input-group-btn">
 							<button class="btn btn-success" autocomplete="off" id="create">Share your screen</button>
@@ -80,9 +80,9 @@
 				<div class="divider col-md-12">
 					<hr class="pull-left"/>or<hr class="pull-right"/>
 				</div>
-				<div class="row">
-					<div class="input-group margin-bottom-md hide" id="joinnow">
-						<span class="input-group-addon"><i class="fa fa-play-circle-o fa-1"></i></span>
+				<div class="row col-md-12">
+					<div class="input-group mt-1 mb-1 hide" id="joinnow">
+						<span class="input-group-text"><i class="fa-solid fa-circle-play"></i></span>
 						<input class="form-control" type="text" placeholder="Insert the numeric session identifier" autocomplete="off" id="roomid" onkeypress="return checkEnterJoin(this, event);" />
 						<span class="input-group-btn">
 							<button class="btn btn-success" autocomplete="off" id="join">Join an existing session</button>
@@ -90,14 +90,14 @@
 					</div>
 				</div>
 			</div>
-			<div class="container hide" id="room">
+			<div class="container mt-4 hide" id="room">
 				<div class="row">
 					<div class="col-md-12">
-						<div class="panel panel-default">
-							<div class="panel-heading">
-								<h3 class="panel-title">Screen Capture <span class="label label-info" id="title"></span> <span class="label label-success" id="session"></span></h3>
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Screen Capture <span class="badge bg-info" id="title"></span> <span class="badge bg-success" id="session"></span></span>
 							</div>
-							<div class="panel-body" id="screencapture"></div>
+							<div class="card-body" id="screencapture"></div>
 						</div>
 					</div>
 				</div>

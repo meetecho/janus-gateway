@@ -6,45 +6,45 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server (multistream): Video Call Demo</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.4.0/bootbox.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
 <script type="text/javascript" src="settings.js" ></script>
 <script type="text/javascript" src="janus.js" ></script>
 <script type="text/javascript" src="videocalltest.js"></script>
 <script>
 	$(function() {
-		$(".navbar-static-top").load("navbar.html", function() {
-			$(".navbar-static-top li.dropdown").addClass("active");
-			$(".navbar-static-top a[href='videocalltest.html']").parent().addClass("active");
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='videocalltest.html']").addClass("active");
 		});
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
 </head>
 <body>
 
-<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
 
-<nav class="navbar navbar-default navbar-static-top">
-</nav>
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
 
 <div class="container">
 	<div class="row">
 		<div class="col-md-12">
-			<div class="page-header">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
 				<h1>Plugin Demo: Video Call
-					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
-			<div class="container" id="details">
+			<div class="container mt-5" id="details">
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
@@ -82,66 +82,68 @@
 				</div>
 			</div>
 			<div class="container hide" id="videocall">
-				<div class="row">
-					<div class="col-md-12">
-						<div class="col-md-6 container hide" id="login">
-							<div class="input-group margin-bottom-sm">
-								<span class="input-group-addon"><i class="fa fa-user fa-fw"></i></span>
-								<input class="form-control" type="text" placeholder="Choose a username" autocomplete="off" id="username" onkeypress="return checkEnter(this, event);" />
-							</div>
-							<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="register">Register</button> <span class="hide label label-info" id="youok"></span>
+				<div class="row mt-4">
+					<div class="col-md-6 container invisible" id="login">
+						<div class="input-group mt-3 mb-1">
+							<span class="input-group-text"><i class="fa-solid fa-user"></i></span>
+							<input class="form-control" type="text" placeholder="Choose a username" autocomplete="off" id="username" onkeypress="return checkEnter(this, event);" />
 						</div>
-						<div class="col-md-6 container hide" id="phone">
-							<div class="input-group margin-bottom-sm">
-								<span class="input-group-addon"><i class="fa fa-phone fa-fw"></i></span>
-								<input class="form-control" type="text" placeholder="Who should we call?" autocomplete="off" id="peer" onkeypress="return checkEnter(this, event);" />
-							</div>
-							<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="call">Call</button>
-						</div>
+						<button class="btn btn-success mb-1" autocomplete="off" id="register">Register</button> <span class="hide badge bg-info" id="youok"></span>
 					</div>
-				<div/>
-				<div id="videos" class="hide">
+					<div class="col-md-6 container invisible" id="phone">
+						<div class="input-group mt-3 mb-1">
+							<span class="input-group-text"><i class="fa-solid fa-phone"></i></span>
+							<input class="form-control" type="text" placeholder="Who should we call?" autocomplete="off" id="peer" onkeypress="return checkEnter(this, event);" />
+						</div>
+						<button class="btn btn-success mb-1" autocomplete="off" id="call">Call</button>
+					</div>
+				</div>
+				<div id="videos" class="row mt-4 hide">
 					<div class="col-md-6">
-						<div class="panel panel-default">
-							<div class="panel-heading">
-								<h3 class="panel-title">Local Stream
-									<div class="btn-group btn-group-xs pull-right hide">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Local Stream
+									<div class="btn-group btn-group-sm top-right hide">
 										<button class="btn btn-danger" autocomplete="off" id="toggleaudio">Disable audio</button>
 										<button class="btn btn-danger" autocomplete="off" id="togglevideo">Disable video</button>
-										<div class="btn-group btn-group-xs">
-											<button autocomplete="off" id="bitrateset" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
-												Bandwidth<span class="caret"></span>
+										<div class="btn-group btn-group-sm">
+											<button autocomplete="off" id="bitrateset" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+												Bandwidth
 											</button>
 											<ul id="bitrate" class="dropdown-menu" role="menu">
-												<li><a href="#" id="0">No limit</a></li>
-												<li><a href="#" id="128">Cap to 128kbit</a></li>
-												<li><a href="#" id="256">Cap to 256kbit</a></li>
-												<li><a href="#" id="512">Cap to 512kbit</a></li>
-												<li><a href="#" id="1024">Cap to 1mbit</a></li>
-												<li><a href="#" id="1500">Cap to 1.5mbit</a></li>
-												<li><a href="#" id="2000">Cap to 2mbit</a></li>
+												<a class="dropdown-item" href="#" id="0">No limit</a>
+												<a class="dropdown-item" href="#" id="128">Cap to 128kbit</a>
+												<a class="dropdown-item" href="#" id="256">Cap to 256kbit</a>
+												<a class="dropdown-item" href="#" id="512">Cap to 512kbit</a>
+												<a class="dropdown-item" href="#" id="1024">Cap to 1mbit</a>
+												<a class="dropdown-item" href="#" id="1500">Cap to 1.5mbit</a>
+												<a class="dropdown-item" href="#" id="2000">Cap to 2mbit</a>
 											</ul>
 										</div>
 									</div>
-								</h3>
+								</span>
 							</div>
-							<div class="panel-body" id="videoleft"></div>
+							<div class="card-body" id="videoleft"></div>
 						</div>
-						<div class="input-group margin-bottom-sm">
-							<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
-							<input class="form-control" type="text" placeholder="Write a DataChannel message to your peer" autocomplete="off" id="datasend" onkeypress="return checkEnter(this, event);" disabled />
+						<div class="input-group mt-3 mb-3">
+							<span class="input-group-text"><i class="fa-solid fa-cloud-arrow-up"></i></span>
+							<input type="text" class="form-control" placeholder="Write a DataChannel message" autocomplete="off" id="datasend" onkeypress="return checkEnter(this, event);" disabled>
 						</div>
 					</div>
 					<div class="col-md-6">
-						<div class="panel panel-default">
-							<div class="panel-heading">
-								<h3 class="panel-title">Remote Stream <span class="label label-info hide" id="callee"></span> <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Remote Stream
+									<span class="badge bg-info hide" id="callee"></span>
+									<span class="badge bg-primary hide" id="curres"></span>
+									<span class="badge bg-info hide" id="curbitrate"></span>
+								</span>
 							</div>
-							<div class="panel-body" id="videoright"></div>
+							<div class="card-body" id="videoright"></div>
 						</div>
-						<div class="input-group margin-bottom-sm">
-							<span class="input-group-addon"><i class="fa fa-cloud-download fa-fw"></i></span>
-							<input class="form-control" type="text" id="datarecv" disabled />
+						<div class="input-group mt-3 mb-3">
+							<span class="input-group-text"><i class="fa-solid fa-cloud-arrow-down"></i></span>
+							<input type="text" class="form-control" id="datarecv" disabled>
 						</div>
 					</div>
 				</div>

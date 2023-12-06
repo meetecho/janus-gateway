@@ -86,13 +86,14 @@ $(document).ready(function() {
 										// Darken screen and show hint
 										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+												left: '100px'
 											} });
 									} else {
 										// Restore screen
@@ -151,6 +152,7 @@ $(document).ready(function() {
 										return;
 									}
 									// If we're here, a new track was added
+									$('#spinner').remove();
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
 										let stream = new MediaStream([track]);
@@ -308,6 +310,13 @@ function setupWebAudioDemo() {
 						Janus.debug("Got SDP!", jsep);
 						let body = { audio: true, video: true };
 						echotest.send({ message: body, jsep: jsep });
+						// Create a spinner waiting for the remote video
+						$('#remote').html(
+							'<div class="text-center">' +
+							'	<div id="spinner" class="spinner-border" role="status">' +
+							'		<span class="visually-hidden">Loading...</span>' +
+							'	</div>' +
+							'</div>');
 					},
 					error: function(error) {
 						Janus.error("WebRTC error:", error);

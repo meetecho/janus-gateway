@@ -64,8 +64,8 @@ $(document).ready(function() {
 									Janus.log("Plugin attached! (" + sfutest.getPlugin() + ", id=" + sfutest.getId() + ")");
 									Janus.log("  -- This is a publisher/manager");
 									// Prepare the username registration
-									$('#videojoin').removeClass('hide').show();
-									$('#registernow').removeClass('hide').show();
+									$('#videojoin').removeClass('hide');
+									$('#registernow').removeClass('hide');
 									$('#register').click(registerUsername);
 									$('#username').focus();
 									$('#start').removeAttr('disabled').html("Stop")
@@ -84,13 +84,14 @@ $(document).ready(function() {
 										// Darken screen and show hint
 										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+												left: '100px'
 											} });
 									} else {
 										// Restore screen
@@ -110,8 +111,9 @@ $(document).ready(function() {
 										return;
 									$('#publish').remove();
 									// This controls allows us to override the global room bitrate cap
-									$('#bitrate').parent().parent().removeClass('hide').show();
+									$('#bitrate').parent().parent().removeClass('hide');
 									$('#bitrate a').click(function() {
+										$('.dropdown-toggle').dropdown('hide');
 										let id = $(this).attr("id");
 										let bitrate = parseInt(id)*1000;
 										if(bitrate === 0) {
@@ -119,7 +121,7 @@ $(document).ready(function() {
 										} else {
 											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
 										}
-										$('#bitrateset').html($(this).html() + '<span class="caret"></span>').parent().removeClass('open');
+										$('#bitrateset').text($(this).text()).parent().removeClass('open');
 										sfutest.send({ message: { request: "configure", bitrate: bitrate }});
 										return false;
 									});
@@ -139,8 +141,8 @@ $(document).ready(function() {
 											mypvtid = msg["private_id"];
 											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
 											if(subscriber_mode) {
-												$('#videojoin').hide();
-												$('#videos').removeClass('hide').show();
+												$('#videojoin').addClass('hide');
+												$('#videos').removeClass('hide');
 											} else {
 												publishOwnFeed(true);
 											}
@@ -273,10 +275,10 @@ $(document).ready(function() {
 											// Video has been rejected
 											toastr.warning("Our video stream has been rejected, viewers won't see us");
 											// Hide the webcam video
-											$('#myvideo').hide();
+											$('#myvideo').addClass('hide');
 											$('#videolocal').append(
 												'<div class="no-video-container">' +
-													'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
+													'<i class="fa-solid fa-video fa-xl no-video-icon" style="height: 100%;"></i>' +
 													'<span class="no-video-text" style="font-size: 16px;">Video rejected, no webcam</span>' +
 												'</div>');
 										}
@@ -308,7 +310,7 @@ $(document).ready(function() {
 												if($('#videolocal .no-video-container').length === 0) {
 													$('#videolocal').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 															'<span class="no-video-text">No webcam available</span>' +
 														'</div>');
 												}
@@ -323,7 +325,7 @@ $(document).ready(function() {
 										// We've been here already
 										return;
 									}
-									$('#videos').removeClass('hide').show();
+									$('#videos').removeClass('hide');
 									if($('#mute').length === 0) {
 										// Add a 'mute' button
 										$('#videolocal').append('<button class="btn btn-warning btn-xs" id="mute" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;">Mute</button>');
@@ -339,7 +341,7 @@ $(document).ready(function() {
 											if($('#videolocal .no-video-container').length === 0) {
 												$('#videolocal').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 														'<span class="no-video-text">No webcam available</span>' +
 													'</div>');
 											}
@@ -423,7 +425,7 @@ function registerUsername() {
 		let username = $('#username').val();
 		if(username === "") {
 			$('#you')
-				.removeClass().addClass('label label-warning')
+				.removeClass().addClass('badge bg-warning')
 				.html("Insert your display name (e.g., pippo)");
 			$('#username').removeAttr('disabled');
 			$('#register').removeAttr('disabled').click(registerUsername);
@@ -431,7 +433,7 @@ function registerUsername() {
 		}
 		if(/[^a-zA-Z0-9]/.test(username)) {
 			$('#you')
-				.removeClass().addClass('label label-warning')
+				.removeClass().addClass('badge bg-warning')
 				.html('Input is not alphanumeric');
 			$('#username').removeAttr('disabled').val("");
 			$('#register').removeAttr('disabled').click(registerUsername);
@@ -569,7 +571,7 @@ function subscribeTo(sources) {
 							feeds[slot] = stream.id;
 							feedStreams[stream.id].slot = slot;
 							feedStreams[stream.id].remoteVideos = 0;
-							$('#remote' + slot).removeClass('hide').html(escapeXmlTags(stream.display)).show();
+							$('#remote' + slot).removeClass('hide').html(escapeXmlTags(stream.display)).removeClass('hide');
 							break;
 						}
 					}
@@ -643,7 +645,7 @@ function subscribeTo(sources) {
 									feeds[slot] = stream.id;
 									feedStreams[stream.id].slot = slot;
 									feedStreams[stream.id].remoteVideos = 0;
-									$('#remote' + slot).removeClass('hide').html(escapeXmlTags(stream.display)).show();
+									$('#remote' + slot).removeClass('hide').html(escapeXmlTags(stream.display)).removeClass('hide');
 									break;
 								}
 							}
@@ -795,7 +797,7 @@ function subscribeTo(sources) {
 							if($('#videoremote' + slot + ' .no-video-container').length === 0) {
 								$('#videoremote' + slot).append(
 									'<div class="no-video-container">' +
-										'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+										'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 										'<span class="no-video-text">No remote video available</span>' +
 									'</div>');
 							}
@@ -807,10 +809,6 @@ function subscribeTo(sources) {
 					return;
 				}
 				// If we're here, a new track was added
-				if(feed.spinner) {
-					feed.spinner.stop();
-					feed.spinner = null;
-				}
 				if($('#remotevideo' + slot + '-' + mid).length > 0)
 					return;
 				if(track.kind === "audio") {
@@ -825,7 +823,7 @@ function subscribeTo(sources) {
 						if($('#videoremote' + slot + ' .no-video-container').length === 0) {
 							$('#videoremote' + slot).append(
 								'<div class="no-video-container">' +
-									'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+									'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 									'<span class="no-video-text">No remote video available</span>' +
 								'</div>');
 						}
@@ -839,12 +837,12 @@ function subscribeTo(sources) {
 					Janus.log("Created remote video stream:", stream);
 					$('#videoremote' + slot).append('<video class="rounded centered" id="remotevideo' + slot + '-' + mid + '" width=100% autoplay playsinline/>');
 					$('#videoremote' + slot).append(
-						'<span class="label label-primary hide" id="curres'+slot+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
-						'<span class="label label-info hide" id="curbitrate'+slot+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
+						'<span class="badge bg-primary hide" id="curres'+slot+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
+						'<span class="badge bg-info hide" id="curbitrate'+slot+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
 					Janus.attachMediaStream($('#remotevideo' + slot + '-' + mid).get(0), stream);
 					// Note: we'll need this for additional videos too
 					if(!bitrateTimer[slot]) {
-						$('#curbitrate' + slot).removeClass('hide').show();
+						$('#curbitrate' + slot).removeClass('hide');
 						bitrateTimer[slot] = setInterval(function() {
 							if(!$("#videoremote" + slot + ' video').get(0))
 								return;
@@ -860,7 +858,7 @@ function subscribeTo(sources) {
 									res += ' (simulcast)';
 								else if(svcStarted[slot])
 									res += ' (SVC)';
-								$('#curres' + slot).removeClass('hide').text(res).show();
+								$('#curres' + slot).removeClass('hide').text(res).removeClass('hide');
 							}
 						}, 1000);
 					}
@@ -892,7 +890,7 @@ function unsubscribeFrom(id) {
 	if(bitrateTimer[feed.slot])
 		clearInterval(bitrateTimer[feed.slot]);
 	bitrateTimer[feed.slot] = null;
-	$('#remote' + feed.slot).empty().hide();
+	$('#remote' + feed.slot).empty().addClass('hide');
 	$('#videoremote' + feed.slot).empty();
 	delete simulcastStarted[feed.slot];
 	delete svcStarted[feed.slot];
@@ -934,23 +932,23 @@ function addSimulcastSvcButtons(feed, temporal) {
 	let what = (simulcast ? 'simulcast' : 'SVC');
 	let layer = (simulcast ? 'substream' : 'layer');
 	$('#remote'+index).parent().append(
-		'<div id="simulcast'+index+'" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
-		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
-		'			<button id="sl'+index+'-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality" style="width: 33%">SL 2</button>' +
-		'			<button id="sl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality" style="width: 33%">SL 1</button>' +
-		'			<button id="sl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality" style="width: 34%">SL 0</button>' +
-		'		</div>' +
+		'<div id="simulcast'+index+'" class="btn-group-vertical btn-group-xs top-right">' +
+		'	<div class="btn-group btn-group-xs d-flex" style="width: 100%">' +
+		'		<button id="sl'+index+'-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to higher quality">SL 2</button>' +
+		'		<button id="sl'+index+'-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to normal quality">SL 1</button>' +
+		'		<button id="sl'+index+'-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to lower quality">SL 0</button>' +
 		'	</div>' +
-		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs hide" style="width: 100%">' +
-		'			<button id="tl'+index+'-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2" style="width: 34%">TL 2</button>' +
-		'			<button id="tl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1" style="width: 33%">TL 1</button>' +
-		'			<button id="tl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0" style="width: 33%">TL 0</button>' +
-		'		</div>' +
+		'	<div class="btn-group btn-group-xs d-flex hide" style="width: 100%">' +
+		'		<button id="tl'+index+'-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 2">TL 2</button>' +
+		'		<button id="tl'+index+'-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 1">TL 1</button>' +
+		'		<button id="tl'+index+'-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 0">TL 0</button>' +
 		'	</div>' +
 		'</div>'
 	);
+	if(simulcast && Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
+		// Chromium-based browsers only have two temporal layers, when doing simulcast
+		$('#tl'+index+'-2').remove();
+	}
 	// Enable the simulcast selection buttons
 	$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {

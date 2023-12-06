@@ -13,7 +13,6 @@ var opaqueId = Janus.randomString(12);
 // The local and remote tracks only refer to the caller, though (we ignore the callee)
 var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
-var spinner = null;
 
 var callstarted = false, videoenabled = true;
 var srtp = undefined ; // use "sdes_mandatory" to test SRTP-SDES
@@ -76,6 +75,13 @@ $(document).ready(function() {
 														srtp: srtp
 													};
 													caller.send({ message: body, jsep: jsep });
+													// Create a spinner waiting for the remote video
+													$('#videoright').html(
+														'<div class="text-center">' +
+														'	<div id="spinner" class="spinner-border" role="status">' +
+														'		<span class="visually-hidden">Loading...</span>' +
+														'	</div>' +
+														'</div>');
 												},
 												error: function(error) {
 													Janus.error("WebRTC error:", error);
@@ -94,13 +100,14 @@ $(document).ready(function() {
 										// Darken screen and show hint
 										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+												left: '100px'
 											} });
 									} else {
 										// Restore screen
@@ -194,7 +201,7 @@ $(document).ready(function() {
 												if($('#videoleft .no-video-container').length === 0) {
 													$('#videoleft').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 															'<span class="no-video-text">No webcam available</span>' +
 														'</div>');
 												}
@@ -210,7 +217,7 @@ $(document).ready(function() {
 										return;
 									}
 									if($('#videoleft video').length === 0) {
-										$('#videos').removeClass('hide').show();
+										$('#videos').removeClass('hide');
 									}
 									if(track.kind === "audio") {
 										// We ignore local audio tracks, they'd generate echo anyway
@@ -219,7 +226,7 @@ $(document).ready(function() {
 											if($('#videoleft .no-video-container').length === 0) {
 												$('#videoleft').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 														'<span class="no-video-text">No webcam available</span>' +
 													'</div>');
 											}
@@ -258,7 +265,7 @@ $(document).ready(function() {
 												if($('#videoright .no-video-container').length === 0) {
 													$('#videoright').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 															'<span class="no-video-text">No remote video available</span>' +
 														'</div>');
 												}
@@ -270,8 +277,9 @@ $(document).ready(function() {
 									if($('#peervideo' + mid).length > 0)
 										return;
 									// If we're here, a new track was added
+									$('#spinner').remove();
 									if($('#videoright audio').length === 0 && $('#videoright video').length === 0) {
-										$('#videos').removeClass('hide').show();
+										$('#videos').removeClass('hide');
 										$('#videoright').parent().find('h3').html(
 											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
 										for(let i=0; i<12; i++) {
@@ -299,7 +307,7 @@ $(document).ready(function() {
 											if($('#videoright .no-video-container').length === 0) {
 												$('#videoright').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 														'<span class="no-video-text">No remote video available</span>' +
 													'</div>');
 											}
@@ -317,9 +325,6 @@ $(document).ready(function() {
 								},
 								oncleanup: function() {
 									Janus.log("[caller]  ::: Got a cleanup notification :::");
-									if(spinner)
-										spinner.stop();
-									spinner = null;
 									$("#videoleft").empty().parent().unblock();
 									$('#videoright').empty();
 									$('#dtmf').parent().html("Remote UA");
@@ -348,13 +353,14 @@ $(document).ready(function() {
 										// Darken screen and show hint
 										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+												left: '100px'
 											} });
 									} else {
 										// Restore screen

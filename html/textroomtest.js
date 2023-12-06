@@ -100,8 +100,8 @@ $(document).ready(function() {
 								ondataopen: function(label, protocol) {
 									Janus.log("The DataChannel is available!");
 									// Prompt for a display name to join the default room
-									$('#roomjoin').removeClass('hide').show();
-									$('#registernow').removeClass('hide').show();
+									$('#roomjoin').removeClass('hide');
+									$('#registernow').removeClass('hide');
 									$('#register').click(registerUsername);
 									$('#username').focus();
 								},
@@ -229,7 +229,7 @@ function registerUsername() {
 		let username = $('#username').val();
 		if(username === "") {
 			$('#you')
-				.removeClass().addClass('label label-warning')
+				.removeClass().addClass('badge bg-warning')
 				.html("Insert your display name (e.g., pippo)");
 			$('#username').removeAttr('disabled');
 			$('#register').removeAttr('disabled').click(registerUsername);
@@ -264,9 +264,9 @@ function registerUsername() {
 				return;
 			}
 			// We're in
-			$('#roomjoin').hide();
-			$('#room').removeClass('hide').show();
-			$('#participant').removeClass('hide').html(myusername).show();
+			$('#roomjoin').addClass('hide');
+			$('#room').removeClass('hide');
+			$('#participant').removeClass('hide').html(myusername).removeClass('hide');
 			$('#chatroom').css('height', ($(window).height()-420)+"px");
 			$('#datasend').removeAttr('disabled');
 			// Any participants already in?

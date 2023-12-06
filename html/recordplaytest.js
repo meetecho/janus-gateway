@@ -11,7 +11,6 @@ var opaqueId = "recordplaytest-"+Janus.randomString(12);
 
 var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
-var spinner = null;
 var bandwidth = 1024 * 1024;
 
 var myname = null;
@@ -61,7 +60,7 @@ $(document).ready(function() {
 									recordplay = pluginHandle;
 									Janus.log("Plugin attached! (" + recordplay.getPlugin() + ", id=" + recordplay.getId() + ")");
 									// Prepare the name prompt
-									$('#recordplay').removeClass('hide').show();
+									$('#recordplay').removeClass('hide');
 									$('#start').removeAttr('disabled').html("Stop")
 										.click(function() {
 											$(this).attr('disabled', true);
@@ -79,13 +78,14 @@ $(document).ready(function() {
 										// Darken screen and show hint
 										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+												left: '100px'
 											} });
 									} else {
 										// Restore screen
@@ -165,7 +165,7 @@ $(document).ready(function() {
 												}
 												// FIXME Reset status
 												$('#videobox').empty();
-												$('#video').hide();
+												$('#video').addClass('invisible');
 												recordingId = null;
 												recording = false;
 												playing = false;
@@ -184,7 +184,7 @@ $(document).ready(function() {
 										bootbox.alert(error);
 										// FIXME Reset status
 										$('#videobox').empty();
-										$('#video').hide();
+										$('#video').addClass('invisible');
 										recording = false;
 										playing = false;
 										recordplay.hangup();
@@ -223,7 +223,7 @@ $(document).ready(function() {
 												if($('#videobox .no-video-container').length === 0) {
 													$('#videobox').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 															'<span class="no-video-text">No webcam available</span>' +
 														'</div>');
 												}
@@ -240,10 +240,7 @@ $(document).ready(function() {
 									}
 									$('#videotitle').html("Recording...");
 									$('#stop').unbind('click').click(stopRecPlay);
-									$('#video').removeClass('hide').show();
-									if($('#videobox video').length === 0) {
-										$('#videos').removeClass('hide').show();
-									}
+									$('#video').removeClass('invisible');
 									if(track.kind === "audio") {
 										// We ignore local audio tracks, they'd generate echo anyway
 										if(localVideos === 0) {
@@ -251,7 +248,7 @@ $(document).ready(function() {
 											if($('#videobox .no-video-container').length === 0) {
 												$('#videobox').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 														'<span class="no-video-text">No webcam available</span>' +
 													'</div>');
 											}
@@ -296,7 +293,7 @@ $(document).ready(function() {
 												if($('#videobox .no-video-container').length === 0) {
 													$('#videobox').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 															'<span class="no-video-text">No remote video available</span>' +
 														'</div>');
 												}
@@ -311,7 +308,7 @@ $(document).ready(function() {
 									if($('#videobox audio').length === 0 && $('#videobox video').length === 0) {
 										$('#videotitle').html(selectedRecordingInfo);
 										$('#stop').unbind('click').click(stopRecPlay);
-										$('#video').removeClass('hide').show();
+										$('#video').removeClass('invisible');
 									}
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
@@ -325,7 +322,7 @@ $(document).ready(function() {
 											if($('#videobox .no-video-container').length === 0) {
 												$('#videobox').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 														'<span class="no-video-text">No remote video available</span>' +
 													'</div>');
 											}
@@ -341,8 +338,8 @@ $(document).ready(function() {
 										Janus.attachMediaStream($('#thevideo' + mid).get(0), stream);
 										if($('#curres').length === 0) {
 											$('#videobox').append(
-												'<span class="label label-primary" id="curres' +'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
-												'<span class="label label-info" id="curbw' +'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
+												'<span class="badge bg-primary bottom-left m-3" id="curres' +'"></span>' +
+												'<span class="badge bg-info bottom-right m-3" id="curbw' +'"></span>');
 											$('#thevideo' + mid).bind("playing", function () {
 												let width = this.videoWidth;
 												let height = this.videoHeight;
@@ -380,15 +377,12 @@ $(document).ready(function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									// FIXME Reset status
 									$('#waitingvideo').remove();
-									if(spinner)
-										spinner.stop();
-									spinner = null;
 									if(recordplay.bitrateTimer)
 										clearInterval(recordplay.bitrateTimer);
 									delete recordplay.bitrateTimer;
 									$('#videobox').empty();
 									$("#videobox").parent().unblock();
-									$('#video').hide();
+									$('#video').addClass('invisible');
 									$('#datafield').attr('disabled', true).attr('placeholder', '').val('');
 									$('#datafield').parent().addClass('hide');
 									recording = false;
@@ -467,9 +461,10 @@ function updateRecsList() {
 			Janus.debug("Got a list of available recordings:", list);
 			for(let mp in list) {
 				Janus.debug("  >> [" + list[mp]["id"] + "] " + list[mp]["name"] + " (" + list[mp]["date"] + ")");
-				$('#recslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + escapeXmlTags(list[mp]["name"]) + " [" + list[mp]["date"] + "]" + "</a></li>");
+				$('#recslist').append("<a class='dropdown-item' href='#' id='" + list[mp]["id"] + "'>" + escapeXmlTags(list[mp]["name"]) + " [" + list[mp]["date"] + "]" + "</a>");
 			}
 			$('#recslist a').unbind('click').click(function() {
+				$('.dropdown-toggle').dropdown('hide');
 				selectedRecording = $(this).attr("id");
 				selectedRecordingInfo = escapeXmlTags($(this).text());
 				$('#recset').html($(this).html()).parent().removeClass('open');

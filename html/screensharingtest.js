@@ -19,7 +19,6 @@ var source = null;
 
 var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
-var spinner = null;
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -52,10 +51,10 @@ $(document).ready(function() {
 									screentest = pluginHandle;
 									Janus.log("Plugin attached! (" + screentest.getPlugin() + ", id=" + screentest.getId() + ")");
 									// Prepare the username registration
-									$('#screenmenu').removeClass('hide').show();
-									$('#createnow').removeClass('hide').show();
+									$('#screenmenu').removeClass('hide');
+									$('#createnow').removeClass('hide');
 									$('#create').click(preShareScreen);
-									$('#joinnow').removeClass('hide').show();
+									$('#joinnow').removeClass('hide');
 									$('#join').click(joinScreen);
 									$('#desc').focus();
 									$('#start').removeAttr('disabled').html("Stop")
@@ -74,6 +73,7 @@ $(document).ready(function() {
 										// Darken screen
 										$.blockUI({
 											message: '',
+											baseZ: 3001,
 											css: {
 												border: 'none',
 												padding: '15px',
@@ -233,7 +233,7 @@ $(document).ready(function() {
 												if($('#screencapture .no-video-container').length === 0) {
 													$('#screencapture').append(
 														'<div class="no-video-container">' +
-															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 															'<span class="no-video-text">No webcam available</span>' +
 														'</div>');
 												}
@@ -248,8 +248,8 @@ $(document).ready(function() {
 										// We've been here already
 										return;
 									}
-									$('#screenmenu').hide();
-									$('#room').removeClass('hide').show();
+									$('#screenmenu').addClass('hide');
+									$('#room').removeClass('hide');
 									if(track.kind === "audio") {
 										// We ignore local audio tracks, they'd generate echo anyway
 										if(localVideos === 0) {
@@ -257,7 +257,7 @@ $(document).ready(function() {
 											if($('#screencapture .no-video-container').length === 0) {
 												$('#screencapture').append(
 													'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 														'<span class="no-video-text">No webcam available</span>' +
 													'</div>');
 											}
@@ -292,7 +292,7 @@ $(document).ready(function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#screencapture').empty();
 									$("#screencapture").parent().unblock();
-									$('#room').hide();
+									$('#room').addClass('hide');
 									localTracks = {};
 									localVideos = 0;
 								}
@@ -462,15 +462,9 @@ function newRemoteFeed(id, display) {
 				if(event) {
 					if(event === "attached") {
 						// Subscriber created and attached
-						if(!spinner) {
-							let target = document.getElementById('#screencapture');
-							spinner = new Spinner({top:100}).spin(target);
-						} else {
-							spinner.spin();
-						}
 						Janus.log("Successfully attached to feed " + id + " (" + display + ") in room " + msg["room"]);
-						$('#screenmenu').hide();
-						$('#room').removeClass('hide').show();
+						$('#screenmenu').addClass('hide');
+						$('#room').removeClass('hide');
 					} else {
 						// What has just happened?
 					}
@@ -527,7 +521,7 @@ function newRemoteFeed(id, display) {
 							if($('#screencapture .no-video-container').length === 0) {
 								$('#screencapture').append(
 									'<div class="no-video-container">' +
-										'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+										'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 										'<span class="no-video-text">No remote video available</span>' +
 									'</div>');
 							}
@@ -537,10 +531,6 @@ function newRemoteFeed(id, display) {
 					return;
 				}
 				// If we're here, a new track was added
-				if(spinner !== undefined && spinner !== null) {
-					spinner.stop();
-					spinner = null;
-				}
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
 					let stream = new MediaStream([track]);
@@ -556,7 +546,7 @@ function newRemoteFeed(id, display) {
 						if($('#screencapture .no-video-container').length === 0) {
 							$('#screencapture').append(
 								'<div class="no-video-container">' +
-									'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+									'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 									'<span class="no-video-text">No remote video available</span>' +
 								'</div>');
 						}
@@ -578,9 +568,6 @@ function newRemoteFeed(id, display) {
 			oncleanup: function() {
 				Janus.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
 				$('#waitingvideo').remove();
-				if(spinner)
-					spinner.stop();
-				spinner = null;
 				remoteFeed.remoteTracks = {};
 				remoteFeed.remoteVideos = 0;
 			}

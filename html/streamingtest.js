@@ -11,7 +11,6 @@ var opaqueId = "streamingtest-"+Janus.randomString(12);
 
 var remoteTracks = {}, remoteVideos = 0, dataMid = null;
 var bitrateTimer = {};
-var spinner = {};
 
 var simulcastStarted = {}, svcStarted = {};
 
@@ -85,9 +84,9 @@ $(document).ready(function() {
 										if(result["status"]) {
 											let status = result["status"];
 											if(status === 'starting')
-												$('#status').removeClass('hide').text("Starting, please wait...").show();
+												$('#status').removeClass('hide').text("Starting, please wait...").removeClass('hide');
 											else if(status === 'started')
-												$('#status').removeClass('hide').text("Started").show();
+												$('#status').removeClass('hide').text("Started").removeClass('hide');
 											else if(status === 'stopped')
 												stopStream();
 										} else if(msg["streaming"] === "event") {
@@ -173,7 +172,7 @@ $(document).ready(function() {
 												if($('#'+mstreamId+' .no-video-container').length === 0) {
 													$('#'+mstreamId).append(
 														'<div class="no-video-container">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 														'<span class="no-video-text">No remote video available</span>' +
 													'</div>');
 												}
@@ -185,6 +184,7 @@ $(document).ready(function() {
 									if($('#remotevideo' + mid).length > 0)
 										return;
 									// If we're here, a new track was added
+									$('#spinner' + mid).remove();
 									let stream = null;
 									if(track.kind === "audio") {
 										// New audio track: create a stream out of it, and use a hidden <audio> element
@@ -198,7 +198,7 @@ $(document).ready(function() {
 											if($('#'+mstreamId+' .no-video-container').length === 0) {
 												$('#'+mstreamId).append(
 													'<div class="no-video-container audioonly">' +
-														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 														'<span class="no-video-text">No webcam available</span>' +
 													'</div>');
 											}
@@ -214,7 +214,7 @@ $(document).ready(function() {
 										$('#remotevideo'+mid).get(0).volume = 0;
 										// Use a custom timer for this stream
 										if(!bitrateTimer[mid]) {
-											$('#curbitrate'+mid).removeClass('hide').show();
+											$('#curbitrate'+mid).removeClass('hide');
 											bitrateTimer[mid] = setInterval(function() {
 												if(!$("#remotevideo" + mid).get(0))
 													return;
@@ -225,28 +225,25 @@ $(document).ready(function() {
 												let width = $("#remotevideo" + mid).get(0).videoWidth;
 												let height = $("#remotevideo" + mid).get(0).videoHeight;
 												if(width > 0 && height > 0)
-													$('#curres'+mid).removeClass('hide').text(width+'x'+height).show();
+													$('#curres'+mid).removeClass('hide').text(width+'x'+height).removeClass('hide');
 											}, 1000);
 										}
 									}
-									// Play the stream and hide the spinner when we get a playing event
+									// Play the stream when we get a playing event
 									$("#remotevideo" + mid).bind("playing", function (ev) {
 										$('.waitingvideo').remove();
-										if(spinner[mid])
-											spinner[mid].stop();
-										spinner[mid] = null;
 										if(!this.videoWidth)
 											return;
-										$('#'+ev.target.id).removeClass('hide').show();
+										$('#'+ev.target.id).removeClass('hide');
 										let width = this.videoWidth;
 										let height = this.videoHeight;
-										$('#curres'+mid).removeClass('hide').text(width+'x'+height).show();
+										$('#curres'+mid).removeClass('hide').text(width+'x'+height).removeClass('hide');
 										if(Janus.webRTCAdapter.browserDetails.browser === "firefox") {
 											// Firefox Stable has a bug: width and height are not immediately available after a playing
 											setTimeout(function() {
 												let width = $('#'+ev.target.id).get(0).videoWidth;
 												let height = $('#'+ev.target.id).get(0).videoHeight;
-												$('#curres'+mid).removeClass('hide').text(width+'x'+height).show();
+												$('#curres'+mid).removeClass('hide').text(width+'x'+height).removeClass('hide');
 											}, 2000);
 										}
 									});
@@ -261,11 +258,6 @@ $(document).ready(function() {
 									$('#mstream' + dataMid).append(
 										'<input class="form-control" type="text" id="datarecv" disabled></input>'
 									);
-									for(let i in spinner) {
-										if(spinner[i])
-											spinner[i].stop();
-									}
-									spinner = {};
 								},
 								ondata: function(data) {
 									Janus.debug("We got data from the DataChannel!", data);
@@ -274,21 +266,17 @@ $(document).ready(function() {
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#videos').empty();
+									$('#info').addClass('hide');
 									for(let i in bitrateTimer)
 										clearInterval(bitrateTimer[i]);
 									bitrateTimer = {};
-									for(let i in spinner) {
-										if(spinner[i])
-											spinner[i].stop();
-									}
-									spinner = {};
 									simulcastStarted = false;
 									remoteTracks = {};
 									remoteVideos = 0;
 									dataMid = null;
 									$('#streamset').removeAttr('disabled');
 									$('#streamslist').removeAttr('disabled');
-									$('#watch').html("Watch or Listen").removeAttr('disabled')
+									$('#watch').html("Watch").removeAttr('disabled')
 										.unbind('click').click(startStream);
 								}
 							});
@@ -320,7 +308,7 @@ function updateStreamsList() {
 			return;
 		}
 		if(result["list"]) {
-			$('#streams').removeClass('hide').show();
+			$('#streams').removeClass('hide');
 			$('#streamslist').empty();
 			$('#watch').attr('disabled', true).unbind('click');
 			let list = result["list"];
@@ -337,7 +325,7 @@ function updateStreamsList() {
 			streamsList = {};
 			for(let mp in list) {
 				Janus.debug("  >> [" + list[mp]["id"] + "] " + list[mp]["description"] + " (" + list[mp]["type"] + ")");
-				$('#streamslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + escapeXmlTags(list[mp]["description"]) + " (" + list[mp]["type"] + ")" + "</a></li>");
+				$('#streamslist').append("<a class='dropdown-item' href='#' id='" + list[mp]["id"] + "'>" + escapeXmlTags(list[mp]["description"]) + " (" + list[mp]["type"] + ")" + "</a>");
 				// Check the nature of the available streams, and if there are some multistream ones
 				list[mp].legacy = true;
 				if(list[mp].media) {
@@ -359,6 +347,7 @@ function updateStreamsList() {
 				streamsList[list[mp]["id"]] = list[mp];
 			}
 			$('#streamslist a').unbind('click').click(function() {
+				$('.dropdown-toggle').dropdown('hide');
 				selectedStream = $(this).attr("id");
 				$('#streamset').html($(this).html()).parent().removeClass('open');
 				$('#list .dropdown-backdrop').remove();
@@ -372,7 +361,7 @@ function updateStreamsList() {
 
 function getStreamInfo() {
 	$('#metadata').empty();
-	$('#info').addClass('hide').hide();
+	$('#info').addClass('hide');
 	if(!selectedStream || !streamsList[selectedStream])
 		return;
 	// Send a request for more info on the mountpoint we subscribed to
@@ -380,7 +369,7 @@ function getStreamInfo() {
 	streaming.send({ message: body, success: function(result) {
 		if(result && result.info && result.info.metadata) {
 			$('#metadata').html(escapeXmlTags(result.info.metadata));
-			$('#info').removeClass('hide').show();
+			$('#info').removeClass('hide');
 		}
 	}});
 }
@@ -411,14 +400,6 @@ function startStream() {
 			// No remote video yet
 			$('#mstream0').append('<video class="rounded centered waitingvideo" id="waitingvideo0" width="100%" height="100%" />');
 		}
-		if(mid) {
-			if(spinner[mid] == null) {
-				let target = document.getElementById('mstream0');
-				spinner[mid] = new Spinner({top:100}).spin(target);
-			} else {
-				spinner[mid].spin();
-			}
-		}
 		dataMid = "0";
 	} else {
 		// Multistream mountpoint, create a panel for each stream
@@ -431,12 +412,6 @@ function startStream() {
 				addPanel(mid, mid, label);
 				// No remote media yet
 				$('#mstream'+mid).append('<video class="rounded centered waitingvideo" id="waitingvideo'+mid+'" width="100%" height="100%" />');
-			}
-			if(spinner[mid] == null) {
-				let target = document.getElementById('mstream'+mid);
-				spinner[mid] = new Spinner({top:100}).spin(target);
-			} else {
-				spinner[mid].spin();
 			}
 			if(type === 'data')
 				dataMid = mid;
@@ -477,16 +452,22 @@ function escapeXmlTags(value) {
 // Helper to add a new panel to the 'videos' div
 function addPanel(panelId, mid, desc) {
 	$('#videos').append(
-		'<div class="row" id="panel' + panelId + '">' +
-		'	<div class="panel panel-default">' +
-		'		<div class="panel-heading">' +
-		'			<h3 class="panel-title">' + (desc ? desc : "Stream") +
-		'				<span class="label label-info hide" id="status' + mid + '"></span>' +
-		'				<span class="label label-primary hide" id="curres' + mid + '"></span>' +
-		'				<span class="label label-info hide" id="curbitrate' + mid + '"></span>' +
-		'			</h3>' +
+		'<div class="row mb-3" id="panel' + panelId + '">' +
+		'	<div class="card w-100">' +
+		'		<div class="card-header">' +
+		'			<span class="card-title">' + (desc ? desc : "Stream") +
+		'				<span class="badge bg-info hide" id="status' + mid + '"></span>' +
+		'				<span class="badge bg-primary hide" id="curres' + mid + '"></span>' +
+		'				<span class="badge bg-info hide" id="curbitrate' + mid + '"></span>' +
+		'			</span>' +
 		'		</div>' +
-		'		<div class="panel-body" id="mstream' + panelId + '"></div>' +
+		'		<div class="card-body" id="mstream' + panelId + '">' +
+		'			<div class="text-center">' +
+		'				<div id="spinner' + mid + '" class="spinner-border" role="status">' +
+		'					<span class="visually-hidden">Loading...</span>' +
+		'				</div>' +
+		'			</div>' +
+		'		</div>' +
 		'	</div>' +
 		'</div>'
 	);
@@ -495,20 +476,16 @@ function addPanel(panelId, mid, desc) {
 // Helpers to create Simulcast-related UI, if enabled
 function addSimulcastButtons(mid) {
 	$('#curres'+mid).parent().append(
-		'<div id="simulcast'+mid+'" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
-		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
-		'			<button id="m-'+mid+'-sl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality" style="width: 33%">SL 2</button>' +
-		'			<button id="m-'+mid+'-sl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality" style="width: 33%">SL 1</button>' +
-		'			<button id="m-'+mid+'-sl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality" style="width: 34%">SL 0</button>' +
-		'		</div>' +
+		'<div id="simulcast'+mid+'" class="btn-group-vertical btn-group-xs top-right">' +
+		'	<div class="btn-group btn-group-xs d-flex" style="width: 100%">' +
+		'		<button id="m-'+mid+'-sl-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to higher quality">SL 2</button>' +
+		'		<button id="m-'+mid+'-sl-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to normal quality">SL 1</button>' +
+		'		<button id="m-'+mid+'-sl-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to lower quality">SL 0</button>' +
 		'	</div>' +
-		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs hide" style="width: 100%">' +
-		'			<button id="m-'+mid+'-tl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2" style="width: 34%">TL 2</button>' +
-		'			<button id="m-'+mid+'-tl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1" style="width: 33%">TL 1</button>' +
-		'			<button id="m-'+mid+'-tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0" style="width: 33%">TL 0</button>' +
-		'		</div>' +
+		'	<div class="btn-group btn-group-xs d-flex hide" style="width: 100%">' +
+		'		<button id="m-'+mid+'-tl-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 2">TL 2</button>' +
+		'		<button id="m-'+mid+'-tl-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 1">TL 1</button>' +
+		'		<button id="m-'+mid+'-tl-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 0">TL 0</button>' +
 		'	</div>' +
 		'</div>');
 	// Enable the simulcast selection buttons
@@ -618,18 +595,18 @@ function addSvcButtons(mid) {
 	if($('#svc').length > 0)
 		return;
 	$('#curres'+mid).parent().append(
-		'<div id="svc'+mid+'" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
+		'<div id="svc'+mid+'" class="btn-group-vertical btn-group-vertical-xs top-right">' +
 		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
-		'			<button id="m-'+mid+'-sl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal resolution" style="width: 50%">SL 1</button>' +
-		'			<button id="m-'+mid+'-sl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to low resolution" style="width: 50%">SL 0</button>' +
+		'		<div class="btn-group btn-group-xs d-flex" style="width: 100%">' +
+		'			<button id="m-'+mid+'-sl-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to normal resolution">SL 1</button>' +
+		'			<button id="m-'+mid+'-sl-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Switch to low resolution">SL 0</button>' +
 		'		</div>' +
 		'	</div>' +
 		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
-		'			<button id="m-'+mid+'-tl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2 (high FPS)" style="width: 34%">TL 2</button>' +
-		'			<button id="m-'+mid+'-tl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1 (medium FPS)" style="width: 33%">TL 1</button>' +
-		'			<button id="m-'+mid+'-tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0 (low FPS)" style="width: 33%">TL 0</button>' +
+		'		<div class="btn-group btn-group-xs d-flex" style="width: 100%">' +
+		'			<button id="m-'+mid+'-tl-2" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 2 (high FPS)">TL 2</button>' +
+		'			<button id="m-'+mid+'-tl-1" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 1 (medium FPS)">TL 1</button>' +
+		'			<button id="m-'+mid+'-tl-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 0 (low FPS)">TL 0</button>' +
 		'		</div>' +
 		'	</div>' +
 		'</div>'
