@@ -8658,6 +8658,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						janus_audiobridge_buffer_packet_destroy(bpkt);
 						break;
 					}
+
 					rtp = (janus_rtp_header *)bpkt->buffer;
 					/* If this is Opus, check if there's a packet gap we should fix with FEC */
 					use_fec = FALSE;
@@ -8666,7 +8667,8 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							lost_packets = ntohs(rtp->seq_number) - participant->expected_seq;
 							JANUS_LOG(LOG_ERR, "[%d] got rtp seq, expected_seq: [%d], diff: [%d]\n", ntohs(rtp->seq_number), participant->expected_seq, lost_packets);
 
-							janus_mutex_lock(&participant->qmutex);
+							int32_t output_samples;
+							opus_decoder_ctl(participant->decoder, OPUS_GET_LAST_PACKET_DURATION(&output_samples));
 
 							for(int i=1; i < lost_packets; i++) {
 								pkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
@@ -8676,12 +8678,12 @@ static void *janus_audiobridge_participant_thread(void *data) {
 								pkt->seq_number = participant->last_seq + 1 * i;
 								/* This is a redundant packet, so we can't parse any extension info */
 								pkt->silence = FALSE;
-								pkt->length = opus_decode(participant->decoder, NULL, 0, (opus_int16 *)pkt->data, OPUS_SAMPLES, 0);
-								JANUS_LOG(LOG_ERR, "[%d] packet concealed, length: [%d], timestamp: [%d]\n", pkt->seq_number, pkt->length, pkt->timestamp);
+								pkt->length = opus_decode(participant->decoder, NULL, 0, (opus_int16 *)pkt->data, output_samples, 0);
+								JANUS_LOG(LOG_ERR, "[%d] packet concealed, length: [%d], timestamp: [%d] stereo: [%d]\n", pkt->seq_number, pkt->length, pkt->timestamp, participant->stereo ? 2 : 1);
+								janus_mutex_lock(&participant->qmutex);
 								participant->inbuf = g_list_append(participant->inbuf, pkt);
+								janus_mutex_unlock(&participant->qmutex);
 							}
-
-							janus_mutex_unlock(&participant->qmutex);
 
 							use_fec = TRUE;
 						}
@@ -8697,7 +8699,10 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						/* This is a redundant packet, so we can't parse any extension info */
 						pkt->silence = FALSE;
 
-						pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)pkt->data, OPUS_SAMPLES, 1);
+						int32_t output_samples;
+						opus_decoder_ctl(participant->decoder, OPUS_GET_LAST_PACKET_DURATION(&output_samples));
+
+						pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)pkt->data, output_samples, 1);
 
 						JANUS_LOG(LOG_ERR, "[%d] packet fec decoded [%d] pkt->length, timestamp: [%d]\n",
 								pkt->seq_number, pkt->length, pkt->timestamp);
