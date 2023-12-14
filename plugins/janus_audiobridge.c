@@ -3016,8 +3016,7 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 				json_object_set_new(rtp, "remote-ssrc", json_integer(participant->plainrtp_media.audio_ssrc_peer));
 			json_object_set_new(info, "plain-rtp", rtp);
 		}
-		if(g_atomic_int_get(&participant->suspended))
-			json_object_set_new(info, "suspended", json_true());
+		json_object_set_new(info, "suspended", g_atomic_int_get(&participant->suspended) ? json_true() : json_false());
 	}
 	if(session->plugin_offer)
 		json_object_set_new(info, "plugin-offer", json_true());
