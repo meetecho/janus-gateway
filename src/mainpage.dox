@@ -107,6 +107,7 @@
  * - \b nanomsg: https://nanomsg.org/ (\c optional, Nanomsg)
  * - \b Sofia-SIP: https://github.com/freeswitch/sofia-sip (\c optional, only needed for the SIP plugin)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the AudioBridge plugin)
+ * - \b speexdsp: http://www.speex.org/ (\c optional, only needed for the AudioBridge plugin)
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the AudioBridge and Streaming plugins)
  * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
  * RTSP support in the Streaming plugin and the sample Event Handler plugin)
