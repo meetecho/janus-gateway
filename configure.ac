@@ -813,6 +813,16 @@ PKG_CHECK_MODULES([OGG],
 AC_SUBST([OGG_CFLAGS])
 AC_SUBST([OGG_LIBS])
 
+PKG_CHECK_MODULES([RNNOISE],
+                  [rnnoise],
+                  [
+                    AC_DEFINE(HAVE_RNNOISE)
+                  ],
+                  [
+                  ])
+AC_SUBST([RNNOISE_CFLAGS])
+AC_SUBST([RNNOISE_LIBS])
+
 PKG_CHECK_MODULES([LUA],
                   [lua],
                   [
