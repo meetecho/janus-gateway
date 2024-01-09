@@ -55,9 +55,7 @@ int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart, c
 		return -1;
 	}
 
-	char filename[1024];
-	snprintf(filename, sizeof(filename), "%s", destination);
-	fctx->url = g_strdup(filename);
+	fctx->url = g_strdup(destination);
 
 	vStream = janus_pp_new_video_avstream(fctx, AV_CODEC_ID_AV1, max_width, max_height);
 	if(vStream == NULL) {
