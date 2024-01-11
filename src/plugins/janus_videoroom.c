@@ -9191,6 +9191,16 @@ static void *janus_videoroom_handler(void *data) {
 					janus_videoroom_message_free(msg);
 					continue;
 				}
+				/* Make sure there's no SDP attached here */
+				if(json_string_value(json_object_get(msg->jsep, "sdp")) != NULL) {
+					JANUS_LOG(LOG_ERR, "Can't send an offer to create subscribers\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST;
+					g_snprintf(error_cause, 512, "Can't send an offer to create subscribers");
+					janus_mutex_unlock(&videoroom->mutex);
+					janus_mutex_unlock(&sessions_mutex);
+					janus_refcount_decrease(&videoroom->ref);
+					goto error;
+				}
 				/* Who does this subscription belong to? */
 				guint64 feed_id = 0;
 				char feed_id_num[30], *feed_id_str = NULL;
