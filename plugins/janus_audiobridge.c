@@ -5846,9 +5846,8 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 			jbp.len = 0;
 			jbp.timestamp = ntohl(rtp->timestamp);
 			jbp.span = (participant->codec == JANUS_AUDIOCODEC_OPUS ? 960 : 160);
-			if(GE32(jbp.timestamp + jbp.span + jbp.span, jitter_buffer_get_pointer_timestamp(participant->jitter))) {
-				jitter_buffer_put(participant->jitter, &jbp);
-			} else {
+			jitter_buffer_put(participant->jitter, &jbp);
+			if(!GE32(jbp.timestamp + jbp.span + jbp.span, jitter_buffer_get_pointer_timestamp(participant->jitter))) {
 				janus_audiobridge_buffer_packet_destroy(pkt);
 			}
 			janus_mutex_unlock(&participant->qmutex);
