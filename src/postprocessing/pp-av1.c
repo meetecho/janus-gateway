@@ -529,5 +529,6 @@ void janus_pp_av1_close(void) {
 		av_write_trailer(fctx);
 		avio_close(fctx->pb);
 		avformat_free_context(fctx);
+		g_free(fctx->url);
 	}
 }
