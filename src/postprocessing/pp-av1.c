@@ -528,7 +528,8 @@ void janus_pp_av1_close(void) {
 	if(fctx != NULL) {
 		av_write_trailer(fctx);
 		avio_close(fctx->pb);
-		avformat_free_context(fctx);
 		g_free(fctx->url);
+		fctx->url = NULL;
+		avformat_free_context(fctx);
 	}
 }
