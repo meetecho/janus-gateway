@@ -343,7 +343,6 @@ enum {
 	SEQ_RECVED
 };
 
-
 /*! \brief Janus ICE handle */
 struct janus_ice_handle {
 	/*! \brief Opaque pointer to the core/peer session */
@@ -370,6 +369,10 @@ struct janus_ice_handle {
 	GMainLoop *mainloop;
 	/*! \brief In case static event loops are used, opaque pointer to the loop */
 	void *static_event_loop;
+	/*! \brief wsw Number of helper threads for relaying purpose*/
+	int helper_threads;
+	/*! \brief wsw List of helper threads, if any*/
+	GList* threads;
 	/*! \brief GLib thread for the handle and libnice */
 	GThread *thread;
 	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats (and optionally TWCC) */
@@ -423,6 +426,20 @@ struct janus_ice_handle {
 	/*! \brief Reference counter for this instance */
 	janus_refcount ref;
 };
+
+/*\brief Janus ICE janus_relay_helper*/
+typedef struct janus_relay_helper {
+	struct janus_ice_handle* handle;
+	guint id;
+	GThread* thread;
+	GSource* source;
+	GMainContext* mainctx;
+	GMainLoop* mainloop;
+	GAsyncQueue* queued_packets;
+	volatile gint destroyed;
+	janus_mutex mutex;
+	janus_refcount ref;
+} janus_relay_helper;
 
 /*! \brief Janus handle WebRTC PeerConnection */
 struct janus_ice_peerconnection {
