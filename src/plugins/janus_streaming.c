@@ -4346,9 +4346,9 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			GList *temp = source->media;
 			while(temp) {
 				janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
-				json_t *info = json_object();
 				if(!legacy) {
 					/* Return the new format */
+					json_t *info = json_object();
 					json_object_set_new(info, "type", json_string(janus_streaming_media_str(stream->type)));
 					json_object_set_new(info, "mid", json_string(stream->mid));
 					if(stream->msid && stream->mstid) {
