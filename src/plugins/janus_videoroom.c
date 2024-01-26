@@ -1144,7 +1144,7 @@ room-<unique room ID>: {
  *
  * Once a WebRTC PeerConnection has been established for a subscriber, in
  * case you want to update a subscription you have to use the \c subscribe ,
- * \c unsubscribe or \update methods: as the names of the requests suggest, the
+ * \c unsubscribe or \c update methods: as the names of the requests suggest, the
  * former allows you to add more streams to subscribe to, the second
  * instructs the plugin to remove streams you're currently subscribe to,
  * while the latter allows you to perform both operations at the same time.
@@ -1523,8 +1523,8 @@ room-<unique room ID>: {
 
 
 /* Plugin information */
-#define JANUS_VIDEOROOM_VERSION			9
-#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.9"
+#define JANUS_VIDEOROOM_VERSION			10
+#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.10"
 #define JANUS_VIDEOROOM_DESCRIPTION		"This is a plugin implementing a videoconferencing SFU (Selective Forwarding Unit) for Janus, that is an audio/video router."
 #define JANUS_VIDEOROOM_NAME			"JANUS VideoRoom plugin"
 #define JANUS_VIDEOROOM_AUTHOR			"Meetecho s.r.l."
@@ -2633,6 +2633,7 @@ static void janus_videoroom_reqpli(janus_videoroom_publisher_stream *ps, const c
 #define JANUS_VIDEOROOM_ERROR_NOT_PUBLISHED		435
 #define JANUS_VIDEOROOM_ERROR_ID_EXISTS			436
 #define JANUS_VIDEOROOM_ERROR_INVALID_SDP		437
+#define JANUS_VIDEOROOM_ERROR_INVALID_FEED		438
 
 
 /* RTP forwarder helpers */
@@ -3198,6 +3199,8 @@ static json_t *janus_videoroom_subscriber_offer(janus_videoroom_subscriber *subs
 	char *sdp = janus_sdp_write(offer);
 	janus_sdp_destroy(offer);
 	json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", sdp);
+	if(subscriber->e2ee)
+		json_object_set_new(jsep, "e2ee", json_true());
 	g_free(sdp);
 	/* Done */
 	return jsep;
@@ -9260,6 +9263,7 @@ static void *janus_videoroom_handler(void *data) {
 				gboolean autoupdate  = au ? json_is_true(au) : TRUE;
 				/* Make sure all the feeds we're subscribing to exist */
 				GList *publishers = NULL;
+				gboolean e2ee = videoroom->require_e2ee, sub_e2ee = FALSE, first = TRUE;
 				size_t i = 0;
 				for(i=0; i<json_array_size(feeds); i++) {
 					json_t *s = json_array_get(feeds, i);
@@ -9328,6 +9332,49 @@ static void *janus_videoroom_handler(void *data) {
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
+					sub_e2ee = publisher->e2ee;
+					if(e2ee && !sub_e2ee) {
+						/* Attempt to subscribe to non-end-to-end encrypted
+						 * publisher in an end-to-end encrypted subscription */
+						JANUS_LOG(LOG_ERR, "Can't have not end-to-end encrypted feed in this subscription (%s)\n", feed_id_str);
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_FEED;
+						g_snprintf(error_cause, 512, "Can't have not end-to-end encrypted feed in this subscription (%s)", feed_id_str);
+						janus_mutex_unlock(&videoroom->mutex);
+						/* Unref publishers we may have taken note of so far */
+						while(publishers) {
+							publisher = (janus_videoroom_publisher *)publishers->data;
+							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
+							publishers = g_list_remove(publishers, publisher);
+						}
+						janus_mutex_unlock(&sessions_mutex);
+						janus_refcount_decrease(&videoroom->ref);
+						goto error;
+					} else if(!e2ee && sub_e2ee) {
+						if(first) {
+							/* This subscription will use end-to-end encryption */
+							e2ee = TRUE;
+						} else {
+							/* Attempt to subscribe to end-to-end encrypted
+							 * publisher in a non-end-to-end encrypted subscription */
+							JANUS_LOG(LOG_ERR, "Can't have end-to-end encrypted feed in this subscription (%s)\n", feed_id_str);
+							error_code = JANUS_VIDEOROOM_ERROR_INVALID_FEED;
+							g_snprintf(error_cause, 512, "Can't have end-to-end encrypted feed in this subscription (%s)", feed_id_str);
+							janus_mutex_unlock(&videoroom->mutex);
+							/* Unref publishers we may have taken note of so far */
+							while(publishers) {
+								publisher = (janus_videoroom_publisher *)publishers->data;
+								janus_refcount_decrease(&publisher->session->ref);
+								janus_refcount_decrease(&publisher->ref);
+								publishers = g_list_remove(publishers, publisher);
+							}
+							janus_mutex_unlock(&sessions_mutex);
+							janus_refcount_decrease(&videoroom->ref);
+							goto error;
+						}
+					}
+					if(first)
+						first = FALSE;
 					const char *mid = json_string_value(json_object_get(s, "mid"));
 					if(mid != NULL) {
 						/* Check the mid too */
@@ -9429,6 +9476,7 @@ static void *janus_videoroom_handler(void *data) {
 				subscriber->room_id = videoroom->room_id;
 				subscriber->room_id_str = videoroom->room_id_str ? g_strdup(videoroom->room_id_str) : NULL;
 				subscriber->room = videoroom;
+				subscriber->e2ee = e2ee;
 				videoroom = NULL;
 				subscriber->pvt_id = pvt_id;
 				subscriber->use_msid = use_msid;
@@ -10358,6 +10406,21 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&subscriber->ref);
 							goto error;
 						}
+						if(publisher->e2ee != subscriber->e2ee) {
+							/* Attempt to mix normal and end-to-end encrypted subscriptions */
+							JANUS_LOG(LOG_ERR, "Can't mix normal and end-to-end encrypted subscriptions\n");
+							error_code = JANUS_VIDEOROOM_ERROR_INVALID_FEED;
+							g_snprintf(error_cause, 512, "Can't mix normal and end-to-end encrypted subscriptions");
+							/* Unref publishers we may have taken note of so far */
+							while(publishers) {
+								publisher = (janus_videoroom_publisher *)publishers->data;
+								janus_refcount_decrease(&publisher->session->ref);
+								janus_refcount_decrease(&publisher->ref);
+								publishers = g_list_remove(publishers, publisher);
+							}
+							janus_refcount_decrease(&subscriber->ref);
+							goto error;
+						}
 						const char *mid = json_string_value(json_object_get(s, "mid"));
 						if(mid != NULL) {
 							/* Check the mid too */
@@ -11261,6 +11324,21 @@ static void *janus_videoroom_handler(void *data) {
 						janus_refcount_decrease(&subscriber->ref);
 						goto error;
 					}
+					if(publisher->e2ee != subscriber->e2ee) {
+						/* Attempt to mix normal and end-to-end encrypted subscriptions */
+						JANUS_LOG(LOG_ERR, "Can't mix normal and end-to-end encrypted subscriptions\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_FEED;
+						g_snprintf(error_cause, 512, "Can't mix normal and end-to-end encrypted subscriptions");
+						/* Unref publishers we may have taken note of so far */
+						while(publishers) {
+							publisher = (janus_videoroom_publisher *)publishers->data;
+							janus_refcount_decrease(&publisher->session->ref);
+							janus_refcount_decrease(&publisher->ref);
+							publishers = g_list_remove(publishers, publisher);
+						}
+						janus_refcount_decrease(&subscriber->ref);
+						goto error;
+					}
 					const char *mid = json_string_value(json_object_get(s, "mid"));
 					/* Check the mid too */
 					janus_mutex_lock(&publisher->streams_mutex);
@@ -11618,6 +11696,7 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Unknown SDP type '%s'\n", msg_sdp_type);
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP_TYPE;
 				g_snprintf(error_cause, 512, "Unknown SDP type '%s'", msg_sdp_type);
+				json_decref(event);
 				goto error;
 			}
 			if(session->participant_type != janus_videoroom_p_type_publisher) {
@@ -11625,6 +11704,7 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Only publishers send offers\n");
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP_TYPE;
 				g_snprintf(error_cause, 512, "Only publishers send offers");
+				json_decref(event);
 				goto error;
 			} else {
 				/* This is a new publisher, or an updated one */
@@ -11633,6 +11713,7 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Invalid participant instance\n");
 					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
 					g_snprintf(error_cause, 512, "Invalid participant instance");
+					json_decref(event);
 					goto error;
 				}
 				janus_videoroom *videoroom = participant->room;
@@ -11640,11 +11721,15 @@ static void *janus_videoroom_handler(void *data) {
 				GHashTableIter iter;
 				gpointer value;
 				if(!videoroom) {
+					janus_refcount_decrease(&participant->ref);
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+					json_decref(event);
 					goto error;
 				}
 				if(g_atomic_int_get(&videoroom->destroyed)) {
+					janus_refcount_decrease(&participant->ref);
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+					json_decref(event);
 					goto error;
 				}
 				janus_refcount_increase(&videoroom->ref);
@@ -11660,17 +11745,22 @@ static void *janus_videoroom_handler(void *data) {
 					if(count == videoroom->max_publishers) {
 						janus_mutex_unlock(&videoroom->mutex);
 						janus_refcount_decrease(&videoroom->ref);
+						janus_refcount_decrease(&participant->ref);
 						JANUS_LOG(LOG_ERR, "Maximum number of publishers (%d) already reached\n", videoroom->max_publishers);
 						error_code = JANUS_VIDEOROOM_ERROR_PUBLISHERS_FULL;
 						g_snprintf(error_cause, 512, "Maximum number of publishers (%d) already reached", videoroom->max_publishers);
+						json_decref(event);
 						goto error;
 					}
 					janus_mutex_unlock(&videoroom->mutex);
 				}
 				if(videoroom->require_e2ee && !e2ee && !participant->e2ee) {
+					janus_refcount_decrease(&videoroom->ref);
+					janus_refcount_decrease(&participant->ref);
 					JANUS_LOG(LOG_ERR, "Room requires end-to-end encrypted media\n");
 					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 					g_snprintf(error_cause, 512, "Room requires end-to-end encrypted media");
+					json_decref(event);
 					goto error;
 				}
 				/* Now prepare the SDP to give back */
@@ -11682,10 +11772,12 @@ static void *janus_videoroom_handler(void *data) {
 				janus_sdp *offer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
 				if(offer == NULL) {
 					janus_refcount_decrease(&videoroom->ref);
+					janus_refcount_decrease(&participant->ref);
 					json_decref(event);
 					JANUS_LOG(LOG_ERR, "Error parsing offer: %s\n", error_str);
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP;
 					g_snprintf(error_cause, 512, "Error parsing offer: %s", error_str);
+					json_decref(event);
 					goto error;
 				}
 				/* Prepare an answer, by iterating on all m-lines */
