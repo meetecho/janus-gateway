@@ -359,7 +359,7 @@ declare namespace JanusJS {
 		isVideoMuted(): boolean;
 		muteVideo(): void;
 		unmuteVideo(): void;
-		getBitrate(): string;
+		getBitrate(mid? :string): string;
 		setMaxBitrate(bitrate: number): void;
 		send(message: PluginMessage): void;
 		data(params: PluginDataParam): void;
