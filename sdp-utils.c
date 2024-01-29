@@ -273,7 +273,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 				index++;
 				continue;
 			}
-			if(strlen(line) < 3) {
+			if(strnlen(line, 3) < 3) {
 				if(error)
 					g_snprintf(error, errlen, "Invalid line (%zu bytes): %s", strlen(line), line);
 				success = FALSE;
@@ -411,7 +411,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						/* Start with media type, port and protocol */
 						char type[32];
 						char proto[64];
-						if(strlen(line) > 200) {
+						if(strnlen(line, 200 + 1) > 200) {
 							janus_sdp_mline_destroy(m);
 							if(error)
 								g_snprintf(error, errlen, "Invalid m= line (too long): %zu", strlen(line));
@@ -966,6 +966,8 @@ char *janus_sdp_write(janus_sdp *imported) {
 	janus_strlcat_fast(sdp, buffer, sdplen, &offset);
 	/* c= */
 	if(imported->c_addr != NULL) {
+		if(imported->c_ipv4 && imported->c_addr && strstr(imported->c_addr, ":"))
+			imported->c_ipv4 = FALSE;
 		g_snprintf(buffer, sizeof(buffer), "c=IN %s %s\r\n",
 			imported->c_ipv4 ? "IP4" : "IP6", imported->c_addr);
 		janus_strlcat_fast(sdp, buffer, sdplen, &offset);
@@ -1875,6 +1877,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 										direction = "/recvonly";
 										break;
 									case JANUS_SDP_RECVONLY:
+										direction = "/sendonly";
+										break;
 									case JANUS_SDP_INACTIVE:
 										direction = "/inactive";
 										break;

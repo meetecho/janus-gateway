@@ -260,7 +260,7 @@ typedef struct rtcp_context
 	uint32_t received_prior;
 	uint32_t expected;
 	uint32_t expected_prior;
-	uint32_t lost, lost_remote;
+	int32_t lost, lost_remote;
 
 	uint32_t retransmitted;
 	uint32_t retransmitted_prior;
@@ -352,7 +352,7 @@ uint32_t janus_rtcp_context_get_rtt(janus_rtcp_context *ctx);
  * @param[in] ctx The RTCP context to query
  * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
  * @returns The total number of lost packets */
-uint32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remote);
+int32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remote);
 /*! \brief Method to retrieve the jitter from an existing RTCP context
  * @param[in] ctx The RTCP context to query
  * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
@@ -479,16 +479,6 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
  * @param[in] rb Pointer to a valid report_block area of the RTCP data
  * @returns 0 in case of success, -1 on errors */
 int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb);
-
-/*! \brief Method to quickly fetch the lost packets info from an RR packet, if present
- * \note This is just means as a simple way for plugins to extract this information from
- * a packet, without the need to setup a dedicated RTCP context for tracking the stats flow
- * @param[in] packet The message data
- * @param[in] len The message data length in bytes
- * @param[out] lost The number of lost packets as a whole
- * @param[out] fraction The fraction of lost packets since the last RR/SR
- * @returns TRUE in case of success, FALSE otherwise */
-gboolean janus_rtcp_parse_lost_info(char *packet, int len, uint32_t *lost, int *fraction);
 
 /*! \brief Method to check whether an RTCP message contains a BYE message
  * @param[in] packet The message data

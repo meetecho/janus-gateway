@@ -79,6 +79,7 @@ static void janus_recorder_free(const janus_refcount *recorder_ref) {
 	recorder->fmtp = NULL;
 	if(recorder->extensions != NULL)
 		g_hash_table_destroy(recorder->extensions);
+	janus_mutex_destroy(&recorder->mutex);
 	g_free(recorder);
 }
 
@@ -117,6 +118,7 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 	rc->codec = g_strdup(codec);
 	rc->fmtp = fmtp ? g_strdup(fmtp) : NULL;
 	rc->created = janus_get_real_time();
+	janus_mutex_init(&rc->mutex);
 	const char *rec_dir = NULL;
 	const char *rec_file = NULL;
 	char *copy_for_parent = NULL;
@@ -248,7 +250,6 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 	g_atomic_int_set(&rc->writable, 1);
 	/* We still need to also write the info header first */
 	g_atomic_int_set(&rc->header, 0);
-	janus_mutex_init(&rc->mutex);
 	/* Done */
 	g_atomic_int_set(&rc->destroyed, 0);
 	g_free(copy_for_parent);

@@ -59,7 +59,7 @@ static char *trim(char *s) {
 
 
 /* Helper to recursively process a libconfig setting */
-static int janus_config_jfcg_parse(janus_config *config, janus_config_container *parent, config_setting_t *setting) {
+static int janus_config_jcfg_parse(janus_config *config, janus_config_container *parent, config_setting_t *setting) {
 	if(!config || !setting)
 		return -1;
 	switch(config_setting_type(setting)) {
@@ -145,7 +145,7 @@ static int janus_config_jfcg_parse(janus_config *config, janus_config_container 
 							janus_config_container_destroy(cg);
 							return -1;
 						}
-						int res = janus_config_jfcg_parse(config, cg, elem);
+						int res = janus_config_jcfg_parse(config, cg, elem);
 						if(res < 0)
 							return res;
 					} else if(config_setting_type(elem) == CONFIG_TYPE_GROUP) {
@@ -156,11 +156,11 @@ static int janus_config_jfcg_parse(janus_config *config, janus_config_container 
 							janus_config_container_destroy(cg);
 							return -1;
 						}
-						int res = janus_config_jfcg_parse(config, cg, elem);
+						int res = janus_config_jcfg_parse(config, cg, elem);
 						if(res < 0)
 							return res;
 					} else {
-						int res = janus_config_jfcg_parse(config, parent, elem);
+						int res = janus_config_jcfg_parse(config, parent, elem);
 						if(res < 0)
 							return res;
 					}
@@ -209,7 +209,7 @@ janus_config *janus_config_parse(const char *config_file) {
 		}
 		/* Traverse the document */
 		config_setting_t *root = config_root_setting(&config);
-		if(janus_config_jfcg_parse(jc, NULL, root) < 0) {
+		if(janus_config_jcfg_parse(jc, NULL, root) < 0) {
 			JANUS_LOG(LOG_ERR, "Error parsing config file at line %d: %s\n",
 				config_error_line(&config), config_error_text(&config));
 			config_destroy(&config);

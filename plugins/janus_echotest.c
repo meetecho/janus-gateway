@@ -1076,7 +1076,7 @@ static void *janus_echotest_handler(void *data) {
 				goto error;
 			}
 			/* Check if we need to negotiate Opus FEC and/or DTX */
-			gboolean opus_fec = FALSE, opus_dtx = FALSE;
+			gboolean opus_fec = FALSE, opus_dtx = FALSE, opus_stereo = FALSE;
 			char custom_fmtp[256];
 			custom_fmtp[0] = '\0';
 			GList *temp = offer->m_lines;
@@ -1107,11 +1107,11 @@ static void *janus_echotest_handler(void *data) {
 									}
 								}
 								if(strstr(a->value, "stereo=1")) {
-									opus_dtx = TRUE;
+									opus_stereo = TRUE;
 									if(strlen(custom_fmtp) == 0) {
-										g_snprintf(custom_fmtp, sizeof(custom_fmtp), "usedtx=1");
+										g_snprintf(custom_fmtp, sizeof(custom_fmtp), "stereo=1");
 									} else {
-										g_strlcat(custom_fmtp, ";usedtx=1", sizeof(custom_fmtp));
+										g_strlcat(custom_fmtp, ";stereo=1", sizeof(custom_fmtp));
 									}
 								}
 							}
@@ -1123,7 +1123,7 @@ static void *janus_echotest_handler(void *data) {
 			}
 			janus_sdp *answer = janus_sdp_generate_answer(offer,
 				JANUS_SDP_OA_AUDIO_CODEC, json_string_value(audiocodec),
-				JANUS_SDP_OA_AUDIO_FMTP, (opus_fec || opus_dtx ? custom_fmtp : NULL),
+				JANUS_SDP_OA_AUDIO_FMTP, (opus_fec || opus_dtx || opus_stereo ? custom_fmtp : NULL),
 				JANUS_SDP_OA_ACCEPT_OPUSRED, json_is_true(opusred),
 				JANUS_SDP_OA_VIDEO_CODEC, json_string_value(videocodec),
 				JANUS_SDP_OA_VP9_PROFILE, json_string_value(videoprofile),

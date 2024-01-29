@@ -147,6 +147,15 @@ void janus_ice_set_nomination_mode(const char *nomination);
  * @returns "regular" or "aggressive" */
 const char *janus_ice_get_nomination_mode(void);
 #endif
+/*! \brief Method to enable/disable consent freshness in PeerConnections.
+ * \note This is only available on libnice >= 0.1.19, and automatically enables
+ * keepalive connectivity checks too. Documentation for the setting:
+ * https://libnice.freedesktop.org/libnice/NiceAgent.html#NiceAgent--consent-freshness
+ * @param[in] enabled Whether the functionality should be enabled or disabled */
+void janus_ice_set_consent_freshness_enabled(gboolean enabled);
+/*! \brief Method to check whether consent fresnhess will be enabled in ICE
+ * @returns true if enabled, false (default) otherwise */
+gboolean janus_ice_is_consent_freshness_enabled(void);
 /*! \brief Method to enable/disable connectivity checks as keepalives for PeerConnections.
  * \note The main rationale behind this setting is provided in the libnice documentation:
  * https://libnice.freedesktop.org/libnice/NiceAgent.html#NiceAgent--keepalive-conncheck
@@ -155,6 +164,12 @@ void janus_ice_set_keepalive_conncheck_enabled(gboolean enabled);
 /*! \brief Method to check whether connectivity checks will be used as keepalives
  * @returns true if enabled, false (default) otherwise */
 gboolean janus_ice_is_keepalive_conncheck_enabled(void);
+/*! \brief Method to enable/disable immediate hangups of PeerConnectionss on ICE failures.
+ * @param[in] enabled Whether the functionality should be enabled or disabled */
+void janus_ice_set_hangup_on_failed_enabled(gboolean enabled);
+/*! \brief Method to check whether ICE failures will result in immediate hangups
+ * @returns true if enabled, false (default) otherwise */
+gboolean janus_ice_is_hangup_on_failed_enabled(void);
 /*! \brief Method to modify the min NACK value (i.e., the minimum time window of packets per handle to store for retransmissions)
  * @param[in] mnq The new min NACK value */
 void janus_set_min_nack_queue(uint16_t mnq);
@@ -201,6 +216,9 @@ void janus_ice_set_event_stats_period(int period);
 /*! \brief Method to get the current event handler statistics period (see above)
  * @returns The current event handler stats period */
 int janus_ice_get_event_stats_period(void);
+/*! \brief Method to get the number of active PeerConnection (for stats)
+ * @returns The current number of active PeerConnections */
+int janus_ice_get_peerconnection_num(void);
 
 /*! \brief Method to define wether the media stats shall be dispatched in one event (true) or in dedicated single events (false - default)
  * @param[in] combine_media_stats_to_one_event true to combine media statistics in on event or false to send dedicated events */
@@ -356,6 +374,8 @@ struct janus_ice_handle {
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
 	gint64 agent_created;
+	/*! \brief Monotonic time of when the ICE agent has been started (remote credentials set) */
+	gint64 agent_started;
 	/*! \brief ICE role (controlling or controlled) */
 	gboolean controlling;
 	/*! \brief Audio mid (media ID) */
@@ -398,6 +418,8 @@ struct janus_ice_handle {
 	janus_mutex mutex;
 	/*! \brief Whether a close_pc was requested recently on the PeerConnection */
 	volatile gint closepc;
+	/*! \brief Atomic flag to check whether a PeerConnection was established */
+	volatile gint has_pc;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
 	volatile gint destroyed;
 	/*! \brief Reference counter for this instance */
@@ -412,6 +434,8 @@ struct janus_ice_stream {
 	guint stream_id;
 	/*! \brief Whether this stream is ready to be used */
 	gint cdone:1;
+	/*! \brief Monotonic time of when gathering has completed */
+	gint64 gathered;
 	/*! \brief Audio SSRC of the server for this stream */
 	guint32 audio_ssrc;
 	/*! \brief Video SSRC of the server for this stream */
@@ -729,8 +753,9 @@ void janus_ice_notify_media_stopped(janus_ice_handle *handle);
  * @param[in] video Whether video is enabled
  * @param[in] data Whether SCTP data channels are enabled
  * @param[in] trickle Whether ICE trickling is supported or not
+ * @param[in] dtls_role The DTLS role that should be taken for this PeerConnection
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int trickle);
+int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int trickle, janus_dtls_role dtls_role);
 /*! \brief Method to add local candidates to a janus_sdp SDP object representation
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] mline The Janus SDP m-line object to add candidates to

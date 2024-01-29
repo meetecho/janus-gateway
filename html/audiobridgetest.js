@@ -1,52 +1,7 @@
-// We make use of this 'server' variable to provide the address of the
-// REST Janus API. By default, in this example we assume that Janus is
-// co-located with the web server hosting the HTML pages but listening
-// on a different port (8088, the default for HTTP in Janus), which is
-// why we make use of the 'window.location.hostname' base address. Since
-// Janus can also do HTTPS, and considering we don't really want to make
-// use of HTTP for Janus if your demos are served on HTTPS, we also rely
-// on the 'window.location.protocol' prefix to build the variable, in
-// particular to also change the port used to contact Janus (8088 for
-// HTTP and 8089 for HTTPS, if enabled).
-// In case you place Janus behind an Apache frontend (as we did on the
-// online demos at http://janus.conf.meetecho.com) you can just use a
-// relative path for the variable, e.g.:
-//
-// 		var server = "/janus";
-//
-// which will take care of this on its own.
-//
-//
-// If you want to use the WebSockets frontend to Janus, instead, you'll
-// have to pass a different kind of address, e.g.:
-//
-// 		var server = "ws://" + window.location.hostname + ":8188";
-//
-// Of course this assumes that support for WebSockets has been built in
-// when compiling the server. WebSockets support has not been tested
-// as much as the REST API, so handle with care!
-//
-//
-// If you have multiple options available, and want to let the library
-// autodetect the best way to contact your server (or pool of servers),
-// you can also pass an array of servers, e.g., to provide alternative
-// means of access (e.g., try WebSockets first and, if that fails, fall
-// back to plain HTTP) or just have failover servers:
-//
-//		var server = [
-//			"ws://" + window.location.hostname + ":8188",
-//			"/janus"
-//		];
-//
-// This will tell the library to try connecting to each of the servers
-// in the presented order. The first working server will be used for
-// the whole session.
-//
-var server = null;
-if(window.location.protocol === 'http:')
-	server = "http://" + window.location.hostname + ":8088/janus";
-else
-	server = "https://" + window.location.hostname + ":8089/janus";
+// We import the settings.js file to know which address we should contact
+// to talk to Janus, and optionally which STUN/TURN servers should be
+// used as well. Specifically, that file defines the "server" and
+// "iceServers" properties we'll pass when creating the Janus session.
 
 var janus = null;
 var mixertest = null;
@@ -67,7 +22,7 @@ if(getQueryStringValue("group") !== "")
 var myusername = null;
 var myid = null;
 var webrtcUp = false;
-var audioenabled = false;
+var audioenabled = false, audiosuspended = false;
 
 
 $(document).ready(function() {
@@ -85,6 +40,11 @@ $(document).ready(function() {
 			janus = new Janus(
 				{
 					server: server,
+					iceServers: iceServers,
+					// Should the Janus API require authentication, you can specify either the API secret or user token here too
+					//		token: "mytoken",
+					//	or
+					//		apisecret: "serversecret",
 					success: function() {
 						// Attach to AudioBridge plugin
 						janus.attach(
@@ -181,6 +141,7 @@ $(document).ready(function() {
 													var display = escapeXmlTags(list[f]["display"]);
 													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
+													var suspended = list[f]["suspended"];
 													var spatial = list[f]["spatial_position"];
 													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp' + id).length === 0) {
@@ -191,8 +152,9 @@ $(document).ready(function() {
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
 															slider +
 															display +
-															' <i class="absetup fa fa-chain-broken"></i>' +
-															' <i class="abmuted fa fa-microphone-slash"></i></li>');
+															' <i class="absetup fa fa-chain-broken" title="No PeerConnection"></i>' +
+															' <i class="absusp fa fa-eye-slash" title="Suspended"></i>' +
+															' <i class="abmuted fa fa-microphone-slash" title="Muted"></i></li>');
 														if(spatial !== null && spatial !== undefined) {
 															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
 															$('#position').removeClass('hide').show();
@@ -207,6 +169,10 @@ $(document).ready(function() {
 														$('#rp' + id + ' > i.absetup').hide();
 													else
 														$('#rp' + id + ' > i.absetup').removeClass('hide').show();
+													if(suspended === true)
+														$('#rp' + id + ' > i.absusp').removeClass('hide').show();
+													else
+														$('#rp' + id + ' > i.absusp').hide();
 													if(spatial !== null && spatial !== undefined)
 														$('#sp' + id).slider('setValue', spatial);
 												}
@@ -225,6 +191,7 @@ $(document).ready(function() {
 													var display = escapeXmlTags(list[f]["display"]);
 													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
+													var suspended = list[f]["suspended"];
 													var spatial = list[f]["spatial_position"];
 													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp' + id).length === 0) {
@@ -235,8 +202,9 @@ $(document).ready(function() {
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
 															slider +
 															display +
-															' <i class="absetup fa fa-chain-broken"></i>' +
-															' <i class="abmuted fa fa-microphone-slash"></i></li>');
+															' <i class="absetup fa fa-chain-broken" title="No PeerConnection"></i>' +
+															' <i class="absusp fa fa-eye-slash" title="Suspended"></i>' +
+															' <i class="abmuted fa fa-microphone-slash" title="Muted"></i></li>');
 														if(spatial !== null && spatial !== undefined) {
 															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
 															$('#position').removeClass('hide').show();
@@ -251,6 +219,10 @@ $(document).ready(function() {
 														$('#rp' + id + ' > i.absetup').hide();
 													else
 														$('#rp' + id + ' > i.absetup').removeClass('hide').show();
+													if(suspended === true)
+														$('#rp' + id + ' > i.absusp').removeClass('hide').show();
+													else
+														$('#rp' + id + ' > i.absusp').hide();
 													if(spatial !== null && spatial !== undefined)
 														$('#sp' + id).slider('setValue', spatial);
 												}
@@ -263,6 +235,10 @@ $(document).ready(function() {
 											});
 										} else if(event === "event") {
 											if(msg["participants"]) {
+												if(msg["resumed"]) {
+													// This is a full recap after a suspend: clear the list of participants
+													$('#list').empty();
+												}
 												var list = msg["participants"];
 												Janus.debug("Got a list of participants:", list);
 												for(var f in list) {
@@ -270,6 +246,7 @@ $(document).ready(function() {
 													var display = escapeXmlTags(list[f]["display"]);
 													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
+													var suspended = list[f]["suspended"];
 													var spatial = list[f]["spatial_position"];
 													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp' + id).length === 0) {
@@ -280,8 +257,9 @@ $(document).ready(function() {
 														$('#list').append('<li id="rp' + id +'" class="list-group-item">' +
 															slider +
 															display +
-															' <i class="absetup fa fa-chain-broken"></i>' +
-															' <i class="abmuted fa fa-microphone-slash"></i></li>');
+															' <i class="absetup fa fa-chain-broken" title="No PeerConnection"></i>' +
+															' <i class="absusp fa fa-eye-slash" title="Suspended"></i>' +
+															' <i class="abmuted fa fa-microphone-slash" title="Muted"></i></li>');
 														if(spatial !== null && spatial !== undefined) {
 															$('#sp' + id).slider({ min: 0, max: 100, step: 1, value: 50, handle: 'triangle', enabled: false });
 															$('#position').removeClass('hide').show();
@@ -296,9 +274,19 @@ $(document).ready(function() {
 														$('#rp' + id + ' > i.absetup').hide();
 													else
 														$('#rp' + id + ' > i.absetup').removeClass('hide').show();
+													if(suspended === true)
+														$('#rp' + id + ' > i.absusp').removeClass('hide').show();
+													else
+														$('#rp' + id + ' > i.absusp').hide();
 													if(spatial !== null && spatial !== undefined)
 														$('#sp' + id).slider('setValue', spatial);
 												}
+											} else if(msg["suspended"]) {
+												var id = msg["suspended"];
+												$('#rp' + id + ' > i.absusp').removeClass('hide').show();
+											} else if(msg["resumed"]) {
+												var id = msg["resumed"];
+												$('#rp' + id + ' > i.absusp').hide();
 											} else if(msg["error"]) {
 												if(msg["error_code"] === 485) {
 													// This is a "no such room" error: give a more meaningful description
@@ -354,6 +342,21 @@ $(document).ready(function() {
 											else
 												$('#toggleaudio').html("Unmute").removeClass("btn-danger").addClass("btn-success");
 											mixertest.send({ message: { request: "configure", muted: !audioenabled }});
+										}).removeClass('hide').show();
+									// Suspend button
+									audiosuspended = false;
+									$('#togglesuspend').click(
+										function() {
+											audiosuspended = !audiosuspended;
+											if(!audiosuspended)
+												$('#togglesuspend').html("Suspend").removeClass("btn-success").addClass("btn-danger");
+											else
+												$('#togglesuspend').html("Resume").removeClass("btn-danger").addClass("btn-success");
+											mixertest.send({ message: {
+												request: (audiosuspended ? "suspend" : "resume"),
+												room: myroom,
+												id: myid
+											}});
 										}).removeClass('hide').show();
 									// Spatial position, if enabled
 									$('#position').click(

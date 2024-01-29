@@ -101,7 +101,7 @@ int janus_pp_opus_create(char *destination, char *metadata, gboolean multiopus, 
 // It assumes ALL the packets are of the 20ms kind
 #define OPUS_PACKET_DURATION 48 * 20;
 
-int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working) {
+int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, gboolean restamping, int *working) {
 	if(!file || !list || !working)
 		return -1;
 	janus_pp_frame_packet *tmp = list;
@@ -228,7 +228,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					/* The last block is the primary data, so just update the current
 					 * stored packet with the Opus payload type and the right offset/len */
 					gens++;
-					JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%"SCNu16"\n", gens, plen);
+					JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%d\n", gens, plen);
 					tmp->pt = block_pt;
 					tmp->offset += (payload-buffer);
 					tmp->len = (plen + 12 + tmp->skip);
@@ -251,7 +251,8 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	AVRational timebase = {1, 48000};
 
 	while(*working && tmp != NULL) {
-		if(tmp->prev != NULL && ((tmp->ts - tmp->prev->ts)/48/20 > 1) && (tmp->seq != tmp->prev->seq+1)) {
+		/* if restamping is being used, do not evaluate the sequence number jump */
+		if(tmp->prev != NULL && ((tmp->ts - tmp->prev->ts)/48/20 > 1) && (restamping || (tmp->seq != tmp->prev->seq+1))) {
 			JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
 				tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000);
 			/* use ts differ to insert silence packet */
@@ -277,8 +278,10 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				pkt->pts = pkt->dts = av_rescale_q(pos, timebase, fctx->streams[0]->time_base);
 				pkt->duration = OPUS_PACKET_DURATION;
 
-				if(av_write_frame(fctx, pkt) < 0) {
-					JANUS_LOG(LOG_ERR, "Error writing audio frame to file...\n");
+				int res = av_write_frame(fctx, pkt);
+				if(res < 0) {
+					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d, %s)\n",
+						res, av_err2str(res));
 				}
 			}
 		}

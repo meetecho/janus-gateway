@@ -48,4 +48,8 @@ general: {
 	# one by uncommenting and setting the property below.
 	#sips_certs_dir = "/etc/sip/certs"
 
+	# Set the T1x64 timeout value (in milliseconds) used by the SIP transaction
+	# engine (default 32000 milliseconds)
+	sip_timer_t1x64 = 32000
+
 }

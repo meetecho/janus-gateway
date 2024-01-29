@@ -185,10 +185,13 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 					if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
 						JANUS_LOG(LOG_WARN, "First 3-bytes after header not what they're supposed to be?\n");
 					} else {
-						int vp8w = swap2(*(unsigned short*)(c+3))&0x3fff;
-						int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
-						int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
-						int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
+						unsigned short val3, val5;
+						memcpy(&val3,c+3,sizeof(short));
+						int vp8w = swap2(val3)&0x3fff;
+						int vp8ws = swap2(val3)>>14;
+						memcpy(&val5,c+5,sizeof(short));
+						int vp8h = swap2(val5)&0x3fff;
+						int vp8hs = swap2(val5)>>14;
 						JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
 						if(vp8w*vp8h > max_width*max_height) {
 							max_width = vp8w;
@@ -271,12 +274,14 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 					uint i=0;
 					for(i=0; i<n_s; i++) {
 						/* Width */
-						uint16_t *w = (uint16_t *)buffer;
-						int width = ntohs(*w);
+						uint16_t w;
+						memcpy(&w, buffer, sizeof(uint16_t));
+						int width = ntohs(w);
 						buffer += 2;
 						/* Height */
-						uint16_t *h = (uint16_t *)buffer;
-						int height = ntohs(*h);
+						uint16_t h;
+						memcpy(&h, buffer, sizeof(uint16_t));
+						int height = ntohs(h);
 						buffer += 2;
 						if(width*height > max_width*max_height) {
 							max_width = width;
@@ -431,10 +436,13 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 						if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
 							JANUS_LOG(LOG_WARN, "First 3-bytes after header not what they're supposed to be?\n");
 						} else {
-							int vp8w = swap2(*(unsigned short*)(c+3))&0x3fff;
-							int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
-							int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
-							int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
+							unsigned short val3, val5;
+							memcpy(&val3,c+3,sizeof(short));
+							int vp8w = swap2(val3)&0x3fff;
+							int vp8ws = swap2(val3)>>14;
+							memcpy(&val5,c+5,sizeof(short));
+							int vp8h = swap2(val5)&0x3fff;
+							int vp8hs = swap2(val5)>>14;
 							JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
 							/* Is this the first keyframe we find? */
 							if(!keyframe_found) {
@@ -585,8 +593,10 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 			/* First we save to the file... */
 			packet->pts = packet->dts = av_rescale_q(tmp->ts-list->ts, timebase, fctx->streams[0]->time_base);
 			if(fctx) {
-				if(av_write_frame(fctx, packet) < 0) {
-					JANUS_LOG(LOG_ERR, "Error writing video frame to file...\n");
+				int res = av_write_frame(fctx, packet);
+				if(res < 0) {
+					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d, %s)\n",
+						res, av_err2str(res));
 				}
 			}
 		}

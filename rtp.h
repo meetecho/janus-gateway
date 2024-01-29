@@ -27,6 +27,8 @@
 #include <glib.h>
 #include <jansson.h>
 
+#include "plugins/plugin.h"
+
 #define RTP_HEADER_SIZE	12
 
 /*! \brief RTP Header (http://tools.ietf.org/html/rfc3550#section-5.1) */
@@ -60,6 +62,7 @@ typedef struct janus_rtp_packet {
 	gint length;
 	gint64 created;
 	gint64 last_retransmit;
+	janus_plugin_rtp_extensions extensions;
 } janus_rtp_packet;
 
 /*! \brief RTP extension */
@@ -67,6 +70,23 @@ typedef struct janus_rtp_header_extension {
 	uint16_t type;
 	uint16_t length;
 } janus_rtp_header_extension;
+
+/*! \brief RTP RFC2833 payload */
+typedef struct janus_rtp_rfc2833_payload {
+#if __BYTE_ORDER == __BIG_ENDIAN
+	uint8_t event;
+	uint8_t end:1;
+	uint8_t reserved:1;
+	uint8_t volume:6;
+	uint16_t duration;
+#elif __BYTE_ORDER == __LITTLE_ENDIAN
+	uint8_t event;
+	uint8_t volume:6;
+	uint8_t reserved:1;
+	uint8_t end:1;
+	uint16_t duration;
+#endif
+} janus_rtp_rfc2833_payload;
 
 /*! \brief a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
 #define JANUS_RTP_EXTMAP_AUDIO_LEVEL		"urn:ietf:params:rtp-hdrext:ssrc-audio-level"

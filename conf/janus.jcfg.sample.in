@@ -117,6 +117,19 @@ general: {
 									# only if allow_loop_indication is set to true;
 									# it's set to false by default to avoid abuses.
 									# Don't change if you don't know what you're doing!
+	#task_pool_size = 100			# By default, while the Janus core is single thread
+									# when it comes to processing incoming messages, it
+									# also uses a task pool with an indefinite amount
+									# of helper threads spawned on demand to handle
+									# messages addressed to plugins. If you want to
+									# limit this task pool size with a maximum number
+									# of concurrent threads, set the 'task_pool_size'
+									# property accordingly: a value of '0' means
+									# 'indefinite' and is the default. Notice that
+									# threads are automatically destroyed when unused
+									# for a while, so whatever value you choose simply
+									# puts a cap on the maximum concurrency.
+									# Don't change if you don't know what you're doing!
 	#opaqueid_in_api = true			# Opaque IDs set by applications are typically
 									# only passed to event handlers for correlation
 									# purposes, but not sent back to the user or
@@ -257,8 +270,11 @@ media: {
 # it should work in ICE-Lite mode (by default it doesn't). If libnice is
 # at least 0.1.15, you can choose which ICE nomination mode to use: valid
 # values are "regular" and "aggressive" (the default depends on the libnice
-# version itself; if we can set it, we set aggressive nomination). You can
-# also configure whether to use connectivity checks as keep-alives, which
+# version itself; if we can set it, we set aggressive nomination). If
+# libnice is at least 0.1.19, you can enable consent freshness checks for
+# PeerConnections as well: this will issue regular checks to check whether
+# or not the WebRTC peer isn't available anymore. Enabling consent freshness
+# will automatically also enable using connectivity checks as keep-alives, which
 # might help detecting when a peer is no longer available (notice that
 # current libnice master is breaking connections after 50 seconds when
 # keepalive-conncheck is being used, so if you want to use it, better
@@ -273,9 +289,18 @@ nat: {
 	nice_debug = false
 	#full_trickle = true
 	#ice_nomination = "regular"
+	#ice_consent_freshness = true
 	#ice_keepalive_conncheck = true
 	#ice_lite = true
 	#ice_tcp = true
+
+	# By default, Janus implements a grace period when detecting ICE
+	# failures in PeerConnections, to give time to applications to react
+	# to that, e.g., by enforcing an ICE restart. If you want an ICE
+	# failure to result in the PeerConnection being closed right away
+	# (e.g., with the help of consent freshness) then you can do that
+	# by uncommenting the following property and set it to true
+	#hangup_on_failed = true
 
 	# By default Janus tries to resolve mDNS (.local) candidates: even
 	# though this is now done asynchronously and shouldn't keep the API
