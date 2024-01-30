@@ -24,7 +24,8 @@ if(getQueryStringValue("group") !== "")
 var myusername = null;
 var myid = null;
 var webrtcUp = false;
-var audioenabled = false, audiosuspended = false;
+var audioenabled = false;
+var audiosuspended = (getQueryStringValue("suspended") !== "") ? (getQueryStringValue("suspended") === "true") : false;
 
 
 $(document).ready(function() {
@@ -371,7 +372,10 @@ $(document).ready(function() {
 											mixertest.send({ message: { request: "configure", muted: !audioenabled }});
 										}).removeClass('hide');
 									// Suspend button
-									audiosuspended = false;
+									if(!audiosuspended)
+										$('#togglesuspend').html("Suspend").removeClass("btn-info").addClass("btn-secondary");
+									else
+										$('#togglesuspend').html("Resume").removeClass("btn-secondary").addClass("btn-info");
 									$('#togglesuspend').click(
 										function() {
 											audiosuspended = !audiosuspended;
@@ -460,7 +464,7 @@ function registerUsername() {
 			$('#register').removeAttr('disabled').click(registerUsername);
 			return;
 		}
-		let register = { request: "join", room: myroom, display: username };
+		let register = { request: "join", room: myroom, display: username, suspended: audiosuspended };
 		myusername = escapeXmlTags(username);
 		// Check if we need to join using G.711 instead of (default) Opus
 		if(acodec === 'opus' || acodec === 'pcmu' || acodec === 'pcma')
