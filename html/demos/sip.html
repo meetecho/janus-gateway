@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server (multistream): SIP Gateway Demo</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/blueimp-md5/2.6.0/js/md5.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
+<script type="text/javascript" src="settings.js" ></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="sip.js"></script>
+<script>
+	$(function() {
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='sip.html']").addClass("active");
+		});
+		$(".footer").load("../footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="../css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="../forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
+				<h1>Plugin Demo: SIP Gateway
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="alert alert-primary mt-2 mb-5">
+						Want to learn more about the <strong>SIP</strong> plugin?
+						Check the <a target="_blank" href="https://janus.conf.meetecho.com/docs/sip">Documentation</a>.
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This demo shows how you can make use of the SIP plugin to interact with a SIP
+						Proxy (e.g., Kamailio or OpenSIPS) or PBX (e.g., Asterisk or FreeSwitch) in order to
+						place or receive calls to and from other SIP clients. Specifically, it uses the
+						Sofia-based SIP plugin. Notice the plugin only exchange SIP messages from within the
+						plugin itself: no SIP is done in JavaScript, except for references to SIP URIs.</p>
+						<p>When started, the demo will allow you to insert a minimum set of information
+						required to REGISTER the web page as a SIP client at a SIP Proxy or PBX you specify.
+						This will allow you to call SIP URIs, or receive calls through the SIP Server itself.
+						During a call, you'll also be able to interact with the PBX via DTMF tones, e.g.,
+						to drive an Interactive Voice Response (IVR) menu that you're being presented with.</p>
+						<div class="alert alert-info"><b>Note well!</b> Please notice that, while audio support
+						has been tested extensively, video hasn't as much, and as such may not work as expected.
+						</div>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="sipcall">
+				<div class="row">
+					<div class="col-md-6 container invisible" id="login">
+						<div class="input-group mt-1 mb-1">
+							<span class="input-group-text"><i class="fa-solid fa-cloud-arrow-up"></i></span>
+							<input class="form-control" type="text" placeholder="SIP Registrar (e.g., sip:host:port)" autocomplete="off" id="server" onkeypress="return checkEnter(this, event);" />
+						</div>
+						<div class="input-group mt-1 mb-1">
+							<span class="input-group-text"><i class="fa-solid fa-user"></i></span>
+							<input class="form-control" type="text" placeholder="SIP Identity (e.g., sip:goofy@example.com)" autocomplete="off" id="username" onkeypress="return checkEnter(this, event);" />
+							<button id="addhelper" class="btn btn-xs btn-info hide" title="Add a new line">
+								<i class="fa-solid fa-plus"></i>
+							</button>
+						</div>
+						<div class="input-group mt-1 mb-1">
+							<span class="input-group-text"><i class="fa-solid fa-user-plus"></i></span>
+							<input class="form-control" type="text" placeholder="Username (e.g., goofy, overrides the one in the SIP identity if provided)" autocomplete="off" id="authuser" onkeypress="return checkEnter(this, event);" />
+						</div>
+						<div class="input-group mt-1 mb-1">
+							<span class="input-group-text"><i class="fa-solid fa-key"></i></span>
+							<input class="form-control" type="password" placeholder="Secret (e.g., mysupersecretpassword)" autocomplete="off" id="password" onkeypress="return checkEnter(this, event);" />
+						</div>
+						<div class="input-group mt-1 mb-1">
+							<span class="input-group-text"><i class="fa-solid fa-quote-right"></i></span>
+							<input class="form-control" type="text" placeholder="Display name (e.g., Alice Smith)" autocomplete="off" id="displayname" onkeypress="return checkEnter(this, event);" />
+						</div>
+						<div class="btn-group btn-group-sm w-100">
+							<button class="btn btn-primary" autocomplete="off" id="register" style="width: 30%">Register</button>
+							<div class="btn-group btn-group-sm" style="width: 70%">
+								<button autocomplete="off" id="registerset" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown" style="width: 100%">
+									Registration approach
+								</button>
+								<ul id="registerlist" class="dropdown-menu" role="menu">
+									<a class="dropdown-item" href='#' id='secret'>Register using plain secret</a>
+									<a class="dropdown-item" href='#' id='ha1secret'>Register using HA1 secret</a>
+									<a class="dropdown-item" href='#' id='guest'>Register as a guest (no secret)</a>
+								</ul>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-6 container invisible" id="phone">
+						<div class="input-group mt-1 mb-1">
+							<span class="input-group-text"><i class="fa-solid fa-phone"></i></span>
+							<input class="form-control" type="text" placeholder="SIP URI to call (e.g., sip:1000@example.com)" autocomplete="off" id="peer" onkeypress="return checkEnter(this, event);" />
+						</div>
+						<button class="btn btn-success mb-1" autocomplete="off" id="call">Call</button> <input autocomplete="off" id="dovideo" type="checkbox" />Use Video
+					</div>
+				</div>
+				<div id="videos" class="row mt-2 mb-2 hide">
+					<div class="col-md-6">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">You</span>
+							</div>
+							<div class="card-body" id="videoleft"></div>
+						</div>
+					</div>
+					<div class="col-md-6">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Remote UA</span>
+							</div>
+							<div class="card-body" id="videoright"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>

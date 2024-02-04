@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server (multistream): Screen Sharing Demo</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
+<script type="text/javascript" src="settings.js" ></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="screensharing.js"></script>
+<script>
+	$(function() {
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='screensharing.html']").addClass("active");
+		});
+		$(".footer").load("../footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="../css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="../forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
+				<h1>Plugin Demo: Screen Sharing
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="alert alert-primary mt-2 mb-5">
+						Want to learn more about the <strong>VideoRoom</strong> plugin?
+						Check the <a target="_blank" href="https://janus.conf.meetecho.com/docs/videoroom">Documentation</a>.
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This demo, as the Video Conferencing one, makes use of the Video Room plugin. Unlike
+						the video conferencing scenario, though, this demo implements a webinar kind of scenario:
+						that is, it allows a single user to share their screen with a set of passive
+						viewers.</p>
+						<p>When started, the demo asks you whether you want to be the one sharing the screen
+						(or an application you're using, if your browser version is recent enough)
+						or a viewer to an existing session. When sharing your screen/application, an ID will be returned
+						that you'll be able to share with other people to act as viewers.</p>
+						<div class="alert alert-info"><b>Note well!</b> If you want to share your screen, you may need to open
+						the <b>HTTPS</b> version of this page. If Janus is not behind the same webserver
+						as the pages that are served (that is, you didn't configure a proxying of HTTP requests
+						to Janus via a web frontend, e.g., Apache HTTPD), make sure you started it
+						with HTTPS support as well, since for security reasons you cannot contact an HTTP
+						backend if the page has been served via HTTPS. Besides, if you configured Janus
+						to make use of self-signed certificates, try and open a generic link served by Janus
+						in the browser itself, or otherwise AJAX requests to it will fail due to the unsafe
+						nature of the certificate.</div>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-5 hide" id="screenmenu">
+				<div class="row col-md-12">
+					<div class="input-group mt-3 mb-1 hide" id="createnow">
+						<span class="input-group-text"><i class="fa-solid fa-users"></i></span>
+						<input class="form-control" type="text" placeholder="Insert a title for the session" autocomplete="off" id="desc" onkeypress="return checkEnterShare(this, event);" />
+						<span class="input-group-btn">
+							<button class="btn btn-success" autocomplete="off" id="create">Share your screen</button>
+						</span>
+					</div>
+				</div>
+				<div class="divider col-md-12">
+					<hr class="pull-left"/>or<hr class="pull-right"/>
+				</div>
+				<div class="row col-md-12">
+					<div class="input-group mt-1 mb-1 hide" id="joinnow">
+						<span class="input-group-text"><i class="fa-solid fa-circle-play"></i></span>
+						<input class="form-control" type="text" placeholder="Insert the numeric session identifier" autocomplete="off" id="roomid" onkeypress="return checkEnterJoin(this, event);" />
+						<span class="input-group-btn">
+							<button class="btn btn-success" autocomplete="off" id="join">Join an existing session</button>
+						</span>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="room">
+				<div class="row">
+					<div class="col-md-12">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Screen Capture <span class="badge bg-info" id="title"></span> <span class="badge bg-success" id="session"></span></span>
+							</div>
+							<div class="card-body" id="screencapture"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>

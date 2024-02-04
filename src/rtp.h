@@ -89,8 +89,6 @@ typedef struct janus_rtp_rfc2833_payload {
 #endif
 } janus_rtp_rfc2833_payload;
 
-#define JANUS_RTP_RFC2833_DEFAULT_PAYLOAD_TYPE 101
-
 /*! \brief a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
 #define JANUS_RTP_EXTMAP_AUDIO_LEVEL		"urn:ietf:params:rtp-hdrext:ssrc-audio-level"
 /*! \brief a=extmap:2 urn:ietf:params:rtp-hdrext:toffset */

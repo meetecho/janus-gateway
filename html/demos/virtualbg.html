@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server (multistream): Virtual Background</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
+<script type="text/javascript" src="settings.js" ></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="virtualbg.js"></script>
+<script>
+	$(function() {
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='virtualbg.html']").addClass("active");
+		});
+		$(".footer").load("../footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="../css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="../forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
+				<h1>Plugin Demo: Virtual Background
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="alert alert-primary mt-2 mb-5">
+						Want to learn more about the <strong>EchoTest</strong> plugin?
+						Check the <a target="_blank" href="https://janus.conf.meetecho.com/docs/echotest">Documentation</a>.
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This is a variant of the Echo Test and Canvas demos meant to
+						 showcase how you can use libraries like
+						 <a href="https://google.github.io/mediapipe/" target="_blank">MediaPipe</a>
+						to add a virtual background to your webcam capture before sending it
+						to Janus: everything is exactly the same in term of available controls,
+						features, and the like, with the substantial difference that we'll
+						play a bit with what we'll send on the video stream.</p>
+						<p>More precisely, the demo captures the webcam feed via a
+						<code>getUserMedia</code> call, and then will make use of MediaPipe
+						to segment the video and replace the background by drawing on a
+						<code>canvas</code> element. The <code>canvas</code> element is then used
+						as the actual source of media for our PeerConnection, which means the
+						video we get back from the EchoTest plugin should reflect the
+						tweaks we've made on the stream.</p>
+						<p>Notice that this is a very naive implementation, which is heavily
+						based on the <a href="https://google.github.io/mediapipe/solutions/selfie_segmentation.html" target="_blank">example</a>
+						from the MediaPipe Selfie Segmentation documentation.</p>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="videos">
+				<div class="row">
+					<div class="col-md-6" id="self">
+						<div class="row">
+							<div class="card">
+								<div class="card-header">
+									<span class="card-title">Local Stream
+										<div class="btn-group btn-group-sm top-right hide">
+											<div class="btn-group btn-group-sm">
+												<button id="backgroundset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+													Background
+												</button>
+												<ul id="background" class="dropdown-menu" role="menu">
+													<a class="dropdown-item" href="#" id="synthwave">Synthwave</a>
+													<a class="dropdown-item" href="#" id="office">Office</a>
+													<a class="dropdown-item" href="#" id="brickwall">Brick Wall</a>
+													<a class="dropdown-item" href="#" id="blur">Blur</a>
+													<a class="dropdown-item" href="#" id="none">None</a>
+												</ul>
+											</div>
+										</div>
+									</span>
+								</div>
+								<div class="card-body" id="videoleft">
+									<video class="rounded centered hide" id="myvideo" width="100%" height="100%" muted="muted"></video>
+									<canvas id="canvas" class="hide" width="640" height="480" style="display: block; margin: auto; padding: 0"></canvas>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-6">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Remote Stream <span class="badge bg-primary hide" id="curres"></span> <span class="badge bg-info hide" id="curbitrate"></span></span>
+							</div>
+							<div class="card-body" id="videoright"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>

@@ -35,6 +35,7 @@ A couple of plugins depend on a few more libraries:
 
 * [Sofia-SIP](https://github.com/freeswitch/sofia-sip) (only needed for the SIP plugin)
 * [libopus](https://opus-codec.org/) (only needed for the AudioBridge plugin)
+* [speexdsp](https://www.speex.org/) (only needed for AudioBridge plugin)
 * [libogg](https://xiph.org/ogg/) (needed for the VoiceMail plugin and/or post-processor, and optionally AudioBridge and Streaming plugins)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are interested in RTSP support in the Streaming plugin or in the sample Event Handler plugin)
 * [Lua](https://www.lua.org/download.html) (only needed for the Lua plugin)
@@ -51,7 +52,7 @@ All of those libraries are usually available on most of the most common distribu
     yum install libmicrohttpd-devel jansson-devel \
        openssl-devel libsrtp-devel sofia-sip-devel glib2-devel \
        opus-devel libogg-devel libcurl-devel pkgconfig \
-       libconfig-devel libtool autoconf automake
+       speexdsp-devel libconfig-devel libtool autoconf automake
 
 Notice that you may have to `yum install epel-release` as well if you're attempting an installation on a CentOS machine instead.
 
@@ -60,7 +61,7 @@ On Ubuntu or Debian, it would require something like this:
 	apt install libmicrohttpd-dev libjansson-dev \
 		libssl-dev libsofia-sip-ua-dev libglib2.0-dev \
 		libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev \
-		libconfig-dev pkg-config libtool automake
+		libspeexdsp-dev libconfig-dev pkg-config libtool automake
 
 * *Note:* please notice that libopus may not be available out of the box on your distro. In that case, you'll have to [install it manually](https://www.opus-codec.org).
 
@@ -218,7 +219,7 @@ since it is a GNU makefile. `./configure` can be run without arguments since the
 Note that the `configure.ac` is coded to use openssl in base. If you wish to use openssl from ports or any other ssl you must change `configure.ac` accordingly.
 
 	pkg install libsrtp2 libusrsctp jansson libnice libmicrohttpd libwebsockets curl opus sofia-sip libogg jansson libnice libconfig \
-        libtool gmake autoconf autoconf-wrapper glib
+        speexdsp libtool gmake autoconf autoconf-wrapper glib
 
 
 ### Building on MacOS
@@ -228,7 +229,7 @@ First of all, you can use `brew` to install most of the dependencies:
 
 	brew install jansson libnice openssl srtp libusrsctp libmicrohttpd \
 		libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl glib \
-		libconfig pkg-config autoconf automake libtool
+		speexdsp libconfig pkg-config autoconf automake libtool
 
 For what concerns libwebsockets, though, make sure that the installed version is higher than `2.4.1`, or you might encounter the problems described in [this post](https://groups.google.com/forum/#!topic/meetecho-janus/HsFaEXBz4Cg). If `brew` doesn't provide a more recent version, you'll have to install the library manually.
 

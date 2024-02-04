@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server (multistream): Text Room</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
+<script type="text/javascript" src="settings.js" ></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="textroom.js"></script>
+<script>
+	$(function() {
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='textroom.html']").addClass("active");
+		});
+		$(".footer").load("../footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="../css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="../forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
+				<h1>Plugin Demo: Text Room
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="alert alert-primary mt-2 mb-5">
+						Want to learn more about the <strong>TextRoom</strong> plugin?
+						Check the <a target="_blank" href="https://janus.conf.meetecho.com/docs/textroom">Documentation</a>.
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>The Text Room demo is a simple example of how you can use this text
+						broadcasting plugin, which uses Data Channels, to implement something
+						similar to a chatroom. More specifically, the demo allows you to join
+						a previously created and configured text room together with other
+						participants, and send/receive public and private messages to
+						individual participants. To send messages on the chatroom, just type
+						your text and send. To send private messages to individual participants,
+						click the participant name in the list on the right and a custom dialog
+						will appear.</p>
+						<p>To try the demo, just insert a username to join the room. This will
+						add you to chatroom, and allow you to interact with the other participants.</p>
+						<p>Notice that this is just a very basic demo, and that is just one of
+						the several different ways you can use this plugin for. The plugin
+						actually allows you to join multiple rooms at the same time, and also
+						to forward incoming messages to the room to external components. This
+						makes it a useful tool whenever you have to interact with third party
+						applications and exchange text data.</p>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="roomjoin">
+				<div class="row">
+					<span class="badge bg-info" id="you"></span>
+					<div class="col-md-12" id="controls">
+						<div class="input-group mt-3 mb-1 hide" id="registernow">
+							<span class="input-group-text"><i class="fa-solid fa-user"></i></span>
+							<input class="form-control" type="text" placeholder="Choose a display name" autocomplete="off" id="username" onkeypress="return checkEnter(this, event);" />
+							<span class="input-group-btn">
+								<button class="btn btn-success" autocomplete="off" id="register">Join the room</button>
+							</span>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="room">
+				<div class="row">
+					<div class="col-md-4">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Participants <span class="badge bg-info hide" id="participant"></span></span>
+							</div>
+							<div class="card-body">
+								<ul id="list" class="list-group">
+								</ul>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-8">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Public Chatroom</span>
+							</div>
+							<div class="card-body relative" style="overflow-x: auto;" id="chatroom">
+							</div>
+							<div class="card-footer">
+								<div class="input-group mt-3 mb-3">
+									<span class="input-group-text"><i class="fa-solid fa-cloud-arrow-up"></i></span>
+									<input class="form-control" type="text" placeholder="Write a chatroom message" autocomplete="off" id="datasend" onkeypress="return checkEnter(this, event);" disabled />
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>
