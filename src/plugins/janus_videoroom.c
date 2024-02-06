@@ -5726,6 +5726,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				if(video_handle[0] > 0) {
 					json_object_set_new(rtp_stream, "video_stream_id", json_integer(video_handle[0]));
 					json_object_set_new(rtp_stream, "video", json_integer(video_port[0]));
+					if(video_rtcp_port > 0) {
+						json_object_set_new(rtp_stream, "video_rtcp", json_integer(video_rtcp_port));
+					}
 				}
 				if(video_handle[1] > 0) {
 					json_object_set_new(rtp_stream, "video_stream_id_2", json_integer(video_handle[1]));
