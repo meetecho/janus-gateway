@@ -22,7 +22,7 @@ loggersheader_HEADERS = loggers/logger.h
 confdir = $(sysconfdir)/janus
 conf_DATA = $(NULL)
 
-demosdir = $(datadir)/janus/demos
+demosdir = $(datadir)/janus/html
 
 plugindir = $(libdir)/janus/plugins
 plugin_LTLIBRARIES = $(NULL)

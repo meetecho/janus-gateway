@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server (multistream): NoSIP (SDP/RTP)</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
+<script type="text/javascript" src="settings.js" ></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="nosip.js"></script>
+<script>
+	$(function() {
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='nosip.html']").addClass("active");
+		});
+		$(".footer").load("../footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="../css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="../forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
+				<h1>Plugin Demo: NoSIP (SDP/RTP)
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="alert alert-primary mt-2 mb-5">
+						Want to learn more about the <strong>NoSIP</strong> plugin?
+						Check the <a target="_blank" href="https://janus.conf.meetecho.com/docs/nosip">Documentation</a>.
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This is a demo that complements the one <a href="siptest.html">showcasing the SIP plugin</a>. In
+						fact, while the SIP plugin allows you to not worry about SIP details, which are implemented within
+						the plugin itself, the NoSIP plugin doesn't mess with signalling itself, leaving it up to the
+						application. As such, it provided an alternative to those that still want to interact with a legacy
+						infrastructure (e.g., a pre-existing SIP-based one), but still want to be able to have control
+						on the signalling themselves, rather than completely delegating it to the SIP plugin.</p>
+						<p>All this plugin does, as a consequence, is taking care of the translation between WebRTC
+						empowered SDPs, and barebone SDPs that can be used with legacy peers. The barebone SDPs the
+						plugin generates are crafted so that media is handled by the plugin itself, thus implementing
+						the same RTP/RTCP gateway functionality the SIP plugin provides, but without the constraint
+						of the signalling. It is up to the appplication to transport a generated offer in whatever
+						signalling they want to use (e.g., SIP, IAX, XMPP, etc.) and make sure the offer/answer from
+						the peer is passed to the plugin, so that the session can be completed.</p>
+						<p>Considering this plugin is very much generic and signalling-agnostic, this demo does NOT
+						involve any signalling at all. On the contrary, it will show how a WebRTC peer can establish
+						a session with another WebRTC peer (for the sake of simplicity located in the same page)
+						by passing through the RTP/RTCP gatewaying functionality. This should as a result make it easier
+						for you to understand how a NoSIP caller and a NoSIP callee would need to be implemented. The
+						barebone SDPs generated/processed as a consequence will be displayed as a proof of concept.</p>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="videos">
+				<div class="row">
+					<div class="col-md-6">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Caller
+									<div class="btn-group btn-group-sm top-right">
+										<button class="btn btn-danger" autocomplete="off" id="togglevideo" disabled>Disable video</button>
+									</div>
+								</span>
+							</div>
+							<div class="card-body" id="videoleft"></div>
+						</div>
+						<pre class="card card-body bg-gray mt-3" id="localsdp"></pre>
+					</div>
+					<div class="col-md-6">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Callee</span>
+							</div>
+							<div class="card-body" id="videoright"></div>
+						</div>
+						<pre class="card card-body bg-gray mt-3" id="remotesdp"></pre>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>

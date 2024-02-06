@@ -5,41 +5,59 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server: Documentation</title>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
-<script>
-	$(function() {
-		$(".navbar-static-top").load("../navbar.html", function() {
-			$(".navbar-static-top a[href='docs']").parent().addClass("active");
-		});
-		$(".footer").load("../footer.html");
-	});
-</script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.7/cerulean/bootstrap.min.css" type="text/css"/>
+<script type="text/javascript" src="jquery.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="../css/demo.css" type="text/css"/>
 </head>
 <body>
-	
-<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="https://s3.amazonaws.com/github/ribbons/forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
 
-<nav class="navbar navbar-default navbar-static-top">
-</nav>
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="https://s3.amazonaws.com/github/ribbons/forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+<div class="container">
+	<a class="navbar-brand" href="index.html">Janus (multistream)</a>
+	<button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+		<span class="navbar-toggler-icon"></span>
+	</button>
+	<div class="navbar-collapse collapse" id="navbarResponsive">
+		<ul class="navbar-nav">
+			<li class="nav-item"><a class="nav-link" href="../index.html">Home</a></li>
+			<li class="nav-item"><a class="nav-link" href="../demos/">Demos</a></li>
+			<li class="nav-item"><a class="nav-link active" href="index.html">Documentation</a></li>
+			<li class="nav-item"><a class="nav-link" href="../citeus.html">Papers</a></li>
+			<li class="nav-item"><a class="nav-link" href="../support.html">Need help?</a></li>
+			<li class="nav-item"><a class="nav-link" href="https://janus-legacy.conf.meetecho.com/">Janus (0.x)</a></li>
+			<li class="nav-item"><a class="nav-link januscon" target="_blank" href="https://januscon.it">JanusCon!</a></li>
+		</ul>
+		<ul class="navbar-nav ms-auto">
+			<li class="nav-item">
+				<a class="nav-link meetecho-logo" target="_blank" href="https://www.meetecho.com">
+					<img src="meetecho-logo.png"/>
+				</a>
+			</li>
+		</ul>
+	</div>
+</div>
+</div>
 
 <div class="container">
 	<div class="row">
 		<div class="col-md-12">
-			<div class="page-header">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
 				<h1>Documentation</h1>
 			</div>
 			<h3>Janus WebRTC Server: Documentation</h3>
 			<p>You can build a documentation for the server adding:</p>
-			<div class="alert alert-info">--enable-docs</div>
+			<pre class="card card-body bg-gray">--enable-docs</pre>
 			<p>to the configure options. You'll need <a href="http://www.doxygen.org">Doxygen</a> and <a href="http://www.graphviz.org/">Graphviz</a> installed.</p>
 		</div>
 	</div>
 
 	<hr>
 	<div class="footer">
+	<p>Janus WebRTC Server &copy; <a href="http://www.meetecho.com">Meetecho</a> 2014-2023</p>
 	</div>
 </div>
 </body>

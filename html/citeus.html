@@ -5,30 +5,31 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server (multistream): Cite us!</title>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
 <script>
 	$(function() {
-		$(".navbar-static-top").load("navbar.html", function() {
-			$(".navbar-static-top a[href='citeus.html']").parent().addClass("active");
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top a[href='citeus.html']").addClass("active");
 		});
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 </head>
 <body>
 
-<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
 
-<nav class="navbar navbar-default navbar-static-top">
-</nav>
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
 
 <div class="container">
 	<div class="row">
 		<div class="col-md-12">
-			<div class="page-header">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
 				<h1>Cite us!</h1>
 			</div>
 			<div>
@@ -43,7 +44,7 @@
 			</div>
 			<hr id="janus"/>
 			<h4><a href="http://dl.acm.org/citation.cfm?id=2670389">IPTComm 2014: "Janus: a general purpose WebRTC gateway"</a></h4>
-			<pre>
+			<pre class="card card-body bg-gray mb-5">
 @inproceedings{IPTComm2014-Janus,
 	author = {Amirante, A. and Castaldi, T. and Miniero, L. and Romano, S. P.},
 	title = {Janus: A General Purpose WebRTC Gateway},
@@ -65,7 +66,7 @@
 			</pre>
 			<hr id="awes"/>
 			<h4><a href="https://dl.acm.org/citation.cfm?doid=2749215.2749223">AWeS 2015: "Performance analysis of the Janus WebRTC gateway"</a></h4>
-			<pre>
+			<pre class="card card-body bg-gray mb-5">
 @inproceedings{AWeS2015-Janus,
 	author = {Amirante, Alessandro and Castaldi, Tobia and Miniero, Lorenzo and Romano, Simon Pietro},
 	title = {Performance Analysis of the Janus WebRTC Gateway},
@@ -87,7 +88,7 @@
 			</pre>
 			<hr id="jattack"/>
 			<h4><a href="https://ieeexplore.ieee.org/document/7780247/">IPTComm 2016: "Jattack: a WebRTC load testing tool"</a></h4>
-			<pre>
+			<pre class="card card-body bg-gray mb-5">
 @inproceedings{IPTComm2016-Jattack,
 	author = {Amirante, A. and Castaldi, T. and Miniero, L. and Romano, S. P.},
 	title = {Jattack: a WebRTC load testing tool},
@@ -104,7 +105,7 @@
 			</pre>
 			<hr id="ietf"/>
 			<h4><a href="https://ieeexplore.ieee.org/document/7992930/">IEEE Communications Standards Magazine: "Empowering Remote Participation in IETF Meetings through WebRTC"</a></h4>
-			<pre>
+			<pre class="card card-body bg-gray mb-5">
 @article{DBLP:journals/csm/AmiranteCMS17,
 	author = {Amirante, A. and Castaldi, T. and Miniero, L. and Saviano, P.},
 	title = {Empowering Remote Participation in {IETF} Meetings through WebRTC},
@@ -122,7 +123,7 @@
 			</pre>
 			<hr id="iceland"/>
 			<h4><a href="https://ieeexplore.ieee.org/document/8567641/">IPTComm 2018: "Measuring Janus temperature in ICE-land"</a></h4>
-			<pre>
+			<pre class="card card-body bg-gray mb-5">
 @inproceedings{IPTComm2018-libnice,
 	author = {Amirante, A. and Castaldi, T. and Miniero, L. and Romano, S. P. and Toppi, A.},
 	year = {2018},
@@ -131,10 +132,9 @@
 	title = {Measuring Janus temperature in ICE-land},
 	doi = {10.1109/IPTCOMM.2018.8567641}
 }			</pre>
-			</pre>
 			<hr id="docker"/>
 			<h4><a href="https://ieeexplore.ieee.org/abstract/document/8894526">IEEE Internet Computing: "Container NATs and Session-Oriented Standards: Friends or Foe?"</a></h4>
-			<pre>
+			<pre class="card card-body bg-gray mb-5">
 @ARTICLE{8894526,
   author={A. {Amirante} and S. P. {Romano}},
   journal={IEEE Internet Computing},
@@ -144,6 +144,7 @@
   number={6},
   pages={28-37}
 }
+			</pre>
 		</div>
 	</div>
 

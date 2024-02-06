@@ -731,7 +731,7 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 		}
 		JANUS_LOG(LOG_VERB, "Binding media address set to [%s]...\n", janus_network_address_is_null(&janus_network_local_ip) ? "any" : local_ip);
 		if(!sdp_ip) {
-			char *ip = janus_network_address_is_null(&janus_network_local_ip) ? local_ip : local_ip;
+			char *ip = janus_network_address_is_null(&janus_network_local_ip) ? local_ip : NULL;
 			if(ip) {
 				sdp_ip = g_strdup(ip);
 				JANUS_LOG(LOG_VERB, "IP to advertise in SDP: %s\n", sdp_ip);
@@ -2034,7 +2034,7 @@ static int janus_nosip_bind_socket(int fd, int port) {
 		(janus_network_address_is_null(&janus_network_local_ip) || janus_network_local_ip.family == AF_INET6);
 	socklen_t addrlen = use_ipv6_address_family? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
 	struct sockaddr_storage rtp_address = { 0 };
-	if(!ipv6_disabled) {
+	if(use_ipv6_address_family) {
 		struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&rtp_address;
 		addr->sin6_family = AF_INET6;
 		addr->sin6_port = htons(port);

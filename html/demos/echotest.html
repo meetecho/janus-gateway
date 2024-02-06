@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server (multistream): Echo Test</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
+<script type="text/javascript" src="settings.js" ></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="echotest.js"></script>
+<script>
+	$(function() {
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='echotest.html']").addClass("active");
+		});
+		$(".footer").load("../footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="../css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="../forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
+				<h1>Plugin Demo: Echo Test
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="alert alert-primary mt-2 mb-5">
+						Want to learn more about the <strong>EchoTest</strong> plugin?
+						Check the <a target="_blank" href="https://janus.conf.meetecho.com/docs/echotest">Documentation</a>.
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This Echo Test demo just blindly sends you back whatever you
+						send to it. You're basically attached to yourself, and so your audio
+						and video you send to Janus are echoed back to you. The same
+						is done for RTCP packets as well, with the information properly updated.</p>
+						<p>The demo also provides a few controls to manipulate the media
+						before you send them. You can mute audio and video, for instance,
+						which will tell the server to drop the frames and not echo them
+						back to you. You can also try and cap the bitrate: such control
+						will tell the server to manipulate the RTCP REMB packets passing
+						through, in order to simulate a bandwidth limitation. In case
+						you're interested in testing simulcasting or SVC, add a
+						<code>?simulcast=true</code> (for simulcast) or <code>?svc=&lt;mode&gt;</code> (for SVC)
+						query string to the url of this page and reload it: buttons will appear
+						to allow you to try and switch between lower and higher quality
+						versions of the video you're capturing. Notice that you may have
+						to increase the bandwidth indicator to have the higher quality
+						versions appear, as the browser will not encode them otherwise.
+						Besides, notice that simulcast will only work when using VP8 or H.264
+						(or, if you're using a recent version of Chrome, VP9 and AV1 too),
+						while SVC will only work if you're using VP9 or AV1 on a browser that
+						supports setting the <code>scalabilityMode</code>.</p>
+						<p>Finally, this demo also includes Data Channels: whatever you
+						write in the text box under your local video, will be sent via
+						Data Channels to the plugins, modified by adding a fixed prefix,
+						and sent back to you in the text area below the remote video.</p>
+						<div class="alert alert-info">This demo, as all the others, for the
+						sake of simplicity accesses the default devices you have available on
+						your machine. If you're interested in a demo that shows you how you
+						can select specific devices with <code>janus.js</code>, open the
+						<a class="alert-link" href="devicetest.html">Devices</a> demo instead.</div>
+						<div class="alert alert-info">The <b>Lua</b> and <b>Duktape</b> plugins, when
+						installed out of the box, come with a script that mimics the default EchoTest
+						<b>C</b> plugin: this means that you can use this demo page to talk to them
+						as well, so long as you tell the page code to connect to the respective plugin.
+						To talk to the <b>Lua</b> plugin instead of the stock EchoTest plugin,
+						add the <code>?plugin=lua</code> query string to the url of this page;
+						to talk to the <b>Duktape</b> plugin instead, use <code>?plugin=duktape</code>.
+						Since they both share pretty much the same syntax as the stock
+						EchoTest plugin, most if not all features should work just the same way.</div>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="videos">
+				<div class="row">
+					<div class="col-md-6">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Local Stream
+									<div class="btn-group btn-group-sm top-right hide">
+										<button class="btn btn-sm btn-danger" autocomplete="off" id="toggleaudio">Disable audio</button>
+										<button class="btn btn-sm btn-danger" autocomplete="off" id="togglevideo">Disable video</button>
+										<div class="btn-group btn-group-sm">
+											<button id="bitrateset" autocomplete="off" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+												Bandwidth
+											</button>
+											<ul id="bitrate" class="dropdown-menu">
+												<li><a class="dropdown-item" href="#" id="0">No limit</a></li>
+												<li><a class="dropdown-item" href="#" id="128">Cap to 128kbit</a></li>
+												<li><a class="dropdown-item" href="#" id="256">Cap to 256kbit</a></li>
+												<li><a class="dropdown-item" href="#" id="512">Cap to 512kbit</a></li>
+												<li><a class="dropdown-item" href="#" id="1024">Cap to 1mbit</a></li>
+												<li><a class="dropdown-item" href="#" id="1500">Cap to 1.5mbit</a></li>
+												<li><a class="dropdown-item" href="#" id="2000">Cap to 2mbit</a></li>
+											</ul>
+										</div>
+									</div>
+								</span>
+							</div>
+							<div class="card-body" id="videoleft"></div>
+						</div>
+						<div class="input-group mt-3 mb-3">
+							<span class="input-group-text"><i class="fa-solid fa-cloud-arrow-up"></i></span>
+							<input type="text" class="form-control" placeholder="Write a DataChannel message" autocomplete="off" id="datasend" onkeypress="return checkEnter(event);" disabled>
+						</div>
+					</div>
+					<div class="col-md-6">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Remote Stream <span class="badge bg-primary hide" id="curres"></span> <span class="badge bg-info hide" id="curbitrate"></span></span>
+							</div>
+							<div class="card-body" id="videoright"></div>
+						</div>
+						<div class="input-group mt-3 mb-3">
+							<span class="input-group-text"><i class="fa-solid fa-cloud-arrow-down"></i></span>
+							<input type="text" class="form-control" id="datarecv" disabled>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>

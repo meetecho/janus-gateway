@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server (multistream): Streaming Demo</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
+<script type="text/javascript" src="settings.js" ></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="streaming.js"></script>
+<script>
+	$(function() {
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='streaming.html']").addClass("active");
+		});
+		$(".footer").load("../footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="../css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="../forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
+				<h1>Plugin Demo: Streaming
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="alert alert-primary mt-2 mb-5">
+						Want to learn more about the <strong>Streaming</strong> plugin?
+						Check the <a target="_blank" href="https://janus.conf.meetecho.com/docs/streaming">Documentation</a>.
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This demo showcases the functionality provided by the Streaming plugin.
+						In particular, it provides three different streaming approaches, namely:</p>
+						<p><ol>
+							<li>An on-demand stream originated by a file (a song, in this case):
+							different users accessing this stream would receive a personal view
+							of the stream itself.</li>
+							<li>A pseudo-live stream, still originated by a file (an audio recording
+							of a radio running commentary): different users accessing this stream
+							would all receive the same, shared view of the stream.</li>
+							<li>A live stream, originated by a gstreamer script: as for the pseudo-live
+							stream, different users will get the same feed.</li>
+						</ol></p>
+						<p>You can try them all within the same session: just choose the stream
+						you're interested in and press the <code>Watch</code> button to start
+						the playout. Stopping it will allow you to switch to a different one.</p>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="streams">
+				<div class="row">
+					<div class="col-md-6">
+						<div class="card w-100">
+							<div class="card-header">
+								<span class="card-title">Streams <i id="update-streams" class="fa-solid fa-rotate" title="Update list of streams" style="cursor: pointer;"></i></span>
+							</div>
+							<div class="card-body" id="list">
+								<div class="btn-group btn-group-sm">
+									<button class="btn btn-primary" autocomplete="off" id="watch">Watch</button>
+									<div class="btn-group btn-group-sm">
+										<button autocomplete="off" id="streamset" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown">
+											Streams list
+										</button>
+										<ul id="streamslist" class="dropdown-menu" role="menu" style="max-height: 300px; overflow: auto;">
+										</ul>
+									</div>
+								</div>
+							</div>
+						</div>
+						<div class="card mt-4 w-100 hide" id="info">
+							<div class="card-header">
+								<span class="card-title"><i class="fa-solid fa-circle-info"></i> Metadata</span>
+							</div>
+							<div class="card-body">
+								<pre id="metadata" class="card card-body bg-gray mt-3"></pre>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-6" id="videos">
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>

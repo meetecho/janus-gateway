@@ -171,7 +171,7 @@ janus_plugin *create(void) {
  * Janus instance or it will crash.
  *
  */
-#define JANUS_PLUGIN_API_VERSION	103
+#define JANUS_PLUGIN_API_VERSION	104
 
 /*! \brief Initialization of all plugin properties to NULL
  *
@@ -610,6 +610,13 @@ struct janus_plugin_rtp {
  * @param[in] packet Pointer to the janus_plugin_rtp packet to reset
 */
 void janus_plugin_rtp_reset(janus_plugin_rtp *packet);
+/*! \brief Helper method to duplicate the RTP packet and its buffer
+ * @note The core will always pass non-allocated packets to plugins, which
+ * means they may have to duplicate them in case they need them for more time.
+ * @param[in] packet Pointer to the janus_plugin_rtp packet to duplicate
+ * @returns A pointer to the new janus_plugin_rtp, if successful, or NULL otherwise
+*/
+janus_plugin_rtp *janus_plugin_rtp_duplicate(janus_plugin_rtp *packet);
 
 /*! \brief Janus plugin RTCP packet */
 struct janus_plugin_rtcp {
