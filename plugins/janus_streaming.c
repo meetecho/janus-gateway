@@ -1087,7 +1087,7 @@ typedef struct janus_streaming_rtp_source {
 	gboolean svc;
 	gboolean askew, vskew;
 	gint64 last_received_audio;
-	gint64 last_received_video;
+	gint64 last_received_video[3];
 	gint64 last_received_data;
 	uint32_t audio_ssrc;		/* Only needed for fixing outgoing RTCP packets */
 	uint32_t video_ssrc;		/* Only needed for fixing outgoing RTCP packets */
@@ -2569,7 +2569,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				if(source->audio_fd != -1)
 					json_object_set_new(ml, "audio_age_ms", json_integer((now - source->last_received_audio) / 1000));
 				if(source->video_fd[0] != -1 || source->video_fd[1] != -1 || source->video_fd[2] != -1)
-					json_object_set_new(ml, "video_age_ms", json_integer((now - source->last_received_video) / 1000));
+					json_object_set_new(ml, "video_age_ms", json_integer((now - source->last_received_video[0]) / 1000));
 			}
 			json_array_append_new(list, ml);
 			janus_refcount_decrease(&mp->ref);
@@ -2733,7 +2733,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			if(source->audio_fd != -1)
 				json_object_set_new(ml, "audio_age_ms", json_integer((now - source->last_received_audio) / 1000));
 			if(source->video_fd[0] != -1 || source->video_fd[1] != -1 || source->video_fd[2] != -1)
-				json_object_set_new(ml, "video_age_ms", json_integer((now - source->last_received_video) / 1000));
+				json_object_set_new(ml, "video_age_ms", json_integer((now - source->last_received_video[0]) / 1000));
 			if(source->data_fd != -1)
 				json_object_set_new(ml, "data_age_ms", json_integer((now - source->last_received_data) / 1000));
 			janus_mutex_lock(&source->rec_mutex);
@@ -6483,7 +6483,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->pipefd[1] = -1;
 	pipe(live_rtp_source->pipefd);
 	live_rtp_source->last_received_audio = janus_get_monotonic_time();
-	live_rtp_source->last_received_video = janus_get_monotonic_time();
+	live_rtp_source->last_received_video[0] = janus_get_monotonic_time();
+	live_rtp_source->last_received_video[1] = live_rtp_source->last_received_video[0];
+	live_rtp_source->last_received_video[2] = live_rtp_source->last_received_video[0];
 	live_rtp_source->last_received_data = janus_get_monotonic_time();
 	live_rtp_source->keyframe.enabled = bufferkf;
 	live_rtp_source->keyframe.latest_keyframe = NULL;
@@ -8466,12 +8468,12 @@ static void *janus_streaming_relay_thread(void *data) {
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					ssrc = ntohl(rtp->ssrc);
 					if(source->rtp_collision > 0 && v_last_ssrc[index] && ssrc != v_last_ssrc[index] &&
-							(now-source->last_received_video) < (gint64)1000*source->rtp_collision) {
+							(now-source->last_received_video[index]) < (gint64)1000*source->rtp_collision) {
 						JANUS_LOG(LOG_WARN, "[%s] RTP collision on video mountpoint, dropping packet (ssrc=%"SCNu32")\n",
 							name, ssrc);
 						continue;
 					}
-					source->last_received_video = now;
+					source->last_received_video[index] = now;
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
 					/* Do we have a new stream? */
 					if(ssrc != v_last_ssrc[index]) {
