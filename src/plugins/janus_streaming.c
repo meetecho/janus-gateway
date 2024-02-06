@@ -1402,7 +1402,7 @@ typedef struct janus_streaming_rtp_source_stream {
 	char *h264_spspps;
 	int h264_spspps_len;
 	gboolean skew;
-	gint64 last_received;
+	gint64 last_received[3];
 	uint32_t ssrc;				/* Only needed for fixing outgoing RTCP packets */
 	uint32_t last_ssrc[3];		/* Only needed for detecting new sources */
 	volatile gint need_pli;		/* Whether we need to send a PLI later */
@@ -3109,7 +3109,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						json_object_set_new(info, "msid", json_string(msid));
 					}
 					if(stream->fd[0] != -1 || stream->fd[1] != -1 || stream->fd[2] != -1)
-						json_object_set_new(info, "age_ms", json_integer((now - stream->last_received) / 1000));
+						json_object_set_new(info, "age_ms", json_integer((now - stream->last_received[0]) / 1000));
 					json_array_append_new(media, info);
 					temp = temp->next;
 				}
@@ -3290,7 +3290,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				if(stream->type == JANUS_STREAMING_MEDIA_DATA)
 					json_object_set_new(info, "datatype", json_string(stream->textdata ? "text" : "binary"));
 				if(stream->fd[0] != -1 || stream->fd[1] != -1 || stream->fd[2] != -1)
-					json_object_set_new(info, "age_ms", json_integer((now - stream->last_received) / 1000));
+					json_object_set_new(info, "age_ms", json_integer((now - stream->last_received[0]) / 1000));
 				janus_mutex_lock(&source->rec_mutex);
 				if(admin && stream->rc && stream->rc->filename)
 					json_object_set_new(info, "recording", json_string(stream->rc->filename));
@@ -7585,7 +7585,9 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 	stream->fd[1] = fd[1];
 	stream->fd[2] = fd[2];
 	stream->rtcp_fd = rtcp_fd;
-	stream->last_received = janus_get_monotonic_time();
+	stream->last_received[0] = janus_get_monotonic_time();
+	stream->last_received[1] = stream->last_received[0];
+	stream->last_received[2] = stream->last_received[0];
 	if(mtype == JANUS_STREAMING_MEDIA_VIDEO) {
 		stream->keyframe.enabled = bufferkf;
 		stream->keyframe.latest_keyframe = NULL;
@@ -9597,12 +9599,12 @@ static void *janus_streaming_relay_thread(void *data) {
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					ssrc = ntohl(rtp->ssrc);
 					if(source->rtp_collision > 0 && stream->last_ssrc[0] && ssrc != stream->last_ssrc[0] &&
-							(now-stream->last_received) < (gint64)1000*source->rtp_collision) {
+							(now-stream->last_received[0]) < (gint64)1000*source->rtp_collision) {
 						JANUS_LOG(LOG_WARN, "[%s] RTP collision on audio mountpoint, dropping packet (#%d, ssrc=%"SCNu32")\n",
 							name, stream->mindex, ssrc);
 						continue;
 					}
-					stream->last_received = now;
+					stream->last_received[0] = now;
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio channel...\n", bytes);
 					/* Do we have a new stream? */
 					if(ssrc != stream->last_ssrc[0]) {
@@ -9692,12 +9694,12 @@ static void *janus_streaming_relay_thread(void *data) {
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					ssrc = ntohl(rtp->ssrc);
 					if(source->rtp_collision > 0 && stream->last_ssrc[index] && ssrc != stream->last_ssrc[index] &&
-							(now-stream->last_received) < (gint64)1000*source->rtp_collision) {
+							(now-stream->last_received[index]) < (gint64)1000*source->rtp_collision) {
 						JANUS_LOG(LOG_WARN, "[%s] RTP collision on video mountpoint, dropping packet (#%d, ssrc=%"SCNu32")\n",
 							name, stream->mindex, ssrc);
 						continue;
 					}
-					stream->last_received = now;
+					stream->last_received[index] = now;
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
 					/* Do we have a new stream? */
 					if(ssrc != stream->last_ssrc[index]) {
@@ -9916,7 +9918,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* Got something data (text) */
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
-					stream->last_received = janus_get_monotonic_time();
+					stream->last_received[0] = janus_get_monotonic_time();
 #ifdef HAVE_LIBCURL
 					source->reconnect_timer = janus_get_monotonic_time();
 #endif
