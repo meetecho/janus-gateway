@@ -20,21 +20,10 @@
  * recordings should be saved. The same folder will also be used to list
  * the available recordings that can be replayed.
  *
- * \note The application creates a special file in INI format with
- * \c .nfo extension for each recording that is saved. This is necessary
- * to map a specific audio .mjr file to a different video .mjr one, as
- * they always get saved in different files. If you want to replay
- * recordings you took in a different application (e.g., the streaming
- * or videoroom plugins) just copy the related files in the folder you
- * configured this plugin to use and create a .nfo file in the same
- * folder to create a mapping, e.g.:
- *
- * 		[12345678]
- * 		name = My videoroom recording
- * 		date = 2014-10-14 17:11:26
- * 		audio = mcu-audio.mjr
- * 		video = mcu-video.mjr
- *
+ * \note This application does not create a special file in INI format with
+ * \c .nfo extension for each recording that is saved anymore. This is not necessary
+ * as we use rtc-recorder specific metadata to map a specific audio .mjr file 
+ * to its corresponding .mjr one, since they always get saved in different files. 
  * \section recplayapi Record&Play API
  *
  * The Record&Play API supports several requests, some of which are
@@ -717,7 +706,7 @@ int janus_auviousrecordplay_init(janus_callbacks *callback, const char *config_p
 		}
 	}
 	recordings = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_auviousrecordplay_recording_destroy);
-	janus_auviousrecordplay_update_recordings_list();
+	// janus_auviousrecordplay_update_recordings_list();
 
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_auviousrecordplay_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_auviousrecordplay_message_free);
@@ -928,7 +917,7 @@ struct janus_plugin_result *janus_auviousrecordplay_handle_message(janus_plugin_
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "update")) {
 		/* Update list of available recordings, scanning the folder again */
-		janus_auviousrecordplay_update_recordings_list();
+		// janus_auviousrecordplay_update_recordings_list();
 		/* Send info back */
 		response = json_object();
 		json_object_set_new(response, "recordplay", json_string("ok"));
@@ -1230,52 +1219,13 @@ static void janus_auviousrecordplay_hangup_media_internal(janus_plugin_session *
 	janus_mutex_unlock(&session->rec_mutex);
 	if(session->recorder) {
 		if(session->recording) {
-			/* Create a .nfo file for this recording */
-			char nfofile[1024], nfo[1024];
-			nfofile[0] = '\0';
-			nfo[0] = '\0';
-			g_snprintf(nfofile, 1024, "%s/%"SCNu64".nfo", recordings_path, session->recording->id);
-			FILE *file = fopen(nfofile, "wt");
-			if(file == NULL) {
-				JANUS_LOG(LOG_ERR, "Error creating file %s...\n", nfofile);
-			} else {
-				if(session->recording->arc_file && session->recording->vrc_file) {
-					g_snprintf(nfo, 1024,
-						"[%"SCNu64"]\r\n"
-						"name = %s\r\n"
-						"date = %s\r\n"
-						"audio = %s.mjr\r\n"
-						"video = %s.mjr\r\n",
-							session->recording->id, session->recording->name, session->recording->date,
-							session->recording->arc_file, session->recording->vrc_file);
-				} else if(session->recording->arc_file) {
-					g_snprintf(nfo, 1024,
-						"[%"SCNu64"]\r\n"
-						"name = %s\r\n"
-						"date = %s\r\n"
-						"audio = %s.mjr\r\n",
-							session->recording->id, session->recording->name, session->recording->date,
-							session->recording->arc_file);
-				} else if(session->recording->vrc_file) {
-					g_snprintf(nfo, 1024,
-						"[%"SCNu64"]\r\n"
-						"name = %s\r\n"
-						"date = %s\r\n"
-						"video = %s.mjr\r\n",
-							session->recording->id, session->recording->name, session->recording->date,
-							session->recording->vrc_file);
-				}
-				/* Write to the file now */
-				fwrite(nfo, strlen(nfo), sizeof(char), file);
-				fclose(file);
-				g_atomic_int_set(&session->recording->completed, 1);
-				/* Generate the offer */
-				if(janus_auviousrecordplay_generate_offer(session->recording) < 0) {
-					JANUS_LOG(LOG_WARN, "Could not generate offer for recording %"SCNu64"...\n", session->recording->id);
-				}
+			g_atomic_int_set(&session->recording->completed, 1);
+			/* Generate the offer */
+			if(janus_auviousrecordplay_generate_offer(session->recording) < 0) {
+				JANUS_LOG(LOG_WARN, "Could not generate offer for recording %"SCNu64"...\n", session->recording->id);
 			}
 		} else {
-			JANUS_LOG(LOG_WARN, "Got a stop but missing recorder/recording! .nfo file may not have been generated...\n");
+			JANUS_LOG(LOG_WARN, "Got a stop but missing recorder/recording!\n");
 		}
 	}
 	if(session->recording) {
@@ -1975,144 +1925,14 @@ error:
 void janus_auviousrecordplay_update_recordings_list(void) {
 	if(recordings_path == NULL)
 		return;
-	JANUS_LOG(LOG_VERB, "Updating recordings list in %s\n", recordings_path);
-	janus_mutex_lock(&recordings_mutex);
-	/* First of all, let's keep track of which recordings are currently available */
-	GList *old_recordings = NULL;
-	if(recordings != NULL && g_hash_table_size(recordings) > 0) {
-		GHashTableIter iter;
-		gpointer value;
-		g_hash_table_iter_init(&iter, recordings);
-		while(g_hash_table_iter_next(&iter, NULL, &value)) {
-			janus_auviousrecordplay_recording *rec = value;
-			if(rec) {
-				janus_refcount_increase(&rec->ref);
-				old_recordings = g_list_append(old_recordings, &rec->id);
-			}
-		}
-	}
-	/* Open dir */
-	DIR *dir = opendir(recordings_path);
-	if(!dir) {
-		JANUS_LOG(LOG_ERR, "Couldn't open folder...\n");
-		g_list_free(old_recordings);
-		janus_mutex_unlock(&recordings_mutex);
-		return;
-	}
-	struct dirent *recent = NULL;
-	char recpath[1024];
-	while((recent = readdir(dir))) {
-		int len = strlen(recent->d_name);
-		if(len < 4)
-			continue;
-		if(strcasecmp(recent->d_name+len-4, ".nfo"))
-			continue;
-		JANUS_LOG(LOG_VERB, "Importing recording '%s'...\n", recent->d_name);
-		memset(recpath, 0, 1024);
-		g_snprintf(recpath, 1024, "%s/%s", recordings_path, recent->d_name);
-		janus_config *nfo = janus_config_parse(recpath);
-		if(nfo == NULL) {
-			JANUS_LOG(LOG_ERR, "Invalid recording '%s'...\n", recent->d_name);
-			continue;
-		}
-		GList *cl = janus_config_get_categories(nfo, NULL);
-		if(cl == NULL || cl->data == NULL) {
-			JANUS_LOG(LOG_WARN, "No recording info in '%s', skipping...\n", recent->d_name);
-			janus_config_destroy(nfo);
-			continue;
-		}
-		janus_config_category *cat = (janus_config_category *)cl->data;
-		guint64 id = g_ascii_strtoull(cat->name, NULL, 0);
-		if(id == 0) {
-			JANUS_LOG(LOG_WARN, "Invalid ID, skipping...\n");
-			janus_config_destroy(nfo);
-			continue;
-		}
-		janus_auviousrecordplay_recording *rec = g_hash_table_lookup(recordings, &id);
-		if(rec != NULL) {
-			JANUS_LOG(LOG_VERB, "Skipping recording with ID %"SCNu64", it's already in the list...\n", id);
-			janus_config_destroy(nfo);
-			/* Mark that we updated this recording */
-			old_recordings = g_list_remove(old_recordings, &rec->id);
-			janus_refcount_decrease(&rec->ref);
-			continue;
-		}
-		janus_config_item *name = janus_config_get(nfo, cat, janus_config_type_item, "name");
-		janus_config_item *date = janus_config_get(nfo, cat, janus_config_type_item, "date");
-		janus_config_item *audio = janus_config_get(nfo, cat, janus_config_type_item, "audio");
-		janus_config_item *video = janus_config_get(nfo, cat, janus_config_type_item, "video");
-		if(!name || !name->value || strlen(name->value) == 0 || !date || !date->value || strlen(date->value) == 0) {
-			JANUS_LOG(LOG_WARN, "Invalid info for recording %"SCNu64", skipping...\n", id);
-			janus_config_destroy(nfo);
-			continue;
-		}
-		if((!audio || !audio->value) && (!video || !video->value)) {
-			JANUS_LOG(LOG_WARN, "No audio and no video in recording %"SCNu64", skipping...\n", id);
-			janus_config_destroy(nfo);
-			continue;
-		}
-		rec = g_malloc0(sizeof(janus_auviousrecordplay_recording));
-		rec->id = id;
-		rec->name = g_strdup(name->value);
-		rec->date = g_strdup(date->value);
-		if(audio && audio->value) {
-			rec->arc_file = g_strdup(audio->value);
-			char *ext = strstr(rec->arc_file, ".mjr");
-			if(ext != NULL)
-				*ext = '\0';
-			/* Check which codec is in this recording */
-			rec->acodec = janus_auviousrecordplay_parse_codec(recordings_path, rec->arc_file);
-		}
-		if(video && video->value) {
-			rec->vrc_file = g_strdup(video->value);
-			char *ext = strstr(rec->vrc_file, ".mjr");
-			if(ext != NULL)
-				*ext = '\0';
-			/* Check which codec is in this recording */
-			rec->vcodec = janus_auviousrecordplay_parse_codec(recordings_path, rec->vrc_file);
-		}
-		rec->audio_pt = AUDIO_PT;
-		if(rec->acodec) {
-			/* Some audio codecs have a fixed payload type that we can't mess with */
-			if(!strcasecmp(rec->acodec, "pcmu"))
-				rec->audio_pt = 0;
-			else if(!strcasecmp(rec->acodec, "pcma"))
-				rec->audio_pt = 8;
-			else if(!strcasecmp(rec->acodec, "g722"))
-				rec->audio_pt = 9;
-		}
-		rec->video_pt = VIDEO_PT;
-		rec->viewers = NULL;
-		if(janus_auviousrecordplay_generate_offer(rec) < 0) {
-			JANUS_LOG(LOG_WARN, "Could not generate offer for recording %"SCNu64"...\n", rec->id);
-		}
-		g_atomic_int_set(&rec->destroyed, 0);
-		g_atomic_int_set(&rec->completed, 1);
-		janus_refcount_init(&rec->ref, janus_auviousrecordplay_recording_free);
-		janus_mutex_init(&rec->mutex);
+	// JANUS_LOG(LOG_VERB, "Updating recordings list in %s\n", recordings_path);
+	// janus_mutex_lock(&recordings_mutex);
 
-		janus_config_destroy(nfo);
+	 /* This section previously managed recordings based on .nfo files, 
+       which is now skipped due to the removal of .nfo file usage. 
+       Left as a placeholder for potential new metadata management logic. */
 
-		/* Add to the list of recordings */
-		g_hash_table_insert(recordings, janus_uint64_dup(rec->id), rec);
-	}
-	closedir(dir);
-	/* Now let's check if any of the previously existing recordings was removed */
-	if(old_recordings != NULL) {
-		while(old_recordings != NULL) {
-			guint64 id = *((guint64 *)old_recordings->data);
-			JANUS_LOG(LOG_VERB, "Recording %"SCNu64" is not available anymore, removing...\n", id);
-			janus_auviousrecordplay_recording *old_rec = g_hash_table_lookup(recordings, &id);
-			if(old_rec != NULL) {
-				/* Remove it */
-				g_hash_table_remove(recordings, &id);
-				janus_refcount_decrease(&old_rec->ref);
-			}
-			old_recordings = old_recordings->next;
-		}
-		g_list_free(old_recordings);
-	}
-	janus_mutex_unlock(&recordings_mutex);
+	// janus_mutex_unlock(&recordings_mutex);
 }
 
 janus_auviousrecordplay_frame_packet *janus_auviousrecordplay_get_frames(const char *dir, const char *filename) {
