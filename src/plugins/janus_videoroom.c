@@ -2391,9 +2391,11 @@ static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 			GList *temp = p->streams;
 			while(temp) {
 				ps = (janus_videoroom_publisher_stream *)temp->data;
+				janus_refcount_increase(&ps->ref);
 				janus_mutex_lock(&ps->rtp_forwarders_mutex);
 				if(g_hash_table_size(ps->rtp_forwarders) == 0) {
 					janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+					janus_refcount_decrease(&ps->ref);
 					temp = temp->next;
 					continue;
 				}
@@ -2410,6 +2412,7 @@ static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 					}
 				}
 				janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+				janus_refcount_decrease(&ps->ref);
 				temp = temp->next;
 			}
 		}
@@ -5849,17 +5852,20 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		GList *temp = publisher->streams;
 		while(temp) {
 			janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+			janus_refcount_increase(&ps->ref);
 			janus_mutex_lock(&ps->rtp_forwarders_mutex);
 			janus_rtp_forwarder *f = g_hash_table_lookup(ps->rtp_forwarders, GUINT_TO_POINTER(stream_id));
 			if(f != NULL) {
 				if(f->metadata != NULL) {
 					/* This belongs to a remotization, ignore */
 					janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+					janus_refcount_decrease(&ps->ref);
 					found = FALSE;
 					break;
 				}
 				g_hash_table_remove(ps->rtp_forwarders, GUINT_TO_POINTER(stream_id));
 				janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+				janus_refcount_decrease(&ps->ref);
 				/* Found, remove from global index too */
 				g_hash_table_remove(publisher->rtp_forwarders, GUINT_TO_POINTER(stream_id));
 				found = TRUE;
@@ -6412,9 +6418,11 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			GList *temp = p->streams;
 			while(temp) {
 				ps = (janus_videoroom_publisher_stream *)temp->data;
+				janus_refcount_increase(&ps->ref);
 				janus_mutex_lock(&ps->rtp_forwarders_mutex);
 				if(g_hash_table_size(ps->rtp_forwarders) == 0) {
 					janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+					janus_refcount_decrease(&ps->ref);
 					temp = temp->next;
 					continue;
 				}
@@ -6431,6 +6439,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					json_array_append_new(flist, fl);
 				}
 				janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+				janus_refcount_decrease(&ps->ref);
 				temp = temp->next;
 			}
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
@@ -6834,6 +6843,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		GList *temp = publisher->streams;
 		while(temp) {
 			janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+			janus_refcount_increase(&ps->ref);
 			janus_mutex_lock(&ps->rtp_forwarders_mutex);
 			GHashTableIter iter;
 			gpointer value;
@@ -6849,6 +6859,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				}
 			}
 			janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+			janus_refcount_decrease(&ps->ref);
 			temp = temp->next;
 		}
 		janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
