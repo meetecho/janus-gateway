@@ -7912,9 +7912,13 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 	/* Find the stream this packet belongs to */
 	janus_mutex_lock(&participant->streams_mutex);
 	janus_videoroom_publisher_stream *ps = g_hash_table_lookup(participant->streams_byid, GINT_TO_POINTER(pkt->mindex));
+	if(ps != NULL)
+		janus_refcount_increase_nodebug(&ps->ref);
 	janus_mutex_unlock(&participant->streams_mutex);
-	if(ps == NULL || ps->disabled) {
+	if(ps == NULL || ps->disabled || g_atomic_int_get(&ps->destroyed)) {
 		/* No stream..? */
+		if(ps != NULL)
+			janus_refcount_decrease_nodebug(&ps->ref);
 		janus_videoroom_publisher_dereference_nodebug(participant);
 		return;
 	}
@@ -8151,6 +8155,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 			}
 		}
 	}
+	janus_refcount_decrease_nodebug(&ps->ref);
 	janus_videoroom_publisher_dereference_nodebug(participant);
 }
 
@@ -8238,9 +8243,13 @@ static void janus_videoroom_incoming_data_internal(janus_videoroom_session *sess
 	/* Find the stream this packet belongs to */
 	janus_mutex_lock(&participant->streams_mutex);
 	janus_videoroom_publisher_stream *ps = g_hash_table_lookup(participant->streams_byid, GINT_TO_POINTER(participant->data_mindex));
+	if(ps != NULL)
+		janus_refcount_increase_nodebug(&ps->ref);
 	janus_mutex_unlock(&participant->streams_mutex);
-	if(ps == NULL || !ps->active || ps->muted) {
+	if(ps == NULL || !ps->active || ps->muted || g_atomic_int_get(&ps->destroyed)) {
 		/* No or inactive stream..? */
+		if(ps != NULL)
+			janus_refcount_decrease_nodebug(&ps->ref);
 		janus_videoroom_publisher_dereference_nodebug(participant);
 		return;
 	}
@@ -8299,6 +8308,7 @@ static void janus_videoroom_incoming_data_internal(janus_videoroom_session *sess
 	janus_mutex_lock_nodebug(&ps->subscribers_mutex);
 	g_slist_foreach(ps->subscribers, janus_videoroom_relay_data_packet, &pkt);
 	janus_mutex_unlock_nodebug(&ps->subscribers_mutex);
+	janus_refcount_decrease_nodebug(&ps->ref);
 	janus_videoroom_publisher_dereference_nodebug(participant);
 }
 
