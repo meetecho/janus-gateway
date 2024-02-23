@@ -3571,6 +3571,14 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 	pc->process_started = TRUE;
 }
 
+void janus_ice_reset_webrtc_alert(janus_ice_handle *handle) {
+	if(!handle || g_atomic_int_get(&handle->destroyed))
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT)) {
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Agent already exists?\n", handle->handle_id);
+	}
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
+}
+
 int janus_ice_setup_local(janus_ice_handle *handle, gboolean offer, gboolean trickle, janus_dtls_role dtls_role) {
 	if(!handle || g_atomic_int_get(&handle->destroyed))
 		return -1;

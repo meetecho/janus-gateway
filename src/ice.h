@@ -811,4 +811,6 @@ json_t *janus_ice_static_event_loops_info(void);
  * @note This will wait for the related threads to exit, and so may delay the shutdown process */
 void janus_ice_stop_static_event_loops(void);
 
+void janus_ice_reset_webrtc_alert(janus_ice_handle *handle);
+
 #endif

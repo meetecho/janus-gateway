@@ -3705,6 +3705,13 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 				return JANUS_ERROR_JSEP_INVALID_SDP;
 			}
 		}
+	} else {
+		janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
+		//~ if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
+		if(ice_handle == NULL) {
+			JANUS_LOG(LOG_ERR, "Invalid ICE handle\n");
+		}
+		janus_ice_reset_webrtc_alert(ice_handle);
 	}
 	/* Reference the payload, as the plugin may still need it and will do a decref itself */
 	json_incref(message);
