@@ -1547,7 +1547,7 @@ static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connectio
 			MHD_destroy_response(response);
 			goto done;
 		}
-		/* Turn this into a fake "info" request */
+		/* Turn this into a fake "ping" request */
 		method = "POST";
 		char tr[12];
 		janus_http_random_string(12, (char *)&tr);
@@ -1968,7 +1968,7 @@ static MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connection *con
 			MHD_destroy_response(response);
 			goto done;
 		}
-		/* Turn this into a fake "info" request */
+		/* Turn this into a fake "ping" request */
 		method = "POST";
 		char tr[12];
 		janus_http_random_string(12, (char *)&tr);
