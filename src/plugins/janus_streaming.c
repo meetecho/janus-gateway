@@ -5612,6 +5612,15 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	int ret = gateway->push_event(handle, &janus_streaming_plugin, NULL, event, NULL);
 	JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 	json_decref(event);
+	/* Also notify event handlers */
+	if(notify_events && gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "status", json_string("started"));
+		if(session->mountpoint != NULL)
+			json_object_set_new(info, "id", string_ids ?
+				json_string(session->mountpoint->id_str) :json_integer(session->mountpoint->id));
+		gateway->notify_event(&janus_streaming_plugin, session->handle, info);
+	}
 	janus_refcount_decrease(&session->ref);
 }
 
@@ -6629,7 +6638,7 @@ done:
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				json_object_set_new(info, "status", json_string("starting"));
+				json_object_set_new(info, "status", json_string(g_atomic_int_get(&session->started) ? "started" : "starting"));
 				if(session->mountpoint != NULL)
 					json_object_set_new(info, "id", string_ids ?
 						json_string(session->mountpoint->id_str) :json_integer(session->mountpoint->id));
