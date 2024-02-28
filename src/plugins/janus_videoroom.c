@@ -1104,11 +1104,20 @@ room-<unique room ID>: {
 			"mindex" : <unique m-index of this stream>,
 			"mid" : "<unique mid of this stream>",
 			"type" : "<type of this stream's media (audio|video|data)>",
+			"active" : <true|false, whether this stream is currently active>,
 			"feed_id" : <unique ID of the publisher originating this stream>,
 			"feed_mid" : "<unique mid of this publisher's stream>",
 			"feed_display" : "<display name of this publisher, if any>",
 			"send" : <true|false; whether we configured the stream to relay media>,
-			"ready" : <true|false; whether this stream is ready to start sending media (will be false at the beginning)>
+			"codec" : "<codec used by this stream>",
+			"h264-profile" : "<in case H.264 is used by the stream, the negotiated profile>",
+			"vp9-profile" : "<in case VP9 is used by the stream, the negotiated profile>",
+			"ready" : <true|false; whether this stream is ready to start sending media (will be false at the beginning)>,
+			"simulcast" : { .. optional object containing simulcast info, if simulcast is used by this stream .. },
+			"svc" : { .. optional object containing SVC info, if SVC is used by this stream .. },
+			"playout-delay" : { .. optional object containing info on the playout-delay extension configuration, if in use .. },
+			"sources" : <if this is a data channel stream, the number of data channel subscriptions>,
+			"source_ids" : [ .. if this is a data channel stream, an array containing the IDs of participants we've subscribed to .. ],
 		},
 		// Other streams in the subscription, if any
 	]
