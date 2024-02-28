@@ -1539,7 +1539,7 @@ static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connectio
 	}
 	/* Or maybe a ping */
 	if(session_path != NULL && !strcmp(session_path, "ping")) {
-		/* The info REST endpoint, if contacted through a GET, provides information on the Janus core */
+		/* The ping REST endpoint, if contacted through a GET, pings the Janus core */
 		if(strcasecmp(method, "GET")) {
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			janus_http_add_cors_headers(msg, response);
@@ -1960,7 +1960,7 @@ static MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connection *con
 	}
 	/* Or maybe a ping */
 	if(session_path != NULL && !strcmp(session_path, "ping")) {
-		/* The info REST endpoint, if contacted through a GET, provides information on the Janus core */
+		/* The ping REST endpoint, if contacted through a GET, pings the Janus core */
 		if(strcasecmp(method, "GET")) {
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			janus_http_add_cors_headers(msg, response);
