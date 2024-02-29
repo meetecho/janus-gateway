@@ -687,13 +687,13 @@ janus.attach(
  *
  \verbatim
 echotest.replaceTracks({
-	tracks: [
-		{
-			type: 'video',
-			mid: '1',    // We assume mid 1 is video
-			capture: { deviceId: { exact: videoDeviceId } }
-		}
-	]
+    tracks: [
+        {
+            type: 'video',
+            mid: '1',    // We assume mid 1 is video
+            capture: { deviceId: { exact: videoDeviceId } }
+        }
+    ]
 });
  \endverbatim
  *
