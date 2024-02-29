@@ -686,13 +686,15 @@ janus.attach(
  * identified by its \c deviceId is the following:
  *
  \verbatim
-echotest.replaceTracks([
-    {
-        type: 'video',
-        mid: '1',    // We assume mid 1 is video
-        capture: { deviceId: { exact: videoDeviceId } }
-    }
-]);
+echotest.replaceTracks({
+	tracks: [
+		{
+			type: 'video',
+			mid: '1',    // We assume mid 1 is video
+			capture: { deviceId: { exact: videoDeviceId } }
+		}
+	]
+});
  \endverbatim
  *
  * In case a new track needs to be added to a session, or an existing
