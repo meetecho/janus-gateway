@@ -348,11 +348,12 @@ static void janus_rtcp_incoming_ccfb(janus_rtcp_context *ctx, janus_rtcp_fb *ccf
 	data += 8;
 	total -= 8;
 	janus_rtcp_ccfb_report_block *block = NULL;
-	janus_rtcp_ccfb_metric_block *mblock = NULL, *fb = NULL;
+	//~ janus_rtcp_ccfb_metric_block *mblock = NULL, *fb = NULL;
 	janus_rtcp_ccfb_stats *stats = NULL;
 	GSList *feedback = NULL;
 	uint32_t ssrc = 0;
-	uint16_t begin_seq = 0, cur_seq = 0, num_reports = 0, mod_num_reports = 0;
+	uint16_t begin_seq = 0, cur_seq = 0, num_reports = 0, mod_num_reports = 0, mb = 0, ato = 0;
+	uint8_t r = 0, ecn = 0;
 	int i=0, j=0;
 	while(total >= 12) {
 		i++;
@@ -363,6 +364,10 @@ static void janus_rtcp_incoming_ccfb(janus_rtcp_context *ctx, janus_rtcp_fb *ccf
 		feedback = NULL;
 		begin_seq = cur_seq = ntohs(block->begin_seq);
 		num_reports = ntohs(block->num_reports);
+		/* FIXME Pion incorrectly writes num_reports-1 in RTCP packets,
+		 * which means we currently need to compensate here for the
+		 * actual number of reports that are attached in the packet */
+		num_reports++;
 		JANUS_LOG(LOG_HUGE, "Parsing block #%d: SSRC %"SCNu32"\n", i, ssrc);
 		JANUS_LOG(LOG_HUGE, "  -- begin_seq=%"SCNu16", num_reports=%"SCNu16"\n", begin_seq, num_reports);
 		/* Make sure there's room for the metrics */
@@ -377,16 +382,23 @@ static void janus_rtcp_incoming_ccfb(janus_rtcp_context *ctx, janus_rtcp_fb *ccf
 		}
 		/* Iterate on metrics */
 		for(j=0; j<num_reports; j++) {
-			mblock = (janus_rtcp_ccfb_metric_block *)data;
+			//~ mblock = (janus_rtcp_ccfb_metric_block *)data;
+			memcpy(&mb, data, sizeof(uint16_t));
+			mb = ntohs(mb);
+			r = (mb & 0x8000) >> 15;
+			ecn = (mb & 0x6000) >> 13;
+			ato = (mb & 0x1FFF);
 			JANUS_LOG(LOG_HUGE, "  -- -- Parsing metric #%d: R=%"SCNu16", ECN=%"SCNu16", ATO=%"SCNu16" (%"SCNu32")\n",
-				j+1, mblock->received, mblock->ecn, mblock->at_offset, report_ts + mblock->at_offset);
+				//~ j+1, mblock->received, mblock->ecn, mblock->at_offset, report_ts + mblock->at_offset);
+				j+1, r, ecn, ato, report_ts + ato);
 			/* If we have a stats storage for this SSRC, save this report */
 			if(stats != NULL) {
 				/* TODO We should check if this is a duplicate of feedback we
 				 * already received, which we can do looking at the seq number */
-				fb = g_malloc(sizeof(janus_rtcp_ccfb_metric_block));
-				memcpy(fb, mblock, sizeof(janus_rtcp_ccfb_metric_block));
-				feedback = g_slist_prepend(feedback, fb);
+				//~ fb = g_malloc(sizeof(janus_rtcp_ccfb_metric_block));
+				//~ memcpy(fb, mblock, sizeof(janus_rtcp_ccfb_metric_block));
+				//~ feedback = g_slist_prepend(feedback, fb);
+				feedback = g_slist_prepend(feedback, GUINT_TO_POINTER(mb));
 				cur_seq++;
 			}
 			data += 2;
@@ -414,7 +426,8 @@ static void janus_rtcp_incoming_ccfb(janus_rtcp_context *ctx, janus_rtcp_fb *ccf
 void janus_rtcp_ccfb_stats_free(janus_rtcp_ccfb_stats *stats) {
 	if(stats == NULL)
 		return;
-	g_slist_free_full(stats->feedback, (GDestroyNotify)g_free);
+	//~ g_slist_free_full(stats->feedback, (GDestroyNotify)g_free);
+	g_slist_free(stats->feedback);
 	g_free(stats);
 }
 
@@ -887,6 +900,10 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 			case RTCP_RTPFB:
 				if(rtcp->rc == 1) {
 					/* We handle NACKs ourselves as well, remove this too */
+					keep = FALSE;
+					break;
+				} else if(rtcp->rc == 11) {
+					/* We handle Congestion Control Feedback Report ourselves as well, remove this too */
 					keep = FALSE;
 					break;
 				} else if(rtcp->rc == 15) {

@@ -4477,7 +4477,9 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 		float congestion = 0.0f, max_congestion = 0.0f;
 		GSList *temp = NULL;
 		janus_rtcp_ccfb_stats *stats = NULL;
-		janus_rtcp_ccfb_metric_block *block = NULL;
+		//~ janus_rtcp_ccfb_metric_block *block = NULL;
+		uint16_t mb = 0, ato = 0;
+		uint8_t r = 0, ecn = 0;
 		/* Iterate on all SSRCs */
 		GHashTableIter iter;
 		gpointer value;
@@ -4489,17 +4491,23 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 			congestion = 0;
 			temp = stats->feedback;
 			while(temp) {
-				block = (janus_rtcp_ccfb_metric_block *)temp->data;
-				if(block) {
+				//~ block = (janus_rtcp_ccfb_metric_block *)temp->data;
+				//~ if(block) {
+				mb = GPOINTER_TO_UINT(temp->data);
+				if(mb) {
 					packets++;
-					if(block->ecn == 3 || !block->received) {
+					r = (mb & 0x8000) >> 15;
+					ecn = (mb & 0x6000) >> 13;
+					//~ if(block->ecn == 3 || !block->received) {
+					if(ecn == 3 || !r) {
 						/* FIXME We're treating a non-received packet as a congestion feedback */
 						congested++;
 					}
 				}
 				temp = temp->next;
 			}
-			g_slist_free_full(stats->feedback, (GDestroyNotify)g_free);
+			//~ g_slist_free_full(stats->feedback, (GDestroyNotify)g_free);
+			g_slist_free(stats->feedback);
 			stats->feedback = NULL;
 			/* FIXME Estimate what the percentage of congested packet was */
 			if(packets > 0 && congested > 0) {
