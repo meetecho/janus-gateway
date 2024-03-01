@@ -98,7 +98,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: cisco/libsrtp
-        ref: v2.5.0
+        ref: v2.6.0
     - name: setup libsrtp from sources
       if: ${{ matrix.deps_from_src == 'yes' }}
       run: |
