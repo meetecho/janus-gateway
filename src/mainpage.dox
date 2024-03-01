@@ -757,7 +757,7 @@ echotest.createOffer(
         tracks: [{ type: 'video', mid: '1', remove: true }],
         success: function(jsep) {
             echotest.send({ message: { video: true }, jsep: jsep })
-        }
+        },
         error: function(error) {
             bootbox.alert('WebRTC error... ' + error.message);
         }
@@ -774,7 +774,7 @@ echotest.createOffer(
         tracks: [{ type: 'screen', add: true, capture: true }],
         success: function(jsep) {
             echotest.send({ message: { video: true }, jsep: jsep })
-        }
+        },
         error: function(error) {
             bootbox.alert('WebRTC error... ' + error.message);
         }
