@@ -1411,6 +1411,7 @@ janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque
 	handle->queued_candidates = g_async_queue_new();
 	handle->queued_packets = g_async_queue_new();
 	janus_mutex_init(&handle->mutex);
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_session_handles_insert(session, handle);
 	return handle;
 }
