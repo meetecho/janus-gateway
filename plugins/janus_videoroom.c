@@ -8265,6 +8265,7 @@ static void *janus_videoroom_handler(void *data) {
 						participant->playout_delay_extmap_id > 0 ? participant->playout_delay_extmap_id : 0,
 					JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_ABS_SEND_TIME, abs_send_time_ext_id,
 					JANUS_SDP_OA_DATA, participant->data,
+					JANUS_SDP_OA_CCFB, TRUE,
 					JANUS_SDP_OA_DONE);
 				/* Is this room recorded, or are we recording this publisher already? */
 				janus_mutex_lock(&participant->rec_mutex);
