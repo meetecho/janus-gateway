@@ -23,6 +23,8 @@
 #include "pp-av1.h"
 #include "../debug.h"
 
+#include "obuparse.h"
+
 /* MP4 output */
 static AVFormatContext *fctx;
 #if LIBAVCODEC_VER_AT_LEAST(58, 18)
@@ -106,102 +108,18 @@ static void janus_pp_av1_lev128_encode(uint32_t value, uint8_t *base, size_t *wr
 	*written = (cur-base)+1;
 }
 
-/* Helpers to read a bit, or group of bits, in a Sequence Header */
-static uint32_t janus_pp_av1_getbit(uint8_t *base, uint32_t offset) {
-	return ((*(base + (offset >> 0x3))) >> (0x7 - (offset & 0x7))) & 0x1;
-}
-static uint32_t janus_pp_av1_getbits(uint8_t *base, uint8_t num, uint32_t *offset) {
-	uint32_t res = 0;
-	int32_t i = 0;
-	for(i=num-1; i>=0; i--) {
-		res |= janus_pp_av1_getbit(base, (*offset)++) << i;
-	}
-	return res;
-}
 /* Helper to parse a Sequence Header (only to get the video resolution) */
-static void janus_pp_av1_parse_sh(char *buffer, uint16_t *width, uint16_t *height) {
-	/* Evaluate/skip everything until we get to the resolution */
-	uint32_t offset = 0, value = 0, i = 0;
-	uint8_t *base = (uint8_t *)(buffer);
-	/* Skip seq_profile (3 bits) */
-	janus_pp_av1_getbits(base, 3, &offset);
-	/* Skip still_picture (1 bit) */
-	janus_pp_av1_getbit(base, offset++);
-	/* Skip reduced_still_picture_header (1 bit) */
-	value = janus_pp_av1_getbit(base, offset++);
-	if(value) {
-		/* Skip seq_level_idx (5 bits) */
-		janus_pp_av1_getbits(base, 5, &offset);
-	} else {
-		gboolean decoder_model_info = FALSE, initial_display_delay = FALSE;
-		uint32_t bdlm1 = 0;
-		/* Skip timing_info_present_flag (1 bit) */
-		value = janus_pp_av1_getbit(base, offset++);
-		if(value) {
-			/* Skip num_units_in_display_tick (32 bits) */
-			janus_pp_av1_getbits(base, 32, &offset);
-			/* Skip time_scale (32 bits) */
-			janus_pp_av1_getbits(base, 32, &offset);
-			/* Skip equal_picture_interval (1 bit)*/
-			value = janus_pp_av1_getbit(base, offset++);
-			if(value) {
-				/* TODO Skip num_ticks_per_picture_minus_1 (uvlc) */
-			}
-			/* Skip decoder_model_info_present_flag (1 bit) */
-			value = janus_pp_av1_getbit(base, offset++);
-			if(value) {
-				decoder_model_info = TRUE;
-				/* Skip buffer_delay_length_minus_1 (5 bits) */
-				bdlm1 = janus_pp_av1_getbits(base, 5, &offset);
-				/* Skip num_units_in_decoding_tick (32 bits) */
-				janus_pp_av1_getbits(base, 32, &offset);
-				/* Skip buffer_removal_time_length_minus_1 (5 bits) */
-				janus_pp_av1_getbits(base, 5, &offset);
-				/* Skip frame_presentation_time_length_minus_1 (5 bits) */
-				janus_pp_av1_getbits(base, 5, &offset);
-			}
-		}
-		/* Skip initial_display_delay_present_flag (1 bit) */
-		value = janus_pp_av1_getbit(base, offset++);
-		if(value)
-			initial_display_delay = TRUE;
-		/* Skip operating_points_cnt_minus_1 (5 bits) */
-		uint32_t opcm1 = janus_pp_av1_getbits(base, 5, &offset)+1;
-		for(i=0; i<opcm1; i++) {
-			/* Skip operating_point_idc[i] (12 bits) */
-			janus_pp_av1_getbits(base, 12, &offset);
-			/* Skip seq_level_idx[i] (5 bits) */
-			value = janus_pp_av1_getbits(base, 5, &offset);
-			if(value > 7) {
-				/* Skip seq_tier[i] (1 bit) */
-				janus_pp_av1_getbit(base, offset++);
-			}
-			if(decoder_model_info) {
-				/* Skip decoder_model_present_for_this_op[i] (1 bit) */
-				value = janus_pp_av1_getbit(base, offset++);
-				if(value) {
-					/* Skip operating_parameters_info(i) */
-					janus_pp_av1_getbits(base, (2*bdlm1)+1, &offset);
-				}
-			}
-			if(initial_display_delay) {
-				/* Skip initial_display_delay_present_for_this_op[i] (1 bit) */
-				value = janus_pp_av1_getbit(base, offset++);
-				if(value) {
-					/* Skip initial_display_delay_minus_1[i] (4 bits) */
-					janus_pp_av1_getbits(base, 4, &offset);
-				}
-			}
-		}
+static void janus_pp_av1_parse_sh(char *buffer, size_t buf_size, uint16_t *width, uint16_t *height) {
+	OBPSequenceHeader seq_header;
+	OBPError err;
+
+	if (obp_parse_sequence_header((uint8_t *)buffer, buf_size, &seq_header, &err) < 0) {
+		JANUS_LOG(LOG_ERR, "Error parsing sequence header\n");
+		return;
 	}
-	/* Read frame_width_bits_minus_1 (4 bits) */
-	uint32_t fwbm1 = janus_pp_av1_getbits(base, 4, &offset);
-	/* Read frame_height_bits_minus_1 (4 bits) */
-	uint32_t fhbm1 = janus_pp_av1_getbits(base, 4, &offset);
-	/* Read max_frame_width_minus_1 (n bits) */
-	*width = janus_pp_av1_getbits(base, fwbm1+1, &offset)+1;
-	/* Read max_frame_height_minus_1 (n bits) */
-	*height = janus_pp_av1_getbits(base, fhbm1+1, &offset)+1;
+
+	*width = seq_header.max_frame_width_minus_1 + 1;
+	*height = seq_header.max_frame_height_minus_1 + 1;
 }
 
 int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list, json_t *info) {
@@ -284,11 +202,21 @@ int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list, json_t *inf
 				len--;
 				obusize--;
 			}
-			if(type == 1) {
+
+			OBPOBUType obutype;
+			ptrdiff_t offset;
+			size_t obu_size;
+			int temporal_id;
+			int spatial_id;
+			OBPError err;
+
+			if (obp_get_next_obu((uint8_t *)payload, len, &obutype, &offset, &obu_size, &temporal_id, &spatial_id, &err) < 0) {
+				JANUS_LOG(LOG_ERR, "Failed to parse OBU header: %s\n", err.error);
+			}
+			if(obutype == OBP_OBU_SEQUENCE_HEADER) {
 				/* Sequence header */
 				uint16_t width = 0, height = 0;
-				/* TODO Fix currently broken parsing of SH */
-				janus_pp_av1_parse_sh(payload+1, &width, &height);
+				janus_pp_av1_parse_sh(payload+offset, obusize, &width, &height);
 				if(width*height > max_width*max_height) {
 					max_width = width;
 					max_height = height;
@@ -309,8 +237,8 @@ int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list, json_t *inf
 					json_array_append_new(resolutions, resolution);
 				}
 			}
-			payload += obusize;
-			len -= obusize;
+			payload += obusize + offset;
+			len -= obusize + offset;
 		}
 		if(tmp->drop) {
 			/* We marked this packet as one to drop, before */
