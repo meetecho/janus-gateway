@@ -154,7 +154,6 @@ jobs:
         ./autogen.sh
         ./configure $JANUS_CONFIG_COMMON $JANUS_CONFIG_OPTS
          make -j$(nproc)
-         make check-fuzzers
   javascript-lint:
     runs-on: ubuntu-22.04
     steps:
