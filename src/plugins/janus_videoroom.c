@@ -13015,7 +13015,6 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 					}
 				}
 				/* Now handle the packet as if coming from a regular publisher */
-				janus_refcount_increase_nodebug(&publisher->ref);
 				janus_videoroom_incoming_rtp_internal(publisher->session, publisher, &pkt);
 			}
 		}
