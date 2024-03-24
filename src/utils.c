@@ -1286,16 +1286,15 @@ GList *janus_red_parse_blocks(char *buffer, int len) {
 			temp = temp->next;
 		}
 	}
-	if(plen > 0) {
-		/* The last block is the primary data, add it to the list */
-		gens++;
+	/* The last block is the primary data, add it to the list */
+	gens++;
+	if(plen > 0)
 		JANUS_LOG(LOG_HUGE, "  >> [%d] plen=%d\n", gens, plen);
-		rb = g_malloc0(sizeof(janus_red_block));
-		rb->pt = block_pt;
-		rb->length = plen;
-		rb->data = (uint8_t *)payload;
-		blocks = g_list_append(blocks, rb);
-	}
+	rb = g_malloc0(sizeof(janus_red_block));
+	rb->pt = block_pt;
+	rb->length = plen;
+	rb->data = (uint8_t *)payload;
+	blocks = g_list_append(blocks, rb);
 
 	return blocks;
 }

@@ -203,6 +203,8 @@ janus_sdp_mtype janus_sdp_parse_mtype(const char *type) {
 		return JANUS_SDP_VIDEO;
 	if(!strcasecmp(type, "application"))
 		return JANUS_SDP_APPLICATION;
+	if(!strcasecmp(type, "text"))
+		return JANUS_SDP_TEXT;
 	return JANUS_SDP_OTHER;
 }
 
@@ -214,6 +216,8 @@ const char *janus_sdp_mtype_str(janus_sdp_mtype type) {
 			return "video";
 		case JANUS_SDP_APPLICATION:
 			return "application";
+		case JANUS_SDP_TEXT:
+			return "text";
 		case JANUS_SDP_OTHER:
 		default:
 			break;
@@ -718,7 +722,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, int index, const char *codec, co
 	if(sdp == NULL || codec == NULL)
 		return -1;
 	/* Check the format string (note that we only parse what browsers can negotiate) */
-	gboolean video = FALSE, vp9 = FALSE, h264 = FALSE;
+	gboolean video = FALSE, vp9 = FALSE, h264 = FALSE, text = FALSE;
 	const char *format = NULL, *format2 = NULL;
 	if(!strcasecmp(codec, "opus")) {
 		format = "opus/48000/2";
@@ -776,6 +780,14 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, int index, const char *codec, co
 		video = TRUE;
 		format = "h265/90000";
 		format2 = "H265/90000";
+	} else if(!strcasecmp(codec, "t140")) {
+		text = TRUE;
+		format = "t140/1000";
+		format2 = "T140/1000";
+	} else if(!strcasecmp(codec, "t140-red")) {
+		text = TRUE;
+		format = "red/1000";
+		format2 = "RED/1000";
 	} else {
 		JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
 		return -1;
@@ -784,7 +796,9 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, int index, const char *codec, co
 	GList *ml = sdp->m_lines;
 	while(ml) {
 		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
-		if((!video && m->type != JANUS_SDP_AUDIO) || (video && m->type != JANUS_SDP_VIDEO)) {
+		if((!video && !text && m->type != JANUS_SDP_AUDIO) ||
+				(video && !text && m->type != JANUS_SDP_VIDEO) ||
+				(!video && text && m->type != JANUS_SDP_TEXT)) {
 			ml = ml->next;
 			continue;
 		}
@@ -923,6 +937,11 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int index, int pt) {
 						return "l16";
 					if(strstr(a->value, "telephone-event/8000") || strstr(a->value, "telephone-event/8000"))
 						return "dtmf";
+					/* This is unused in WebRTC: T.140 (with or without RED) */
+					if(strstr(a->value, "t140") || strstr(a->value, "T140"))
+						return "t140";
+					if(strstr(a->value, "red/1000") || strstr(a->value, "RED/1000"))
+						return "t140-red";
 					/* RED is not really a codec, but we need to detect it anyway */
 					if(strstr(a->value, "red") || strstr(a->value, "RED"))
 						return "red";
@@ -1014,6 +1033,10 @@ const char *janus_sdp_get_codec_rtpmap(const char *codec) {
 		return "AV1/90000";
 	if(!strcasecmp(codec, "h265"))
 		return "H265/90000";
+	if(!strcasecmp(codec, "t140"))
+		return "t140/1000";
+	if(!strcasecmp(codec, "t140-red"))
+		return "red/1000";
 	JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
 	return NULL;
 }
