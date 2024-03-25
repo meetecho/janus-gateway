@@ -393,7 +393,8 @@ struct janus_callbacks {
 
 	/*! \brief Callback to ask the core to close a WebRTC PeerConnection
 	 * \note A call to this method will result in the core invoking the hangup_media
-	 * callback on this plugin when done
+	 * callback on this plugin when done, but only if a PeerConnection had been
+	 * created or was in the process of being negotiated (SDP exchanged)
 	 * @param[in] handle The plugin/gateway session that the PeerConnection is related to */
 	void (* const close_pc)(janus_plugin_session *handle);
 	/*! \brief Callback to ask the core to get rid of a plugin/gateway session
