@@ -1131,8 +1131,7 @@ room-<unique room ID>: {
 #endif
 /* We ship our own version of the libspeex-dsp jitter buffer, since
  * the one available out of the box comes with a nasty memory leak */
-#include "speex/speex_jitter.h"
-#define GE32(a,b) (((spx_int32_t)((a)-(b)))>=0)
+#include "audiobridge-deps/speex/speex_jitter.h"
 
 #include <arpa/inet.h>
 #include <net/if.h>
@@ -5917,9 +5916,6 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 			jbp.timestamp = ntohl(rtp->timestamp);
 			jbp.span = (participant->codec == JANUS_AUDIOCODEC_OPUS ? 960 : 160);
 			jitter_buffer_put(participant->jitter, &jbp);
-			if(!GE32(jbp.timestamp + jbp.span + jbp.span, jitter_buffer_get_pointer_timestamp(participant->jitter))) {
-				janus_audiobridge_buffer_packet_destroy(pkt);
-			}
 			janus_mutex_unlock(&participant->qmutex);
 		}
 	}

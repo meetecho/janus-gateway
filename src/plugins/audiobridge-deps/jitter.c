@@ -454,6 +454,13 @@ EXPORT void jitter_buffer_put(JitterBuffer *jitter, const JitterBufferPacket *pa
          jitter->arrival[i] = 0;
       else
          jitter->arrival[i] = jitter->next_stop;
+   } else {
+	  /* The original version of libspeex-dsp leaks packets when we
+	   * get here, since the application has no way of knowing whether
+	   * a packet was actually queued or not: as such, when this
+	   * happens, we destroy the packet that was passed ourselves */
+      if (jitter->destroy)
+         jitter->destroy(packet->data);
    }
 
 
