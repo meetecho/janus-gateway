@@ -1129,7 +1129,9 @@ room-<unique room ID>: {
 #ifdef HAVE_LIBOGG
 #include <ogg/ogg.h>
 #endif
-#include <speex/speex_jitter.h>
+/* We ship our own version of the libspeex-dsp jitter buffer, since
+ * the one available out of the box comes with a nasty memory leak */
+#include "speex/speex_jitter.h"
 #define GE32(a,b) (((spx_int32_t)((a)-(b)))>=0)
 
 #include <arpa/inet.h>
