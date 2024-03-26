@@ -349,6 +349,9 @@ var janus = new Janus(
  * when WebRTC is actually up and running between you and Janus (e.g., to notify
  * a user they're actually now active in a conference); notice that in case
  * of <b>false</b> a reason string may be present as an optional parameter;
+ * 		- \c connectionState: this callback is triggered when the connection state for the
+ * PeerConnection associated to the handle changes: the argument of the callback
+ * is the new state as a string (e.g., "connected" or "failed");
  * 		- \c iceState: this callback is triggered when the ICE state for the
  * PeerConnection associated to the handle changes: the argument of the callback
  * is the new state as a string (e.g., "connected" or "failed");
