@@ -794,9 +794,12 @@ PKG_CHECK_MODULES([OPUS],
                   [
                     AS_IF([test "x$enable_plugin_audiobridge" = "xmaybe"],
                           [
+                           enable_plugin_audiobridge=yes
+                          ])
+                    AS_IF([test "x$enable_plugin_audiobridge" = "xyes"],
+                          [
                            AC_DEFINE(FLOATING_POINT)
                            AC_DEFINE([EXPORT], [], [Symbol visibility prefix])
-                           enable_plugin_audiobridge=yes
                           ])
                   ],
                   [
