@@ -1351,12 +1351,14 @@ static int janus_websockets_common_callback(
 					while (incoming_curr < incoming_end && isspace(*incoming_curr))
 						incoming_curr++;
 					if(incoming_curr == incoming_end) {
-						/* Process messages in order */
-						json_t **msg = message_buffer;
-						json_t **msg_end = message_buffer + message_buffer_count;
-						while(msg != msg_end) {
-							/* Notify the core, no error since we know there weren't any */
-							gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, *msg++, NULL);
+						if(message_buffer != NULL) {
+							/* Process messages in order */
+							json_t **msg = message_buffer;
+							json_t **msg_end = message_buffer + message_buffer_count;
+							while(msg != msg_end) {
+								/* Notify the core, no error since we know there weren't any */
+								gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, *msg++, NULL);
+							}
 						}
 						/* Notify the core, no error since we know there weren't any */
 						gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, message, NULL);
@@ -1367,11 +1369,13 @@ static int janus_websockets_common_callback(
 						message_buffer[message_buffer_count++] = message;
 					}
 				} else {
-					/* Release any buffered messages */
-					json_t **msg = message_buffer;
-					json_t **msg_end = message_buffer + message_buffer_count;
-					while(msg != msg_end) {
-						json_decref(*msg++);
+					if(message_buffer != NULL) {
+						/* Release any buffered messages */
+						json_t **msg = message_buffer;
+						json_t **msg_end = message_buffer + message_buffer_count;
+						while(msg != msg_end) {
+							json_decref(*msg++);
+						}
 					}
 					/* Notify the core, passing the error since we have no message */
 					gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, NULL, &error);
