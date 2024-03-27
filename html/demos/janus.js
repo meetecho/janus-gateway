@@ -1272,6 +1272,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
 		callbacks.dataChannelOptions = callbacks.dataChannelOptions || { ordered: true };
 		callbacks.consentDialog = (typeof callbacks.consentDialog == "function") ? callbacks.consentDialog : Janus.noop;
+		callbacks.connectionState = (typeof callbacks.connectionState == "function") ? callbacks.connectionState : Janus.noop;
 		callbacks.iceState = (typeof callbacks.iceState == "function") ? callbacks.iceState : Janus.noop;
 		callbacks.mediaState = (typeof callbacks.mediaState == "function") ? callbacks.mediaState : Janus.noop;
 		callbacks.webrtcState = (typeof callbacks.webrtcState == "function") ? callbacks.webrtcState : Janus.noop;
@@ -1351,6 +1352,7 @@ function Janus(gatewayCallbacks) {
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
 						consentDialog : callbacks.consentDialog,
+						connectionState : callbacks.connectionState,
 						iceState : callbacks.iceState,
 						mediaState : callbacks.mediaState,
 						webrtcState : callbacks.webrtcState,
@@ -1429,6 +1431,7 @@ function Janus(gatewayCallbacks) {
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
 						consentDialog : callbacks.consentDialog,
+						connectionState : callbacks.connectionState,
 						iceState : callbacks.iceState,
 						mediaState : callbacks.mediaState,
 						webrtcState : callbacks.webrtcState,
@@ -1909,6 +1912,10 @@ function Janus(gatewayCallbacks) {
 			config.bitrate.value = '0 kbits/sec';
 		}
 		Janus.log('Preparing local SDP and gathering candidates (trickle=' + config.trickle + ')');
+		config.pc.onconnectionstatechange = function() {
+			if(config.pc)
+				pluginHandle.connectionState(config.pc.connectionState);
+		};
 		config.pc.oniceconnectionstatechange = function() {
 			if(config.pc)
 				pluginHandle.iceState(config.pc.iceConnectionState);
