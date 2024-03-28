@@ -361,7 +361,7 @@ var janus = new Janus(
  * problems on the media path (e.g., media never started, or stopped at some time);
  * 		- \c slowLink: this callback is triggered when Janus reports trouble
  * either sending or receiving media on the specified PeerConnection, typically
- * as a consequence of too many NACKs received from/sent to the user in the
+ * as a consequence of too lost packets detected to/from the user in the
  * last second: for instance, a \c slowLink with uplink=<b>true</b> means
  * you notified several missing packets from Janus, while uplink=<b>false</b>
  * means Janus is not receiving all your packets; useful to figure out when
@@ -1735,7 +1735,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
 	"session_id" : <the session identifier>,
 	"sender" : <the handle identifier>
 	"uplink" : true,
-	"nacks" : <number of NACKs in the last second>
+	"lost" : <number of lost packets in the last second>
 }
 \endverbatim
  *
