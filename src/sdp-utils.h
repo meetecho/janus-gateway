@@ -289,7 +289,7 @@ JANUS_SDP_OA_ACCEPT_OPUSRED,
 JANUS_SDP_OA_VP9_PROFILE,
 /*! \brief When generating an offer or answer automatically, use this profile for H.264 (depends on value that follows) */
 JANUS_SDP_OA_H264_PROFILE,
-/*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb; true by defaukt) */
+/*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb; true by default) */
 JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS,
 /*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (depends on what follows, false by default) */
 JANUS_SDP_OA_DATA_LEGACY,
