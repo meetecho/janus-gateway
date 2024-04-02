@@ -1,4 +1,4 @@
-demodir = $(datadir)/janus/demos
+demodir = $(datadir)/janus/html
 
 html-local:
 	true

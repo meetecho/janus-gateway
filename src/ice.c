@@ -1411,6 +1411,7 @@ janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque
 	handle->queued_candidates = g_async_queue_new();
 	handle->queued_packets = g_async_queue_new();
 	janus_mutex_init(&handle->mutex);
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_session_handles_insert(session, handle);
 	return handle;
 }
@@ -4103,20 +4104,18 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 		if(packet->extensions.abs_capture_ts > 0 && handle->pc->abs_capture_time_ext_id > 0) {
 			uint64_t abs64 = htonll(packet->extensions.abs_capture_ts);
 			if(!use_2byte) {
-				*index = (handle->pc->abs_capture_time_ext_id << 4) + 15;
+				*index = (handle->pc->abs_capture_time_ext_id << 4) + 7;
 				memcpy(index+1, &abs64, 8);
-				memset(index+9, 0, 8);
-				index += 17;
-				extlen += 17;
-				extbufsize -= 17;
+				index += 9;
+				extlen += 9;
+				extbufsize -= 9;
 			} else {
 				*index = handle->pc->abs_capture_time_ext_id;
-				*(index+1) = 16;
+				*(index+1) = 8;
 				memcpy(index+2, &abs64, 8);
-				memset(index+8, 0, 8);
-				index += 18;
-				extlen += 18;
-				extbufsize -= 18;
+				index += 10;
+				extlen += 10;
+				extbufsize -= 10;
 			}
 		}
 		/* Calculate the whole length */

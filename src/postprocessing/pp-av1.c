@@ -55,6 +55,8 @@ int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart, c
 		return -1;
 	}
 
+	fctx->url = g_strdup(destination);
+
 	vStream = janus_pp_new_video_avstream(fctx, AV_CODEC_ID_AV1, max_width, max_height);
 	if(vStream == NULL) {
 		JANUS_LOG(LOG_ERR, "Error adding stream\n");
@@ -526,6 +528,8 @@ void janus_pp_av1_close(void) {
 	if(fctx != NULL) {
 		av_write_trailer(fctx);
 		avio_close(fctx->pb);
+		g_free(fctx->url);
+		fctx->url = NULL;
 		avformat_free_context(fctx);
 	}
 }

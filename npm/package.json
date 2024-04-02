@@ -1,6 +1,6 @@
 {
 	"name": "janus-gateway",
-	"version": "1.2.1",
+	"version": "1.2.3",
 	"description": "A javascript library for interacting with the C based Janus WebRTC Server",
 	"main": "dist/janus.es.js",
 	"types": "janus.d.ts",
@@ -38,6 +38,6 @@
 	"scripts": {
 		"lint": "eslint ../html --ext .js,.html --resolve-plugins-relative-to ./npm",
 		"rollup": "rollup -c rollup.config.mjs",
-		"prerelease": "npm run rollup -- --o dist/janus.es.js --f es && node -e \"const fs=require('fs'); const data=fs.readFileSync('../html/janus.js'); fs.mkdirSync('./src', {recursive:true}); fs.writeFileSync('./src/janus.js',data);\""
+		"prerelease": "npm run rollup -- --o dist/janus.es.js --f es && node -e \"const fs=require('fs'); const data=fs.readFileSync('../html/demos/janus.js'); fs.mkdirSync('./src', {recursive:true}); fs.writeFileSync('./src/janus.js',data);\""
 	}
 }

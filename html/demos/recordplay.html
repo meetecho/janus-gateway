@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server (multistream): Recorder/Playout Demo</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
+<script type="text/javascript" src="settings.js" ></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="recordplay.js"></script>
+<script>
+	$(function() {
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='recordplay.html']").addClass("active");
+		});
+		$(".footer").load("../footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="../css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="../forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
+				<h1>Plugin Demo: Recorder/Playout
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="alert alert-primary mt-2 mb-5">
+						Want to learn more about the <strong>Record&amp;Play</strong> plugin?
+						Check the <a target="_blank" href="https://janus.conf.meetecho.com/docs/recordplay">Documentation</a>.
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This demo shows how you can record a WebRTC session, and replay it later. You
+						can choose to either record a new session (e.g., a videomessage) or watch any of
+						the recordings that may be available (including those you made yourself).</p>
+						<p>This application makes use of the integrated recording feature in Janus,
+						specifically the individual recording of audio and video streams in <code>.mjr</code>
+						format: these individual recordings are then used for a live broadcasting
+						of the dumped RTP packets through a sendonly WebRTC PeerConnection
+						when you choose to replay them. To post-process these recordings in a
+						more usable format (e.g., <code>.webm</code> for video or <code>.opus</code>
+						for audio) you can make use of the <code>janus-pp-rec</code> tool that
+						is available as part of the Janus code.</p>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="recordplay">
+				<div id="demo" class="row">
+					<div class="col-md-6" id="controls">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Recorder/Playout</span>
+							</div>
+							<div class="card-body">
+								<div class="btn-group btn-group-sm">
+									<button class="btn btn-danger" disabled autocomplete="off" id="record">Record</button>
+									<button class="btn btn-success" disabled autocomplete="off" id="play">Play</button>
+									<button class="btn btn-primary" disabled autocomplete="off" id="list">Update <i id="update-list" class="fa-solid fa-rotate"></i></button>
+								</div>
+								<br/>
+								<div class="btn-group btn-group-sm w-100">
+									<button autocomplete="off" id="recset" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown">
+										Recordings list
+									</button>
+									<ul id="recslist" class="dropdown-menu" role="menu" style="max-height: 300px; overflow: auto;">
+									</ul>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-6 invisible" id="video">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">
+									<span id="videotitle">Remote Video</span>
+									<div class="btn-group btn-group-sm top-right">
+										<button class="btn btn-primary" autocomplete="off" id="pause-resume">Pause</button>
+										<button class="btn btn-danger" autocomplete="off" id="stop">Stop</button>
+									</div>
+								</span>
+							</div>
+							<div class="card-body" id="videobox"></div>
+						</div>
+						<div class="input-group mt-3 mb-3 hide">
+							<span class="input-group-text"><i class="fa-solid fa-cloud-arrow-down"></i></span>
+							<input type="text" class="form-control" id="datafield" disabled>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>
