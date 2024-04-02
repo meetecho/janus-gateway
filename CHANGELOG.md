@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.14.2] - 2024-04-02
+
+* Perform audio-level detection in AudioBridge participant thread [[PR-3312](https://github.com/meetecho/janus-gateway/pull/3312)]
+* Fixed memory leak in AudioBridge in case of late packets
+* Ship speexdsp's jitter buffer as part of local AudioBridge dependencies [[PR-3348](https://github.com/meetecho/janus-gateway/pull/3348)]
+* Don't call close_pc in SIP plugin if there was no SDP [[PR-3339](https://github.com/meetecho/janus-gateway/pull/3339)]
+* Fixed broken faststart when postprocessing AV1 recordings (thanks @corthiclem!) [[PR-3317](https://github.com/meetecho/janus-gateway/pull/3317)]
+* Added new connectionState callback to janus.js (thanks @RSATom!) [[PR-3342](https://github.com/meetecho/janus-gateway/pull/3342)]
+* Exposed Janus and Admin API ping request via GET [[Issue-3336](https://github.com/meetecho/janus-gateway/issues/3336)]
+* Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.14.1] - 2023-12-06
 
 * Fixed truncated label in datachannels (thanks @veeting!) [[PR-3265](https://github.com/meetecho/janus-gateway/pull/3265)]
