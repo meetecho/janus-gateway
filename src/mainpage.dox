@@ -75,7 +75,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Server © 2014-2023 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2024 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -346,6 +346,9 @@ var janus = new Janus(
  * when WebRTC is actually up and running between you and Janus (e.g., to notify
  * a user they're actually now active in a conference); notice that in case
  * of <b>false</b> a reason string may be present as an optional parameter;
+ * 		- \c connectionState: this callback is triggered when the connection state for the
+ * PeerConnection associated to the handle changes: the argument of the callback
+ * is the new state as a string (e.g., "connected" or "failed");
  * 		- \c iceState: this callback is triggered when the ICE state for the
  * PeerConnection associated to the handle changes: the argument of the callback
  * is the new state as a string (e.g., "connected" or "failed");
@@ -360,7 +363,7 @@ var janus = new Janus(
  * problems on the media path (e.g., media never started, or stopped at some time);
  * 		- \c slowLink: this callback is triggered when Janus reports trouble
  * either sending or receiving media on the specified PeerConnection, typically
- * as a consequence of too many NACKs received from/sent to the user in the
+ * as a consequence of too lost packets detected to/from the user in the
  * last second: for instance, a \c slowLink with uplink=<b>true</b> means
  * you notified several missing packets from Janus, while uplink=<b>false</b>
  * means Janus is not receiving all your packets; useful to figure out when
@@ -685,13 +688,15 @@ janus.attach(
  * identified by its \c deviceId is the following:
  *
  \verbatim
-echotest.replaceTracks([
-    {
-        type: 'video',
-        mid: '1',    // We assume mid 1 is video
-        capture: { deviceId: { exact: videoDeviceId } }
-    }
-]);
+echotest.replaceTracks({
+    tracks: [
+        {
+            type: 'video',
+            mid: '1',    // We assume mid 1 is video
+            capture: { deviceId: { exact: videoDeviceId } }
+        }
+    ]
+});
  \endverbatim
  *
  * In case a new track needs to be added to a session, or an existing
@@ -754,7 +759,7 @@ echotest.createOffer(
         tracks: [{ type: 'video', mid: '1', remove: true }],
         success: function(jsep) {
             echotest.send({ message: { video: true }, jsep: jsep })
-        }
+        },
         error: function(error) {
             bootbox.alert('WebRTC error... ' + error.message);
         }
@@ -771,7 +776,7 @@ echotest.createOffer(
         tracks: [{ type: 'screen', add: true, capture: true }],
         success: function(jsep) {
             echotest.send({ message: { video: true }, jsep: jsep })
-        }
+        },
         error: function(error) {
             bootbox.alert('WebRTC error... ' + error.message);
         }
@@ -1732,7 +1737,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
 	"session_id" : <the session identifier>,
 	"sender" : <the handle identifier>
 	"uplink" : true,
-	"nacks" : <number of NACKs in the last second>
+	"lost" : <number of lost packets in the last second>
 }
 \endverbatim
  *
@@ -3860,7 +3865,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Server © 2014-2023 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2024 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -4069,7 +4074,7 @@ ldd janus | grep asan
  *    - Presentation on SIP call transfers and multiple calls at <a href="https://youtu.be/vSFZe8SsTbM?t=6379">OpenSIPS 2022</a>;
  *    - Presentation on SFU/VideoRoom cascading at <a href="https://www.youtube.com/watch?v=z7SvEQcDEgM">IIT RTC 2022</a>;
  *    - Presentation on Social audio applications with Janus at <a href="https://fosdem.org/2023/schedule/event/janus/">FOSDEM 2023</a>;
- *    - Presentation on Real-Time Text in SIP and WebRTC at <a href="https://www.youtube.com/watch?v=yehYE34d3mI&t=10957s">Kamailio World 2023</a>;
+ *    - Presentation on Real-Time Text in SIP and WebRTC at <a href="https://www.youtube.com/watch?v=yehYE34d3mI&t=19937s">Kamailio World 2023</a>;
  *    - Presentation on Hybrid meetings using Janus at <a href="https://www.youtube.com/watch?v=ZqRvUxgf00s">CommCon 2023</a>;
  *    - Presentation on Bandwidth Estimation (BWE) in Janus at <a href="https://www.youtube.com/watch?v=7L35Q_5aqCc">RTC.ON 2023</a>;
  *    - Presentation on WHIP, WHEP and WebRTC broadcasting at <a href="https://www.youtube.com/watch?v=L0JkNphlEmw">TADSummit Paris 2023</a>. \n\n

@@ -368,6 +368,7 @@ static json_t *janus_info(const char *transaction) {
 #endif
 	json_object_set_new(info, "ice-consent-freshness", janus_ice_is_consent_freshness_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-keepalive-conncheck", janus_ice_is_keepalive_conncheck_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "hangup-on-failed", janus_ice_is_hangup_on_failed_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "mdns-enabled", janus_ice_is_mdns_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "min-nack-queue", json_integer(janus_get_min_nack_queue()));
@@ -5230,6 +5231,9 @@ gint main(int argc, char *argv[]) {
 	item = janus_config_get(config, config_nat, janus_config_type_item, "ice_keepalive_conncheck");
 	if(item && item->value)
 		janus_ice_set_keepalive_conncheck_enabled(janus_is_true(item->value));
+	item = janus_config_get(config, config_nat, janus_config_type_item, "hangup_on_failed");
+	if(item && item->value)
+		janus_ice_set_hangup_on_failed_enabled(janus_is_true(item->value));
 	if(janus_ice_set_turn_server(turn_server, turn_port, turn_type, turn_user, turn_pwd) < 0) {
 		if(!ignore_unreachable_ice_server) {
 			JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
@@ -5959,11 +5963,11 @@ gint main(int argc, char *argv[]) {
 	JANUS_LOG(LOG_INFO, "Closing transport plugins:\n");
 	if(transports != NULL && g_hash_table_size(transports) > 0) {
 		g_hash_table_foreach(transports, janus_transport_close, NULL);
-		g_hash_table_destroy(transports);
+		g_clear_pointer(&transports, g_hash_table_destroy);
 	}
 	if(transports_so != NULL && g_hash_table_size(transports_so) > 0) {
 		g_hash_table_foreach(transports_so, janus_transportso_close, NULL);
-		g_hash_table_destroy(transports_so);
+		g_clear_pointer(&transports_so, g_hash_table_destroy);
 	}
 	/* Get rid of requests tasks and thread too */
 	g_thread_pool_free(tasks, FALSE, FALSE);
@@ -5990,22 +5994,22 @@ gint main(int argc, char *argv[]) {
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
 	if(plugins != NULL && g_hash_table_size(plugins) > 0) {
 		g_hash_table_foreach(plugins, janus_plugin_close, NULL);
-		g_hash_table_destroy(plugins);
+		g_clear_pointer(&plugins, g_hash_table_destroy);
 	}
 	if(plugins_so != NULL && g_hash_table_size(plugins_so) > 0) {
 		g_hash_table_foreach(plugins_so, janus_pluginso_close, NULL);
-		g_hash_table_destroy(plugins_so);
+		g_clear_pointer(&plugins_so, g_hash_table_destroy);
 	}
 
 	JANUS_LOG(LOG_INFO, "Closing event handlers:\n");
 	janus_events_deinit();
 	if(eventhandlers != NULL && g_hash_table_size(eventhandlers) > 0) {
 		g_hash_table_foreach(eventhandlers, janus_eventhandler_close, NULL);
-		g_hash_table_destroy(eventhandlers);
+		g_clear_pointer(&eventhandlers, g_hash_table_destroy);
 	}
 	if(eventhandlers_so != NULL && g_hash_table_size(eventhandlers_so) > 0) {
 		g_hash_table_foreach(eventhandlers_so, janus_eventhandlerso_close, NULL);
-		g_hash_table_destroy(eventhandlers_so);
+		g_clear_pointer(&eventhandlers_so, g_hash_table_destroy);
 	}
 
 	janus_recorder_deinit();
@@ -6014,7 +6018,7 @@ gint main(int argc, char *argv[]) {
 		g_list_free(public_ips);
 	}
 	if (public_ips_table) {
-		g_hash_table_destroy(public_ips_table);
+		g_clear_pointer(&public_ips_table, g_hash_table_destroy);
 	}
 
 	if(janus_ice_get_static_event_loops() > 0)

@@ -175,6 +175,18 @@ gboolean janus_ice_is_keepalive_conncheck_enabled(void) {
 	return janus_ice_keepalive_connchecks;
 }
 
+/* How to react to ICE failures */
+static gboolean janus_ice_hangup_on_failed = FALSE;
+void janus_ice_set_hangup_on_failed_enabled(gboolean enabled) {
+	janus_ice_hangup_on_failed = enabled;
+	if(janus_ice_hangup_on_failed) {
+		JANUS_LOG(LOG_INFO, "Will hangup PeerConnections immediately on ICE failures\n");
+	}
+}
+gboolean janus_ice_is_hangup_on_failed_enabled(void) {
+	return janus_ice_hangup_on_failed;
+}
+
 /* Opaque IDs set by applications are by default only passed to event handlers
  * for correlation purposes, but not sent back to the user or application in
  * the related Janus API responses or events, unless configured otherwise */
@@ -1399,6 +1411,7 @@ janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque
 	handle->queued_candidates = g_async_queue_new();
 	handle->queued_packets = g_async_queue_new();
 	janus_mutex_init(&handle->mutex);
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_session_handles_insert(session, handle);
 	return handle;
 }
@@ -2143,7 +2156,15 @@ static void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_
 		if(prev_state == NICE_COMPONENT_STATE_CONNECTED || prev_state == NICE_COMPONENT_STATE_READY) {
 			/* Failed after connected/ready means consent freshness detected something broken:
 			 * notify the user via a Janus API event and then fire the 'failed' timer as sual */
-			 janus_ice_notify_ice_failed(handle);
+			janus_ice_notify_ice_failed(handle);
+			/* Check if we need to hangup right away, rather than start the grace period */
+			if(janus_ice_hangup_on_failed && pc->icefailed_detected == 0) {
+				/* We do, hangup the PeerConnection */
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"] ICE failed for component %d in stream %d...\n",
+					handle->handle_id, component_id, stream_id);
+				janus_ice_webrtc_hangup(handle, "ICE failed");
+				return;
+			}
 		}
 		gboolean trickle_recv = (!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES));
 		gboolean answer_recv = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
@@ -4083,20 +4104,18 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 		if(packet->extensions.abs_capture_ts > 0 && handle->pc->abs_capture_time_ext_id > 0) {
 			uint64_t abs64 = htonll(packet->extensions.abs_capture_ts);
 			if(!use_2byte) {
-				*index = (handle->pc->abs_capture_time_ext_id << 4) + 15;
+				*index = (handle->pc->abs_capture_time_ext_id << 4) + 7;
 				memcpy(index+1, &abs64, 8);
-				memset(index+9, 0, 8);
-				index += 17;
-				extlen += 17;
-				extbufsize -= 17;
+				index += 9;
+				extlen += 9;
+				extbufsize -= 9;
 			} else {
 				*index = handle->pc->abs_capture_time_ext_id;
-				*(index+1) = 16;
+				*(index+1) = 8;
 				memcpy(index+2, &abs64, 8);
-				memset(index+8, 0, 8);
-				index += 18;
-				extlen += 18;
-				extbufsize -= 18;
+				index += 10;
+				extlen += 10;
+				extbufsize -= 10;
 			}
 		}
 		/* Calculate the whole length */

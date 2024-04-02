@@ -696,8 +696,8 @@
 
 
 /* Plugin information */
-#define JANUS_SIP_VERSION			8
-#define JANUS_SIP_VERSION_STRING	"0.0.8"
+#define JANUS_SIP_VERSION			9
+#define JANUS_SIP_VERSION_STRING	"0.0.9"
 #define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through a Janus instance."
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
@@ -1047,6 +1047,7 @@ typedef struct janus_sip_media {
 	gboolean updated;
 	int video_orientation_extension_id;
 	int audio_level_extension_id;
+	int dtmf_pt;
 } janus_sip_media;
 
 typedef struct janus_sip_dtmf {
@@ -1129,6 +1130,13 @@ static void janus_sip_session_destroy(janus_sip_session *session) {
 static void janus_sip_session_dereference(janus_sip_session *session) {
 	/* This is used to decrease the reference when removing to the messageids hashtable. janus_refcount_increase(&session->ref) must be called before inserting into messageids hashtable  */
 	janus_refcount_decrease(&session->ref);
+}
+
+static char *janus_sip_session_contact_header_retrieve(janus_sip_session *session) {
+	if(session->helper && session->master)
+		return session->master->stack->contact_header;
+	else
+		return session->stack->contact_header;
 }
 
 static void janus_sip_session_free(const janus_refcount *session_ref) {
@@ -1504,6 +1512,7 @@ static void janus_sip_media_reset(janus_sip_session *session) {
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	session->media.video_orientation_extension_id = -1;
 	session->media.audio_level_extension_id = -1;
+	session->media.dtmf_pt = -1;
 	janus_rtp_switching_context_reset(&session->media.acontext);
 	janus_rtp_switching_context_reset(&session->media.vcontext);
 }
@@ -2457,7 +2466,7 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 	g_atomic_int_set(&session->establishing, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_unlock(&sessions_mutex);
-	/* TODO Only relay RTP/RTCP when we get this event */
+	/* Only relay RTP/RTCP when we get this event */
 }
 
 void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
@@ -3426,19 +3435,14 @@ static void *janus_sip_handler(void *data) {
 			janus_mutex_unlock(&session->stack->smutex);
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
-			/* Check if we need to manually add the Contact header */
-			gboolean add_contact_header = FALSE;
-			if(session->helper && session->master)
-				add_contact_header = (session->master->stack->contact_header != NULL);
-			else
-				add_contact_header = (session->stack->contact_header != NULL);
+			/* Retrieve the Contact header for manually adding if not NULL */
+			char *contact_header = janus_sip_session_contact_header_retrieve(session);
 			/* Send the SUBSCRIBE */
 			nua_subscribe(nh,
 				SIPTAG_TO_STR(to),
 				SIPTAG_EVENT_STR(event_type),
 				SIPTAG_CALL_ID_STR(callid),
-				TAG_IF(add_contact_header, SIPTAG_CONTACT_STR((session->helper && session->master) ?
-					 session->master->stack->contact_header: session->stack->contact_header)),
+				TAG_IF(contact_header != NULL, SIPTAG_CONTACT_STR(contact_header)),
 				SIPTAG_ACCEPT_STR(accept),
 				SIPTAG_EXPIRES_STR(ttl_text),
 				NUTAG_PROXY(session->helper && session->master ?
@@ -3820,14 +3824,14 @@ static void *janus_sip_handler(void *data) {
 			g_atomic_int_set(&session->establishing, 1);
 			/* Add a reference for this call */
 			janus_sip_ref_active_call(session);
-			/* Check if we need to manually add the Contact header */
-			gboolean add_contact_header = (session->stack->contact_header != NULL);
+			/* Retrieve the Contact header for manually adding if not NULL */
+			char *contact_header = janus_sip_session_contact_header_retrieve(session);
 			/* Send the INVITE */
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
 				SIPTAG_CALL_ID_STR(callid),
-				TAG_IF(add_contact_header, SIPTAG_CONTACT_STR(session->stack->contact_header)),
+				TAG_IF(contact_header != NULL, SIPTAG_CONTACT_STR(contact_header)),
 				SOATAG_USER_SDP_STR(sdp),
 				NUTAG_PROXY(session->helper && session->master ?
 					session->master->account.outbound_proxy : session->account.outbound_proxy),
@@ -4178,8 +4182,11 @@ static void *janus_sip_handler(void *data) {
 			session->media.update = offer;
 			JANUS_LOG(LOG_VERB, "Prepared SDP for update:\n%s", sdp);
 			if(session->status == janus_sip_call_status_incall) {
+				/* Retrieve the Contact header for manually adding if not NULL */
+				char *contact_header = janus_sip_session_contact_header_retrieve(session);
 				/* We're sending a re-INVITE ourselves */
 				nua_invite(session->stack->s_nh_i,
+					TAG_IF(contact_header != NULL, SIPTAG_CONTACT_STR(contact_header)),
 					SOATAG_USER_SDP_STR(sdp),
 					TAG_END());
 			} else {
@@ -4279,7 +4286,7 @@ static void *janus_sip_handler(void *data) {
 			if(session->stack->s_nh_i == NULL) {
 				JANUS_LOG(LOG_WARN, "NUA Handle for 200 OK still null??\n");
 			}
-			int response_code = 486;
+			int response_code = 603;
 			json_t *code_json = json_object_get(root, "code");
 			if(code_json)
 				response_code = json_integer_value(code_json);
@@ -4483,9 +4490,12 @@ static void *janus_sip_handler(void *data) {
 				char custom_headers[2048];
 				janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 
+				/* Retrieve the Contact header for manually adding if not NULL */
+				char *contact_header = janus_sip_session_contact_header_retrieve(session);
 				/* Send the re-INVITE */
 				char *sdp = janus_sdp_write(session->sdp);
 				nua_invite(session->stack->s_nh_i,
+					TAG_IF(contact_header != NULL, SIPTAG_CONTACT_STR(contact_header)),
 					SOATAG_USER_SDP_STR(sdp),
 					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 					TAG_END());
@@ -5131,8 +5141,15 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->hangup_reason_header = NULL;
 				session->hangup_reason_header_protocol = NULL;
 				session->hangup_reason_header_cause = NULL;
-				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established))
-					gateway->close_pc(session->handle);
+				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established)) {
+					if(session->media.has_audio || session->media.has_video) {
+						/* Get rid of the PeerConnection in the core */
+						gateway->close_pc(session->handle);
+					} else {
+						/* No SDP was exchanged, just clean up locally */
+						janus_sip_hangup_media_internal(session->handle);
+					}
+				}
 			} else if(session->stack->s_nh_i == nh && callstate == nua_callstate_calling && session->status == janus_sip_call_status_incall) {
 				/* Have just sent re-INVITE */
 				janus_sip_call_update_status(session, janus_sip_call_status_incall_reinviting);
@@ -6383,6 +6400,7 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 				session->media.has_audio = TRUE;
 				session->media.remote_audio_rtp_port = m->port;
 				session->media.remote_audio_rtcp_port = m->port+1;	/* FIXME We're assuming RTCP is on the next port */
+				session->media.dtmf_pt = janus_sdp_get_codec_pt(sdp, -1, "dtmf");
 				if(m->direction == JANUS_SDP_SENDONLY || m->direction == JANUS_SDP_INACTIVE)
 					session->media.audio_send = FALSE;
 				else
@@ -7451,8 +7469,10 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 
 /* Check peer RTP has RFC2833 and push event */
 static void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer, int len) {
+	if(session->media.dtmf_pt <= 0)
+		return;
 	janus_rtp_header *rtp_header = (janus_rtp_header *)buffer;
-	if(rtp_header->type != JANUS_RTP_RFC2833_DEFAULT_PAYLOAD_TYPE)
+	if(rtp_header->type != session->media.dtmf_pt)
 		return;
 	int plen = 0;
 	char *payload_buffer = janus_rtp_payload(buffer, len, &plen);

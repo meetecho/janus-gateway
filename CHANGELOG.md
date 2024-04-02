@@ -3,6 +3,40 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.2.2] - 2024-04-02
+
+* Update demos and docs to Bootstrap 5.x [[PR-3300](https://github.com/meetecho/janus-gateway/pull/3300)]
+* Fixed rare race condition in VideoRoom [[PR-3331](https://github.com/meetecho/janus-gateway/pull/3331)]
+* Fixed broken end-to-end encryption for subscribers in VideoRoom
+* Fixed ports leak when using remote publishers in VideoRoom plugin [[Issue-3345](https://github.com/meetecho/janus-gateway/issues/3345)]
+* Perform audio-level detection in AudioBridge participant thread [[PR-3312](https://github.com/meetecho/janus-gateway/pull/3312)]
+* Fixed memory leak in AudioBridge in case of late packets
+* Ship speexdsp's jitter buffer as part of local AudioBridge dependencies [[PR-3348](https://github.com/meetecho/janus-gateway/pull/3348)]
+* Add support of abs-capture-time RTP extension to Streaming plugin (thanks @IbrayevRamil!) [[PR-3291](https://github.com/meetecho/janus-gateway/pull/3291)]
+* Don't call close_pc in SIP plugin if there was no SDP [[PR-3339](https://github.com/meetecho/janus-gateway/pull/3339)]
+* Fixed broken faststart when postprocessing AV1 recordings (thanks @corthiclem!) [[PR-3317](https://github.com/meetecho/janus-gateway/pull/3317)]
+* Added new connectionState callback to janus.js (thanks @RSATom!) [[PR-3343](https://github.com/meetecho/janus-gateway/pull/3343)]
+* Exposed Janus and Admin API ping request via GET [[Issue-3336](https://github.com/meetecho/janus-gateway/issues/3336)]
+* Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+## [v1.2.1] - 2023-12-06
+
+* Added support for abs-capture-time RTP extension [[PR-3161](https://github.com/meetecho/janus-gateway/pull/3161)]
+* Fixed truncated label in datachannels (thanks @veeting!) [[PR-3265](https://github.com/meetecho/janus-gateway/pull/3265)]
+* Support larger values for SDP attributes (thanks @petarminchev!) [[PR-3282](https://github.com/meetecho/janus-gateway/pull/3282)]
+* Fixed rare crash in VideoRoom plugin (thanks @tmatth!) [[PR-3259](https://github.com/meetecho/janus-gateway/pull/3259)]
+* Don't create VideoRoom subscriptions to publisher streams with no associated codecs
+* Added suspend/resume participant API to AudioBridge [[PR-3301](https://github.com/meetecho/janus-gateway/pull/3301)]
+* Fixed rare crash in AudioBridge
+* Fixed rare crash in Streaming plugin when doing ICE restarts [[Issue-3288](https://github.com/meetecho/janus-gateway/issues/3288)]
+* Allow SIP and NoSIP plugins to bind media to a specific address (thanks @pawnnail!) [[PR-3263](https://github.com/meetecho/janus-gateway/pull/3263)]
+* Removed advertised support for SIP UPDATE in SIP plugin
+* Parse RFC2833 DTMF to custom events in SIP plugin (thanks @ywmoyue!) [[PR-3280](https://github.com/meetecho/janus-gateway/pull/3280)]
+* Fixed missing Contact header in some dialogs in SIP plugin (thanks @ycherniavskyi!) [[PR-3286](https://github.com/meetecho/janus-gateway/pull/3286)]
+* Properly set mid when notifying about ended tracks in janus.js
+* Fixed broken restamping in janus-pp-rec
+* Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.2.0] - 2023-08-09
 
 - Added support for VP9/AV1 simulcast, and fixed broken AV1/SVC support [[PR-3218](https://github.com/meetecho/janus-gateway/pull/3218)]
@@ -11,7 +45,7 @@ All notable changes to this project will be documented in this file.
 - Added support for ICE consent freshness [[PR-3234](https://github.com/meetecho/janus-gateway/pull/3234)]
 - Fixed rare race condition in VideoRoom [[PR-3219](https://github.com/meetecho/janus-gateway/pull/3219)] [[PR-3247](https://github.com/meetecho/janus-gateway/pull/3247)]
 - Use speexdsp's jitter buffer in the AudioBridge [[PR-3233](https://github.com/meetecho/janus-gateway/pull/3233)]
-- Fixed crash in Streaming plugin on mountpoints with too many streams [[Issue-3225](https://github.com/meetecho/janus-gateway/pull/3225)]
+- Fixed crash in Streaming plugin on mountpoints with too many streams [[Issue-3225](https://github.com/meetecho/janus-gateway/issues/3225)]
 - Support for batched configure requests in Streaming plugin (thanks @petarminchev!) [[PR-3239](https://github.com/meetecho/janus-gateway/pull/3239)]
 - Fixed rare deadlock in Streamin plugin [[PR-3250](https://github.com/meetecho/janus-gateway/pull/3250)]
 - Fix simulated leave message for longer string ID rooms in TextRoom (thanks @adnanel!) [PR-3243](https://github.com/meetecho/janus-gateway/pull/3243)]
