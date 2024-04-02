@@ -152,7 +152,7 @@ void janus_sctp_deinit(void) {
 	usrsctp_finish();
 	sctp_running = FALSE;
 	janus_mutex_lock(&sctp_mutex);
-	g_hash_table_unref(sctp_ids);
+	g_clear_pointer(&sctp_ids, g_hash_table_destroy);
 	janus_mutex_unlock(&sctp_mutex);
 }
 

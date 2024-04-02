@@ -398,7 +398,10 @@ plugins_libadd = \
 
 if ENABLE_PLUGIN_AUDIOBRIDGE
 plugin_LTLIBRARIES += plugins/libjanus_audiobridge.la
-plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c
+plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c \
+	plugins/audiobridge-deps/jitter.c plugins/audiobridge-deps/arch.h \
+	plugins/audiobridge-deps/os_support.h plugins/audiobridge-deps/speex/speex_jitter.h \
+	plugins/audiobridge-deps/speex/speexdsp_types.h plugins/audiobridge-deps/speex/speexdsp_config_types.h
 plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags) $(OPUS_CFLAGS) $(OGG_CFLAGS) $(LIBSRTP_CFLAGS)
 plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags) $(OPUS_LDFLAGS) $(OPUS_LIBS) $(OGG_LDFLAGS) $(OGG_LIBS)
 plugins_libjanus_audiobridge_la_LIBADD = $(plugins_libadd) $(OPUS_LIBADD) $(OGG_LIBADD)

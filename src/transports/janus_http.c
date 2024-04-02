@@ -1537,6 +1537,25 @@ static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connectio
 		json_object_set_new(root, "transaction", json_string(tr));
 		goto parsingdone;
 	}
+	/* Or maybe a ping */
+	if(session_path != NULL && !strcmp(session_path, "ping")) {
+		/* The ping REST endpoint, if contacted through a GET, pings the Janus core */
+		if(strcasecmp(method, "GET")) {
+			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
+			janus_http_add_cors_headers(msg, response);
+			ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
+			MHD_destroy_response(response);
+			goto done;
+		}
+		/* Turn this into a fake "ping" request */
+		method = "POST";
+		char tr[12];
+		janus_http_random_string(12, (char *)&tr);
+		root = json_object();
+		json_object_set_new(root, "janus", json_string("ping"));
+		json_object_set_new(root, "transaction", json_string(tr));
+		goto parsingdone;
+	}
 
 	/* Or maybe a long poll */
 	if(!strcasecmp(method, "GET") || !payload) {
@@ -1936,6 +1955,25 @@ static MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connection *con
 		janus_http_random_string(12, (char *)&tr);
 		root = json_object();
 		json_object_set_new(root, "janus", json_string("info"));
+		json_object_set_new(root, "transaction", json_string(tr));
+		goto parsingdone;
+	}
+	/* Or maybe a ping */
+	if(session_path != NULL && !strcmp(session_path, "ping")) {
+		/* The ping REST endpoint, if contacted through a GET, pings the Janus core */
+		if(strcasecmp(method, "GET")) {
+			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
+			janus_http_add_cors_headers(msg, response);
+			ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
+			MHD_destroy_response(response);
+			goto done;
+		}
+		/* Turn this into a fake "ping" request */
+		method = "POST";
+		char tr[12];
+		janus_http_random_string(12, (char *)&tr);
+		root = json_object();
+		json_object_set_new(root, "janus", json_string("ping"));
 		json_object_set_new(root, "transaction", json_string(tr));
 		goto parsingdone;
 	}

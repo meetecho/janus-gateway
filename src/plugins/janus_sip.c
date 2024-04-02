@@ -696,8 +696,8 @@
 
 
 /* Plugin information */
-#define JANUS_SIP_VERSION			8
-#define JANUS_SIP_VERSION_STRING	"0.0.8"
+#define JANUS_SIP_VERSION			9
+#define JANUS_SIP_VERSION_STRING	"0.0.9"
 #define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through a Janus instance."
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
@@ -2466,7 +2466,7 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 	g_atomic_int_set(&session->establishing, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_unlock(&sessions_mutex);
-	/* TODO Only relay RTP/RTCP when we get this event */
+	/* Only relay RTP/RTCP when we get this event */
 }
 
 void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
@@ -4286,7 +4286,7 @@ static void *janus_sip_handler(void *data) {
 			if(session->stack->s_nh_i == NULL) {
 				JANUS_LOG(LOG_WARN, "NUA Handle for 200 OK still null??\n");
 			}
-			int response_code = 486;
+			int response_code = 603;
 			json_t *code_json = json_object_get(root, "code");
 			if(code_json)
 				response_code = json_integer_value(code_json);
@@ -5141,8 +5141,15 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->hangup_reason_header = NULL;
 				session->hangup_reason_header_protocol = NULL;
 				session->hangup_reason_header_cause = NULL;
-				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established))
-					gateway->close_pc(session->handle);
+				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established)) {
+					if(session->media.has_audio || session->media.has_video) {
+						/* Get rid of the PeerConnection in the core */
+						gateway->close_pc(session->handle);
+					} else {
+						/* No SDP was exchanged, just clean up locally */
+						janus_sip_hangup_media_internal(session->handle);
+					}
+				}
 			} else if(session->stack->s_nh_i == nh && callstate == nua_callstate_calling && session->status == janus_sip_call_status_incall) {
 				/* Have just sent re-INVITE */
 				janus_sip_call_update_status(session, janus_sip_call_status_incall_reinviting);

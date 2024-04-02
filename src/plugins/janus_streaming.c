@@ -1402,7 +1402,7 @@ typedef struct janus_streaming_rtp_source_stream {
 	char *h264_spspps;
 	int h264_spspps_len;
 	gboolean skew;
-	gint64 last_received;
+	gint64 last_received[3];
 	uint32_t ssrc;				/* Only needed for fixing outgoing RTCP packets */
 	uint32_t last_ssrc[3];		/* Only needed for detecting new sources */
 	volatile gint need_pli;		/* Whether we need to send a PLI later */
@@ -3109,7 +3109,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						json_object_set_new(info, "msid", json_string(msid));
 					}
 					if(stream->fd[0] != -1 || stream->fd[1] != -1 || stream->fd[2] != -1)
-						json_object_set_new(info, "age_ms", json_integer((now - stream->last_received) / 1000));
+						json_object_set_new(info, "age_ms", json_integer((now - stream->last_received[0]) / 1000));
 					json_array_append_new(media, info);
 					temp = temp->next;
 				}
@@ -3290,7 +3290,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				if(stream->type == JANUS_STREAMING_MEDIA_DATA)
 					json_object_set_new(info, "datatype", json_string(stream->textdata ? "text" : "binary"));
 				if(stream->fd[0] != -1 || stream->fd[1] != -1 || stream->fd[2] != -1)
-					json_object_set_new(info, "age_ms", json_integer((now - stream->last_received) / 1000));
+					json_object_set_new(info, "age_ms", json_integer((now - stream->last_received[0]) / 1000));
 				janus_mutex_lock(&source->rec_mutex);
 				if(admin && stream->rc && stream->rc->filename)
 					json_object_set_new(info, "recording", json_string(stream->rc->filename));
@@ -5612,6 +5612,15 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	int ret = gateway->push_event(handle, &janus_streaming_plugin, NULL, event, NULL);
 	JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 	json_decref(event);
+	/* Also notify event handlers */
+	if(notify_events && gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "status", json_string("started"));
+		if(session->mountpoint != NULL)
+			json_object_set_new(info, "id", string_ids ?
+				json_string(session->mountpoint->id_str) :json_integer(session->mountpoint->id));
+		gateway->notify_event(&janus_streaming_plugin, session->handle, info);
+	}
 	janus_refcount_decrease(&session->ref);
 }
 
@@ -6630,7 +6639,7 @@ done:
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				json_object_set_new(info, "status", json_string("starting"));
+				json_object_set_new(info, "status", json_string(g_atomic_int_get(&session->started) ? "started" : "starting"));
 				if(session->mountpoint != NULL)
 					json_object_set_new(info, "id", string_ids ?
 						json_string(session->mountpoint->id_str) :json_integer(session->mountpoint->id));
@@ -7586,7 +7595,9 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 	stream->fd[1] = fd[1];
 	stream->fd[2] = fd[2];
 	stream->rtcp_fd = rtcp_fd;
-	stream->last_received = janus_get_monotonic_time();
+	stream->last_received[0] = janus_get_monotonic_time();
+	stream->last_received[1] = stream->last_received[0];
+	stream->last_received[2] = stream->last_received[0];
 	if(mtype == JANUS_STREAMING_MEDIA_VIDEO) {
 		stream->keyframe.enabled = bufferkf;
 		stream->keyframe.latest_keyframe = NULL;
@@ -9598,13 +9609,12 @@ static void *janus_streaming_relay_thread(void *data) {
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					ssrc = ntohl(rtp->ssrc);
 					if(source->rtp_collision > 0 && stream->last_ssrc[0] && ssrc != stream->last_ssrc[0] &&
-							(now-stream->last_received) < (gint64)1000*source->rtp_collision) {
+							(now-stream->last_received[0]) < (gint64)1000*source->rtp_collision) {
 						JANUS_LOG(LOG_WARN, "[%s] RTP collision on audio mountpoint, dropping packet (#%d, ssrc=%"SCNu32")\n",
 							name, stream->mindex, ssrc);
 						continue;
 					}
-					stream->last_received = now;
-					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio channel...\n", bytes);
+					stream->last_received[0] = now;
 					/* Do we have a new stream? */
 					if(ssrc != stream->last_ssrc[0]) {
 						stream->ssrc = stream->last_ssrc[0] = ssrc;
@@ -9617,7 +9627,6 @@ static void *janus_streaming_relay_thread(void *data) {
 					if(source->is_srtp) {
 						int buflen = bytes;
 						srtp_err_status_t res = srtp_unprotect(source->srtp_ctx, buffer, &buflen);
-						//~ if(res != srtp_err_status_ok && res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 						if(res != srtp_err_status_ok) {
 							guint32 timestamp = ntohl(rtp->timestamp);
 							guint16 seq = ntohs(rtp->seq_number);
@@ -9627,8 +9636,6 @@ static void *janus_streaming_relay_thread(void *data) {
 						}
 						bytes = buflen;
 					}
-					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 					/* Relay on all sessions */
 					packet.mindex = stream->mindex;
 					packet.data = rtp;
@@ -9693,13 +9700,12 @@ static void *janus_streaming_relay_thread(void *data) {
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					ssrc = ntohl(rtp->ssrc);
 					if(source->rtp_collision > 0 && stream->last_ssrc[index] && ssrc != stream->last_ssrc[index] &&
-							(now-stream->last_received) < (gint64)1000*source->rtp_collision) {
+							(now-stream->last_received[index]) < (gint64)1000*source->rtp_collision) {
 						JANUS_LOG(LOG_WARN, "[%s] RTP collision on video mountpoint, dropping packet (#%d, ssrc=%"SCNu32")\n",
 							name, stream->mindex, ssrc);
 						continue;
 					}
-					stream->last_received = now;
-					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
+					stream->last_received[index] = now;
 					/* Do we have a new stream? */
 					if(ssrc != stream->last_ssrc[index]) {
 						stream->last_ssrc[index] = ssrc;
@@ -9712,7 +9718,6 @@ static void *janus_streaming_relay_thread(void *data) {
 					if(source->is_srtp) {
 						int buflen = bytes;
 						srtp_err_status_t res = srtp_unprotect(source->srtp_ctx, buffer, &buflen);
-						//~ if(res != srtp_err_status_ok && res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 						if(res != srtp_err_status_ok) {
 							guint32 timestamp = ntohl(rtp->timestamp);
 							guint16 seq = ntohs(rtp->seq_number);
@@ -9811,8 +9816,6 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* If paused, ignore this packet */
 					if(!mountpoint->enabled && !stream->rc)
 						continue;
-					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 					/* Relay on all sessions */
 					packet.mindex = stream->mindex;
 					packet.data = rtp;
@@ -9917,7 +9920,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* Got something data (text) */
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
-					stream->last_received = janus_get_monotonic_time();
+					stream->last_received[0] = janus_get_monotonic_time();
 #ifdef HAVE_LIBCURL
 					source->reconnect_timer = janus_get_monotonic_time();
 #endif
@@ -10081,11 +10084,9 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 	}
 	janus_streaming_session *session = (janus_streaming_session *)data;
 	if(!session || !session->handle) {
-		//~ JANUS_LOG(LOG_ERR, "Invalid session...\n");
 		return;
 	}
 	if(!packet->is_keyframe && (!g_atomic_int_get(&session->started) || g_atomic_int_get(&session->paused))) {
-		//~ JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
 		return;
 	}
 	janus_streaming_session_stream *s = g_hash_table_lookup(session->streams_byid, GINT_TO_POINTER(packet->mindex));
@@ -10415,11 +10416,9 @@ static void janus_streaming_relay_rtcp_packet(gpointer data, gpointer user_data)
 	}
 	janus_streaming_session *session = (janus_streaming_session *)data;
 	if(!session || !session->handle) {
-		//~ JANUS_LOG(LOG_ERR, "Invalid session...\n");
 		return;
 	}
 	if(!g_atomic_int_get(&session->started) || g_atomic_int_get(&session->paused)) {
-		//~ JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
 		return;
 	}
 	janus_streaming_session_stream *s = g_hash_table_lookup(session->streams_byid, GINT_TO_POINTER(packet->mindex));
@@ -10443,7 +10442,6 @@ static void janus_streaming_helper_rtprtcp_packet(gpointer data, gpointer user_d
 	}
 	janus_streaming_helper *helper = (janus_streaming_helper *)data;
 	if(!helper) {
-		//~ JANUS_LOG(LOG_ERR, "Invalid session...\n");
 		return;
 	}
 	/* Clone the packet and queue it for delivery on the helper thread */
