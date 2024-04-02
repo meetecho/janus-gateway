@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.2.2] - 2024-04-02
+
+* Update demos and docs to Bootstrap 5.x [[PR-3300](https://github.com/meetecho/janus-gateway/pull/3300)]
+* Fixed rare race condition in VideoRoom [[PR-3331](https://github.com/meetecho/janus-gateway/pull/3331)]
+* Fixed broken end-to-end encryption for subscribers in VideoRoom
+* Fixed ports leak when using remote publishers in VideoRoom plugin [[Issue-3345](https://github.com/meetecho/janus-gateway/issues/3345)]
+* Perform audio-level detection in AudioBridge participant thread [[PR-3312](https://github.com/meetecho/janus-gateway/pull/3312)]
+* Fixed memory leak in AudioBridge in case of late packets
+* Ship speexdsp's jitter buffer as part of local AudioBridge dependencies [[PR-3348](https://github.com/meetecho/janus-gateway/pull/3348)]
+* Add support of abs-capture-time RTP extension to Streaming plugin (thanks @IbrayevRamil!) [[PR-3291](https://github.com/meetecho/janus-gateway/pull/3291)]
+* Don't call close_pc in SIP plugin if there was no SDP [[PR-3339](https://github.com/meetecho/janus-gateway/pull/3339)]
+* Fixed broken faststart when postprocessing AV1 recordings (thanks @corthiclem!) [[PR-3317](https://github.com/meetecho/janus-gateway/pull/3317)]
+* Added new connectionState callback to janus.js (thanks @RSATom!) [[PR-3343](https://github.com/meetecho/janus-gateway/pull/3343)]
+* Exposed Janus and Admin API ping request via GET [[Issue-3336](https://github.com/meetecho/janus-gateway/issues/3336)]
+* Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.2.1] - 2023-12-06
 
 * Added support for abs-capture-time RTP extension [[PR-3161](https://github.com/meetecho/janus-gateway/pull/3161)]
