@@ -33,32 +33,15 @@ Makefile.in
 /config.status
 /config.sub
 
-/*.o
-/plugins/*.o
-/plugins/*.lo
-/plugins/*.la
-/plugins/.libs
-/plugins/duktape-deps/*.lo
-/plugins/duktape-deps/.libs
-/transports/*.o
-/transports/*.lo
-/transports/*.la
-/transports/.libs
-/events/*.o
-/events/*.lo
-/events/*.la
-/events/.libs
-/loggers/*.o
-/loggers/*.lo
-/loggers/*.la
-/loggers/.libs
-/postprocessing/*.o
+*.o
+*.a
+*.lo
+*.la
+.libs
 /postprocessing/pp-cmdline.c
 /postprocessing/pp-cmdline.h
 /postprocessing/p2m-cmdline.c
 /postprocessing/p2m-cmdline.h
-/fuzzers/*.a
-/fuzzers/*.o
 /fuzzers/out
 
 /conf/janus.cfg.sample
