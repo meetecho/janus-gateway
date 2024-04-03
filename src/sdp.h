@@ -31,6 +31,8 @@
 #include "dtls.h"
 
 
+#define UFRAG_USERNAME_LENGTH 32
+
 /** @name Janus SDP helper methods
  */
 ///@{
@@ -93,6 +95,9 @@ int janus_sdp_parse_ssrc(void *medium, const char *ssrc_attr, int video);
  * @param[in,out] sdp The Janus SDP description object to strip/anonymize
  * @returns 0 in case of success, a non-zero integer in case of an error */
 int janus_sdp_anonymize(janus_sdp *sdp);
+
+
+void custom_rng_generate_bytes_print(guint len, gchar *buf);
 
 /*! \brief Method to merge a stripped session description and the right transport information
  * @param[in] handle Opaque pointer to the ICE handle this session description is related to
