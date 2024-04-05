@@ -113,6 +113,8 @@ struct _JitterBufferPacket {
 #define JITTER_BUFFER_SET_LATE_COST 12
 #define JITTER_BUFFER_GET_LATE_COST 13
 
+#define JITTER_BUFFER_SET_LIMIT 101
+
 
 /** Initialises jitter buffer
  *
