@@ -8511,6 +8511,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					jitter_buffer_update_delay(participant->jitter, NULL, NULL);
 					jitter_ticks = 0;
 				}
+				jitter_buffer_tick(participant->jitter);
 				if(ret != JITTER_BUFFER_OK) {
 					/* No packet in the jitter buffer? Move on the talking detection, if needed */
 					janus_audiobridge_participant_istalking(session, participant, NULL, NULL);
@@ -8626,7 +8627,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					}
 					participant->inbuf = g_list_append(participant->inbuf, pkt);
 				}
-				jitter_buffer_tick(participant->jitter);
 			}
 		}
 		if(locked)
