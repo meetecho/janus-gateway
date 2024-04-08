@@ -788,6 +788,7 @@ EXPORT int jitter_buffer_ctl(JitterBuffer *jitter, int request, void *ptr)
 {
    int count;
    spx_uint32_t i;
+   spx_int32_t buffer_size;
    switch(request)
    {
       case JITTER_BUFFER_SET_MARGIN:
@@ -840,7 +841,7 @@ EXPORT int jitter_buffer_ctl(JitterBuffer *jitter, int request, void *ptr)
          *(spx_int32_t*)ptr = jitter->latency_tradeoff;
          break;
       case JITTER_BUFFER_SET_LIMIT:
-         spx_int32_t buffer_size = *(spx_int32_t*)ptr;
+         buffer_size = *(spx_int32_t*)ptr;
          jitter->buffer_size = (buffer_size > 1 && buffer_size <= SPEEX_JITTER_MAX_BUFFER_SIZE) ? buffer_size : SPEEX_JITTER_MAX_BUFFER_SIZE;
          jitter_buffer_reset(jitter);
          break;
