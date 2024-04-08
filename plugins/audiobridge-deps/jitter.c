@@ -266,6 +266,7 @@ static spx_int16_t compute_opt_delay(JitterBuffer *jitter)
    return opt;
 }
 
+
 /** Initialise jitter buffer */
 EXPORT JitterBuffer *jitter_buffer_init(int step_size)
 {
