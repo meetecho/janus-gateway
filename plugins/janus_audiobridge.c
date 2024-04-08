@@ -7202,12 +7202,18 @@ static void *janus_audiobridge_handler(void *data) {
 				}
 				participant->reset = FALSE;
 				/* Destroy the previous encoder/decoder and update the references */
+				while(!g_atomic_int_compare_and_exchange(&participant->encoding, 0, 1))
+					g_usleep(5000);
 				if(participant->encoder)
 					opus_encoder_destroy(participant->encoder);
 				participant->encoder = new_encoder;
+				g_atomic_int_set(&participant->encoding, 0);
+				while(!g_atomic_int_compare_and_exchange(&participant->decoding, 0, 1))
+					g_usleep(5000);
 				if(participant->decoder)
 					opus_decoder_destroy(participant->decoder);
 				participant->decoder = new_decoder;
+				g_atomic_int_set(&participant->decoding, 0);
 			}
 			if(quality)
 				opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
