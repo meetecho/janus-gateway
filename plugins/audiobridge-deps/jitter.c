@@ -140,6 +140,7 @@ struct JitterBuffer_ {
 
    spx_int32_t buffered;                                       /**< Amount of data we think is still buffered by the application (timestamp units)*/
 
+   spx_uint32_t buffer_size;
    JitterBufferPacket packets[SPEEX_JITTER_MAX_BUFFER_SIZE];   /**< Packets stored in the buffer */
    spx_uint32_t arrival[SPEEX_JITTER_MAX_BUFFER_SIZE];         /**< Packet arrival time (0 means it was late, even though it's a valid timestamp) */
 
@@ -284,6 +285,7 @@ EXPORT JitterBuffer *jitter_buffer_init(int step_size)
       jitter->destroy = NULL;
       jitter->latency_tradeoff = 0;
       jitter->auto_adjust = 1;
+      jitter->buffer_size = SPEEX_JITTER_MAX_BUFFER_SIZE;
       tmp = 4;
       jitter_buffer_ctl(jitter, JITTER_BUFFER_SET_MAX_LATE_RATE, &tmp);
       jitter_buffer_reset(jitter);
@@ -372,7 +374,7 @@ EXPORT void jitter_buffer_put(JitterBuffer *jitter, const JitterBufferPacket *pa
    /* Cleanup buffer (remove old packets that weren't played) */
    if (!jitter->reset_state)
    {
-      for (i=0;i<SPEEX_JITTER_MAX_BUFFER_SIZE;i++)
+      for (i=0;i<jitter->buffer_size;i++)
       {
          /* Make sure we don't discard a "just-late" packet in case we want to play it next (if we interpolate). */
          if (jitter->packets[i].data && LE32(jitter->packets[i].timestamp + jitter->packets[i].span, jitter->pointer_timestamp))
@@ -409,18 +411,18 @@ EXPORT void jitter_buffer_put(JitterBuffer *jitter, const JitterBufferPacket *pa
    {
 
       /*Find an empty slot in the buffer*/
-      for (i=0;i<SPEEX_JITTER_MAX_BUFFER_SIZE;i++)
+      for (i=0;i<jitter->buffer_size;i++)
       {
          if (jitter->packets[i].data==NULL)
             break;
       }
 
       /*No place left in the buffer, need to make room for it by discarding the oldest packet */
-      if (i==SPEEX_JITTER_MAX_BUFFER_SIZE)
+      if (i==jitter->buffer_size)
       {
          int earliest=jitter->packets[0].timestamp;
          i=0;
-         for (j=1;j<SPEEX_JITTER_MAX_BUFFER_SIZE;j++)
+         for (j=1;j<jitter->buffer_size;j++)
          {
             if (!jitter->packets[i].data || LT32(jitter->packets[j].timestamp,earliest))
             {
@@ -469,7 +471,7 @@ EXPORT void jitter_buffer_put(JitterBuffer *jitter, const JitterBufferPacket *pa
 /** Get one packet from the jitter buffer */
 EXPORT int jitter_buffer_get(JitterBuffer *jitter, JitterBufferPacket *packet, spx_int32_t desired_span, spx_int32_t *start_offset)
 {
-   int i;
+   spx_uint32_t i;
    unsigned int j;
    spx_int16_t opt;
 
@@ -482,7 +484,7 @@ EXPORT int jitter_buffer_get(JitterBuffer *jitter, JitterBufferPacket *packet, s
       int found = 0;
       /* Find the oldest packet */
       spx_uint32_t oldest=0;
-      for (i=0;i<SPEEX_JITTER_MAX_BUFFER_SIZE;i++)
+      for (i=0;i<jitter->buffer_size;i++)
       {
          if (jitter->packets[i].data && (!found || LT32(jitter->packets[i].timestamp,oldest)))
          {
@@ -518,23 +520,22 @@ EXPORT int jitter_buffer_get(JitterBuffer *jitter, JitterBufferPacket *packet, s
       jitter->interp_requested = 0;
 
       jitter->buffered = packet->span - desired_span;
-
       return JITTER_BUFFER_INSERTION;
    }
 
    /* Searching for the packet that fits best */
 
    /* Search the buffer for a packet with the right timestamp and spanning the whole current chunk */
-   for (i=0;i<SPEEX_JITTER_MAX_BUFFER_SIZE;i++)
+   for (i=0;i<jitter->buffer_size;i++)
    {
       if (jitter->packets[i].data && jitter->packets[i].timestamp==jitter->pointer_timestamp && GE32(jitter->packets[i].timestamp+jitter->packets[i].span,jitter->pointer_timestamp+desired_span))
          break;
    }
 
    /* If no match, try for an "older" packet that still spans (fully) the current chunk */
-   if (i==SPEEX_JITTER_MAX_BUFFER_SIZE)
+   if (i==jitter->buffer_size)
    {
-      for (i=0;i<SPEEX_JITTER_MAX_BUFFER_SIZE;i++)
+      for (i=0;i<jitter->buffer_size;i++)
       {
          if (jitter->packets[i].data && LE32(jitter->packets[i].timestamp, jitter->pointer_timestamp) && GE32(jitter->packets[i].timestamp+jitter->packets[i].span,jitter->pointer_timestamp+desired_span))
             break;
@@ -542,9 +543,9 @@ EXPORT int jitter_buffer_get(JitterBuffer *jitter, JitterBufferPacket *packet, s
    }
 
    /* If still no match, try for an "older" packet that spans part of the current chunk */
-   if (i==SPEEX_JITTER_MAX_BUFFER_SIZE)
+   if (i==jitter->buffer_size)
    {
-      for (i=0;i<SPEEX_JITTER_MAX_BUFFER_SIZE;i++)
+      for (i=0;i<jitter->buffer_size;i++)
       {
          if (jitter->packets[i].data && LE32(jitter->packets[i].timestamp, jitter->pointer_timestamp) && GT32(jitter->packets[i].timestamp+jitter->packets[i].span,jitter->pointer_timestamp))
             break;
@@ -552,13 +553,13 @@ EXPORT int jitter_buffer_get(JitterBuffer *jitter, JitterBufferPacket *packet, s
    }
 
    /* If still no match, try for earliest packet possible */
-   if (i==SPEEX_JITTER_MAX_BUFFER_SIZE)
+   if (i==jitter->buffer_size)
    {
       int found = 0;
       spx_uint32_t best_time=0;
       int best_span=0;
       int besti=0;
-      for (i=0;i<SPEEX_JITTER_MAX_BUFFER_SIZE;i++)
+      for (i=0;i<jitter->buffer_size;i++)
       {
          /* check if packet starts within current chunk */
          if (jitter->packets[i].data && LT32(jitter->packets[i].timestamp,jitter->pointer_timestamp+desired_span) && GE32(jitter->packets[i].timestamp,jitter->pointer_timestamp))
@@ -580,7 +581,7 @@ EXPORT int jitter_buffer_get(JitterBuffer *jitter, JitterBufferPacket *packet, s
    }
 
    /* If we find something */
-   if (i!=SPEEX_JITTER_MAX_BUFFER_SIZE)
+   if (i!=jitter->buffer_size)
    {
       spx_int32_t offset;
 
@@ -683,12 +684,12 @@ EXPORT int jitter_buffer_get(JitterBuffer *jitter, JitterBufferPacket *packet, s
 EXPORT int jitter_buffer_get_another(JitterBuffer *jitter, JitterBufferPacket *packet)
 {
    spx_uint32_t i, j;
-   for (i=0;i<SPEEX_JITTER_MAX_BUFFER_SIZE;i++)
+   for (i=0;i<jitter->buffer_size;i++)
    {
       if (jitter->packets[i].data && jitter->packets[i].timestamp==jitter->last_returned_timestamp)
          break;
    }
-   if (i!=SPEEX_JITTER_MAX_BUFFER_SIZE)
+   if (i!=jitter->buffer_size)
    {
       /* Copy packet */
       packet->len = jitter->packets[i].len;
@@ -785,7 +786,8 @@ EXPORT void jitter_buffer_remaining_span(JitterBuffer *jitter, spx_uint32_t rem)
 /* Used like the ioctl function to control the jitter buffer parameters */
 EXPORT int jitter_buffer_ctl(JitterBuffer *jitter, int request, void *ptr)
 {
-   int count, i;
+   int count;
+   spx_uint32_t i;
    switch(request)
    {
       case JITTER_BUFFER_SET_MARGIN:
@@ -796,7 +798,7 @@ EXPORT int jitter_buffer_ctl(JitterBuffer *jitter, int request, void *ptr)
          break;
       case JITTER_BUFFER_GET_AVALIABLE_COUNT:
          count = 0;
-         for (i=0;i<SPEEX_JITTER_MAX_BUFFER_SIZE;i++)
+         for (i=0;i<jitter->buffer_size;i++)
          {
             if (jitter->packets[i].data && LE32(jitter->pointer_timestamp, jitter->packets[i].timestamp))
             {
@@ -836,6 +838,11 @@ EXPORT int jitter_buffer_ctl(JitterBuffer *jitter, int request, void *ptr)
          break;
       case JITTER_BUFFER_GET_LATE_COST:
          *(spx_int32_t*)ptr = jitter->latency_tradeoff;
+         break;
+      case JITTER_BUFFER_SET_LIMIT:
+         spx_int32_t buffer_size = *(spx_int32_t*)ptr;
+         jitter->buffer_size = (buffer_size > 1 && buffer_size <= SPEEX_JITTER_MAX_BUFFER_SIZE) ? buffer_size : SPEEX_JITTER_MAX_BUFFER_SIZE;
+         jitter_buffer_reset(jitter);
          break;
       default:
          speex_warning_int("Unknown jitter_buffer_ctl request: ", request);
