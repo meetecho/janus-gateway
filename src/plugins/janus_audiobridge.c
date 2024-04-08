@@ -2133,7 +2133,7 @@ static int janus_audiobridge_resample(int16_t *input, int input_num, int input_r
 
 /* Jitter Buffer and queue-in settings */
 #define JITTER_BUFFER_MIN_PACKETS 2
-#define JITTER_BUFFER_MAX_PACKETS 40
+#define JITTER_BUFFER_MAX_PACKETS 50
 #define JITTER_BUFFER_CHECK_USECS 1*G_USEC_PER_SEC
 #define QUEUE_IN_MAX_PACKETS 4
 
@@ -5895,21 +5895,6 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 		if(participant->jitter) {
 			janus_audiobridge_buffer_packet *pkt = janus_audiobridge_buffer_packet_create(packet);
 			janus_mutex_lock(&participant->qmutex);
-			/* Limit the size of the jitter buffer */
-			gint64 now = janus_get_monotonic_time();
-			if(participant->jitter_next_check == 0) {
-				/* Schedule next check */
-				participant->jitter_next_check = now + JITTER_BUFFER_CHECK_USECS;
-			} else if(now >= participant->jitter_next_check) {
-				spx_int32_t count = 0;
-				jitter_buffer_ctl(participant->jitter, JITTER_BUFFER_GET_AVALIABLE_COUNT, &count);
-				if(count > JITTER_BUFFER_MAX_PACKETS) {
-					JANUS_LOG(LOG_WARN, "Jitter buffer contains too many packets, clearing now (count=%d)\n", count);
-					janus_audiobridge_participant_clear_jitter_buffer(participant);
-				}
-				/* Schedule next check */
-				participant->jitter_next_check = now + JITTER_BUFFER_CHECK_USECS;
-			}
 			JitterBufferPacket jbp = {0};
 			jbp.data = (char *)pkt;
 			jbp.len = 0;
@@ -6429,6 +6414,10 @@ static void *janus_audiobridge_handler(void *data) {
 				jitter_buffer_ctl(participant->jitter, JITTER_BUFFER_SET_DESTROY_CALLBACK, &janus_audiobridge_buffer_packet_destroy);
 				spx_int32_t min_buffer_size = participant->codec == JANUS_AUDIOCODEC_OPUS ? (JITTER_BUFFER_MIN_PACKETS * 960) : (JITTER_BUFFER_MIN_PACKETS * 160);
 				jitter_buffer_ctl(participant->jitter, JITTER_BUFFER_SET_MARGIN, &min_buffer_size);
+				spx_int32_t max_buffer_size = JITTER_BUFFER_MAX_PACKETS;
+				jitter_buffer_ctl(participant->jitter, JITTER_BUFFER_SET_LIMIT, &max_buffer_size);
+				/* disable automatic adjustment */
+				jitter_buffer_update_delay(participant->jitter, NULL, NULL);
 				participant->inbuf = NULL;
 				participant->outbuf = NULL;
 				participant->encoder = NULL;
@@ -8551,6 +8540,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	janus_audiobridge_buffer_packet *bpkt = NULL;
 	janus_audiobridge_rtp_relay_packet *pkt = NULL;
 	janus_audiobridge_rtp_relay_packet *mixedpkt = NULL;
+	int jitter_ticks = 0;
 	janus_rtp_header *rtp = NULL;
 	gint64 now = janus_get_monotonic_time(), before = now;
 	gboolean first = TRUE, use_fec = FALSE;
@@ -8577,6 +8567,12 @@ static void *janus_audiobridge_participant_thread(void *data) {
 			before += 20000;
 			if(participant->jitter) {
 				ret = jitter_buffer_get(participant->jitter, &jbp, participant->codec == JANUS_AUDIOCODEC_OPUS ? 960 : 160, NULL);
+				jitter_ticks++;
+				/* Adjust the buffer size every 50 ticks (~1 second) */
+				if(jitter_ticks == JITTER_BUFFER_MAX_PACKETS) {
+					jitter_buffer_update_delay(participant->jitter, NULL, NULL);
+					jitter_ticks = 0;
+				}
 				jitter_buffer_tick(participant->jitter);
 				if(ret != JITTER_BUFFER_OK) {
 					/* No packet in the jitter buffer? Move on the talking detection, if needed */
