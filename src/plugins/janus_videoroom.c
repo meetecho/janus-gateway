@@ -8743,7 +8743,7 @@ static void *janus_videoroom_handler(void *data) {
 		error_code = 0;
 		root = NULL;
 		if(msg->message == NULL) {
-			if(session->participant_type == janus_videoroom_p_type_subscriber) {
+			if(subscriber != NULL) {
 				janus_refcount_decrease(&subscriber->ref);
 			}
 			JANUS_LOG(LOG_ERR, "No message??\n");
@@ -8757,7 +8757,7 @@ static void *janus_videoroom_handler(void *data) {
 			error_code, error_cause, TRUE,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0) {
-			if(session->participant_type == janus_videoroom_p_type_subscriber) {
+			if(subscriber != NULL) {
 				janus_refcount_decrease(&subscriber->ref);
 			}
 			goto error;
@@ -11156,6 +11156,7 @@ static void *janus_videoroom_handler(void *data) {
 						g_atomic_int_set(&subscriber->pending_restart, 1);
 						janus_mutex_unlock(&subscriber->streams_mutex);
 						JANUS_LOG(LOG_VERB, "Post-poning new ICE restart offer, waiting for previous answer\n");
+						janus_refcount_decrease(&subscriber->ref);
 						janus_videoroom_message_free(msg);
 						continue;
 					}
@@ -11169,6 +11170,7 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
 					json_decref(event);
 					json_decref(jsep);
+					janus_refcount_decrease(&subscriber->ref);
 					/* Done */
 					janus_videoroom_message_free(msg);
 					continue;
@@ -11477,6 +11479,7 @@ static void *janus_videoroom_handler(void *data) {
 						janus_mutex_unlock(&stream_ps->subscribers_mutex);
 						janus_refcount_decrease(&stream_ps->ref);
 					}
+
 					/* Subscribe to the new one */
 					janus_mutex_lock(&ps->subscribers_mutex);
 					stream->publisher_streams = g_slist_append(stream->publisher_streams, ps);
@@ -11625,7 +11628,6 @@ static void *janus_videoroom_handler(void *data) {
 				janus_refcount_decrease(&subscriber->ref);
 				goto error;
 			}
-			janus_refcount_decrease(&subscriber->ref);
 		}
 
 		/* Prepare JSON event */
@@ -11664,9 +11666,11 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(event);
 				/* Take note of the fact we got our answer */
-				janus_videoroom_subscriber *subscriber = (janus_videoroom_subscriber *)session->participant;
-				if(subscriber == NULL) {
+				if(session->participant == NULL) {
 					/* Shouldn't happen? */
+					if(subscriber != NULL)
+						janus_refcount_decrease(&subscriber->ref);
+					janus_videoroom_message_free(msg);
 					continue;
 				}
 				janus_mutex_lock(&subscriber->streams_mutex);
@@ -11722,6 +11726,7 @@ static void *janus_videoroom_handler(void *data) {
 					g_atomic_int_set(&subscriber->answered, 1);
 					janus_mutex_unlock(&subscriber->streams_mutex);
 				}
+				janus_refcount_decrease(&subscriber->ref);
 				janus_videoroom_message_free(msg);
 				continue;
 			} else {
@@ -12299,6 +12304,8 @@ static void *janus_videoroom_handler(void *data) {
 			if(participant != NULL)
 				janus_refcount_decrease(&participant->ref);
 		}
+		if(subscriber != NULL)
+			janus_refcount_decrease(&subscriber->ref);
 		janus_videoroom_message_free(msg);
 
 		continue;
