@@ -3003,7 +3003,7 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(
 		list = g_list_append(list, stream);
 		g_hash_table_insert(helper->subscribers, ps, list);
 		helper->num_subscribers++;
-		JANUS_LOG(LOG_WARN, "Added subscriber stream to helper thread #%d (%d subscribers)\n",
+		JANUS_LOG(LOG_VERB, "Added subscriber stream to helper thread #%d (%d subscribers)\n",
 			helper->id, helper->num_subscribers);
 		janus_mutex_unlock(&helper->mutex);
 	}
@@ -3052,7 +3052,7 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_
 					list = g_list_append(list, stream);
 					g_hash_table_insert(helper->subscribers, ps, list);
 					helper->num_subscribers++;
-					JANUS_LOG(LOG_WARN, "Added subscriber stream to helper thread #%d (%d subscribers)\n",
+					JANUS_LOG(LOG_VERB, "Added subscriber stream to helper thread #%d (%d subscribers)\n",
 						helper->id, helper->num_subscribers);
 					janus_mutex_unlock(&helper->mutex);
 				}
@@ -3112,7 +3112,7 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_
 						list = g_list_append(list, stream);
 						g_hash_table_insert(helper->subscribers, ps, list);
 						helper->num_subscribers++;
-						JANUS_LOG(LOG_WARN, "Added subscriber stream to helper thread #%d (%d subscribers)\n",
+						JANUS_LOG(LOG_VERB, "Added subscriber stream to helper thread #%d (%d subscribers)\n",
 							helper->id, helper->num_subscribers);
 						janus_mutex_unlock(&helper->mutex);
 					}
@@ -3163,7 +3163,7 @@ static void janus_videoroom_subscriber_stream_remove(janus_videoroom_subscriber_
 						ht->num_subscribers--;
 						list = g_list_remove_all(list, s);
 						g_hash_table_insert(ht->subscribers, ps, list);
-						JANUS_LOG(LOG_WARN, "Removing subscriber stream from helper thread #%d (%d subscribers)\n",
+						JANUS_LOG(LOG_VERB, "Removing subscriber stream from helper thread #%d (%d subscribers)\n",
 							ht->id, ht->num_subscribers);
 						janus_mutex_unlock(&ht->mutex);
 						break;
@@ -9811,7 +9811,7 @@ static void *janus_videoroom_handler(void *data) {
 									list = g_list_append(list, data_stream);
 									g_hash_table_insert(helper->subscribers, ps, list);
 									helper->num_subscribers++;
-									JANUS_LOG(LOG_WARN, "Added subscriber stream to helper thread #%d (%d subscribers)\n",
+									JANUS_LOG(LOG_VERB, "Added subscriber stream to helper thread #%d (%d subscribers)\n",
 										helper->id, helper->num_subscribers);
 									janus_mutex_unlock(&helper->mutex);
 								}
@@ -9898,7 +9898,7 @@ static void *janus_videoroom_handler(void *data) {
 										list = g_list_append(list, data_stream);
 										g_hash_table_insert(helper->subscribers, ps, list);
 										helper->num_subscribers++;
-										JANUS_LOG(LOG_WARN, "Added subscriber stream to helper thread #%d (%d subscribers)\n",
+										JANUS_LOG(LOG_VERB, "Added subscriber stream to helper thread #%d (%d subscribers)\n",
 											helper->id, helper->num_subscribers);
 										janus_mutex_unlock(&helper->mutex);
 									}
@@ -11748,7 +11748,7 @@ static void *janus_videoroom_handler(void *data) {
 									ht->num_subscribers--;
 									list = g_list_remove_all(list, s);
 									g_hash_table_insert(ht->subscribers, ps, list);
-									JANUS_LOG(LOG_WARN, "Removing subscriber stream from helper thread #%d (%d subscribers)\n",
+									JANUS_LOG(LOG_VERB, "Removing subscriber stream from helper thread #%d (%d subscribers)\n",
 										ht->id, ht->num_subscribers);
 									janus_mutex_unlock(&ht->mutex);
 									break;
@@ -11782,7 +11782,7 @@ static void *janus_videoroom_handler(void *data) {
 						list = g_list_append(list, stream);
 						g_hash_table_insert(helper->subscribers, ps, list);
 						helper->num_subscribers++;
-						JANUS_LOG(LOG_WARN, "Added subscriber stream to helper thread #%d (%d subscribers) (switching)\n",
+						JANUS_LOG(LOG_VERB, "Added subscriber stream to helper thread #%d (%d subscribers) (switching)\n",
 							helper->id, helper->num_subscribers);
 						janus_mutex_unlock(&helper->mutex);
 					}
@@ -12329,7 +12329,7 @@ static void *janus_videoroom_handler(void *data) {
 									int mindex = json_integer_value(json_object_get(s, "mindex"));
 									if(mindex != ps->mindex)
 										continue;
-									JANUS_LOG(LOG_WARN, "Publisher stream is going to do SVC (#%d, %s)\n", ps->mindex, ps->mid);
+									JANUS_LOG(LOG_VERB, "Publisher stream is going to do SVC (#%d, %s)\n", ps->mindex, ps->mid);
 									ps->svc = TRUE;
 								}
 							}
@@ -13473,7 +13473,7 @@ static void *janus_videoroom_helper_thread(void *data) {
 	janus_videoroom *room = helper->room;
 	janus_videoroom_publisher_stream *ps = NULL;
 	GList *subscribers = NULL;
-	JANUS_LOG(LOG_WARN, "[%s/#%d] Joining VideoRoom helper thread\n", room->room_id_str, helper->id);
+	JANUS_LOG(LOG_VERB, "[%s/#%d] Joining VideoRoom helper thread\n", room->room_id_str, helper->id);
 	janus_videoroom_rtp_relay_packet *pkt = NULL;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&room->destroyed) && !g_atomic_int_get(&helper->destroyed)) {
 		pkt = g_async_queue_pop(helper->queued_packets);
@@ -13491,7 +13491,7 @@ static void *janus_videoroom_helper_thread(void *data) {
 		janus_mutex_unlock(&helper->mutex);
 		janus_videoroom_rtp_relay_packet_free(pkt);
 	}
-	JANUS_LOG(LOG_WARN, "[%s/#%d] Leaving VideoRoom helper thread\n", room->room_id_str, helper->id);
+	JANUS_LOG(LOG_VERB, "[%s/#%d] Leaving VideoRoom helper thread\n", room->room_id_str, helper->id);
 	janus_refcount_decrease(&helper->ref);
 	janus_refcount_decrease(&room->ref);
 	g_thread_unref(g_thread_self());
