@@ -8531,7 +8531,7 @@ static void janus_videoroom_incoming_data_internal(janus_videoroom_session *sess
 	pkt.textdata = !packet->binary;
 	janus_mutex_lock_nodebug(&ps->subscribers_mutex);
 	if(participant->room->helper_threads > 0) {
-		g_list_foreach(participant->room->threads, janus_videoroom_helper_rtpdata_packet, &packet);
+		g_list_foreach(participant->room->threads, janus_videoroom_helper_rtpdata_packet, &pkt);
 	} else {
 		g_slist_foreach(ps->subscribers, janus_videoroom_relay_data_packet, &pkt);
 	}
