@@ -57,7 +57,7 @@ $(document).ready(function() {
 										$('.dropdown-toggle').dropdown('hide');
 										selectedApproach = $(this).attr("id");
 										$('#registerset').html($(this).html()).parent().removeClass('open');
-										if(selectedApproach === "guest") {
+										if(selectedApproach === "guest" || selectedApproach === "trunk") {
 											$('#password').empty().attr('disabled', true);
 										} else {
 											$('#password').removeAttr('disabled');
@@ -70,7 +70,10 @@ $(document).ready(function() {
 												bootbox.alert("Using this approach might not work with Asterisk because the generated HA1 secret could have the wrong realm");
 												break;
 											case "guest":
-												bootbox.alert("Using this approach you'll try to REGISTER as a guest, that is without providing any secret");
+												bootbox.alert("Using this approach you'll be marked as a guest, so no REGISTER will be sent");
+												break;
+											case "trunk":
+												bootbox.alert("Using this approach you'll be associated with a trunk (if available), so no REGISTER will be sent");
 												break;
 											default:
 												break;
@@ -750,20 +753,22 @@ function registerUsername() {
 		$('#registerset').removeAttr('disabled');
 		return;
 	}
-	if(selectedApproach === "guest") {
-		// We're registering as guests, no username/secret provided
+	if(selectedApproach === "guest" || selectedApproach === "trunk") {
+		// We're registering as guests or trunk users, no username/secret provided
 		let register = {
 			request: "register",
-			type: "guest"
+			type: selectedApproach
 		};
 		if(sipserver !== "") {
 			register["proxy"] = sipserver;
-			// Uncomment this if you want to see an outbound proxy too
+			// Uncomment this if you want to see an outbound proxy too;
+			// notice that it will be ignored for trunk users (the trunk
+			// peer will be automatically marked as the outbound proxy to use)
 			//~ register["outbound_proxy"] = "sip:outbound.example.com";
 		}
 		let username = $('#username').val();
 		if(!username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
-			bootbox.alert("Please insert a valid SIP address (e.g., sip:goofy@example.com): this doesn't need to exist for guests, but is required");
+			bootbox.alert("Please insert a valid SIP address (e.g., sip:goofy@example.com): this doesn't need to exist for " + selectedApproach + "s, but is required");
 			$('#server').removeAttr('disabled');
 			$('#username').removeAttr('disabled');
 			$('#authuser').removeAttr('disabled');
@@ -777,23 +782,7 @@ function registerUsername() {
 		if(displayname) {
 			register.display_name = displayname;
 		}
-		if(sipserver === "") {
-			bootbox.confirm("You didn't specify a SIP Registrar to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP Registrar instead'",
-				function(result) {
-					if(result) {
-						sipcall.send({ message: register });
-					} else {
-						$('#server').removeAttr('disabled');
-						$('#username').removeAttr('disabled');
-						$('#authuser').removeAttr('disabled');
-						$('#displayname').removeAttr('disabled');
-						$('#register').removeAttr('disabled').click(registerUsername);
-						$('#registerset').removeAttr('disabled');
-					}
-				});
-		} else {
-			sipcall.send({ message: register });
-		}
+		sipcall.send({ message: register });
 		return;
 	}
 	let username = $('#username').val();
