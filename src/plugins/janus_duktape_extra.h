@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief  Janus Duktape plugin extra hooks (headers)
  * \details  The Janus Duktape plugin implements all the mandatory hooks to
- * allow the C code to interact with a custom JavaScript script, and viceversa.
+ * allow the C code to interact with a custom JavaScript script, and vice-versa.
  * Anyway, JavaScript developers may want to have the C code do more than what
  * is provided out of the box, e.g., by exposing additional JavaScript methods
  * from C for further low level processing or native integration. This

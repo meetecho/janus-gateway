@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief  Janus Lua plugin extra hooks
  * \details  The Janus Lua plugin implements all the mandatory hooks to
- * allow the C code to interact with a custom Lua script, and viceversa.
+ * allow the C code to interact with a custom Lua script, and vice-versa.
  * Anyway, Lua developers may want to have the C code do more than what
  * is provided out of the box, e.g., by exposing additional Lua methods
  * from C for further low level processing or native integration. This

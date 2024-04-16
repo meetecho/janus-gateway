@@ -55,7 +55,7 @@ janus_eventhandler *create(void) {
  * - \c get_description(): this method should return a verbose description of your event handler plugin (e.g., "This is an event handler that saves some events on a database");
  * - \c get_name(): this method should return a short display name for your event handler plugin (e.g., "My Amazing Event Handler");
  * - \c get_package(): this method should return a unique package identifier for your event handler plugin (e.g., "janus.eventhandler.myeventhandler");
- * - \c incoming_event(): this callack informs the event handler that an event is available for consumption.
+ * - \c incoming_event(): this callback informs the event handler that an event is available for consumption.
  *
  * All the above methods and callbacks are mandatory: the Janus core will
  * reject an event handler plugin that doesn't implement any of the

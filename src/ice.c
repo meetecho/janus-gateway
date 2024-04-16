@@ -163,12 +163,12 @@ gboolean janus_ice_is_consent_freshness_enabled(void) {
 static gboolean janus_ice_keepalive_connchecks = FALSE;
 void janus_ice_set_keepalive_conncheck_enabled(gboolean enabled) {
 	if(janus_ice_consent_freshness && !enabled) {
-		JANUS_LOG(LOG_WARN, "Can't disable connectivity checks as PeerConnection keep-alives, consent freshness is enabled\n");
+		JANUS_LOG(LOG_WARN, "Can't disable connectivity checks as PeerConnection keep-alive, consent freshness is enabled\n");
 		return;
 	}
 	janus_ice_keepalive_connchecks = enabled;
 	if(janus_ice_keepalive_connchecks) {
-		JANUS_LOG(LOG_INFO, "Using connectivity checks as PeerConnection keep-alives\n");
+		JANUS_LOG(LOG_INFO, "Using connectivity checks as PeerConnection keep-alive\n");
 	}
 }
 gboolean janus_ice_is_keepalive_conncheck_enabled(void) {
@@ -3262,7 +3262,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				if (janus_rtcp_fix_report_data(buf, buflen, base_ts, base_ts_prev, ssrc_peer, ssrc_local, ssrc_expected, video) < 0) {
 					/* Drop packet in case of parsing error or SSRC different from the one expected. */
 					/* This might happen at the very beginning of the communication or early after */
-					/* a re-negotation has been concluded. */
+					/* a re-negotiation has been concluded. */
 					return;
 				}
 

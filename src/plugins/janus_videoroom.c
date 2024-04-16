@@ -601,8 +601,8 @@ room-<unique room ID>: {
 	"record" : <true|false, whether this publisher should be recorded or not; optional>,
 	"filename" : "<if recording, the base path/file to use for the recording files; optional>",
 	"display" : "<display name to use in the room; optional>",
-	"audio_level_average" : "<if provided, overrided the room audio_level_average for this user; optional>",
-	"audio_active_packets" : "<if provided, overrided the room audio_active_packets for this user; optional>",
+	"audio_level_average" : "<if provided, overrides the room audio_level_average for this user; optional>",
+	"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>",
 	"descriptions" : [	// Optional
 		{
 			"mid" : "<unique mid of a stream being published>",
@@ -10016,7 +10016,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_decref(event);
 				json_decref(jsep);
 				if(res < 0) {
-					/* Soemthing went wrong, get rid of the subscription */
+					/* Something went wrong, get rid of the subscription */
 					if(media_event)
 						json_decref(media_event);
 					if(owner) {

@@ -92,7 +92,7 @@
 }
 \endverbatim
  *
- * If successul, this will result in a \c registered event:
+ * If successful, this will result in a \c registered event:
  *
 \verbatim
 {
@@ -117,7 +117,7 @@
 }
 \endverbatim
  *
- * If successul, this will result in a \c calling event:
+ * If successful, this will result in a \c calling event:
  *
 \verbatim
 {
@@ -153,7 +153,7 @@
 }
 \endverbatim
  *
- * If successul, both the caller and the callee will receive an
+ * If successful, both the caller and the callee will receive an
  * \c accepted event to notify them about the success of the signalling:
  *
 \verbatim

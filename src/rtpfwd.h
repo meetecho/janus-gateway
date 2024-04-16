@@ -60,7 +60,7 @@ typedef struct janus_rtp_forwarder {
 	GSource *rtcp_recv;
 	/* \brief Whether simulcast automatic selection is enabled for this forwarder */
 	gboolean simulcast;
-	/* \brief RTP swtiching context, if needed */
+	/* \brief RTP switching context, if needed */
 	janus_rtp_switching_context rtp_context;
 	/* \brief Simulcast context, if needed */
 	janus_rtp_simulcasting_context sim_context;
@@ -96,7 +96,7 @@ typedef struct janus_rtp_forwarder {
  * 	\note Do NOT mix the simulcast and substream properties, as they implement different behaviours
  * @param[in] is_video Whether this a video forwarder
  * @param[in] is_data Whether this a data channel forwarder
- * @returns A pointer to a valid janus_rtp_forwarder instance, if successfull, NULL otherwise */
+ * @returns A pointer to a valid janus_rtp_forwarder instance, if successful, NULL otherwise */
 janus_rtp_forwarder *janus_rtp_forwarder_create(const char *ctx,
 	uint32_t stream_id, int udp_fd, const char *host, int port,
 	uint32_t ssrc, int pt, int srtp_suite, const char *srtp_crypto,

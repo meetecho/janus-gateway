@@ -1525,7 +1525,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 	anon->attributes = g_list_insert_before(anon->attributes, first, a);
 	/* ICE Full or Lite? */
 	if(janus_ice_is_ice_lite_enabled()) {
-		/* Janus is acting in ICE Lite mode, advertize this */
+		/* Janus is acting in ICE Lite mode, advertise this */
 		a = janus_sdp_attribute_create("ice-lite", NULL);
 		anon->attributes = g_list_insert_before(anon->attributes, first, a);
 	}

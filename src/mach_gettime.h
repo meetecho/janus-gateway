@@ -21,7 +21,7 @@ typedef int clockid_t;
 #endif
 
 /* the mach kernel uses struct mach_timespec, so struct timespec
-    is loaded from <sys/_types/_timespec.h> for compatability */
+    is loaded from <sys/_types/_timespec.h> for compatibility */
 // struct timespec { time_t tv_sec; long tv_nsec; };
 
 int clock_gettime(clockid_t clk_id, struct timespec *tp);
@@ -35,13 +35,13 @@ int clock_gettime(clockid_t clk_id, struct timespec *tp);
 static double mt_timebase = 0.0;
 static uint64_t mt_timestart = 0;
 
-// TODO be more careful in a multithreaded environement
+// TODO be more careful in a multithreaded environment
 int clock_gettime(clockid_t clk_id, struct timespec *tp)
 {
     kern_return_t retval = KERN_SUCCESS;
     if( clk_id == TIMER_ABSTIME)
     {
-        if (!mt_timestart) { // only one timer, initilized on the first call to the TIMER
+        if (!mt_timestart) { // only one timer, initialized on the first call to the TIMER
             mach_timebase_info_data_t tb = { 0 };
             mach_timebase_info(&tb);
             mt_timebase = tb.numer;
@@ -53,7 +53,7 @@ int clock_gettime(clockid_t clk_id, struct timespec *tp)
         tp->tv_sec = diff * MT_NANO;
         tp->tv_nsec = diff - (tp->tv_sec * MT_GIGA);
     }
-    else // other clk_ids are mapped to the coresponding mach clock_service
+    else // other clk_ids are mapped to the corresponding mach clock_service
     {
         clock_serv_t cclock;
         mach_timespec_t mts;

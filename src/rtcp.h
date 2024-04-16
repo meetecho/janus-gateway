@@ -302,12 +302,12 @@ typedef rtcp_transport_wide_cc_stats janus_rtcp_transport_wide_cc_stats;
 uint32_t janus_rtcp_context_get_rtt(janus_rtcp_context *ctx);
 /*! \brief Method to retrieve the total number of lost packets from an existing RTCP context
  * @param[in] ctx The RTCP context to query
- * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
+ * @param[in] remote Whether we're querying the remote (provided by peer) or local (computed by Janus) info
  * @returns The total number of lost packets */
 int32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remote);
 /*! \brief Method to retrieve the jitter from an existing RTCP context
  * @param[in] ctx The RTCP context to query
- * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
+ * @param[in] remote Whether we're querying the remote (provided by peer) or local (computed by Janus) info
  * @returns The computed jitter */
 uint32_t janus_rtcp_context_get_jitter(janus_rtcp_context *ctx, gboolean remote);
 /*! \brief Method to retrieve inbound link quality from an existing RTCP context

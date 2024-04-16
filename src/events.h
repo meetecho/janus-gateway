@@ -39,7 +39,7 @@ gboolean janus_events_is_enabled(void);
 void janus_events_notify_handlers(int type, int subtype, guint64 session_id, ...);
 
 /*! \brief Helper method to change the mask of events a handler is interested in
- * @note Every time this is called, the mask is resetted, which means that to
+ * @note Every time this is called, the mask is reset, which means that to
  * unsubscribe from a single event you have to pass an updated list
  * @param[in] list A comma separated string of event types to subscribe to
  * @param[out] target The mask to update */

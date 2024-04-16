@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief  Janus Duktape data/session definition (headers)
  * \details  The Janus Duktape plugin implements all the mandatory hooks to
- * allow the C code to interact with a custom JavaScript script, and viceversa.
+ * allow the C code to interact with a custom JavaScript script, and vice-versa.
  * That said, the janus_duktape_extra.c code allows for custom hooks to be
  * added in C, to expose additional JavaScript functions and implement more
  * complex media management than the one provided by the stock plugin.

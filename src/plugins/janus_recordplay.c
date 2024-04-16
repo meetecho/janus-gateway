@@ -2620,7 +2620,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 						p->prev = tmp;
 						break;
 					} else if(tmp->seq > p->seq && (abs(tmp->seq - p->seq) > 10000)) {
-						/* The new sequence number (resetted) is greater than the last one we have, append */
+						/* The new sequence number (reset) is greater than the last one we have, append */
 						added = 1;
 						if(tmp->next != NULL) {
 							/* We're inserting */
@@ -2635,7 +2635,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 						break;
 					}
 				}
-				/* If either the timestamp ot the sequence number we just got is smaller, keep going back */
+				/* If either the timestamp or the sequence number we just got is smaller, keep going back */
 				tmp = tmp->prev;
 			}
 			if(!added) {

@@ -212,7 +212,7 @@ static spx_int16_t compute_opt_delay(JitterBuffer *jitter)
       int j;
       int next=-1;
       int latest = 32767;
-      /* Pick latest amoung all sub-windows */
+      /* Pick latest among all sub-windows */
       for (j=0;j<MAX_BUFFERS;j++)
       {
          if (pos[j] < tb[j].filled && tb[j].timing[pos[j]] < latest)

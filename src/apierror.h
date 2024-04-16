@@ -26,7 +26,7 @@
 #define JANUS_ERROR_TRANSPORT_SPECIFIC			450
 /*! \brief The request is missing in the message */
 #define JANUS_ERROR_MISSING_REQUEST				452
-/*! \brief The Janus core does not suppurt this request */
+/*! \brief The Janus core does not support this request */
 #define JANUS_ERROR_UNKNOWN_REQUEST				453
 /*! \brief The payload is not a valid JSON message */
 #define JANUS_ERROR_INVALID_JSON				454

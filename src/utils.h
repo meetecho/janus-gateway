@@ -58,14 +58,14 @@ gint64 janus_get_real_time(void);
  * @returns A pointer to the updated text string (re-allocated or just updated) */
 char *janus_string_replace(char *message, const char *old_string, const char *new_string) G_GNUC_WARN_UNUSED_RESULT;
 
-/*! \brief Helper method to concatenate strings and log an error if truncation occured
+/*! \brief Helper method to concatenate strings and log an error if truncation occurred
  * @param[in] dest Destination buffer, already containing one nul-terminated string
  * @param[in] src Source buffer
  * @param[in] dest_size Length of dest buffer in bytes (not length of existing string inside dest)
  * @returns Size of attempted result, if retval >= dest_size, truncation occurred (and an error will be logged). */
 size_t janus_strlcat(char *dest, const char *src, size_t dest_size);
 
-/*! \brief Alternative helper method to concatenate strings and log an error if truncation occured,
+/*! \brief Alternative helper method to concatenate strings and log an error if truncation occurred,
  * which uses memccpy instead of g_strlcat and so is supposed to be faster
  * @note The offset attribute is input/output, and updated any time the method is called
  * @param[in] dest Destination buffer, already containing one nul-terminated string
