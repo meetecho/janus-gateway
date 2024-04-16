@@ -3231,7 +3231,7 @@ function Janus(gatewayCallbacks) {
 									return;
 								var inStats = false;
 								// Check if these are statistics on incoming media
-								if((res.mediaType === "video" || res.id.toLowerCase().indexOf("video") > -1) &&
+								if((res.mediaType === "video" || res.kind === "video" || res.id.toLowerCase().indexOf("video") > -1) &&
 										res.type === "inbound-rtp" && res.id.indexOf("rtcp") < 0) {
 									// New stats
 									inStats = true;
