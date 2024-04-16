@@ -37,7 +37,7 @@ static int srtp_validate_rtp_header(char *data, int pkt_octet_len) {
     if (pkt_octet_len < rtp_header_len)
         return -1;
 
-    /* Verifing profile length. */
+    /* Verifying profile length. */
     if (hdr->extension == 1) {
     	janus_rtp_header_extension *xtn_hdr =
             (janus_rtp_header_extension *)((uint32_t *)hdr + uint32s_in_rtp_header +

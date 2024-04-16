@@ -760,7 +760,7 @@ room-<unique room ID>: {
  * or restarts take place, they MUST follow the same negotiation pattern
  * as the one that originated the connection: it's an error to send an
  * SDP offer to the plugin to update a PeerConnection, if the plugin sent
- * you an offer originally. It's adviced to let users generate the offer,
+ * you an offer originally. It's advised to let users generate the offer,
  * and let the plugin answer: this reverserd role is mostly here to
  * facilitate the setup of cascaded mixers, e.g., allow one AudioBridge
  * to connect to the other via WebRTC (which wouldn't be possible if
@@ -7724,7 +7724,7 @@ static void *janus_audiobridge_handler(void *data) {
 			if(sdp != NULL) {
 				participant->opus_pt = janus_sdp_get_codec_pt(sdp, "opus");
 				if(participant->opus_pt > 0 && strstr(msg_sdp, "useinbandfec=1")){
-					/* Opus codec, inband FEC setted */
+					/* Opus codec, inband FEC set */
 					participant->fec = TRUE;
 					participant->probation = MIN_SEQUENTIAL;
 					opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));

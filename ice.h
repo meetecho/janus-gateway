@@ -220,10 +220,10 @@ int janus_ice_get_event_stats_period(void);
  * @returns The current number of active PeerConnections */
 int janus_ice_get_peerconnection_num(void);
 
-/*! \brief Method to define wether the media stats shall be dispatched in one event (true) or in dedicated single events (false - default)
+/*! \brief Method to define whether the media stats shall be dispatched in one event (true) or in dedicated single events (false - default)
  * @param[in] combine_media_stats_to_one_event true to combine media statistics in on event or false to send dedicated events */
 void janus_ice_event_set_combine_media_stats(gboolean combine_media_stats_to_one_event);
-/*! \brief Method to retrieve wether media statistic events shall be dispatched combined or in single events
+/*! \brief Method to retrieve whether media statistic events shall be dispatched combined or in single events
  * @returns true to combine events */
 gboolean janus_ice_event_get_combine_media_stats(void);
 
@@ -536,7 +536,7 @@ struct janus_ice_stream {
 	GSList *transport_wide_received_seq_nums;
 	/*! \brief DTLS role of the server for this stream */
 	janus_dtls_role dtls_role;
-	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
+	/*! \brief Hashing algorithm used by the peer for the DTLS certificate (e.g., "SHA-256") */
 	gchar *remote_hashing;
 	/*! \brief Hashed fingerprint of the peer's certificate, as parsed in SDP */
 	gchar *remote_fingerprint;

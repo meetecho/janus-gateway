@@ -88,7 +88,7 @@ audiopt = <audio RTP payload type> (e.g., 111)
 audiortpmap = RTP map of the audio codec (e.g., opus/48000/2)
 audiofmtp = Codec specific parameters, if any
 audioskew = true|false (whether the plugin should perform skew
-	analisys and compensation on incoming audio RTP stream, EXPERIMENTAL)
+	analysis and compensation on incoming audio RTP stream, EXPERIMENTAL)
 videoport = local port for receiving video frames (only for rtp)
 videortcpport = local port for receiving and sending video RTCP feedback
 videomcast = multicast group for receiving video frames, if any
@@ -102,7 +102,7 @@ videosimulcast = true|false (do|don't enable video simulcasting)
 videoport2 = second local port for receiving video frames (only for rtp, and simulcasting)
 videoport3 = third local port for receiving video frames (only for rtp, and simulcasting)
 videoskew = true|false (whether the plugin should perform skew
-	analisys and compensation on incoming video RTP stream, EXPERIMENTAL)
+	analysis and compensation on incoming video RTP stream, EXPERIMENTAL)
 videosvc = true|false (whether the video will have SVC support; works only for VP9-SVC, default=false)
 h264sps = if using H.264 as a video codec, value of the sprop-parameter-sets
 	that would normally be sent via SDP, but that we'll use to instead
@@ -4899,7 +4899,7 @@ static void *janus_streaming_handler(void *data) {
 						janus_mutex_unlock(&sessions_mutex);
 						goto error;
 					}
-					/* Simple renegotiation, remove the extra uneeded reference */
+					/* Simple renegotiation, remove the extra unneeded reference */
 					janus_refcount_decrease(&mp->ref);
 					JANUS_LOG(LOG_VERB, "Request to update mountpoint/stream %s subscription (no restart)\n", id_value_str);
 					session->sdp_version++;	/* This needs to be increased when it changes */
@@ -5577,7 +5577,7 @@ done:
 			/* This listener wants to switch to a different mountpoint
 			 * NOTE: this only works for live RTP streams as of now: you
 			 * cannot, for instance, switch from a live RTP mountpoint to
-			 * an on demand one or viceversa (TBD.) */
+			 * an on demand one or vice-versa (TBD.) */
 			janus_mutex_lock(&session->mutex);
 			janus_streaming_mountpoint *oldmp = session->mountpoint;
 			if(oldmp == NULL) {
@@ -7140,7 +7140,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 									}
 								} else if(is_session) {
 									if(!strcasecmp(name, "timeout")) {
-										/* Take note of the timeout, for keep-alives */
+										/* Take note of the timeout, for keep-alive */
 										source->ka_timeout = janus_streaming_min_if(source->session_timeout, (gint64)atoi(value) / 2 * G_USEC_PER_SEC);
 										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %"SCNi64" ms\n", source->ka_timeout / 1000);
 									}
@@ -7318,7 +7318,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 									}
 								} else if(is_session) {
 									if(!strcasecmp(name, "timeout")) {
-										/* Take note of the timeout, for keep-alives */
+										/* Take note of the timeout, for keep-alive */
 										source->ka_timeout = janus_streaming_min_if(source->session_timeout, (gint64)atoi(value) / 2 * G_USEC_PER_SEC);
 										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %"SCNi64" ms\n", source->ka_timeout / 1000);
 									}
@@ -8107,7 +8107,7 @@ static void *janus_streaming_relay_thread(void *data) {
 	char buffer[1500];
 	memset(buffer, 0, 1500);
 #ifdef HAVE_LIBCURL
-	/* In case this is an RTSP restreamer, we may have to send keep-alives from time to time */
+	/* In case this is an RTSP restreamer, we may have to send keep-alive from time to time */
 	gint64 now = janus_get_monotonic_time(), before = now, ka_timeout = 0;
 	if(source->rtsp) {
 		source->reconnect_timer = now;

@@ -163,7 +163,7 @@ typedef struct janus_sdp_mline {
  * @param[in] port Port to advertise
  * @param[in] proto Profile to advertise
  * @param[in] direction Direction of the media as a janus_sdp_direction
- * @returns A pointer to a valid janus_sdp_mline instance, if successfull, NULL otherwise */
+ * @returns A pointer to a valid janus_sdp_mline instance, if successful, NULL otherwise */
 janus_sdp_mline *janus_sdp_mline_create(janus_sdp_mtype type, guint16 port, const char *proto, janus_sdp_mdirection direction);
 /*! \brief Helper method to free a janus_sdp_mline instance
  * @note This method does not remove the m-line from the janus_sdp instance, that's up to the caller
@@ -202,7 +202,7 @@ typedef struct janus_sdp_attribute {
 /*! \brief Helper method to quickly create a janus_sdp_attribute instance
  * @param[in] name Name of the attribute
  * @param[in] value Value of the attribute, as a printf compliant string (variable arguments)
- * @returns A pointer to a valid janus_sdp_attribute instance, if successfull, NULL otherwise */
+ * @returns A pointer to a valid janus_sdp_attribute instance, if successful, NULL otherwise */
 janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *value, ...) G_GNUC_PRINTF(2, 3);
 /*! \brief Helper method to free a janus_sdp_attribute instance
  * @note This method does not remove the attribute from the global or m-line attributes, that's up to the caller

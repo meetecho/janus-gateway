@@ -478,7 +478,7 @@ struct janus_plugin_result {
 	 * It MUST be a valid JSON payload (even when returning application
 	 * level errors). Its reference is decremented automatically when destroying
 	 * the janus_plugin_result instance, so if your plugin wants to re-use the
-	 * same object for multiple responses, you jave to \c json_incref the object before
+	 * same object for multiple responses, you have to \c json_incref the object before
 	 * passing it to the core, and \c json_decref it when you're done with it. */
 	json_t *content;
 };

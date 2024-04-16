@@ -104,7 +104,7 @@ static void speex_free(void *ptr) {free(ptr);}
 #include "resample_neon.h"
 #endif
 
-/* Numer of elements to allocate on the stack */
+/* Number of elements to allocate on the stack */
 #ifdef VAR_ARRAYS
 #define FIXED_STACK_ALLOC 8192
 #else

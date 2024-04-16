@@ -1788,7 +1788,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 						a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", pt);
 						am->attributes = g_list_append(am->attributes, a);
 					}
-					/* It is safe to add transport-wide rtcp feedback mesage here, won't be used unless the header extension is negotiated*/
+					/* It is safe to add transport-wide rtcp feedback message here, won't be used unless the header extension is negotiated*/
 					a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
 					am->attributes = g_list_append(am->attributes, a);
 				}

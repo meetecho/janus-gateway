@@ -16,7 +16,7 @@
  * down and returns an URL to the recorded file.
  *
  * Since an URL is returned, the plugin allows you to configure where the
- * recordings whould be stored (e.g., a folder in your web server, writable
+ * recordings would be stored (e.g., a folder in your web server, writable
  * by the plugin) and the base path to use when returning URLs (e.g.,
  * /my/recordings/ or http://www.example.com/my/recordings).
  *

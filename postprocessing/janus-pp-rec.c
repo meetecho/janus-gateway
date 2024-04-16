@@ -833,7 +833,7 @@ int main(int argc, char *argv[])
 	uint32_t pkt_ts = 0, highest_rtp_ts = 0;
 	uint16_t highest_seq = 0;
 	/* Start from 1 to take into account late packets */
-	int times_resetted = 1;
+	int times_reset = 1;
 	uint64_t max32 = UINT32_MAX;
 	int ignored = 0;
 	offset = 0;
@@ -1022,7 +1022,7 @@ int main(int argc, char *argv[])
 			started = TRUE;
 			highest_rtp_ts = rtp_ts;
 			highest_seq = p->seq;
-			p->ts = (times_resetted*max32)+rtp_ts;
+			p->ts = (times_reset*max32)+rtp_ts;
 		} else {
 			if(!video && !data) {
 				/* Check if we need to handle the SIP silence suppression mode,
@@ -1062,7 +1062,7 @@ int main(int argc, char *argv[])
 				if(rtp_ts < highest_rtp_ts) {
 					/* Received TS is lower than highest --> reset */
 					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", rtp_ts);
-					times_resetted++;
+					times_reset++;
 				}
 				highest_rtp_ts = rtp_ts;
 				highest_seq = p->seq;
@@ -1079,9 +1079,9 @@ int main(int argc, char *argv[])
 
 			/* Take into account the number of resets when setting the internal, 64-bit, timestamp */
 			if(!pre_reset_pkt)
-				p->ts = (times_resetted*max32)+rtp_ts;
+				p->ts = (times_reset*max32)+rtp_ts;
 			else
-				p->ts = ((times_resetted-1)*max32)+rtp_ts;
+				p->ts = ((times_reset-1)*max32)+rtp_ts;
 		}
 		if(rtp->padding) {
 			/* There's padding data, let's check the last byte to see how much data we should skip */
@@ -1149,7 +1149,7 @@ int main(int argc, char *argv[])
 						p->prev = tmp;
 						break;
 					} else if(tmp->seq > p->seq && (abs(tmp->seq - p->seq) > 10000)) {
-						/* The new sequence number (resetted) is greater than the last one we have, append */
+						/* The new sequence number (reset) is greater than the last one we have, append */
 						added = 1;
 						if(tmp->next != NULL) {
 							/* We're inserting */
@@ -1169,7 +1169,7 @@ int main(int argc, char *argv[])
 						break;
 					}
 				}
-				/* If either the timestamp ot the sequence number we just got is smaller, keep going back */
+				/* If either the timestamp or the sequence number we just got is smaller, keep going back */
 				tmp = tmp->prev;
 			}
 			if(p->drop) {
