@@ -2965,13 +2965,13 @@ static void *janus_sip_handler(void *data) {
 			gboolean send_register = TRUE;
 			json_t *do_register = json_object_get(root, "send_register");
 			if(do_register != NULL) {
-				if(guest) {
+				send_register = json_is_true(do_register);
+				if(guest && send_register) {
 					JANUS_LOG(LOG_ERR, "Conflicting elements: send_register cannot be true if guest is true\n");
 					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
 					g_snprintf(error_cause, 512, "Conflicting elements: send_register cannot be true if guest is true");
 					goto error;
 				}
-				send_register = json_is_true(do_register);
 			}
 
 			gboolean sips = FALSE;
