@@ -53,7 +53,7 @@ typedef struct rtp_header
 	uint16_t seq_number;
 	uint32_t timestamp;
 	uint32_t ssrc;
-	uint32_t csrc[16];
+	uint32_t csrc[0];
 } rtp_header;
 typedef rtp_header janus_rtp_header;
 
