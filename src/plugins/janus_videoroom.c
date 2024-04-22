@@ -12656,7 +12656,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			if(payload == NULL)
 				return;
 			/* Process this packet: don't relay if it's not the layer we wanted to handle */
-			janus_rtp_header rtp = *(packet->data);
+			char rtph[12];
+			memcpy(&rtph, packet->data, sizeof(rtph));
 			gboolean relay = janus_rtp_svc_context_process_rtp(&stream->svc_context,
 				(char *)packet->data, packet->length, packet->extensions.dd_content, packet->extensions.dd_len,
 				ps->vcodec, &packet->svc_info, &stream->context);
@@ -12702,7 +12703,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				gateway->relay_rtp(session->handle, &rtp);
 			}
 			/* Restore the timestamp and sequence number to what the publisher set them to */
-			*(packet->data) = rtp;
+			memcpy(packet->data, &rtph, sizeof(rtph));
 		} else if(packet->simulcast) {
 			/* Handle simulcast: make sure we have a payload to work with */
 			int plen = 0;
