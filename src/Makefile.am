@@ -396,7 +396,6 @@ plugins_libadd = \
 
 if ENABLE_PLUGIN_AUDIOBRIDGE
 plugin_LTLIBRARIES += plugins/libjanus_audiobridge.la
-plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c
 plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c \
 	plugins/audiobridge-deps/jitter.c plugins/audiobridge-deps/resample.c plugins/audiobridge-deps/arch.h \
 	plugins/audiobridge-deps/os_support.h plugins/audiobridge-deps/speex/speex_jitter.h plugins/audiobridge-deps/speex/speex_resampler.h \
