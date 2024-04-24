@@ -161,7 +161,7 @@ jobs:
   javascript-lint:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install modules
       run: |
         cd npm
@@ -173,7 +173,7 @@ jobs:
   javascript-dist:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install modules
       run: |
         cd npm
@@ -182,7 +182,7 @@ jobs:
       run: |
         cd npm
         npm run prerelease
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: janus.es.js
         path: npm/dist/janus.es.js
