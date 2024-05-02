@@ -26,7 +26,7 @@ To install it, you'll need to satisfy the following dependencies:
 * [OpenSSL](https://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v2.x suggested)
 
-These are optional dependencies, depending on which featueres you're interested in:
+These are optional dependencies, depending on which features you're interested in:
 
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you are interested in Data Channels)
 * [libmicrohttpd](https://www.gnu.org/software/libmicrohttpd/) (at least v0.9.59; only needed if you are interested in REST support for the Janus API)
