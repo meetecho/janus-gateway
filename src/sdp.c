@@ -1315,7 +1315,7 @@ int janus_sdp_parse_ssrc(void *m, const char *ssrc_attr, int video) {
 int janus_sdp_anonymize(janus_sdp *anon) {
 	if(anon == NULL)
 		return -1;
-	int audio = 0, video = 0, data = 0;
+	int data = 0;
 		/* o= */
 	if(anon->o_addr != NULL) {
 		g_free(anon->o_addr);
@@ -1348,10 +1348,8 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
-			audio++;
 			m->port = 9;
 		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
-			video++;
 			m->port = 9;
 		} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
 			if(m->proto != NULL && (!strcasecmp(m->proto, "DTLS/SCTP") || !strcasecmp(m->proto, "UDP/DTLS/SCTP"))) {

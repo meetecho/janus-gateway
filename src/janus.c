@@ -1591,7 +1591,6 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 					janus_request_ice_handle_answer(handle, jsep_sdp);
 					/* Check if the answer does contain the mid/abs-send-time/twcc extmaps */
-					int mindex = 0;
 					gboolean do_mid = FALSE, do_twcc = FALSE, do_dd = FALSE, do_abs_send_time = FALSE, do_abs_capture_time = FALSE;
 					GList *temp = parsed_sdp->m_lines;
 					while(temp) {
@@ -1620,7 +1619,6 @@ int janus_process_incoming_request(janus_request *request) {
 						do_dd = do_dd || have_dd;
 						do_abs_send_time = do_abs_send_time || have_abs_send_time;
 						do_abs_capture_time = do_abs_capture_time || have_abs_capture_time;
-						mindex++;
 						temp = temp->next;
 					}
 					if(!do_mid && handle->pc)

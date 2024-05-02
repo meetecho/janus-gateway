@@ -374,7 +374,6 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 				/* VP8 depay */
 					/* https://tools.ietf.org/html/draft-ietf-payload-vp8 */
 				/* Read the first octet (VP8 Payload Descriptor) */
-				int skipped = 1;
 				len--;
 				uint8_t vp8pd = *buffer;
 				uint8_t xbit = (vp8pd & 0x80);
@@ -382,7 +381,6 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 
 				if (xbit) {
 					buffer++;
-					skipped++;
 					len--;
 
 					vp8pd = *buffer;
@@ -394,7 +392,6 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 						/* Read the PictureID octet */
 						buffer++;
 						len--;
-						skipped++;
 						vp8pd = *buffer;
 						uint16_t picid = vp8pd, wholepicid = picid;
 						uint8_t mbit = (vp8pd & 0x80);
@@ -404,21 +401,18 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 							picid = (wholepicid & 0x7FFF);
 							buffer++;
 							len--;
-							skipped++;
 						}
 					}
 					if(lbit) {
 						/* Read the TL0PICIDX octet */
 						buffer++;
 						len--;
-						skipped++;
 						vp8pd = *buffer;
 					}
 					if(tbit || kbit) {
 						/* Read the TID/KEYIDX octet */
 						buffer++;
 						len--;
-						skipped++;
 						vp8pd = *buffer;
 					}
 				}
@@ -457,7 +451,6 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 				/* VP9 depay */
 					/* https://tools.ietf.org/html/draft-ietf-payload-vp9-02 */
 				/* Read the first octet (VP9 Payload Descriptor) */
-				int skipped = 0;
 				uint8_t vp9pd = *buffer;
 				uint8_t ibit = (vp9pd & 0x80);
 				uint8_t pbit = (vp9pd & 0x40);
@@ -467,7 +460,6 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 				/* Move to the next octet and see what's there */
 				buffer++;
 				len--;
-				skipped++;
 				if(ibit) {
 					/* Read the PictureID octet */
 					vp9pd = *buffer;
@@ -476,25 +468,21 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 					if(!mbit) {
 						buffer++;
 						len--;
-						skipped++;
 					} else {
 						memcpy(&picid, buffer, sizeof(uint16_t));
 						wholepicid = ntohs(picid);
 						picid = (wholepicid & 0x7FFF);
 						buffer += 2;
 						len -= 2;
-						skipped += 2;
 					}
 				}
 				if(lbit) {
 					buffer++;
 					len--;
-					skipped++;
 					if(!fbit) {
 						/* Non-flexible mode, skip TL0PICIDX */
 						buffer++;
 						len--;
-						skipped++;
 					}
 				}
 				if(fbit && pbit) {
@@ -505,7 +493,6 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 						nbit = (vp9pd & 0x01);
 						buffer++;
 						len--;
-						skipped++;
 					}
 				}
 				if(vbit) {
@@ -520,13 +507,11 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 						/* Iterate on all spatial layers and get resolution */
 						buffer++;
 						len--;
-						skipped++;
 						int i=0;
 						for(i=0; i<n_s; i++) {
 							/* Been there, done that: skip skip skip */
 							buffer += 4;
 							len -= 4;
-							skipped += 4;
 						}
 						/* Is this the first keyframe we find?
 						 * (FIXME assuming this really means "keyframe...) */
@@ -539,12 +524,10 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 						if(!ybit) {
 							buffer++;
 							len--;
-							skipped++;
 						}
 						uint8_t n_g = *buffer;
 						buffer++;
 						len--;
-						skipped++;
 						if(n_g > 0) {
 							uint i=0;
 							for(i=0; i<n_g; i++) {
@@ -555,11 +538,9 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 									/* Skip reference indices */
 									buffer += r;
 									len -= r;
-									skipped += r;
 								}
 								buffer++;
 								len--;
-								skipped++;
 							}
 						}
 					}

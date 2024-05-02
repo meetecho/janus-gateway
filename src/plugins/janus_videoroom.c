@@ -2395,9 +2395,6 @@ static void janus_videoroom_publisher_stream_unref(janus_videoroom_publisher_str
 	if(ps)
 		janus_refcount_decrease(&ps->ref);
 }
-static void janus_videoroom_publisher_stream_dereference_void(void *ps) {
-	janus_videoroom_publisher_stream_unref((janus_videoroom_publisher_stream *)ps);
-}
 
 static void janus_videoroom_publisher_stream_free(const janus_refcount *ps_ref) {
 	janus_videoroom_publisher_stream *ps = janus_refcount_containerof(ps_ref, janus_videoroom_publisher_stream, ref);
@@ -12868,13 +12865,12 @@ static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_rtp_forwarder *rf, 
 			 * which publisher video stream we should send the PLI to */
 			uint32_t ssrc = 0;
 			janus_rtcp_header *rtcp = (janus_rtcp_header *)buffer;
-			int pno = 0, total = len;
+			int total = len;
 			while(rtcp && ssrc == 0) {
 				if(!janus_rtcp_check_len(rtcp, total))
 					return;		/* Invalid RTCP packet */
 				if(rtcp->version != 2)
 					return;		/* Invalid RTCP packet */
-				pno++;
 				switch(rtcp->type) {
 					case RTCP_PSFB: {
 						gint fmt = rtcp->rc;
