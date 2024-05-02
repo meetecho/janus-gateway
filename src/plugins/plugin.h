@@ -499,8 +499,7 @@ struct janus_plugin_result {
 janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *text, json_t *content);
 
 /*! \brief Helper to quickly destroy a janus_plugin_result instance
- * @param[in] result The janus_plugin_result instance to destroy
- * @returns A valid janus_plugin_result instance, if successful, or NULL otherwise */
+ * @param[in] result The janus_plugin_result instance to destroy */
 void janus_plugin_result_destroy(janus_plugin_result *result);
 ///@}
 

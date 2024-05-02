@@ -700,7 +700,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle);
  * @param[in] reason A description of why this happened */
 void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason);
 /*! \brief Method to only free resources related to a specific Webrtc PeerConnection allocated by a Janus ICE handle
- * @param[in] component The Janus ICE component instance to free */
+ * @param[in] pc The Janus ICE component instance to free */
 void janus_ice_peerconnection_destroy(janus_ice_peerconnection *pc);
 ///@}
 

@@ -234,8 +234,7 @@ void janus_protected_folders_clear(void);
 /*! \brief Creates a string describing the JSON type and constraint
  * @param jtype The JSON type, e.g., JSON_STRING
  * @param flags Indicates constraints for the described type
- * @param[out] type_name The type description, e.g., "a positive integer"; required size is 19 characters
- * @returns 0 if successful, a negative integer otherwise */
+ * @param[out] type_name The type description, e.g., "a positive integer"; required size is 19 characters */
 void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name);
 
 /*! \brief Checks whether the JSON value matches the type and constraint
@@ -472,12 +471,12 @@ void janus_set3(guint8 *data, size_t i, guint32 val);
  */
 void janus_set4(guint8 *data, size_t i, guint32 val);
 
-/* \brief Helpers to read a bit from a bitstream
+/*! \brief Helpers to read a bit from a bitstream
  * @param[in] base Pointer to the start of the bitstream
  * @param[in] offset Offset in bits from the start
  * @returns The value of the bit */
 uint8_t janus_bitstream_getbit(uint8_t *base, uint32_t offset);
-/* \brief Helpers to read agroup of bits from a bitstream
+/*! \brief Helpers to read agroup of bits from a bitstream
  * @param[in] base Pointer to the start of the bitstream
  * @param[in] num The number of bits to read
  * @param[in] offset Offset in bits from the start

@@ -20,10 +20,10 @@
 #include "rtpsrtp.h"
 
 
-/* \brief RTP forwarders code initialization
+/*! \brief RTP forwarders code initialization
  * @returns 0 in case of success, a negative integer on errors */
 int janus_rtp_forwarders_init(void);
-/* \brief RTP forwarders code de-initialization */
+/*! \brief RTP forwarders code de-initialization */
 void janus_rtp_forwarders_deinit(void);
 
 /*! \brief Helper struct for implementing RTP forwarders */
@@ -82,7 +82,7 @@ typedef struct janus_rtp_forwarder {
 } janus_rtp_forwarder;
 /*! \brief Helper method to create a new janus_rtp_forwarder instance
  * @param[in] ctx The context of this forwarder (e.g., the plugin name)
- * @param[in] id The unique forwarder ID to assign as part of the context (0=autogenerate)
+ * @param[in] stream_id The unique forwarder ID to assign as part of the context (0=autogenerate)
  * @param[in] udp_fd The socket to use for sending RTP packets
  * @param[in] host The address to forward the RTP packets to
  * @param[in] port The port to forward the RTP packets to
