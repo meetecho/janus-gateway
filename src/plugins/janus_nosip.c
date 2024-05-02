@@ -290,10 +290,10 @@ static janus_nosip_message exit_message;
 typedef struct janus_nosip_media {
 	char *remote_audio_ip;
 	char *remote_video_ip;
-	int ready:1;
+	gboolean ready;
 	gboolean require_srtp, has_srtp_local, has_srtp_remote;
 	janus_srtp_profile srtp_profile;
-	int has_audio:1;
+	gboolean has_audio;
 	int audio_rtp_fd, audio_rtcp_fd;
 	int local_audio_rtp_port, remote_audio_rtp_port;
 	int local_audio_rtcp_port, remote_audio_rtcp_port;
@@ -305,7 +305,7 @@ typedef struct janus_nosip_media {
 	srtp_policy_t audio_remote_policy, audio_local_policy;
 	char *audio_srtp_local_profile, *audio_srtp_local_crypto;
 	gboolean audio_send;
-	int has_video:1;
+	gboolean has_video;
 	int video_rtp_fd, video_rtcp_fd;
 	int local_video_rtp_port, remote_video_rtp_port;
 	int local_video_rtcp_port, remote_video_rtcp_port;
@@ -622,12 +622,12 @@ void janus_nosip_media_reset(janus_nosip_session *session) {
 	session->media.updated = FALSE;
 	session->media.ready = FALSE;
 	session->media.require_srtp = FALSE;
-	session->media.has_audio = 0;
+	session->media.has_audio = FALSE;
 	session->media.audio_pt = -1;
 	session->media.opusred_pt = -1;
 	session->media.audio_pt_name = NULL;	/* Immutable string, no need to free*/
 	session->media.audio_send = TRUE;
-	session->media.has_video = 0;
+	session->media.has_video = FALSE;
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;	/* Immutable string, no need to free*/
 	session->media.video_send = TRUE;
@@ -930,7 +930,7 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->sdp = NULL;
 	session->media.remote_audio_ip = NULL;
 	session->media.remote_video_ip = NULL;
-	session->media.ready = 0;
+	session->media.ready = FALSE;
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
@@ -939,7 +939,7 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.audio_srtp_local_crypto = NULL;
 	session->media.video_srtp_local_profile = NULL;
 	session->media.video_srtp_local_crypto = NULL;
-	session->media.has_audio = 0;
+	session->media.has_audio = FALSE;
 	session->media.audio_rtp_fd = -1;
 	session->media.audio_rtcp_fd = -1;
 	session->media.local_audio_rtp_port = 0;
@@ -952,7 +952,7 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.opusred_pt = -1;
 	session->media.audio_pt_name = NULL;
 	session->media.audio_send = TRUE;
-	session->media.has_video = 0;
+	session->media.has_video = FALSE;
 	session->media.video_rtp_fd = -1;
 	session->media.video_rtcp_fd = -1;
 	session->media.local_video_rtp_port = 0;
@@ -1485,11 +1485,11 @@ static void *janus_nosip_handler(void *data) {
 				/* Allocate RTP ports and merge them with the anonymized SDP */
 				if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
 					JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
-					session->media.has_audio = 1;	/* FIXME Maybe we need a better way to signal this */
+					session->media.has_audio = TRUE;	/* FIXME Maybe we need a better way to signal this */
 				}
 				if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
 					JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
-					session->media.has_video = 1;	/* FIXME Maybe we need a better way to signal this */
+					session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 				}
 				janus_mutex_lock(&session->mutex);
 				if(janus_nosip_allocate_local_ports(session, sdp_update) < 0) {
@@ -1597,7 +1597,7 @@ static void *janus_nosip_handler(void *data) {
 			/* If this is an answer, start the media */
 			if(!sdp_update && !offer) {
 				/* Start the media */
-				session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
+				session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
 				GError *error = NULL;
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "nosiprtp %p", session);
@@ -1605,7 +1605,7 @@ static void *janus_nosip_handler(void *data) {
 				session->relayer_thread = g_thread_try_new(tname, janus_nosip_relay_thread, session, &error);
 				if(error != NULL) {
 					session->relayer_thread = NULL;
-					session->media.ready = 0;
+					session->media.ready = FALSE;
 					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n",
 						error->code, error->message ? error->message : "??");
@@ -1835,7 +1835,7 @@ void janus_nosip_sdp_process(janus_nosip_session *session, janus_sdp *sdp, gbool
 					if(changed)
 						*changed = TRUE;
 				}
-				session->media.has_audio = 1;
+				session->media.has_audio = TRUE;
 				session->media.remote_audio_rtp_port = m->port;
 				session->media.remote_audio_rtcp_port = m->port+1;	/* FIXME We're assuming RTCP is on the next port */
 				if(m->direction == JANUS_SDP_SENDONLY || m->direction == JANUS_SDP_INACTIVE)
@@ -1852,7 +1852,7 @@ void janus_nosip_sdp_process(janus_nosip_session *session, janus_sdp *sdp, gbool
 					if(changed)
 						*changed = TRUE;
 				}
-				session->media.has_video = 1;
+				session->media.has_video = TRUE;
 				session->media.remote_video_rtp_port = m->port;
 				session->media.remote_video_rtcp_port = m->port+1;	/* FIXME We're assuming RTCP is on the next port */
 				if(m->direction == JANUS_SDP_SENDONLY || m->direction == JANUS_SDP_INACTIVE)

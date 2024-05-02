@@ -439,7 +439,7 @@ struct janus_ice_peerconnection {
 	/*! \brief libnice ICE component ID */
 	guint component_id;
 	/*! \brief Whether this stream is ready to be used */
-	gint cdone:1;
+	gboolean cdone;
 	/*! \brief libnice ICE component state */
 	guint state;
 	/*! \brief Monotonic time of when gathering has completed */
