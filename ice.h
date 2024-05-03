@@ -433,7 +433,7 @@ struct janus_ice_stream {
 	/*! \brief libnice ICE stream ID */
 	guint stream_id;
 	/*! \brief Whether this stream is ready to be used */
-	gint cdone:1;
+	gboolean cdone;
 	/*! \brief Monotonic time of when gathering has completed */
 	gint64 gathered;
 	/*! \brief Audio SSRC of the server for this stream */

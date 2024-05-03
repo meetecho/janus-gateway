@@ -54,7 +54,8 @@ case "$CC" in
 	# Specific clang flags
 	CFLAGS="$CFLAGS \
 		-Wno-cast-align \
-		-Wno-initializer-overrides"
+		-Wno-initializer-overrides \
+		-Wno-missing-noreturn"
 ;;
 cc*)
 	CFLAGS="$CFLAGS \

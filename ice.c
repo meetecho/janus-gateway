@@ -2054,7 +2054,7 @@ static void janus_ice_cb_candidate_gathering_done(NiceAgent *agent, guint stream
 		return;
 	}
 	stream->gathered = janus_get_monotonic_time();
-	stream->cdone = 1;
+	stream->cdone = TRUE;
 	/* If we're doing full-trickle, send an event to the user too */
 	if(janus_full_trickle_enabled) {
 		/* Send a "trickle" event with completed:true to the browser */

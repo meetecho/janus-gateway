@@ -57,13 +57,12 @@ guint32 janus_rtcp_get_sender_ssrc(char *packet, int len) {
 	if(packet == NULL || len == 0)
 		return 0;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len;
+	int total = len;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			break;
 		if(rtcp->version != 2)
 			break;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_SR: {
 				/* SR, sender report */
@@ -110,13 +109,12 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len) {
 	if(packet == NULL || len == 0)
 		return 0;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len;
+	int total = len;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			break;
 		if(rtcp->version != 2)
 			break;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_SR: {
 				/* SR, sender report */
@@ -165,13 +163,12 @@ void janus_rtcp_swap_report_blocks(char *packet, int len, uint32_t rtx_ssrc) {
 	if(packet == NULL || len == 0)
 		return;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len;
+	int total = len;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			break;
 		if(rtcp->version != 2)
 			break;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_SR: {
 				/* SR, sender report */
@@ -1038,13 +1035,12 @@ int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t
 		return -1;
 	/* Parse RTCP compound packet */
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len, status = 0;
+	int total = len, status = 0;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			return -2;
 		if(rtcp->version != 2)
 			return -2;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_RR: {
 				if (!janus_rtcp_check_rr(rtcp, total))
@@ -1106,13 +1102,12 @@ int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t
 gboolean janus_rtcp_has_bye(char *packet, int len) {
 	/* Parse RTCP compound packet */
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len;
+	int total = len;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			break;
 		if(rtcp->version != 2)
 			break;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_BYE:
 				return TRUE;
@@ -1134,13 +1129,12 @@ gboolean janus_rtcp_has_bye(char *packet, int len) {
 gboolean janus_rtcp_has_fir(char *packet, int len) {
 	/* Parse RTCP compound packet */
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len;
+	int total = len;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			break;
 		if(rtcp->version != 2)
 			break;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_FIR:
 				return TRUE;
@@ -1162,13 +1156,12 @@ gboolean janus_rtcp_has_fir(char *packet, int len) {
 gboolean janus_rtcp_has_pli(char *packet, int len) {
 	/* Parse RTCP compound packet */
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len;
+	int total = len;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			break;
 		if(rtcp->version != 2)
 			break;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_PSFB: {
 				gint fmt = rtcp->rc;
