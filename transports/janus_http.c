@@ -35,11 +35,11 @@
 #include <netdb.h>
 
 #include <microhttpd.h>
-#ifdef HAVE_ENUM_MHD_RESULT
-	/* enum MHD_Result introduced in libmicrohttpd v0.9.71 */
-	typedef enum MHD_Result MHD_Result;
+#if defined(MHD_VERSION) && MHD_VERSION >= 0x00097002
+/* enum MHD_Result introduced in libmicrohttpd v0.9.71 */
+typedef enum MHD_Result janus_MHD_Result;
 #else
-	typedef int MHD_Result;
+typedef int janus_MHD_Result;
 #endif
 
 
@@ -265,17 +265,17 @@ static GSource *janus_http_request_timeout_create(janus_transport_session *ts, j
 
 
 /* Callback (libmicrohttpd) invoked when a new connection is attempted on the REST API */
-static MHD_Result janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
+static janus_MHD_Result janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
 /* Callback (libmicrohttpd) invoked when a new connection is attempted on the admin/monitor webserver */
-static MHD_Result janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
+static janus_MHD_Result janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
 /* Callback (libmicrohttpd) invoked when an HTTP message (GET, POST, OPTIONS, etc.) is available */
-static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connection,
+static janus_MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connection,
 	const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr);
 /* Callback (libmicrohttpd) invoked when an admin/monitor HTTP message (GET, POST, OPTIONS, etc.) is available */
-static MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
+static janus_MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
 	const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr);
 /* Callback (libmicrohttpd) invoked when headers of an incoming HTTP message have been parsed */
-static MHD_Result janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
+static janus_MHD_Result janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 /* Callback (libmicrohttpd) invoked when a request has been processed and can be freed */
 static void janus_http_request_completed(void *cls, struct MHD_Connection *connection,
 	void **con_cls, enum MHD_RequestTerminationCode toe);
@@ -284,9 +284,9 @@ static ssize_t janus_http_response_callback(void *cls, uint64_t pos, char *buf, 
 /* Worker to handle requests that are actually long polls */
 static int janus_http_notifier(janus_http_msg *msg);
 /* Helper to quickly send a success response */
-static MHD_Result janus_http_return_success(janus_transport_session *ts, char *payload);
+static janus_MHD_Result janus_http_return_success(janus_transport_session *ts, char *payload);
 /* Helper to quickly send an error response */
-static MHD_Result janus_http_return_error(janus_transport_session *ts, uint64_t session_id,
+static janus_MHD_Result janus_http_return_error(janus_transport_session *ts, uint64_t session_id,
 	const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
 
 
@@ -1316,7 +1316,7 @@ plugin_response:
 }
 
 /* Connection notifiers */
-static MHD_Result janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
+static janus_MHD_Result janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
 	janus_network_address naddr;
 	janus_network_address_string_buffer naddr_buf;
 	if(janus_network_address_from_sockaddr((struct sockaddr *)addr, &naddr) != 0 ||
@@ -1335,7 +1335,7 @@ static MHD_Result janus_http_client_connect(void *cls, const struct sockaddr *ad
 	return MHD_YES;
 }
 
-static MHD_Result janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
+static janus_MHD_Result janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
 	janus_network_address naddr;
 	janus_network_address_string_buffer naddr_buf;
 	if(janus_network_address_from_sockaddr((struct sockaddr *)addr, &naddr) != 0 ||
@@ -1356,7 +1356,7 @@ static MHD_Result janus_http_admin_client_connect(void *cls, const struct sockad
 
 
 /* WebServer requests handler */
-static MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connection,
+static janus_MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connection,
 		const char *url, const char *method, const char *version,
 		const char *upload_data, size_t *upload_data_size, void **ptr) {
 	if(!g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping))
@@ -1780,7 +1780,7 @@ done:
 }
 
 /* Admin/monitor WebServer requests handler */
-static MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
+static janus_MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
 		const char *url, const char *method, const char *version,
 		const char *upload_data, size_t *upload_data_size, void **ptr) {
 	if(!g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping))
@@ -2055,7 +2055,7 @@ done:
 	return ret;
 }
 
-static MHD_Result janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
+static janus_MHD_Result janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
 	janus_http_msg *request = (janus_http_msg *)cls;
 	JANUS_LOG(LOG_DBG, "%s: %s\n", key, value);
 	if(!request)
@@ -2204,7 +2204,7 @@ static int janus_http_notifier(janus_http_msg *msg) {
 }
 
 /* Helper to quickly send a success response */
-static MHD_Result janus_http_return_success(janus_transport_session *ts, char *payload) {
+static janus_MHD_Result janus_http_return_success(janus_transport_session *ts, char *payload) {
 	if(!payload) {
 		JANUS_LOG(LOG_ERR, "Invalid payload...\n");
 		return MHD_NO;
@@ -2232,7 +2232,7 @@ static MHD_Result janus_http_return_success(janus_transport_session *ts, char *p
 }
 
 /* Helper to quickly send an error response */
-static MHD_Result janus_http_return_error(janus_transport_session *ts, uint64_t session_id,
+static janus_MHD_Result janus_http_return_error(janus_transport_session *ts, uint64_t session_id,
 		const char *transaction, gint error, const char *format, ...) {
 	gchar *error_string = NULL;
 	gchar error_buf[512];

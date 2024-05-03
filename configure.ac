@@ -558,13 +558,6 @@ PKG_CHECK_MODULES([MHD],
 AC_SUBST([MHD_CFLAGS])
 AC_SUBST([MHD_LIBS])
 AM_CONDITIONAL([ENABLE_REST], [test "x$enable_rest" = "xyes"])
-AM_COND_IF([ENABLE_REST],
-           [
-             AC_CHECK_TYPES([enum MHD_Result],
-                            [],
-                            [],
-                            [#include <microhttpd.h>])
-           ])
 
 AC_CHECK_LIB([websockets],
 			 [lws_create_vhost],
