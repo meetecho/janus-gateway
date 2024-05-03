@@ -211,7 +211,12 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				int data_size = av_get_bytes_per_sample(dec_ctx->sample_fmt);
 				int i=0, ch=0;
 				for(i=0; i<frame->nb_samples; i++) {
-					for(ch=0; ch<dec_ctx->channels; ch++) {
+#ifdef NEW_CHANNEL_LAYOUT
+					int channels = dec_ctx->ch_layout.nb_channels;
+#else
+					int channels = dec_ctx->channels;
+#endif
+					for(ch=0; ch<channels; ch++) {
 						fwrite(frame->data[ch] + data_size*i, 1, data_size, wav_file);
 					}
 				}
