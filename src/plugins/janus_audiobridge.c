@@ -7633,6 +7633,10 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->display = display_text ? g_strdup(display_text) : NULL;
 			participant->room = audiobridge;
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* When switching to a new room, you're unmuted by default */
+			janus_mutex_lock(&participant->qmutex);
+			janus_audiobridge_participant_clear_jitter_buffer(participant);
+			janus_audiobridge_participant_clear_inbuf(participant);
+			janus_mutex_unlock(&participant->qmutex);
 			if(suspended && json_is_true(suspended)) {
 				janus_mutex_lock(&participant->suspend_cond_mutex);
 				g_atomic_int_set(&participant->suspended, 1);
