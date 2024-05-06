@@ -3405,7 +3405,13 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 		if(ids != NULL && ids->value != NULL)
 			string_ids = janus_is_true(ids->value);
 		if(string_ids) {
-			JANUS_LOG(LOG_INFO, "VideoRoom will use alphanumeric IDs, not numeric\n");
+			JANUS_LOG(LOG_INFO, "VideoRoom will use alphanumeric IDs for rooms, not numeric\n");
+		}
+    janus_config_item *ids_user = janus_config_get(config, config_general, janus_config_type_item, "string_ids_user");
+		if(ids_user != NULL && ids_user->value != NULL)
+			string_ids_user = janus_is_true(ids_user->value);
+		if(string_ids_user) {
+			JANUS_LOG(LOG_INFO, "VideoRoom will use alphanumeric IDs for users, not numeric\n");
 		}
 	}
 	rooms = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
