@@ -4429,6 +4429,13 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		g_hash_table_iter_init(&iter, audiobridge->participants);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_audiobridge_participant *p = value;
+			if(p->muted != audiobridge->muted) {
+				/* Clear the queued packets waiting to be handled */
+				janus_mutex_lock(&p->qmutex);
+				janus_audiobridge_participant_clear_jitter_buffer(p);
+				janus_audiobridge_participant_clear_inbuf(p);
+				janus_mutex_unlock(&p->qmutex);
+			}
 			if(g_atomic_int_get(&p->paused_events))
 				continue;
 			JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", p->user_id_str, p->display ? p->display : "??");
