@@ -98,7 +98,7 @@ static GOptionEntry opt_entries[] = {
 	{ "ssrc", 's', 0, G_OPTION_ARG_INT64, &ssrc64, "SSRC of the packets in the pcap file to save (pass 0 to autodetect)", NULL },
 	{ "warnings", 'w', 0, G_OPTION_ARG_NONE, &show_warnings, "Show warnings for skipped packets (e.g., not RTP or wrong SSRC)", NULL },
 	{ G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &paths, NULL, NULL },
-	{ NULL },
+	{ NULL, 0, 0, 0, NULL, NULL, NULL },
 };
 
 /* Main Code */

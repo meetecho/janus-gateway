@@ -504,6 +504,8 @@ int janus_rtp_extension_id(const char *type) {
 		return 14;
 	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
 		return 2;
+	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME))
+		return 7;
 	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
 		return 13;
 	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))

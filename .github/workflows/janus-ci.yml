@@ -58,7 +58,6 @@ jobs:
         libopus-dev
         librabbitmq-dev
         libsofia-sip-ua-dev
-        libspeexdsp-dev
         libssl-dev
         libtool
         libvorbis-dev
@@ -98,7 +97,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: cisco/libsrtp
-        ref: v2.5.0
+        ref: v2.6.0
     - name: setup libsrtp from sources
       if: ${{ matrix.deps_from_src == 'yes' }}
       run: |
@@ -150,15 +149,19 @@ jobs:
       env:
         JANUS_CONFIG_COMMON: "--disable-docs --enable-post-processing --enable-plugin-lua --enable-plugin-duktape --enable-json-logger"
         JANUS_CONFIG_OPTS: ${{ matrix.janus_config_opts }}
+      # Asan in llvm 14 provided in ubuntu 22.04 is incompatible with
+      # high-entropy ASLR in much newer kernels that GitHub runners are
+      # using leading to random crashes: https://reviews.llvm.org/D148280
       run: |
+        sudo sysctl vm.mmap_rnd_bits=28
         ./autogen.sh
         ./configure $JANUS_CONFIG_COMMON $JANUS_CONFIG_OPTS
-         make -j$(nproc)
-         make check-fuzzers
+        make -j$(nproc)
+        make check-fuzzers
   javascript-lint:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install modules
       run: |
         cd npm
@@ -170,7 +173,7 @@ jobs:
   javascript-dist:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install modules
       run: |
         cd npm
@@ -179,7 +182,7 @@ jobs:
       run: |
         cd npm
         npm run prerelease
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: janus.es.js
         path: npm/dist/janus.es.js

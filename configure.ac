@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[1.2.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[1.2.3],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -54,7 +54,8 @@ case "$CC" in
 	# Specific clang flags
 	CFLAGS="$CFLAGS \
 		-Wno-cast-align \
-		-Wno-initializer-overrides"
+		-Wno-initializer-overrides \
+		-Wno-missing-noreturn"
 ;;
 cc*)
 	CFLAGS="$CFLAGS \
@@ -70,11 +71,11 @@ cc*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=1201
+JANUS_VERSION=1203
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="1.2.1"
+JANUS_VERSION_STRING="1.2.3"
 AC_SUBST(JANUS_VERSION_STRING)
-JANUS_VERSION_SO="2:1:0"
+JANUS_VERSION_SO="2:3:0"
 AC_SUBST(JANUS_VERSION_SO)
 
 case "$host_os" in
@@ -550,13 +551,6 @@ PKG_CHECK_MODULES([MHD],
 AC_SUBST([MHD_CFLAGS])
 AC_SUBST([MHD_LIBS])
 AM_CONDITIONAL([ENABLE_REST], [test "x$enable_rest" = "xyes"])
-AM_COND_IF([ENABLE_REST],
-           [
-             AC_CHECK_TYPES([enum MHD_Result],
-                            [],
-                            [],
-                            [#include <microhttpd.h>])
-           ])
 
 AC_CHECK_LIB([websockets],
 			 [lws_create_vhost],
@@ -790,15 +784,21 @@ AC_SUBST([SOFIA_LIBS])
 PKG_CHECK_MODULES([OPUS],
                   [
                    opus
-                   speexdsp
                   ],
                   [
                     AS_IF([test "x$enable_plugin_audiobridge" = "xmaybe"],
-                          [enable_plugin_audiobridge=yes])
+                          [
+                           enable_plugin_audiobridge=yes
+                          ])
+                    AS_IF([test "x$enable_plugin_audiobridge" = "xyes"],
+                          [
+                           AC_DEFINE(FLOATING_POINT)
+                           AC_DEFINE([EXPORT], [], [Symbol visibility prefix])
+                          ])
                   ],
                   [
                     AS_IF([test "x$enable_plugin_audiobridge" = "xyes"],
-                          [AC_MSG_ERROR([libopus or libspeexdsp not found. See README.md for installation instructions or use --disable-plugin-audiobridge])])
+                          [AC_MSG_ERROR([libopus not found. See README.md for installation instructions or use --disable-plugin-audiobridge])])
                   ])
 AC_SUBST([OPUS_CFLAGS])
 AC_SUBST([OPUS_LIBS])
@@ -812,6 +812,16 @@ PKG_CHECK_MODULES([OGG],
                   ])
 AC_SUBST([OGG_CFLAGS])
 AC_SUBST([OGG_LIBS])
+
+PKG_CHECK_MODULES([RNNOISE],
+                  [rnnoise],
+                  [
+                    AC_DEFINE(HAVE_RNNOISE)
+                  ],
+                  [
+                  ])
+AC_SUBST([RNNOISE_CFLAGS])
+AC_SUBST([RNNOISE_LIBS])
 
 PKG_CHECK_MODULES([LUA],
                   [lua],

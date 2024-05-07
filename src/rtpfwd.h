@@ -20,10 +20,10 @@
 #include "rtpsrtp.h"
 
 
-/* \brief RTP forwarders code initialization
+/*! \brief RTP forwarders code initialization
  * @returns 0 in case of success, a negative integer on errors */
 int janus_rtp_forwarders_init(void);
-/* \brief RTP forwarders code de-initialization */
+/*! \brief RTP forwarders code de-initialization */
 void janus_rtp_forwarders_deinit(void);
 
 /*! \brief Helper struct for implementing RTP forwarders */
@@ -60,7 +60,7 @@ typedef struct janus_rtp_forwarder {
 	GSource *rtcp_recv;
 	/* \brief Whether simulcast automatic selection is enabled for this forwarder */
 	gboolean simulcast;
-	/* \brief RTP swtiching context, if needed */
+	/* \brief RTP switching context, if needed */
 	janus_rtp_switching_context rtp_context;
 	/* \brief Simulcast context, if needed */
 	janus_rtp_simulcasting_context sim_context;
@@ -82,7 +82,7 @@ typedef struct janus_rtp_forwarder {
 } janus_rtp_forwarder;
 /*! \brief Helper method to create a new janus_rtp_forwarder instance
  * @param[in] ctx The context of this forwarder (e.g., the plugin name)
- * @param[in] id The unique forwarder ID to assign as part of the context (0=autogenerate)
+ * @param[in] stream_id The unique forwarder ID to assign as part of the context (0=autogenerate)
  * @param[in] udp_fd The socket to use for sending RTP packets
  * @param[in] host The address to forward the RTP packets to
  * @param[in] port The port to forward the RTP packets to
@@ -96,7 +96,7 @@ typedef struct janus_rtp_forwarder {
  * 	\note Do NOT mix the simulcast and substream properties, as they implement different behaviours
  * @param[in] is_video Whether this a video forwarder
  * @param[in] is_data Whether this a data channel forwarder
- * @returns A pointer to a valid janus_rtp_forwarder instance, if successfull, NULL otherwise */
+ * @returns A pointer to a valid janus_rtp_forwarder instance, if successful, NULL otherwise */
 janus_rtp_forwarder *janus_rtp_forwarder_create(const char *ctx,
 	uint32_t stream_id, int udp_fd, const char *host, int port,
 	uint32_t ssrc, int pt, int srtp_suite, const char *srtp_crypto,

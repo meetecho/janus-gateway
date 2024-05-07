@@ -17,11 +17,17 @@ If you have questions on Janus, or wish to discuss Janus with us and other users
 ## Dependencies
 To install it, you'll need to satisfy the following dependencies:
 
+* [GLib](https://docs.gtk.org/glib/)
+* [zlib](https://zlib.net/)
+* [pkg-config](https://www.freedesktop.org/wiki/Software/pkg-config/)
 * [Jansson](https://github.com/akheron/jansson)
 * [libconfig](https://hyperrealm.github.io/libconfig/)
 * [libnice](https://libnice.freedesktop.org/) (at least v0.1.16 suggested, v0.1.18 recommended)
 * [OpenSSL](https://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v2.x suggested)
+
+These are optional dependencies, depending on which features you're interested in:
+
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you are interested in Data Channels)
 * [libmicrohttpd](https://www.gnu.org/software/libmicrohttpd/) (at least v0.9.59; only needed if you are interested in REST support for the Janus API)
 * [libwebsockets](https://libwebsockets.org/) (at least v4.x suggested; only needed if you are interested in WebSockets support for the Janus API)
@@ -31,20 +37,15 @@ To install it, you'll need to satisfy the following dependencies:
 * [nanomsg](https://nanomsg.org/) (only needed if you are interested in Nanomsg support for the Janus API)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are interested in the TURN REST API support)
 
-A couple of plugins depend on a few more libraries:
+A couple of plugins depend on a few more libraries (you only need to install the ones for the plugins you need):
 
 * [Sofia-SIP](https://github.com/freeswitch/sofia-sip) (only needed for the SIP plugin)
 * [libopus](https://opus-codec.org/) (only needed for the AudioBridge plugin)
-* [libogg](https://xiph.org/ogg/) (needed for the VoiceMail plugin and/or post-processor, and optionally AudioBridge and Streaming plugins)
+* [libogg](https://xiph.org/ogg/) (needed for the recordings post-processor, and optionally AudioBridge and Streaming plugins)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are interested in RTSP support in the Streaming plugin or in the sample Event Handler plugin)
 * [Lua](https://www.lua.org/download.html) (only needed for the Lua plugin)
 * [Duktape](https://duktape.org/) (only needed for the Duktape plugin)
 
-Additionally, you'll need the following libraries and tools:
-
-* [GLib](https://docs.gtk.org/glib/)
-* [zlib](https://zlib.net/)
-* [pkg-config](https://www.freedesktop.org/wiki/Software/pkg-config/)
 
 All of those libraries are usually available on most of the most common distributions. Installing these libraries on a recent Fedora, for instance, is very simple:
 

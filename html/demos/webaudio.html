@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server (multistream): Web Audio Processing</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
+<script type="text/javascript" src="settings.js" ></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="webaudio.js"></script>
+<script>
+	$(function() {
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='webaudio.html']").addClass("active");
+		});
+		$(".footer").load("../footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="../css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="../forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
+				<h1>Plugin Demo: Web Audio Processing
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="alert alert-primary mt-2 mb-5">
+						Want to learn more about the <strong>EchoTest</strong> plugin?
+						Check the <a target="_blank" href="https://janus.conf.meetecho.com/docs/echotest">Documentation</a>.
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This is a variant of the Echo Test demo meant to showcase how you can use the
+						<a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API">Web Audio API</a>
+						to manipulate the audio from the microphone, before sending it to Janus,
+						using some dynamic controls to tweak the output. The remote audio, echoed
+						back by Janus, is also processed via Web Audio and rendered visually.</p>
+						<p>Notice that this is just a basic example, and is not meant as a
+						comprehensive tutorial on how to use Web Audio, but only as a simple
+						indication of how they can indeed be used with Janus WebRTC streams.</p>
+						<p>Also notice that this demo does not negotiates video for the sake of
+						simplicity, in order to only focus on audio controls and visualization.</p>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="demo">
+				<div class="row">
+					<div class="col-md-6">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Local Stream (compressor)</span>
+							</div>
+							<div class="card-body">
+								<div class="input-group mb-2">
+									<span class="input-group-text w-100">Threshold</span>
+									<input type="text" class="form-control" id="threshold" name="threshold" placeholder="Threshold" value="" onkeypress="return checkEnter(event);" disabled></input>
+								</div>
+								<div class="input-group mt-2 mb-2">
+									<span class="input-group-text w-100">Knee</span>
+									<input type="text" class="form-control" id="knee" name="knee" placeholder="Knee" value="" onkeypress="return checkEnter(event);" disabled></input>
+								</div>
+								<div class="input-group mt-2 mb-2">
+									<span class="input-group-text w-100">Ratio</span>
+									<input type="text" class="form-control" id="ratio" name="ratio" placeholder="Ratio" value="" onkeypress="return checkEnter(event);" disabled></input>
+								</div>
+								<div class="input-group mt-2 mb-2">
+									<span class="input-group-text w-100">Attack</span>
+									<input type="text" class="form-control" id="attack" name="attack" placeholder="Attack" value="" onkeypress="return checkEnter(event);" disabled></input>
+								</div>
+								<div class="input-group mt-2 mb-2">
+									<span class="input-group-text w-100">Release</span>
+									<input type="text" class="form-control" id="release" name="release" placeholder="Release" value="" onkeypress="return checkEnter(event);" disabled></input>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-6">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Remote Stream (visualizer)</span>
+							</div>
+							<div class="card-body" id="remote">
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>

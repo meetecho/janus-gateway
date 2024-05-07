@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server (multistream): Multichannel Opus (surround)</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
+<script type="text/javascript" src="settings.js" ></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="multiopus.js"></script>
+<script>
+	$(function() {
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='multiopus.html']").addClass("active");
+		});
+		$(".footer").load("../footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="../css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="../forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
+				<h1>Plugin Demo: Multichannel Opus (surround)
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="alert alert-primary mt-2 mb-5">
+						Want to learn more about the <strong>EchoTest</strong> plugin?
+						Check the <a target="_blank" href="https://janus.conf.meetecho.com/docs/echotest">Documentation</a>.
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<div class="alert alert-danger"><b>Note well!</b> This demo is known not to work
+						as expected, at the moment, due to two different bugs in Chrome with respect
+						to <code>captureStream</code>: the <a target="_blank" href="https://bugs.chromium.org/p/chromium/issues/detail?id=1156408">first bug</a>
+						causes media from a captured video not to be sent on a PeerConnection, which is what
+						we try to do in this demo; the <a target="_blank" href="https://bugs.chromium.org/p/chromium/issues/detail?id=1125304">second bug</a>
+						causes audio not to be sent if the source video element is muted, despite the
+						video itself containing an audio stream. Until both issues are fixed in Chrome,
+						this demo will basically do nothing, and so no point in trying it out.</div>
+						<p>This is a variant of the Echo Test demo meant to showcase the support
+						for multichannel Opus, and so surround audio: everything is exactly
+						the same in term of available controls, features, and the like, with
+						the substantial difference that the media being captured and sent does
+						not come from webcam and microphone, but from a pre-recorded surround
+						file instead. More precisely, we downloaded a surround demo video from
+						<a target="_blank" href="https://www2.iis.fraunhofer.de/AAC/multichannel.html">Fraunhofer's multichannel tests</a>
+						and, using <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/captureStream">captureStream</a>
+						on the video element, get access to the MediaStream to send via WebRTC.
+						As a result, a surround audio/video stream is sent to the EchoTest plugin
+						via WebRTC, which echoes it back, allowing you to demonstrate how the surround
+						properties are preserved through the PeerConnection journey via Janus.
+						The file will loop back to the beginning when it ends, since it's quite short.</p>
+						<p>Notice that you'll need a recent version of Chrome for this to work, since
+						it's only implemented there and not really available publicly. As a matter of
+						fact, Chrome will by default not offer multiopus support by default, and will
+						even reject it when offered: it's up to you to munge the SDP to force multiopus
+						support for a conversation. The <code>janus.js</code> library will <b>NOT</b>
+						do it for you: this demo uses the <code>customizeSdp</code> callback to mess
+						with the SDP in an ugly way. In other contexts (e.g., VideoRoom subscribers)
+						you'll need to do something similar when creating the answer instead.</p>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="videos">
+				<div class="row">
+					<div class="col-md-6">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Local Stream
+									<div class="btn-group btn-group-sm top-right hide">
+										<button class="btn btn-danger" autocomplete="off" id="toggleaudio">Disable audio</button>
+										<button class="btn btn-danger" autocomplete="off" id="togglevideo">Disable video</button>
+										<div class="btn-group btn-group-sm">
+											<button id="bitrateset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+												Bandwidth
+											</button>
+											<ul id="bitrate" class="dropdown-menu" role="menu">
+												<a class="dropdown-item" href="#" id="0">No limit</a>
+												<a class="dropdown-item" href="#" id="128">Cap to 128kbit</a>
+												<a class="dropdown-item" href="#" id="256">Cap to 256kbit</a>
+												<a class="dropdown-item" href="#" id="512">Cap to 512kbit</a>
+												<a class="dropdown-item" href="#" id="1024">Cap to 1mbit</a>
+												<a class="dropdown-item" href="#" id="1500">Cap to 1.5mbit</a>
+												<a class="dropdown-item" href="#" id="2000">Cap to 2mbit</a>
+											</ul>
+										</div>
+									</div>
+								</span>
+							</div>
+							<div class="card-body" id="videoleft"></div>
+						</div>
+						<div class="input-group mt-3 mb-3">
+							<span class="input-group-text"><i class="fa-solid fa-cloud-arrow-up"></i></span>
+							<input type="text" class="form-control" placeholder="Write a DataChannel message" autocomplete="off" id="datasend" onkeypress="return checkEnter(event);" disabled>
+						</div>
+					</div>
+					<div class="col-md-6">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Remote Stream <span class="badge bg-primary hide" id="curres"></span> <span class="badge bg-info hide" id="curbitrate"></span></span>
+							</div>
+							<div class="card-body" id="videoright"></div>
+						</div>
+						<div class="input-group mt-3 mb-3">
+							<span class="input-group-text"><i class="fa-solid fa-cloud-arrow-down"></i></span>
+							<input type="text" class="form-control" id="datarecv" disabled>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>

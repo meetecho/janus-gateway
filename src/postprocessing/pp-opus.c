@@ -106,7 +106,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, gboolean rest
 		return -1;
 	janus_pp_frame_packet *tmp = list;
 	long int offset = 0;
-	int bytes = 0, len = 0, steps = 0, last_seq = 0;
+	int bytes = 0, len = 0, last_seq = 0;
 	uint64_t pos = 0, nextPos = 0;
 	double ts = 0.0;
 	uint8_t *buffer = g_malloc0(1500);
@@ -320,7 +320,6 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, gboolean rest
 			last_seq = tmp->seq;
 		if(tmp->seq < last_seq) {
 			last_seq = tmp->seq;
-			steps++;
 		}
 		JANUS_LOG(LOG_VERB, "pos: %06"SCNu64", writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
 			pos, bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/48000);

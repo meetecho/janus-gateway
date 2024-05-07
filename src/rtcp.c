@@ -57,13 +57,12 @@ guint32 janus_rtcp_get_sender_ssrc(char *packet, int len) {
 	if(packet == NULL || len == 0)
 		return 0;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len;
+	int total = len;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			break;
 		if(rtcp->version != 2)
 			break;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_SR: {
 				/* SR, sender report */
@@ -110,13 +109,12 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len) {
 	if(packet == NULL || len == 0)
 		return 0;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len;
+	int total = len;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			break;
 		if(rtcp->version != 2)
 			break;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_SR: {
 				/* SR, sender report */
@@ -165,13 +163,12 @@ void janus_rtcp_swap_report_blocks(char *packet, int len, uint32_t rtx_ssrc) {
 	if(packet == NULL || len == 0)
 		return;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len;
+	int total = len;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			break;
 		if(rtcp->version != 2)
 			break;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_SR: {
 				/* SR, sender report */
@@ -358,7 +355,7 @@ static void janus_rtcp_rr_update_stats(rtcp_context *ctx, janus_report_block rb)
 		uint32_t expect = ntohl(rb.ehsnr) - ctx->rr_last_ehsnr;
 		int32_t nacks = g_atomic_int_get(&ctx->nack_count) - ctx->rr_last_nack_count;
 		double link_q;
-		/* Handle special cases separetely */
+		/* Handle special cases separately */
 		if(!nacks)
 			link_q = 100.0;
 		else if(!sent || nacks >= sent)
@@ -371,7 +368,7 @@ static void janus_rtcp_rr_update_stats(rtcp_context *ctx, janus_report_block rb)
 		ctx->out_link_quality = janus_rtcp_link_quality_filter(ctx->out_link_quality, link_q);
 		int32_t lost = total_lost - ctx->rr_last_lost;
 		double media_link_q;
-		/* Handle special cases separetely */
+		/* Handle special cases separately */
 		if(lost <= 0)
 			media_link_q = 100.0;
 		else if(!expect || (uint32_t)lost >= expect)
@@ -1042,13 +1039,12 @@ int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t
 		return -1;
 	/* Parse RTCP compound packet */
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len, status = 0;
+	int total = len, status = 0;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			return -2;
 		if(rtcp->version != 2)
 			return -2;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_RR: {
 				if (!janus_rtcp_check_rr(rtcp, total))
@@ -1111,13 +1107,12 @@ int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t
 gboolean janus_rtcp_has_bye(char *packet, int len) {
 	/* Parse RTCP compound packet */
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len;
+	int total = len;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			break;
 		if(rtcp->version != 2)
 			break;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_BYE:
 				return TRUE;
@@ -1139,13 +1134,12 @@ gboolean janus_rtcp_has_bye(char *packet, int len) {
 gboolean janus_rtcp_has_fir(char *packet, int len) {
 	/* Parse RTCP compound packet */
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len;
+	int total = len;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			break;
 		if(rtcp->version != 2)
 			break;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_FIR:
 				return TRUE;
@@ -1167,13 +1161,12 @@ gboolean janus_rtcp_has_fir(char *packet, int len) {
 gboolean janus_rtcp_has_pli(char *packet, int len) {
 	/* Parse RTCP compound packet */
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len;
+	int total = len;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
 			break;
 		if(rtcp->version != 2)
 			break;
-		pno++;
 		switch(rtcp->type) {
 			case RTCP_PSFB: {
 				gint fmt = rtcp->rc;
@@ -1848,7 +1841,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 			len += 2;
 		} else {
 			guint32 word = 0;
-			/* Write chunck */
+			/* Write chunk */
 			word = janus_push_bits(word, 1, 1);
 			word = janus_push_bits(word, 1, 0);
 			/* Write all the statuses */

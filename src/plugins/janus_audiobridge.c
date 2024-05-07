@@ -40,6 +40,7 @@ room-<unique room ID>: {
 	audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 	default_expectedloss = percent of packets we expect participants may miss, to help with FEC (default=0, max=20; automatically used for forwarders too)
 	default_bitrate = default bitrate in bps to use for the all participants (default=0, which means libopus decides; automatically used for forwarders too)
+	denoise = true|false (whether denoising via RNNoise should be performed for each participant by default)
 	record = true|false (whether this room should be recorded, default=false)
 	record_file = /path/to/recording.wav (where to save the recording)
 	record_dir = /path/to/ (path to save the recording to, makes record_file a relative path if provided)
@@ -142,6 +143,7 @@ room-<unique room ID>: {
 	"audio_level_average" : <average value of audio level (127=muted, 0='too loud', default=25)>,
 	"default_expectedloss" : <percent of packets we expect participants may miss, to help with FEC (default=0, max=20; automatically used for forwarders too)>,
 	"default_bitrate" : <bitrate in bps to use for the all participants (default=0, which means libopus decides; automatically used for forwarders too)>,
+	"denoise" : <true|false, whether denoising via RNNoise should be performed for each participant by default, default=false>,
 	"record" : <true|false, whether to record the room or not, default=false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
 	"record_dir" : "</path/to/, optional; makes record_file a relative path, if provided>",
@@ -377,6 +379,100 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
+ * Another option available for administrators is suspending participants:
+ * in that case, participants are not kicked from the room (they remain
+ * in), but their contribution is not added to the mix, and they don't
+ * receive any audio from the mix either. This is a useful option to
+ * temporarily detach a participant from the room (e.g., because they'll
+ * be busy somewhere else) while still allowing them to keep the existing
+ * PeerConnection up and running, so that it can be quickly restored
+ * when they're back; since they're not part of the mix and don't receive
+ * any audio, the CPU resources to manage them are reduced as well. By
+ * default these suspended users participants will still receive events
+ * related to changes in the room (e.g., participants joining and leaving,
+ * mutes and unmutes, etc.), but these can be disabled too in case saving
+ * unnecessary signalling is desired: in that case, a suspended participant
+ * will only receive a recap of the current status when resumed.
+ * The \c suspend request must be formatted as follows:
+ *
+ *
+\verbatim
+{
+	"request" : "suspend",
+	"secret" : "<room secret, mandatory if configured>",
+	"room" : <unique numeric ID of the room>,
+	"id" : <unique numeric ID of the participant to suspend>,
+	"pause_events" : <whether room events should be paused while suspended; optional, false by default>
+	"stop_record" : <whether the MIR recording of this participant should be stopped too; optional, false by default>
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"audiobridge" : "success",
+}
+\endverbatim
+ *
+ * Resuming a suspended participant means bringing them back in the audio
+ * mix, and allowing them to hear audio through the PeerConnection once more.
+ * In case events were paused, they'll be resumed and a recap will be sent.
+ * The \c resume request must be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "resume",
+	"secret" : "<room secret, mandatory if configured>",
+	"room" : <unique numeric ID of the room>,
+	"id" : <unique numeric ID of the suspended participant to resume>,
+	"record": <true|false, whether to record this resumed user's contribution to a .mjr file (mixer not involved); optional, false by default>,
+	"filename": "<basename of the file to record to, -audio.mjr will be added by the plugin; optional, will be relative to mjrs_dir, if configured in the room>"
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"audiobridge" : "success",
+}
+\endverbatim
+ *
+ * Both \c suspend and \c resume on a participant will result in a
+ * notification to the other participants in the room, which means they'll
+ * all be notified about a participant being suspended or resumed.
+ *
+ * To get a list of the available rooms (excluded those configured or
+ * created as private rooms) you can make use of the \c list request,
+ * which has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "list"
+}
+\endverbatim
+ *
+ * A successful request will produce a list of rooms in a \c success response:
+ *
+\verbatim
+{
+	"audiobridge" : "success",
+	"rooms" : [		// Array of room objects
+		{	// Room #1
+			"room" : <unique numeric ID>,
+			"description" : "<Name of the room>",
+			"pin_required" : <true|false, whether a PIN is required to join this room>,
+			"sampling_rate" : <sampling rate of the mixer>,
+			"spatial_audio" : <true|false, whether the mix has spatial audio (stereo)>,
+			"record" : <true|false, whether the room is being recorded>,
+			"num_participants" : <count of the participants>
+		},
+		// Other rooms
+	]
+}
+\endverbatim
+ *
  * To get a list of the available rooms (excluded those configured or
  * created as private rooms) you can make use of the \c list request,
  * which has to be formatted as follows:
@@ -431,6 +527,7 @@ room-<unique room ID>: {
 			"display" : "<display name of the participant, if any; optional>",
 			"setup" : <true|false, whether user successfully negotiate a WebRTC PeerConnection or not>,
 			"muted" : <true|false, whether user is muted or not>,
+			"suspended" : <true|false, whether user is suspended or not>,
 			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>,
 			"spatial_position" : <in case spatial audio is used, the panning of this participant (0=left, 50=center, 100=right)>,
 		},
@@ -716,7 +813,7 @@ room-<unique room ID>: {
  * or restarts take place, they MUST follow the same negotiation pattern
  * as the one that originated the connection: it's an error to send an
  * SDP offer to the plugin to update a PeerConnection, if the plugin sent
- * you an offer originally. It's adviced to let users generate the offer,
+ * you an offer originally. It's advised to let users generate the offer,
  * and let the plugin answer: this reverserd role is mostly here to
  * facilitate the setup of cascaded mixers, e.g., allow one AudioBridge
  * to connect to the other via WebRTC (which wouldn't be possible if
@@ -736,16 +833,19 @@ room-<unique room ID>: {
 	"display" : "<display name to have in the room; optional>",
 	"token" : "<invitation token, in case the room has an ACL; optional>",
 	"muted" : <true|false, whether to start unmuted or muted>,
+	"suspended" : <true|false, whether to start suspended or not (false by default)>,
+	"pause_events" : <whether room events should be paused, if the user is joining as suspended; optional, false by default>
 	"codec" : "<codec to use, among opus (default), pcma (A-Law) or pcmu (mu-Law)>",
 	"bitrate" : <bitrate to use for the Opus stream in bps; optional, default=0 (libopus decides)>,
 	"quality" : <0-10, Opus-related complexity to use, the higher the value, the better the quality (but more CPU); optional, default is 4>,
 	"expected_loss" : <0-20, a percentage of the expected loss (capped at 20%), only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>,
 	"volume" : <percent value, <100 reduces volume, >100 increases volume; optional, default is 100 (no volume change)>,
 	"spatial_position" : <in case spatial audio is enabled for the room, panning of this participant (0=left, 50=center, 100=right)>,
+	"denoise" : <true|false, whether denoising via RNNoise should be performed for this participant (default=room value)>,
 	"secret" : "<room management password; optional, if provided the user is an admin and can't be globally muted with mute_room>",
 	"audio_level_average" : "<if provided, overrides the room audio_level_average for this user; optional>",
 	"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>",
-	"record": <true|false, whether to record this user's contribution to a .mjr file (mixer not involved),
+	"record": <true|false, whether to record this user's contribution to a .mjr file (mixer not involved)>,
 	"filename": "<basename of the file to record to, -audio.mjr will be added by the plugin; will be relative to mjrs_dir, if configured in the room>"
 }
 \endverbatim
@@ -829,6 +929,7 @@ room-<unique room ID>: {
 	"expected_loss" : <new value for the expected loss (see "join" for more info)>
 	"volume" : <new volume percent value (see "join" for more info)>,
 	"spatial_position" : <in case spatial audio is enabled for the room, new panning of this participant (0=left, 50=center, 100=right)>,
+	"denoise" : <true|false, whether denoising via RNNoise should be performed for this participant (default=room value)>,
 	"record": <true|false, whether to record this user's contribution to a .mjr file (mixer not involved),
 	"filename": "<basename of the file to record to, -audio.mjr will be added by the plugin; will be relative to mjrs_dir, if configured in the room>",
 	"group" : "<new group to assign to this participant, if enabled in the room (for forwarding purposes)>"
@@ -936,9 +1037,14 @@ room-<unique room ID>: {
 	"display" : "<display name to have in the room; optional>",
 	"token" : "<invitation token, in case the new room has an ACL; optional>",
 	"muted" : <true|false, whether to start unmuted or muted>,
+	"suspended" : <true|false, whether to start suspended or not>,
+	"pause_events" : <whether room events should be paused, if the user is joining as suspended; optional, false by default>
 	"bitrate" : <bitrate to use for the Opus stream in bps; optional, default=0 (libopus decides)>,
 	"quality" : <0-10, Opus-related complexity to use, higher is higher quality; optional, default is 4>,
-	"expected_loss" : <0-20, a percentage of the expected loss (capped at 20%), only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>
+	"expected_loss" : <0-20, a percentage of the expected loss (capped at 20%), only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>,
+	"volume" : <new volume percent value (see "join" for more info)>,
+	"spatial_position" : <in case spatial audio is enabled for the room, new panning of this participant (0=left, 50=center, 100=right)>,
+	"denoise" : <true|false, whether denoising via RNNoise should be performed for this participant (default=room value, or whether it was active before)>
 }
 \endverbatim
  *
@@ -1030,7 +1136,13 @@ room-<unique room ID>: {
 #ifdef HAVE_LIBOGG
 #include <ogg/ogg.h>
 #endif
-#include <speex/speex_jitter.h>
+/* We ship our own version of the libspeex-dsp jitter buffer, since
+ * the one available out of the box comes with a nasty memory leak */
+#include "audiobridge-deps/speex/speex_jitter.h"
+#include "audiobridge-deps/speex/speex_resampler.h"
+#ifdef HAVE_RNNOISE
+#include <rnnoise.h>
+#endif
 
 #include <arpa/inet.h>
 #include <net/if.h>
@@ -1054,8 +1166,8 @@ room-<unique room ID>: {
 
 
 /* Plugin information */
-#define JANUS_AUDIOBRIDGE_VERSION			12
-#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.12"
+#define JANUS_AUDIOBRIDGE_VERSION			13
+#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.13"
 #define JANUS_AUDIOBRIDGE_DESCRIPTION		"This is a plugin implementing an audio conference bridge for Janus, mixing Opus streams."
 #define JANUS_AUDIOBRIDGE_NAME				"JANUS AudioBridge plugin"
 #define JANUS_AUDIOBRIDGE_AUTHOR			"Meetecho s.r.l."
@@ -1174,6 +1286,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"audio_level_average", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"default_expectedloss", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"default_bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"denoise", JANUS_JSON_BOOL, 0},
 	{"groups", JSON_ARRAY, 0}
 };
 static struct janus_json_parameter edit_parameters[] = {
@@ -1202,6 +1315,8 @@ static struct janus_json_parameter join_parameters[] = {
 	{"token", JSON_STRING, 0},
 	{"group", JSON_STRING, 0},
 	{"muted", JANUS_JSON_BOOL, 0},
+	{"suspended", JANUS_JSON_BOOL, 0},
+	{"pause_events", JANUS_JSON_BOOL, 0},
 	{"codec", JSON_STRING, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1210,6 +1325,7 @@ static struct janus_json_parameter join_parameters[] = {
 	{"spatial_position", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_level_average", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"denoise", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
 	{"generate_offer", JANUS_JSON_BOOL, 0},
@@ -1240,6 +1356,7 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"group", JSON_STRING, 0},
 	{"spatial_position", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"denoise", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
 	{"display", JSON_STRING, 0},
@@ -1269,6 +1386,14 @@ static struct janus_json_parameter play_file_parameters[] = {
 };
 static struct janus_json_parameter checkstop_file_parameters[] = {
 	{"file_id", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter suspend_parameters[] = {
+	{"pause_events", JANUS_JSON_BOOL, 0},
+	{"stop_record", JANUS_JSON_BOOL, 0},
+};
+static struct janus_json_parameter resume_parameters[] = {
+	{"record", JANUS_JSON_BOOL, 0},
+	{"filename", JSON_STRING, 0},
 };
 
 /* Static configuration instance */
@@ -1328,6 +1453,9 @@ typedef struct janus_audiobridge_room {
 	int32_t default_bitrate;	/* Default bitrate to use for all Opus streams when encoding */
 	int audio_active_packets;	/* Amount of packets with audio level for checkup */
 	int audio_level_average;	/* Average audio level */
+#ifdef HAVE_RNNOISE
+	gboolean denoise;			/* Whether we should denoise participants by default */
+#endif
 	volatile gint record;		/* Whether this room has to be recorded or not */
 	gchar *record_file;			/* Path of the recording file (absolute or relative, depending on record_dir) */
 	gchar *record_dir;			/* Folder to save the recording file to */
@@ -1562,8 +1690,21 @@ typedef struct janus_audiobridge_participant {
 	int opus_complexity;	/* Complexity to use in the encoder (by default, DEFAULT_COMPLEXITY) */
 	gboolean stereo;		/* Whether stereo will be used for spatial audio */
 	int spatial_position;	/* Panning of this participant in the mix */
+#ifdef HAVE_RNNOISE
+#define DENOISER_FRAME_SIZE 480
+	gboolean denoise;					/* Whether we should denoise this participant */
+	DenoiseState *rnnoise[2];			/* RNNoise states (we'll need two for stereo) */
+	uint32_t resampler_rate;			/* Sampling rate of the resamplers */
+	gboolean resampler_stereo;			/* Whether the current resamplers are stereo */
+	SpeexResamplerState *upsampler; 	/* Speex upsampler used for denoising */
+	SpeexResamplerState *downsampler;	/* Speex downsampler used for denoising*/
+	opus_int16 *upsample_buffer;		/* Buffer for upsampling */
+	opus_int16 *downsample_buffer;		/* Buffer for downsampling */
+	float *denoiser_buffer[2];			/* Buffer for denoising */
+#endif
 	/* RTP stuff */
 	JitterBuffer *jitter;	/* Jitter buffer of incoming audio packets */
+	gint64 jitter_next_check;	/* Timestamp to perform next jitter buffer size check */
 	GList *inbuf;			/* Decoded audio from this participant, to feed to the mixer */
 	GAsyncQueue *outbuf;	/* Mixed audio to send to this participant */
 	janus_mutex qmutex;		/* Incoming queue mutex */
@@ -1582,6 +1723,7 @@ typedef struct janus_audiobridge_participant {
 	janus_audiobridge_plainrtp_media plainrtp_media;
 	janus_mutex pmutex;
 	/* Opus stuff */
+	uint32_t sampling_rate;		/* Sampling rate to decode at */
 	OpusEncoder *encoder;		/* Opus encoder instance */
 	OpusDecoder *decoder;		/* Opus decoder instance */
 	gboolean fec;				/* Opus FEC status */
@@ -1599,7 +1741,11 @@ typedef struct janus_audiobridge_participant {
 #endif
 	uint group;					/* Forwarding group index, if enabled in the room */
 	janus_mutex rec_mutex;		/* Mutex to protect the recorder from race conditions */
-	volatile gint destroyed;	/* Whether this room has been destroyed */
+	janus_mutex suspend_cond_mutex;
+	GCond suspend_cond;
+	volatile gint suspended;	/* Whether this participant has been temporarily suspended */
+	volatile gint paused_events;/* Whether sending events to this participant has been paused because they're suspended */
+	volatile gint destroyed;	/* Whether this participant has been destroyed */
 	janus_refcount ref;			/* Reference counter for this participant */
 } janus_audiobridge_participant;
 
@@ -1615,28 +1761,55 @@ typedef struct janus_audiobridge_rtp_relay_packet {
 /* Buffered audio/video packet */
 typedef struct janus_audiobridge_buffer_packet {
 	/* Pointer to the packet data, if RTP */
-	char *buffer;
-	/* Size of the packet */
-	int len;
-	/* Whether the packet contains silence, according to the RTP extension */
-	gboolean silence;
+	janus_plugin_rtp *rtp;
 	/* Monotonic insert time */
 	int64_t inserted;
 } janus_audiobridge_buffer_packet;
-static janus_audiobridge_buffer_packet *janus_audiobridge_buffer_packet_create(char *buffer, int len, gboolean silence) {
+static janus_audiobridge_buffer_packet *janus_audiobridge_buffer_packet_create(janus_plugin_rtp *rtp) {
 	janus_audiobridge_buffer_packet *pkt = g_malloc(sizeof(janus_audiobridge_buffer_packet));
-	pkt->buffer = g_malloc(len);
-	pkt->len = len;
-	pkt->silence = silence;
-	memcpy(pkt->buffer, buffer, len);
+	pkt->rtp = janus_plugin_rtp_duplicate(rtp);
 	pkt->inserted = janus_get_monotonic_time();
 	return pkt;
 }
 static void janus_audiobridge_buffer_packet_destroy(janus_audiobridge_buffer_packet *pkt) {
 	if(!pkt)
 		return;
-	g_free(pkt->buffer);
+	if(pkt->rtp)
+		g_free(pkt->rtp->buffer);
+	g_free(pkt->rtp);
 	g_free(pkt);
+}
+
+static void janus_audiobridge_participant_istalking(janus_audiobridge_session *session,
+	janus_audiobridge_participant *participant, janus_plugin_rtp *packet, gboolean *silence);
+
+static void janus_audiobridge_participant_clear_jitter_buffer(janus_audiobridge_participant *participant) {
+	if(participant->jitter) {
+		jitter_buffer_reset(participant->jitter);
+	}
+}
+
+static void janus_audiobridge_participant_clear_inbuf(janus_audiobridge_participant *participant) {
+	while(participant->inbuf) {
+		GList *first = g_list_first(participant->inbuf);
+		janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
+		participant->inbuf = g_list_delete_link(participant->inbuf, first);
+		first = NULL;
+		if(pkt == NULL)
+			continue;
+		g_free(pkt->data);
+		pkt->data = NULL;
+		g_free(pkt);
+		pkt = NULL;
+	}
+}
+
+static void janus_audiobridge_participant_clear_outbuf(janus_audiobridge_participant *participant) {
+	while(participant->outbuf && g_async_queue_length(participant->outbuf) > 0) {
+		janus_audiobridge_rtp_relay_packet *pkt = g_async_queue_pop(participant->outbuf);
+		g_free(pkt->data);
+		g_free(pkt);
+	}
 }
 
 static void janus_audiobridge_participant_destroy(janus_audiobridge_participant *participant) {
@@ -1666,22 +1839,29 @@ static void janus_audiobridge_participant_free(const janus_refcount *participant
 		opus_decoder_destroy(participant->decoder);
 	if(participant->jitter)
 		jitter_buffer_destroy(participant->jitter);
-	while(participant->inbuf) {
-		GList *first = g_list_first(participant->inbuf);
-		janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-		participant->inbuf = g_list_delete_link(participant->inbuf, first);
-		if(pkt)
-			g_free(pkt->data);
-		g_free(pkt);
-	}
+	janus_audiobridge_participant_clear_inbuf(participant);
 	if(participant->outbuf != NULL) {
-		while(g_async_queue_length(participant->outbuf) > 0) {
-			janus_audiobridge_rtp_relay_packet *pkt = g_async_queue_pop(participant->outbuf);
-			g_free(pkt->data);
-			g_free(pkt);
-		}
+		janus_audiobridge_participant_clear_outbuf(participant);
 		g_async_queue_unref(participant->outbuf);
 	}
+#ifdef HAVE_RNNOISE
+	if(participant->rnnoise[0])
+		rnnoise_destroy(participant->rnnoise[0]);
+	if(participant->rnnoise[1])
+		rnnoise_destroy(participant->rnnoise[1]);
+	if(participant->denoiser_buffer[0])
+		g_free(participant->denoiser_buffer[0]);
+	if(participant->denoiser_buffer[1])
+		g_free(participant->denoiser_buffer[1]);
+	if(participant->upsampler)
+		speex_resampler_destroy(participant->upsampler);
+	if(participant->downsampler)
+		speex_resampler_destroy(participant->downsampler);
+	if(participant->upsample_buffer)
+		g_free(participant->upsample_buffer);
+	if(participant->downsample_buffer)
+		g_free(participant->downsample_buffer);
+#endif
 	g_free(participant->mjr_base);
 #ifdef HAVE_LIBOGG
 	janus_audiobridge_file_free(participant->annc);
@@ -1691,6 +1871,12 @@ static void janus_audiobridge_participant_free(const janus_refcount *participant
 	janus_mutex_unlock(&participant->pmutex);
 	g_free(participant);
 }
+
+#ifdef HAVE_RNNOISE
+static void janus_audiobridge_participant_denoise(janus_audiobridge_participant *participant, char *data, int len);
+static void janus_audiobridge_participant_upsample(janus_audiobridge_participant *participant, opus_int16 *input, int *in_len, opus_int16 *output, int *out_len);
+static void janus_audiobridge_participant_downsample(janus_audiobridge_participant *participant, opus_int16 *input, int *in_len, opus_int16 *output, int *out_len);
+#endif
 
 static void janus_audiobridge_session_destroy(janus_audiobridge_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
@@ -1999,6 +2185,13 @@ static int janus_audiobridge_resample(int16_t *input, int input_num, int input_r
 #define DEFAULT_COMPLEXITY	4
 
 
+/* Jitter Buffer and queue-in settings */
+#define JITTER_BUFFER_MIN_PACKETS 2
+#define JITTER_BUFFER_MAX_PACKETS 50
+#define JITTER_BUFFER_CHECK_USECS 1*G_USEC_PER_SEC
+#define QUEUE_IN_MAX_PACKETS 4
+
+
 /* Error codes */
 #define JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR	499
 #define JANUS_AUDIOBRIDGE_ERROR_NO_MESSAGE		480
@@ -2267,6 +2460,12 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
+#ifdef HAVE_RNNOISE
+	JANUS_LOG(LOG_INFO, "Denoising via RNNoise supported (%d)\n", rnnoise_get_frame_size());
+#else
+	JANUS_LOG(LOG_WARN, "Denoising via RNNoise NOT supported\n");
+#endif
+
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
 		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
@@ -2381,6 +2580,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *audio_level_average = janus_config_get(config, cat, janus_config_type_item, "audio_level_average");
 			janus_config_item *default_expectedloss = janus_config_get(config, cat, janus_config_type_item, "default_expectedloss");
 			janus_config_item *default_bitrate = janus_config_get(config, cat, janus_config_type_item, "default_bitrate");
+			janus_config_item *denoise = janus_config_get(config, cat, janus_config_type_item, "denoise");
 			janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
 			janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
 			janus_config_array *groups = janus_config_get(config, cat, janus_config_type_array, "groups");
@@ -2495,6 +2695,13 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 					audiobridge->default_bitrate = 0;
 				}
 			}
+#ifdef HAVE_RNNOISE
+			audiobridge->denoise = denoise && denoise->value && janus_is_true(denoise->value);
+#else
+			if(denoise && denoise->value && janus_is_true(denoise->value)) {
+				JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
+			}
+#endif
 			audiobridge->room_ssrc = janus_random_uint32();
 			if(secret != NULL && secret->value != NULL) {
 				audiobridge->room_secret = g_strdup(secret->value);
@@ -2767,7 +2974,7 @@ static void janus_audiobridge_notify_participants(janus_audiobridge_participant 
 	g_hash_table_iter_init(&iter, participant->room->participants);
 	while(!participant->room->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_audiobridge_participant *p = value;
-		if(p && p->session && (p != participant || notify_source_participant)) {
+		if(p && p->session && (p != participant || notify_source_participant) && !g_atomic_int_get(&p->paused_events)) {
 			JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", p->user_id_str, p->display ? p->display : "??");
 			int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, msg, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
@@ -2821,6 +3028,9 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 			json_object_set_new(info, "queue-out", json_integer(g_async_queue_length(participant->outbuf)));
 		if(participant->stereo)
 			json_object_set_new(info, "spatial_position", json_integer(participant->spatial_position));
+#ifdef HAVE_RNNOISE
+		json_object_set_new(info, "denoise",  participant->denoise ? json_true() : json_false());
+#endif
 		if(participant->arc && participant->arc->filename)
 			json_object_set_new(info, "audio-recording", json_string(participant->arc->filename));
 		if(participant->extmap_id > 0) {
@@ -2848,6 +3058,7 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 				json_object_set_new(rtp, "remote-ssrc", json_integer(participant->plainrtp_media.audio_ssrc_peer));
 			json_object_set_new(info, "plain-rtp", rtp);
 		}
+		json_object_set_new(info, "suspended", g_atomic_int_get(&participant->suspended) ? json_true() : json_false());
 	}
 	if(session->plugin_offer)
 		json_object_set_new(info, "plugin-offer", json_true());
@@ -2957,6 +3168,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_t *audio_level_average = json_object_get(root, "audio_level_average");
 		json_t *default_expectedloss = json_object_get(root, "default_expectedloss");
 		json_t *default_bitrate = json_object_get(root, "default_bitrate");
+		json_t *denoise = json_object_get(root, "denoise");
 		json_t *groups = json_object_get(root, "groups");
 		json_t *record = json_object_get(root, "record");
 		json_t *recfile = json_object_get(root, "record_file");
@@ -3124,6 +3336,13 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				audiobridge->default_bitrate = 0;
 			}
 		}
+#ifdef HAVE_RNNOISE
+		audiobridge->denoise = denoise ? json_is_true(denoise) : FALSE;
+#else
+		if(denoise && json_is_true(denoise)) {
+			JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
+		}
+#endif
 		switch(audiobridge->sampling_rate) {
 			case 8000:
 			case 12000:
@@ -3595,19 +3814,10 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				/* Get rid of queued packets */
 				janus_mutex_lock(&p->qmutex);
 				g_atomic_int_set(&p->active, 0);
-				while(p->inbuf) {
-					GList *first = g_list_first(p->inbuf);
-					janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-					p->inbuf = g_list_delete_link(p->inbuf, first);
-					first = NULL;
-					if(pkt == NULL)
-						continue;
-					g_free(pkt->data);
-					pkt->data = NULL;
-					g_free(pkt);
-					pkt = NULL;
-				}
+				janus_audiobridge_participant_clear_jitter_buffer(p);
+				janus_audiobridge_participant_clear_inbuf(p);
 				janus_mutex_unlock(&p->qmutex);
+				janus_audiobridge_participant_clear_outbuf(p);
 				/* Request a WebRTC hangup */
 				gateway->close_pc(p->session->handle);
 			}
@@ -4054,20 +4264,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		if(participant->muted) {
 			/* Clear the queued packets waiting to be handled */
 			janus_mutex_lock(&participant->qmutex);
-			if(participant->jitter)
-				jitter_buffer_reset(participant->jitter);
-			while(participant->inbuf) {
-				GList *first = g_list_first(participant->inbuf);
-				janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-				participant->inbuf = g_list_delete_link(participant->inbuf, first);
-				first = NULL;
-				if(pkt == NULL)
-					continue;
-				g_free(pkt->data);
-				pkt->data = NULL;
-				g_free(pkt);
-				pkt = NULL;
-			}
+			janus_audiobridge_participant_clear_jitter_buffer(participant);
+			janus_audiobridge_participant_clear_inbuf(participant);
 			janus_mutex_unlock(&participant->qmutex);
 		}
 
@@ -4081,6 +4279,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
 		if(audiobridge->spatial_audio)
 			json_object_set_new(pl, "spatial_position", json_integer(participant->spatial_position));
+		if(g_atomic_int_get(&participant->suspended))
+			json_object_set_new(pl, "suspended", json_true());
 		json_array_append_new(list, pl);
 		json_t *pub = json_object();
 		json_object_set_new(pub, "audiobridge", json_string("event"));
@@ -4092,6 +4292,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		g_hash_table_iter_init(&iter, audiobridge->participants);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_audiobridge_participant *p = value;
+			if(g_atomic_int_get(&p->paused_events))
+				continue;
 			JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", p->user_id_str, p->display ? p->display : "??");
 			int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, pub, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
@@ -4194,6 +4396,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		g_hash_table_iter_init(&iter, audiobridge->participants);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_audiobridge_participant *p = value;
+			if(g_atomic_int_get(&p->paused_events))
+				continue;
 			JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", p->user_id_str, p->display ? p->display : "??");
 			int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, event, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
@@ -4219,6 +4423,104 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_refcount_decrease(&audiobridge->ref);
 		goto prepare_response;
+#ifdef HAVE_RNNOISE
+	} else if(!strcasecmp(request_text, "denoise_enable") || !strcasecmp(request_text, "denoise_disable")) {
+		gboolean denoise = (!strcasecmp(request_text, "denoise_enable"));
+		JANUS_LOG(LOG_VERB, "Attempt to %s denoising for a participant in an existing AudioBridge room\n",
+			denoise ? "enable" : "disable");
+		JANUS_VALIDATE_JSON_OBJECT(root, secret_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, idstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		json_t *room = json_object_get(root, "room");
+		json_t *id = json_object_get(root, "id");
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
+		janus_mutex_lock(&rooms_mutex);
+		janus_audiobridge_room *audiobridge = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
+		if(audiobridge == NULL) {
+			janus_mutex_unlock(&rooms_mutex);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&audiobridge->ref);
+		janus_mutex_lock(&audiobridge->mutex);
+		janus_mutex_unlock(&rooms_mutex);
+
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&audiobridge->mutex);
+			janus_refcount_decrease(&audiobridge->ref);
+			goto prepare_response;
+		}
+
+		guint64 user_id = 0;
+		char user_id_num[30], *user_id_str = NULL;
+		if(!string_ids) {
+			user_id = json_integer_value(id);
+			g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, user_id);
+			user_id_str = user_id_num;
+		} else {
+			user_id_str = (char *)json_string_value(id);
+		}
+		janus_audiobridge_participant *participant = g_hash_table_lookup(audiobridge->participants,
+			string_ids ? (gpointer)user_id_str : (gpointer)&user_id);
+		if(participant == NULL) {
+			janus_mutex_unlock(&audiobridge->mutex);
+			janus_refcount_decrease(&audiobridge->ref);
+			JANUS_LOG(LOG_ERR, "No such user %s in room %s\n", user_id_str, room_id_str);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_USER;
+			g_snprintf(error_cause, 512, "No such user %s in room %s", user_id_str, room_id_str);
+			goto prepare_response;
+		}
+
+		participant->denoise = denoise;
+
+		/* Prepare response */
+		response = json_object();
+		json_object_set_new(response, "audiobridge", json_string("success"));
+		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
+
+		/* Done */
+		janus_mutex_unlock(&audiobridge->mutex);
+		janus_refcount_decrease(&audiobridge->ref);
+		goto prepare_response;
+#endif
 	} else if(!strcasecmp(request_text, "kick")) {
 		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing AudioBridge room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, secret_parameters,
@@ -4478,6 +4780,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
 			if(audiobridge->spatial_audio)
 				json_object_set_new(pl, "spatial_position", json_integer(p->spatial_position));
+			if(g_atomic_int_get(&p->suspended))
+				json_object_set_new(pl, "suspended", json_true());
 			json_array_append_new(list, pl);
 		}
 		janus_refcount_decrease(&audiobridge->ref);
@@ -5256,6 +5560,241 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_object_set_new(response, "file_id", json_string(file_id));
 		goto prepare_response;
 #endif
+	} else if(!strcasecmp(request_text, "suspend") || !strcasecmp(request_text, "resume")) {
+		gboolean suspend = !strcasecmp(request_text, "suspend");
+		JANUS_VALIDATE_JSON_OBJECT(root, secret_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, idstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		json_t *room = json_object_get(root, "room");
+		json_t *id = json_object_get(root, "id");
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
+		janus_mutex_lock(&rooms_mutex);
+		janus_audiobridge_room *audiobridge = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
+		if(audiobridge == NULL) {
+			janus_mutex_unlock(&rooms_mutex);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&audiobridge->ref);
+		janus_mutex_lock(&audiobridge->mutex);
+		janus_mutex_unlock(&rooms_mutex);
+		guint64 user_id = 0;
+		char user_id_num[30], *user_id_str = NULL;
+		if(!string_ids) {
+			user_id = json_integer_value(id);
+			g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, user_id);
+			user_id_str = user_id_num;
+		} else {
+			user_id_str = (char *)json_string_value(id);
+		}
+		janus_audiobridge_participant *participant = g_hash_table_lookup(audiobridge->participants,
+			string_ids ? (gpointer)user_id_str : (gpointer)&user_id);
+		if(participant == NULL) {
+			janus_mutex_unlock(&audiobridge->mutex);
+			janus_refcount_decrease(&audiobridge->ref);
+			JANUS_LOG(LOG_ERR, "No such user %s in room %s\n", user_id_str, room_id_str);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_USER;
+			g_snprintf(error_cause, 512, "No such user %s in room %s", user_id_str, room_id_str);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&participant->ref);
+		janus_mutex_unlock(&audiobridge->mutex);
+		/* A secret may be required for this action */
+		if(session->participant != participant) {
+			JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
+			if(error_code != 0) {
+				janus_refcount_decrease(&participant->ref);
+				janus_refcount_decrease(&audiobridge->ref);
+				goto prepare_response;
+			}
+		}
+		/* Change the suspend status of this participant */
+		gboolean notify_participant = FALSE, recap = FALSE;
+		if(suspend) {
+			/* Validate the request */
+			JANUS_VALIDATE_JSON_OBJECT(root, suspend_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+			if(error_code != 0) {
+				janus_refcount_decrease(&participant->ref);
+				janus_refcount_decrease(&audiobridge->ref);
+				goto prepare_response;
+			}
+			/* Suspend this participant */
+			janus_mutex_lock(&participant->suspend_cond_mutex);
+			if(g_atomic_int_compare_and_exchange(&participant->suspended, 0, 1)) {
+				janus_mutex_unlock(&participant->suspend_cond_mutex);
+				json_t *pauseevs = json_object_get(root, "pause_events");
+				if(pauseevs && json_is_true(pauseevs))
+					g_atomic_int_set(&participant->paused_events, 1);
+				notify_participant = TRUE;
+				/* Participant is now suspended, so clear the queued packets waiting to be handled */
+				janus_mutex_lock(&participant->qmutex);
+				janus_audiobridge_participant_clear_jitter_buffer(participant);
+				janus_audiobridge_participant_clear_inbuf(participant);
+				janus_mutex_unlock(&participant->qmutex);
+				janus_audiobridge_participant_clear_outbuf(participant);
+				/* Should we close the recording? */
+				json_t *stoprec = json_object_get(root, "stop_record");
+				if(stoprec && json_is_true(stoprec)) {
+					/* Stop recording (ignore if not recording) */
+					janus_mutex_lock(&participant->rec_mutex);
+					janus_audiobridge_recorder_close(participant);
+					participant->mjr_active = FALSE;
+					janus_mutex_unlock(&participant->rec_mutex);
+				}
+			} else {
+				janus_mutex_unlock(&participant->suspend_cond_mutex);
+			}
+		} else {
+			/* Validate the request */
+			JANUS_VALIDATE_JSON_OBJECT(root, resume_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+			if(error_code != 0) {
+				janus_refcount_decrease(&participant->ref);
+				janus_refcount_decrease(&audiobridge->ref);
+				goto prepare_response;
+			}
+			/* Resume this participant */
+			janus_mutex_lock(&participant->suspend_cond_mutex);
+			if(g_atomic_int_compare_and_exchange(&participant->suspended, 1, 0)) {
+				g_cond_signal(&participant->suspend_cond);
+				janus_mutex_unlock(&participant->suspend_cond_mutex);
+				notify_participant = TRUE;
+				/* Should we create a new recording? */
+				json_t *record = json_object_get(root, "record");
+				json_t *recfile = json_object_get(root, "filename");
+				janus_mutex_lock(&participant->rec_mutex);
+				if(record && json_is_true(record)) {
+					/* Start recording (ignore if recording already) */
+					if(participant->arc != NULL) {
+						JANUS_LOG(LOG_WARN, "Already recording participant's audio (room %s, user %s)\n",
+							participant->room->room_id_str, participant->user_id_str);
+					} else {
+						JANUS_LOG(LOG_INFO, "Starting recording of participant's audio (room %s, user %s)\n",
+							participant->room->room_id_str, participant->user_id_str);
+						const char *recording_base = json_string_value(recfile);
+						if(recording_base) {
+							g_free(participant->mjr_base);
+							participant->mjr_base = g_strdup(recording_base);
+						}
+						janus_audiobridge_recorder_create(participant);
+						participant->mjr_active = TRUE;
+					}
+				}
+				janus_mutex_unlock(&participant->rec_mutex);
+				/* Should we send a full updated state of the room to the participant? */
+				if(g_atomic_int_compare_and_exchange(&participant->paused_events, 1, 0)) {
+					/* Return a list of all available participants for the resumed participant now */
+					recap = TRUE;
+					json_t *list = json_array();
+					GHashTableIter iter;
+					gpointer value;
+					g_hash_table_iter_init(&iter, audiobridge->participants);
+					while(g_hash_table_iter_next(&iter, NULL, &value)) {
+						janus_audiobridge_participant *p = value;
+						if(p == participant) {
+							continue;
+						}
+						json_t *pl = json_object();
+						json_object_set_new(pl, "id", string_ids ? json_string(p->user_id_str) : json_integer(p->user_id));
+						if(p->display)
+							json_object_set_new(pl, "display", json_string(p->display));
+						json_object_set_new(pl, "setup", g_atomic_int_get(&p->session->started) ? json_true() : json_false());
+						json_object_set_new(pl, "muted", p->muted ? json_true() : json_false());
+						if(p->extmap_id > 0)
+							json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
+						if(audiobridge->spatial_audio)
+							json_object_set_new(pl, "spatial_position", json_integer(p->spatial_position));
+						if(g_atomic_int_get(&p->suspended))
+							json_object_set_new(pl, "suspended", json_true());
+						json_array_append_new(list, pl);
+					}
+					json_t *event = json_object();
+					json_object_set_new(event, "audiobridge", json_string("event"));
+					json_object_set_new(event, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
+					json_object_set_new(event, "resumed", string_ids ? json_string(user_id_str) : json_integer(user_id));
+					json_object_set_new(event, "participants", list);
+					int ret = gateway->push_event(participant->session->handle, &janus_audiobridge_plugin, NULL, event, NULL);
+					JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+					json_decref(event);
+				}
+			} else {
+				janus_mutex_unlock(&participant->suspend_cond_mutex);
+			}
+		}
+		if(notify_participant) {
+			/* Notify all participants about the change */
+			json_t *event = json_object();
+			json_object_set_new(event, "audiobridge", json_string("event"));
+			json_object_set_new(event, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
+			json_object_set_new(event, suspend ? "suspended" : "resumed",
+				string_ids ? json_string(user_id_str) : json_integer(user_id));
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, audiobridge->participants);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_audiobridge_participant *p = value;
+				if((p == participant && recap) || (p != participant && g_atomic_int_get(&p->paused_events)))
+					continue;
+				JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", p->user_id_str, p->display ? p->display : "??");
+				int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, event, NULL);
+				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+			}
+			json_decref(event);
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string(suspend ? "suspended" : "resumed"));
+				json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
+				json_object_set_new(info, "id", string_ids ? json_string(user_id_str) : json_integer(user_id));
+				gateway->notify_event(&janus_audiobridge_plugin, session ? session->handle : NULL, info);
+			}
+		}
+		/* Prepare response */
+		response = json_object();
+		json_object_set_new(response, "audiobridge", json_string("success"));
+		/* Done */
+		janus_refcount_decrease(&participant->ref);
+		janus_refcount_decrease(&audiobridge->ref);
+		goto prepare_response;
 	} else {
 		/* Not a request we recognize, don't do anything */
 		return NULL;
@@ -5461,6 +6000,8 @@ void janus_audiobridge_setup_media(janus_plugin_session *handle) {
 	json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
 	if(audiobridge->spatial_audio)
 		json_object_set_new(pl, "spatial_position", json_integer(participant->spatial_position));
+	if(g_atomic_int_get(&participant->suspended))
+		json_object_set_new(pl, "suspended", json_true());
 	json_array_append_new(list, pl);
 	json_t *pub = json_object();
 	json_object_set_new(pub, "audiobridge", json_string("event"));
@@ -5472,7 +6013,7 @@ void janus_audiobridge_setup_media(janus_plugin_session *handle) {
 	g_hash_table_iter_init(&iter, audiobridge->participants);
 	while(g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_audiobridge_participant *p = value;
-		if(p == participant) {
+		if(p == participant || g_atomic_int_get(&p->paused_events)) {
 			continue;	/* Skip the new participant itself */
 		}
 		JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", p->user_id_str, p->display ? p->display : "??");
@@ -5492,7 +6033,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 	if(!session || g_atomic_int_get(&session->destroyed) || !session->participant)
 		return;
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
-	if(!g_atomic_int_get(&participant->active) || participant->muted ||
+	if(!g_atomic_int_get(&participant->active) || participant->muted || g_atomic_int_get(&participant->suspended) ||
 			(participant->codec == JANUS_AUDIOCODEC_OPUS && !participant->decoder) || !participant->room)
 		return;
 	if(participant->room && participant->room->muted && !participant->admin)
@@ -5527,74 +6068,9 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 				rtp->type, participant->codec == JANUS_AUDIOCODEC_PCMA ? 8 : 0);
 			return;
 		}
-		/* Check the audio levels, in case we need to notify participants about who's talking */
-		gboolean silence = FALSE;
-		if(participant->extmap_id > 0) {
-			/* Check the audio levels, in case we need to notify participants about who's talking */
-			int level = packet->extensions.audio_level;
-			if(level != -1) {
-				/* Is this silence? */
-				silence = (level == 127);
-				if(participant->room && participant->room->audiolevel_event) {
-					/* We also need to detect who's talking: update our monitoring stuff */
-					int audio_active_packets = participant->room ? participant->room->audio_active_packets : 100;
-					int audio_level_average = participant->room ? participant->room->audio_level_average : 25;
-					/* Check if we need to override those with user specific properties */
-					if(participant->user_audio_active_packets > 0)
-						audio_active_packets = participant->user_audio_active_packets;
-					if(participant->user_audio_level_average > 0)
-						audio_level_average = participant->user_audio_level_average;
-					participant->audio_dBov_sum += level;
-					participant->audio_active_packets++;
-					participant->dBov_level = level;
-					if(participant->audio_active_packets > 0 && participant->audio_active_packets == audio_active_packets) {
-						gboolean notify_talk_event = FALSE;
-						if((float) participant->audio_dBov_sum / (float) participant->audio_active_packets < audio_level_average) {
-							/* Participant talking, should we notify all participants? */
-							if(!participant->talking)
-								notify_talk_event = TRUE;
-							participant->talking = TRUE;
-						} else {
-							/* Participant not talking anymore, should we notify all participants? */
-							if(participant->talking)
-								notify_talk_event = TRUE;
-							participant->talking = FALSE;
-						}
-						participant->audio_active_packets = 0;
-						participant->audio_dBov_sum = 0;
-						/* Only notify in case of state changes */
-						if(participant->room && notify_talk_event) {
-							janus_mutex_lock(&participant->room->mutex);
-							json_t *event = json_object();
-							json_object_set_new(event, "audiobridge", json_string(participant->talking ? "talking" : "stopped-talking"));
-							json_object_set_new(event, "room",
-								string_ids ? json_string(participant->room ? participant->room->room_id_str : NULL) :
-									json_integer(participant->room ? participant->room->room_id : 0));
-							json_object_set_new(event, "id",
-								string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
-							/* Notify the speaker this event is related to as well */
-							janus_audiobridge_notify_participants(participant, event, TRUE);
-							json_decref(event);
-							janus_mutex_unlock(&participant->room->mutex);
-							/* Also notify event handlers */
-							if(notify_events && gateway->events_is_enabled()) {
-								json_t *info = json_object();
-								json_object_set_new(info, "audiobridge", json_string(participant->talking ? "talking" : "stopped-talking"));
-								json_object_set_new(info, "room",
-									string_ids ? json_string(participant->room ? participant->room->room_id_str : NULL) :
-										json_integer(participant->room ? participant->room->room_id : 0));
-								json_object_set_new(info, "id",
-									string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
-								gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
-							}
-						}
-					}
-				}
-			}
-		}
 		/* Queue the audio packet in the jitter buffer (we won't decode now, there might be buffering involved) */
 		if(participant->jitter) {
-			janus_audiobridge_buffer_packet *pkt = janus_audiobridge_buffer_packet_create(buf, len, silence);
+			janus_audiobridge_buffer_packet *pkt = janus_audiobridge_buffer_packet_create(packet);
 			janus_mutex_lock(&participant->qmutex);
 			JitterBufferPacket jbp = {0};
 			jbp.data = (char *)pkt;
@@ -5757,21 +6233,14 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 	g_free(participant->mjr_base);
 	participant->mjr_base = NULL;
 	/* Get rid of queued packets */
-	if(participant->jitter)
-		jitter_buffer_reset(participant->jitter);
-	while(participant->inbuf) {
-		GList *first = g_list_first(participant->inbuf);
-		janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-		participant->inbuf = g_list_delete_link(participant->inbuf, first);
-		first = NULL;
-		if(pkt == NULL)
-			continue;
-		g_free(pkt->data);
-		pkt->data = NULL;
-		g_free(pkt);
-		pkt = NULL;
-	}
+	janus_audiobridge_participant_clear_jitter_buffer(participant);
+	janus_audiobridge_participant_clear_inbuf(participant);
 	janus_mutex_unlock(&participant->qmutex);
+	janus_audiobridge_participant_clear_outbuf(participant);
+	janus_mutex_lock(&participant->suspend_cond_mutex);
+	if(g_atomic_int_compare_and_exchange(&participant->suspended, 1, 0))
+		g_cond_signal(&participant->suspend_cond);
+	janus_mutex_unlock(&participant->suspend_cond_mutex);
 	if(audiobridge != NULL) {
 		janus_mutex_unlock(&audiobridge->mutex);
 		if(removed) {
@@ -6005,6 +6474,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *display = json_object_get(root, "display");
 			const char *display_text = display ? json_string_value(display) : NULL;
 			json_t *muted = json_object_get(root, "muted");
+			json_t *suspended = json_object_get(root, "suspended");
 			json_t *gain = json_object_get(root, "volume");
 			json_t *spatial = json_object_get(root, "spatial_position");
 			json_t *bitrate = json_object_get(root, "bitrate");
@@ -6013,6 +6483,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *acodec = json_object_get(root, "codec");
 			json_t *user_audio_level_average = json_object_get(root, "audio_level_average");
 			json_t *user_audio_active_packets = json_object_get(root, "audio_active_packets");
+			json_t *denoise = json_object_get(root, "denoise");
 			json_t *record = json_object_get(root, "record");
 			json_t *recfile = json_object_get(root, "filename");
 			json_t *gen_offer = json_object_get(root, "generate_offer");
@@ -6119,6 +6590,12 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->display = NULL;
 				participant->jitter = jitter_buffer_init(participant->codec == JANUS_AUDIOCODEC_OPUS ? 960 : 160);
 				jitter_buffer_ctl(participant->jitter, JITTER_BUFFER_SET_DESTROY_CALLBACK, &janus_audiobridge_buffer_packet_destroy);
+				spx_int32_t min_buffer_size = participant->codec == JANUS_AUDIOCODEC_OPUS ? (JITTER_BUFFER_MIN_PACKETS * 960) : (JITTER_BUFFER_MIN_PACKETS * 160);
+				jitter_buffer_ctl(participant->jitter, JITTER_BUFFER_SET_MARGIN, &min_buffer_size);
+				spx_int32_t max_buffer_size = JITTER_BUFFER_MAX_PACKETS;
+				jitter_buffer_ctl(participant->jitter, JITTER_BUFFER_SET_LIMIT, &max_buffer_size);
+				/* disable automatic adjustment */
+				jitter_buffer_update_delay(participant->jitter, NULL, NULL);
 				participant->inbuf = NULL;
 				participant->outbuf = NULL;
 				participant->encoder = NULL;
@@ -6143,6 +6620,14 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->admin = admin;
 			participant->display = display_text ? g_strdup(display_text) : NULL;
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* By default, everyone's unmuted when joining */
+			if(suspended && json_is_true(suspended)) {
+				janus_mutex_lock(&participant->suspend_cond_mutex);
+				g_atomic_int_set(&participant->suspended, 1);
+				janus_mutex_unlock(&participant->suspend_cond_mutex);
+				json_t *pauseevs = json_object_get(root, "pause_events");
+				if(pauseevs && json_is_true(pauseevs))
+					g_atomic_int_set(&participant->paused_events, 1);
+			}
 			participant->volume_gain = volume;
 			participant->opus_complexity = complexity;
 			participant->opus_bitrate = opus_bitrate;
@@ -6170,6 +6655,7 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Opus encoder */
 			int error = 0;
 			if(participant->encoder == NULL) {
+				participant->sampling_rate = audiobridge->sampling_rate;
 				participant->encoder = opus_encoder_create(audiobridge->sampling_rate,
 					audiobridge->spatial_audio ? 2 : 1, OPUS_APPLICATION_VOIP, &error);
 				if(error != OPUS_OK) {
@@ -6235,6 +6721,13 @@ static void *janus_audiobridge_handler(void *data) {
 					goto error;
 				}
 			}
+#ifdef HAVE_RNNOISE
+			participant->denoise = denoise ? json_is_true(denoise) : audiobridge->denoise;
+#else
+			if(denoise && json_is_true(denoise)) {
+				JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
+			}
+#endif
 			participant->reset = FALSE;
 			/* If this is a plain RTP participant, create the socket */
 			if(rtp != NULL) {
@@ -6387,6 +6880,8 @@ static void *janus_audiobridge_handler(void *data) {
 			json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
 			if(audiobridge->spatial_audio)
 				json_object_set_new(pl, "spatial_position", json_integer(participant->spatial_position));
+			if(g_atomic_int_get(&participant->suspended))
+				json_object_set_new(pl, "suspended", json_true());
 			json_array_append_new(newuserlist, pl);
 			json_object_set_new(newuser, "participants", newuserlist);
 			GHashTableIter iter;
@@ -6394,7 +6889,7 @@ static void *janus_audiobridge_handler(void *data) {
 			g_hash_table_iter_init(&iter, audiobridge->participants);
 			while(g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_audiobridge_participant *p = value;
-				if(p == participant) {
+				if(p == participant || g_atomic_int_get(&p->paused_events)) {
 					continue;
 				}
 				JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", p->user_id_str, p->display ? p->display : "??");
@@ -6407,7 +6902,7 @@ static void *janus_audiobridge_handler(void *data) {
 			g_hash_table_iter_init(&iter, audiobridge->participants);
 			while(g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_audiobridge_participant *p = value;
-				if(p == participant) {
+				if(p == participant || g_atomic_int_get(&p->paused_events)) {
 					continue;
 				}
 				json_t *pl = json_object();
@@ -6420,6 +6915,8 @@ static void *janus_audiobridge_handler(void *data) {
 					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
 				if(audiobridge->spatial_audio)
 					json_object_set_new(pl, "spatial_position", json_integer(p->spatial_position));
+				if(g_atomic_int_get(&participant->suspended))
+					json_object_set_new(pl, "suspended", json_true());
 				json_array_append_new(list, pl);
 			}
 			janus_mutex_unlock(&audiobridge->mutex);
@@ -6449,6 +6946,8 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
 				if(participant->stereo)
 					json_object_set_new(info, "spatial_position", json_integer(participant->spatial_position));
+				if(g_atomic_int_get(&participant->suspended))
+					json_object_set_new(info, "suspended", json_true());
 				gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 			}
 			if(user_id_allocated)
@@ -6480,6 +6979,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *exploss = json_object_get(root, "expected_loss");
 			json_t *gain = json_object_get(root, "volume");
 			json_t *spatial = json_object_get(root, "spatial_position");
+			json_t *denoise = json_object_get(root, "denoise");
 			json_t *record = json_object_get(root, "record");
 			json_t *recfile = json_object_get(root, "filename");
 			json_t *display = json_object_get(root, "display");
@@ -6533,7 +7033,7 @@ static void *janus_audiobridge_handler(void *data) {
 				}
 				participant->group = group_id;
 			}
-			if(muted || display || (participant->stereo && spatial)) {
+			if(muted || display || (participant->stereo && spatial) || denoise) {
 				if(muted) {
 					participant->muted = json_is_true(muted);
 					JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %s, user %s)\n",
@@ -6541,21 +7041,8 @@ static void *janus_audiobridge_handler(void *data) {
 					if(participant->muted) {
 						/* Clear the queued packets waiting to be handled */
 						janus_mutex_lock(&participant->qmutex);
-						if(participant->jitter)
-							jitter_buffer_reset(participant->jitter);
-						while(participant->inbuf) {
-							GList *first = g_list_first(participant->inbuf);
-							janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-							participant->inbuf = g_list_delete_link(participant->inbuf, first);
-							first = NULL;
-							if(pkt == NULL)
-								continue;
-							if(pkt->data)
-								g_free(pkt->data);
-							pkt->data = NULL;
-							g_free(pkt);
-							pkt = NULL;
-						}
+						janus_audiobridge_participant_clear_jitter_buffer(participant);
+						janus_audiobridge_participant_clear_inbuf(participant);
 						janus_mutex_unlock(&participant->qmutex);
 					}
 				}
@@ -6573,6 +7060,14 @@ static void *janus_audiobridge_handler(void *data) {
 						spatial_position = 100;
 					participant->spatial_position = spatial_position;
 				}
+#ifdef HAVE_RNNOISE
+				if(denoise)
+					participant->denoise = json_is_true(denoise);
+#else
+				if(denoise && json_is_true(denoise)) {
+					JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
+				}
+#endif
 				/* Notify all other participants */
 				janus_mutex_lock(&rooms_mutex);
 				janus_audiobridge_room *audiobridge = participant->room;
@@ -6588,6 +7083,8 @@ static void *janus_audiobridge_handler(void *data) {
 					json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
 					if(audiobridge->spatial_audio)
 						json_object_set_new(pl, "spatial_position", json_integer(participant->spatial_position));
+					if(g_atomic_int_get(&participant->suspended))
+						json_object_set_new(pl, "suspended", json_true());
 					json_array_append_new(list, pl);
 					json_t *pub = json_object();
 					json_object_set_new(pub, "audiobridge", json_string("event"));
@@ -6599,7 +7096,7 @@ static void *janus_audiobridge_handler(void *data) {
 					g_hash_table_iter_init(&iter, audiobridge->participants);
 					while(g_hash_table_iter_next(&iter, NULL, &value)) {
 						janus_audiobridge_participant *p = value;
-						if(p == participant) {
+						if(p == participant || g_atomic_int_get(&p->paused_events)) {
 							continue;	/* Skip the new participant itself */
 						}
 						JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n",
@@ -6661,6 +7158,8 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "quality", json_integer(participant->opus_complexity));
 				if(participant->stereo)
 					json_object_set_new(info, "spatial_position", json_integer(participant->spatial_position));
+				if(g_atomic_int_get(&participant->suspended))
+					json_object_set_new(info, "suspended", json_true());
 				gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 			}
 			/* If we need to generate an offer ourselves, do that */
@@ -6792,13 +7291,15 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *display = json_object_get(root, "display");
 			const char *display_text = display ? json_string_value(display) : NULL;
 			json_t *muted = json_object_get(root, "muted");
+			json_t *suspended = json_object_get(root, "suspended");
 			json_t *gain = json_object_get(root, "volume");
 			json_t *spatial = json_object_get(root, "spatial_position");
 			json_t *bitrate = json_object_get(root, "bitrate");
 			json_t *quality = json_object_get(root, "quality");
 			json_t *exploss = json_object_get(root, "expected_loss");
+			json_t *denoise = json_object_get(root, "denoise");
 			int volume = gain ? json_integer_value(gain) : 100;
-			int spatial_position = spatial ? json_integer_value(spatial) : 64;
+			int spatial_position = spatial ? json_integer_value(spatial) : 50;
 			int32_t opus_bitrate = audiobridge->default_bitrate;
 			if(bitrate) {
 				opus_bitrate = json_integer_value(bitrate);
@@ -6892,8 +7393,6 @@ static void *janus_audiobridge_handler(void *data) {
 			if(old_audiobridge->sampling_rate != audiobridge->sampling_rate ||
 					old_audiobridge->spatial_audio != audiobridge->spatial_audio) {
 				/* Create a new one that takes into account the sampling rate we want now */
-				participant->stereo = audiobridge->spatial_audio;
-				participant->spatial_position = 50;
 				int error = 0;
 				OpusEncoder *new_encoder = opus_encoder_create(audiobridge->sampling_rate,
 					audiobridge->spatial_audio ? 2 : 1, OPUS_APPLICATION_VOIP, &error);
@@ -6960,12 +7459,19 @@ static void *janus_audiobridge_handler(void *data) {
 				}
 				participant->reset = FALSE;
 				/* Destroy the previous encoder/decoder and update the references */
+				while(!g_atomic_int_compare_and_exchange(&participant->encoding, 0, 1))
+					g_usleep(5000);
 				if(participant->encoder)
 					opus_encoder_destroy(participant->encoder);
+				participant->sampling_rate = audiobridge->sampling_rate;
 				participant->encoder = new_encoder;
+				g_atomic_int_set(&participant->encoding, 0);
+				while(!g_atomic_int_compare_and_exchange(&participant->decoding, 0, 1))
+					g_usleep(5000);
 				if(participant->decoder)
 					opus_decoder_destroy(participant->decoder);
 				participant->decoder = new_decoder;
+				g_atomic_int_set(&participant->decoding, 0);
 			}
 			if(quality)
 				opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
@@ -6981,7 +7487,7 @@ static void *janus_audiobridge_handler(void *data) {
 			g_hash_table_iter_init(&iter, old_audiobridge->participants);
 			while(g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_audiobridge_participant *p = value;
-				if(p == participant) {
+				if(p == participant || g_atomic_int_get(&p->paused_events)) {
 					continue;	/* Skip the new participant itself */
 				}
 				JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", p->user_id_str, p->display ? p->display : "??");
@@ -7017,6 +7523,14 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->display = display_text ? g_strdup(display_text) : NULL;
 			participant->room = audiobridge;
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* When switching to a new room, you're unmuted by default */
+			if(suspended && json_is_true(suspended)) {
+				janus_mutex_lock(&participant->suspend_cond_mutex);
+				g_atomic_int_set(&participant->suspended, 1);
+				janus_mutex_unlock(&participant->suspend_cond_mutex);
+				json_t *pauseevs = json_object_get(root, "pause_events");
+				if(pauseevs && json_is_true(pauseevs))
+					g_atomic_int_set(&participant->paused_events, 1);
+			}
 			participant->audio_active_packets = 0;
 			participant->audio_dBov_sum = 0;
 			participant->talking = FALSE;
@@ -7039,6 +7553,14 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->expected_loss = expected_loss;
 				opus_encoder_ctl(participant->encoder, OPUS_SET_PACKET_LOSS_PERC(participant->expected_loss));
 			}
+#ifdef HAVE_RNNOISE
+			/* Check if a denoiser is needed now */
+			participant->denoise = denoise ? json_is_true(denoise) : audiobridge->denoise;
+#else
+			if(denoise && json_is_true(denoise)) {
+				JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
+			}
+#endif
 			g_hash_table_insert(audiobridge->participants,
 				string_ids ? (gpointer)g_strdup(participant->user_id_str) : (gpointer)janus_uint64_dup(participant->user_id),
 				participant);
@@ -7057,12 +7579,14 @@ static void *janus_audiobridge_handler(void *data) {
 			json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
 			if(audiobridge->spatial_audio)
 				json_object_set_new(pl, "spatial_position", json_integer(participant->spatial_position));
+			if(g_atomic_int_get(&participant->suspended))
+				json_object_set_new(pl, "suspended", json_true());
 			json_array_append_new(newuserlist, pl);
 			json_object_set_new(newuser, "participants", newuserlist);
 			g_hash_table_iter_init(&iter, audiobridge->participants);
 			while(g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_audiobridge_participant *p = value;
-				if(p == participant) {
+				if(p == participant || g_atomic_int_get(&p->paused_events)) {
 					continue;
 				}
 				JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", p->user_id_str, p->display ? p->display : "??");
@@ -7088,6 +7612,8 @@ static void *janus_audiobridge_handler(void *data) {
 					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
 				if(audiobridge->spatial_audio)
 					json_object_set_new(pl, "spatial_position", json_integer(p->spatial_position));
+				if(g_atomic_int_get(&participant->suspended))
+					json_object_set_new(pl, "suspended", json_true());
 				json_array_append_new(list, pl);
 			}
 			event = json_object();
@@ -7108,6 +7634,8 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
 				if(participant->stereo)
 					json_object_set_new(info, "spatial_position", json_integer(participant->spatial_position));
+				if(g_atomic_int_get(&participant->suspended))
+					json_object_set_new(info, "suspended", json_true());
 				gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 			}
 			if(user_id_allocated)
@@ -7148,7 +7676,7 @@ static void *janus_audiobridge_handler(void *data) {
 				g_hash_table_iter_init(&iter, audiobridge->participants);
 				while(g_hash_table_iter_next(&iter, NULL, &value)) {
 					janus_audiobridge_participant *p = value;
-					if(p == participant) {
+					if(p == participant || g_atomic_int_get(&p->paused_events)) {
 						continue;	/* Skip the new participant itself */
 					}
 					JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", p->user_id_str, p->display ? p->display : "??");
@@ -7164,21 +7692,10 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Get rid of queued packets */
 			janus_mutex_lock(&participant->qmutex);
 			g_atomic_int_set(&participant->active, 0);
-			if(participant->jitter)
-				jitter_buffer_reset(participant->jitter);
-			while(participant->inbuf) {
-				GList *first = g_list_first(participant->inbuf);
-				janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-				participant->inbuf = g_list_delete_link(participant->inbuf, first);
-				first = NULL;
-				if(pkt == NULL)
-					continue;
-				g_free(pkt->data);
-				pkt->data = NULL;
-				g_free(pkt);
-				pkt = NULL;
-			}
+			janus_audiobridge_participant_clear_jitter_buffer(participant);
+			janus_audiobridge_participant_clear_inbuf(participant);
 			janus_mutex_unlock(&participant->qmutex);
+			janus_audiobridge_participant_clear_outbuf(participant);
 			/* Stop recording, if we were */
 			janus_mutex_lock(&participant->rec_mutex);
 			janus_audiobridge_recorder_close(participant);
@@ -7284,7 +7801,7 @@ static void *janus_audiobridge_handler(void *data) {
 			if(sdp != NULL) {
 				participant->opus_pt = janus_sdp_get_codec_pt(sdp, -1, "opus");
 				if(participant->opus_pt > 0 && strstr(msg_sdp, "useinbandfec=1")){
-					/* Opus codec, inband FEC setted */
+					/* Opus codec, inband FEC set */
 					participant->fec = TRUE;
 					participant->probation = MIN_SEQUENTIAL;
 					opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
@@ -7571,6 +8088,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	janus_audiobridge_room *audiobridge = (janus_audiobridge_room *)data;
 	if(!audiobridge) {
 		JANUS_LOG(LOG_ERR, "Invalid room!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Thread is for mixing room %s (%s) at rate %"SCNu32"...\n",
@@ -7730,7 +8248,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		while(ps) {
 			janus_audiobridge_participant *p = (janus_audiobridge_participant *)ps->data;
 			janus_mutex_lock(&p->qmutex);
-			if(g_atomic_int_get(&p->destroyed) || !p->session || !g_atomic_int_get(&p->session->started) || !g_atomic_int_get(&p->active) || p->muted || !p->inbuf) {
+			if(g_atomic_int_get(&p->destroyed) || !p->session || !g_atomic_int_get(&p->session->started) ||
+					!g_atomic_int_get(&p->active) || p->muted || g_atomic_int_get(&p->suspended) || !p->inbuf) {
 				janus_mutex_unlock(&p->qmutex);
 				ps = ps->next;
 				continue;
@@ -7974,7 +8493,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		ps = participants_list;
 		while(ps) {
 			janus_audiobridge_participant *p = (janus_audiobridge_participant *)ps->data;
-			if(g_atomic_int_get(&p->destroyed) || !p->session || !g_atomic_int_get(&p->session->started)) {
+			if(g_atomic_int_get(&p->destroyed) || !p->session || !g_atomic_int_get(&p->session->started) ||
+					g_atomic_int_get(&p->suspended)) {
 				janus_refcount_decrease(&p->ref);
 				ps = ps->next;
 				continue;
@@ -8192,6 +8712,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 
 	janus_refcount_decrease(&audiobridge->ref);
 
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
@@ -8222,6 +8743,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	janus_audiobridge_buffer_packet *bpkt = NULL;
 	janus_audiobridge_rtp_relay_packet *pkt = NULL;
 	janus_audiobridge_rtp_relay_packet *mixedpkt = NULL;
+	int jitter_ticks = 0;
 	janus_rtp_header *rtp = NULL;
 	gint64 now = janus_get_monotonic_time(), before = now;
 	gboolean first = TRUE, use_fec = FALSE;
@@ -8229,6 +8751,16 @@ static void *janus_audiobridge_participant_thread(void *data) {
 
 	/* Start working: check both the incoming queue (to decode and queue) and the outgoing one (to encode and send) */
 	while(!g_atomic_int_get(&stopping) && g_atomic_int_get(&session->destroyed) == 0) {
+		janus_mutex_lock(&participant->suspend_cond_mutex);
+		while(g_atomic_int_get(&participant->suspended)) {
+			g_cond_wait(&participant->suspend_cond, &participant->suspend_cond_mutex);
+			before = janus_get_monotonic_time();
+			participant->context.seq_reset = TRUE;
+			first = TRUE;
+			/* Clear the output queue since it might contain old packets and break RTP sequence */
+			janus_audiobridge_participant_clear_outbuf(participant);
+		}
+		janus_mutex_unlock(&participant->suspend_cond_mutex);
 		/* Start with packets to decode and queue for the mixer */
 		now = janus_get_monotonic_time();
 		janus_mutex_lock(&participant->qmutex);
@@ -8238,29 +8770,31 @@ static void *janus_audiobridge_participant_thread(void *data) {
 			before += 20000;
 			if(participant->jitter) {
 				ret = jitter_buffer_get(participant->jitter, &jbp, participant->codec == JANUS_AUDIOCODEC_OPUS ? 960 : 160, NULL);
+				jitter_ticks++;
+				/* Adjust the buffer size every 50 ticks (~1 second) */
+				if(jitter_ticks == JITTER_BUFFER_MAX_PACKETS) {
+					jitter_buffer_update_delay(participant->jitter, NULL, NULL);
+					jitter_ticks = 0;
+				}
 				jitter_buffer_tick(participant->jitter);
-				if(ret == JITTER_BUFFER_OK) {
+				if(ret != JITTER_BUFFER_OK) {
+					/* No packet in the jitter buffer? Move on the talking detection, if needed */
+					janus_audiobridge_participant_istalking(session, participant, NULL, NULL);
+				} else {
+					/* Decode the audio packet */
 					bpkt = (janus_audiobridge_buffer_packet *)jbp.data;
 					janus_mutex_unlock(&participant->qmutex);
 					locked = FALSE;
-					rtp = (janus_rtp_header *)bpkt->buffer;
-					/* If this is Opus, check if there's a packet gap we should fix with FEC */
-					use_fec = FALSE;
-					if(!first && participant->codec == JANUS_AUDIOCODEC_OPUS && participant->fec) {
-						if(ntohs(rtp->seq_number) == participant->expected_seq + 1) {
-							/* Lost a packet here? Use FEC to recover */
-							use_fec = TRUE;
-						}
-					}
-					first = FALSE;
 					if(!g_atomic_int_compare_and_exchange(&participant->decoding, 0, 1)) {
 						/* This means we're cleaning up, so don't try to decode */
 						janus_audiobridge_buffer_packet_destroy(bpkt);
 						break;
 					}
 					/* Access the payload */
+					char *buffer = bpkt->rtp ? bpkt->rtp->buffer : NULL;
+					uint16_t len = bpkt->rtp ? bpkt->rtp->length : 0;
 					int plen = 0;
-					const unsigned char *payload = (const unsigned char *)janus_rtp_payload(bpkt->buffer, bpkt->len, &plen);
+					const unsigned char *payload = (const unsigned char *)janus_rtp_payload(buffer, len, &plen);
 					if(!payload) {
 						g_atomic_int_set(&participant->decoding, 0);
 						JANUS_LOG(LOG_ERR, "[%s] Ops! got an error accessing the RTP payload\n",
@@ -8268,6 +8802,16 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						janus_audiobridge_buffer_packet_destroy(bpkt);
 						break;
 					}
+					rtp = (janus_rtp_header *)buffer;
+					/* If this is Opus, check if there's a packet gap we should fix with FEC */
+					use_fec = FALSE;
+					if(!first && participant->codec == JANUS_AUDIOCODEC_OPUS && participant->fec) {
+						if(ntohs(rtp->seq_number) == (participant->expected_seq + 1)) {
+							/* Lost a packet here? Use FEC to recover */
+							use_fec = TRUE;
+						}
+					}
+					first = FALSE;
 					if(use_fec) {
 						/* There was a gap, try to get decode from redundant info first */
 						pkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
@@ -8281,6 +8825,11 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						int32_t output_samples;
 						opus_decoder_ctl(participant->decoder, OPUS_GET_LAST_PACKET_DURATION(&output_samples));
 						pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)pkt->data, output_samples, 1);
+#ifdef HAVE_RNNOISE
+						/* Check if we need to denoise this packet */
+						if(participant->denoise)
+							janus_audiobridge_participant_denoise(participant, (char *)pkt->data, pkt->length);
+#endif
 						/* Queue the decoded redundant packet for the mixer */
 						janus_mutex_lock(&participant->qmutex);
 						participant->inbuf = g_list_append(participant->inbuf, pkt);
@@ -8293,8 +8842,9 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					pkt->ssrc = 0;
 					pkt->timestamp = ntohl(rtp->timestamp);
 					pkt->seq_number = ntohs(rtp->seq_number);
-					/* We might check the audio level extension to see if this is silence */
-					pkt->silence = bpkt->silence;
+					/* Check the audio level extension to see if this is silence */
+					pkt->silence = FALSE;
+					janus_audiobridge_participant_istalking(session, participant, bpkt->rtp, &pkt->silence);
 					pkt->length = 0;
 					if(participant->codec == JANUS_AUDIOCODEC_OPUS) {
 						/* Opus */
@@ -8320,6 +8870,11 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						}
 						pkt->length = 320;
 					}
+#ifdef HAVE_RNNOISE
+					/* Check if we need to denoise this packet */
+					if(participant->denoise)
+						janus_audiobridge_participant_denoise(participant, (char *)pkt->data, pkt->length);
+#endif
 					/* Get rid of the buffered packet */
 					janus_audiobridge_buffer_packet_destroy(bpkt);
 					/* Update the details */
@@ -8339,6 +8894,12 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					/* Queue the decoded packet for the mixer */
 					janus_mutex_lock(&participant->qmutex);
 					locked = TRUE;
+					/* Do not let queue-in grow too much */
+					guint count = g_list_length(participant->inbuf);
+					if(count > QUEUE_IN_MAX_PACKETS) {
+						JANUS_LOG(LOG_WARN, "Participant queue-in contains too many packets, clearing now (count=%u)\n", count);
+						janus_audiobridge_participant_clear_inbuf(participant);
+					}
 					participant->inbuf = g_list_append(participant->inbuf, pkt);
 				}
 			}
@@ -8678,3 +9239,227 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
+
+static void janus_audiobridge_participant_istalking(janus_audiobridge_session *session,
+		janus_audiobridge_participant *participant, janus_plugin_rtp *packet, gboolean *silence) {
+	/* Check the audio levels, in case we need to notify participants about who's talking */
+	if(participant == NULL || participant->extmap_id < 1)
+		return;
+	int level = packet ? packet->extensions.audio_level : 127;
+	if(level == -1)
+		return;
+	if(level == 127 && silence)
+		*silence = TRUE;
+	if(participant->room && participant->room->audiolevel_event) {
+		/* We need to detect who's talking: update our monitoring stuff */
+		int audio_active_packets = participant->room ? participant->room->audio_active_packets : 100;
+		int audio_level_average = participant->room ? participant->room->audio_level_average : 25;
+		/* Check if we need to override those with user specific properties */
+		if(participant->user_audio_active_packets > 0)
+			audio_active_packets = participant->user_audio_active_packets;
+		if(participant->user_audio_level_average > 0)
+			audio_level_average = participant->user_audio_level_average;
+		participant->audio_dBov_sum += level;
+		participant->audio_active_packets++;
+		participant->dBov_level = level;
+		if(participant->audio_active_packets > 0 && participant->audio_active_packets == audio_active_packets) {
+			gboolean notify_talk_event = FALSE;
+			if((float) participant->audio_dBov_sum / (float) participant->audio_active_packets < audio_level_average) {
+				/* Participant talking, should we notify all participants? */
+				if(!participant->talking)
+					notify_talk_event = TRUE;
+				participant->talking = TRUE;
+			} else {
+				/* Participant not talking anymore, should we notify all participants? */
+				if(participant->talking)
+					notify_talk_event = TRUE;
+				participant->talking = FALSE;
+			}
+			participant->audio_active_packets = 0;
+			participant->audio_dBov_sum = 0;
+			/* Only notify in case of state changes */
+			if(participant->room && notify_talk_event) {
+				janus_mutex_lock(&participant->room->mutex);
+				json_t *event = json_object();
+				json_object_set_new(event, "audiobridge", json_string(participant->talking ? "talking" : "stopped-talking"));
+				json_object_set_new(event, "room",
+					string_ids ? json_string(participant->room ? participant->room->room_id_str : NULL) :
+						json_integer(participant->room ? participant->room->room_id : 0));
+				json_object_set_new(event, "id",
+					string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+				/* Notify the speaker this event is related to as well */
+				janus_audiobridge_notify_participants(participant, event, TRUE);
+				json_decref(event);
+				janus_mutex_unlock(&participant->room->mutex);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "audiobridge", json_string(participant->talking ? "talking" : "stopped-talking"));
+					json_object_set_new(info, "room",
+						string_ids ? json_string(participant->room ? participant->room->room_id_str : NULL) :
+							json_integer(participant->room ? participant->room->room_id : 0));
+					json_object_set_new(info, "id",
+						string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+					gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
+				}
+			}
+		}
+	}
+}
+
+#ifdef HAVE_RNNOISE
+static void janus_audiobridge_participant_denoise(janus_audiobridge_participant *participant, char *data, int len) {
+	if(len < 0 || data == NULL)
+		return;
+	/* Create a denoiser if we still don't have one */
+	if(participant->rnnoise[0] == NULL) {
+		/* Create RNNoise context */
+		participant->rnnoise[0] = rnnoise_create(NULL);
+		/* If we still don't have a denoiser, give up */
+		if(participant->rnnoise[0] == NULL)
+			return;
+		/* Allocate the buffer for the denoiser */
+		if(participant->denoiser_buffer[0] == NULL)
+			participant->denoiser_buffer[0] = g_malloc(DENOISER_FRAME_SIZE * sizeof(float));
+	}
+	/* Check if we need a denoiser for stereo channel too */
+	if(participant->stereo && participant->rnnoise[1] == NULL) {
+		/* Create RNNoise context */
+		participant->rnnoise[1] = rnnoise_create(NULL);
+		/* If we still don't have a denoiser, give up */
+		if(participant->rnnoise[1] == NULL)
+			return;
+		/* Allocate the buffer for the denoiser */
+		if(participant->denoiser_buffer[1] == NULL)
+			participant->denoiser_buffer[1] = g_malloc(DENOISER_FRAME_SIZE * sizeof(float));
+	}
+	/* Check if we need to (re)create resamplers too */
+	if(participant->sampling_rate != participant->resampler_rate ||
+			participant->stereo != participant->resampler_stereo) {
+		participant->resampler_rate = participant->sampling_rate;
+		participant->resampler_stereo = participant->stereo;
+		if(participant->upsampler)
+			speex_resampler_destroy(participant->upsampler);
+		participant->upsampler = NULL;
+		if(participant->downsampler)
+			speex_resampler_destroy(participant->downsampler);
+		participant->downsampler = NULL;
+		/* We need resamplers only if rate is not 48kHz */
+		if(participant->resampler_rate != 48000) {
+			spx_uint32_t channels = !participant->resampler_stereo ? 1 : 2;
+			spx_uint32_t from_rate = participant->resampler_rate;
+			spx_uint32_t to_rate = 48000;
+			int quality = 8, error = 0;
+			participant->upsampler = speex_resampler_init(channels, from_rate, to_rate, quality, &error);
+			if(participant->upsampler != NULL) {
+				JANUS_LOG(LOG_INFO, "Created %s resampler from %d to %d (channels=%d, quality=%d)\n",
+					(participant->resampler_stereo ? "stereo" : "mono"), from_rate, to_rate, channels, quality);
+			} else {
+				/* We couldn't create a resampler, don't do anything */
+				return;
+			}
+			participant->downsampler = speex_resampler_init(channels, to_rate, from_rate, quality, &error);
+			if(participant->downsampler != NULL) {
+				JANUS_LOG(LOG_INFO, "Created %s resampler from %d to %d (channels=%d, quality=%d)\n",
+					(participant->resampler_stereo ? "stereo" : "mono"), to_rate, from_rate, channels, quality);
+			} else {
+				/* We couldn't create a resampler, don't do anything */
+				return;
+			}
+			if(participant->upsample_buffer == NULL)
+				participant->upsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
+			if(participant->downsample_buffer == NULL)
+				participant->downsample_buffer = g_malloc(2 * OPUS_SAMPLES * sizeof(opus_int16));
+		}
+	}
+
+	/* Opus int16 original samples */
+	opus_int16 *samples = (opus_int16 *)data;
+	/* Number of original samples, should be: 160 (8kHz), 320 (16kHz), 480 (24kHz), 960 (48kHz) */
+	int samples_count = len;
+	/* Actual length of the resampled array (double size for stereo) */
+	const int samples_len = !participant->resampler_stereo ? samples_count : 2*samples_count;
+
+	/* Should be 960 */
+	int upsample_buffer_count = len * (48000/participant->resampler_rate);
+	/* Upsampled buffer */
+	opus_int16 *upsample_buffer = samples;
+
+	/* Downsampled data samples count is equal to original samples */
+	int downsample_buffer_count = samples_count;
+	/* Downsampled buffer */
+	opus_int16 *downsample_buffer = upsample_buffer;
+
+	/* Upsample */
+	if(participant->resampler_rate != 48000) {
+		upsample_buffer = participant->upsample_buffer;
+		janus_audiobridge_participant_upsample(participant, samples, &samples_count, upsample_buffer, &upsample_buffer_count);
+	}
+
+	int i = 0, j = 0;
+	float *denoiser_buffer = participant->denoiser_buffer[0];
+	float *denoiser_buffer_alt = participant->denoiser_buffer[1];
+
+	/* Denoise in chunks of 480 samples */
+	if(!participant->resampler_stereo) {
+		for(i=0; i<upsample_buffer_count; i+= DENOISER_FRAME_SIZE) {
+			for(j=0; j<DENOISER_FRAME_SIZE; j++) {
+				denoiser_buffer[j] = upsample_buffer[i + j];
+			}
+			rnnoise_process_frame(participant->rnnoise[0], denoiser_buffer, denoiser_buffer);
+			for(j=0; j<DENOISER_FRAME_SIZE; j++) {
+				upsample_buffer[i + j] = denoiser_buffer[j];
+			}
+		}
+	} else {
+		for(i=0; i<upsample_buffer_count; i+= DENOISER_FRAME_SIZE) {
+			for(j=0; j<DENOISER_FRAME_SIZE; j++) {
+				denoiser_buffer[j] = upsample_buffer[2*i + 2*j];
+				denoiser_buffer_alt[j] = upsample_buffer[2*i + 2*j + 1];
+			}
+			rnnoise_process_frame(participant->rnnoise[0], denoiser_buffer, denoiser_buffer);
+			rnnoise_process_frame(participant->rnnoise[1], denoiser_buffer_alt, denoiser_buffer_alt);
+			for(j=0; j<DENOISER_FRAME_SIZE; j++) {
+				upsample_buffer[2*i + 2*j] = denoiser_buffer[j];
+				upsample_buffer[2*i + 2*j + 1] = denoiser_buffer_alt[j];
+			}
+		}
+	}
+
+	/* Downsample */
+	if(participant->resampler_rate != 48000) {
+		downsample_buffer = participant->downsample_buffer;
+		janus_audiobridge_participant_downsample(participant, upsample_buffer, &upsample_buffer_count, downsample_buffer, &downsample_buffer_count);
+	}
+
+	/* Copy denoised and downsampled data back */
+	memcpy(samples, downsample_buffer, samples_len*sizeof(opus_int16));
+}
+
+static void janus_audiobridge_participant_upsample(janus_audiobridge_participant *participant, opus_int16 *input, int *in_len, opus_int16 *output, int *out_len) {
+	if(!participant->resampler_stereo) {
+		int err = speex_resampler_process_int(participant->upsampler, 0, (spx_int16_t *)input, (spx_uint32_t *)in_len, (spx_int16_t *)output, (spx_uint32_t *)out_len);
+		if(err != 0) {
+			//TODO
+		}
+	} else {
+		int err = speex_resampler_process_interleaved_int(participant->upsampler, (spx_int16_t *)input, (spx_uint32_t *)in_len, (spx_int16_t *)output, (spx_uint32_t *)out_len);
+		if(err != 0) {
+			//TODO
+		}
+	}
+}
+static void janus_audiobridge_participant_downsample(janus_audiobridge_participant *participant, opus_int16 *input, int *in_len, opus_int16 *output, int *out_len) {
+	if(!participant->resampler_stereo) {
+		int err = speex_resampler_process_int(participant->downsampler, 0, (spx_int16_t *)input, (spx_uint32_t *)in_len, (spx_int16_t *)output, (spx_uint32_t *)out_len);
+		if(err != 0) {
+			//TODO
+		}
+	} else {
+		int err = speex_resampler_process_interleaved_int(participant->downsampler, (spx_int16_t *)input, (spx_uint32_t *)in_len, (spx_int16_t *)output, (spx_uint32_t *)out_len);
+		if(err != 0) {
+			//TODO
+		}
+	}
+}
+#endif

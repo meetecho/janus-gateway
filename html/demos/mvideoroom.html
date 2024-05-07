@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server (multistream): Video Room Demo (multistream)</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
+<script type="text/javascript" src="settings.js" ></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="mvideoroom.js"></script>
+<script>
+	$(function() {
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='mvideoroom.html']").addClass("active");
+		});
+		$(".footer").load("../footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="../css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="../forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
+				<h1>Plugin Demo: Video Room (multistream)
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="alert alert-primary mt-2 mb-5">
+						Want to learn more about the <strong>VideoRoom</strong> plugin?
+						Check the <a target="_blank" href="https://janus.conf.meetecho.com/docs/videoroom">Documentation</a>.
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This is a variant of the <a href="videoroomtest.html">original VideoRoom demo</a>,
+						but taking advantage of the recently added multistream support to use a
+						single PeerConnection to receive all the contributions, rather than
+						creating a different one for each subscription. Apart from this, the
+						same considerations apply.</p>
+						<p>To use the demo, just insert a username to join the default room that
+						is configured. This will add you to the list of participants, and allow
+						you to automatically send your audio/video frames and receive the other
+						participants' feeds. The other participants will appear in separate
+						panels, whose title will be the names they chose when registering at
+						the demo.</p>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="videojoin">
+				<div class="row">
+					<span class="badge bg-info" id="you"></span>
+					<div class="col-md-12" id="controls">
+						<div class="input-group mt-3 mb-1 hide" id="registernow">
+							<span class="input-group-text"><i class="fa-solid fa-user"></i></span>
+							<input autocomplete="off" class="form-control" autocomplete="off" type="text" placeholder="Choose a display name" id="username" onkeypress="return checkEnter(this, event);"></input>
+							<span class="input-group-btn">
+								<button class="btn btn-success" autocomplete="off" id="register">Join the room</button>
+							</span>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="videos">
+				<div class="row">
+					<div class="col-md-4">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Local Video <span class="badge bg-primary hide" id="publisher"></span>
+									<div class="btn-group btn-group-sm top-right hide">
+										<div class="btn-group btn-group-sm">
+											<button id="bitrateset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+												Bandwidth
+											</button>
+											<ul id="bitrate" class="dropdown-menu" role="menu">
+												<a class="dropdown-item" href="#" id="0">No limit</a>
+												<a class="dropdown-item" href="#" id="128">Cap to 128kbit</a>
+												<a class="dropdown-item" href="#" id="256">Cap to 256kbit</a>
+												<a class="dropdown-item" href="#" id="512">Cap to 512kbit</a>
+												<a class="dropdown-item" href="#" id="1024">Cap to 1mbit</a>
+												<a class="dropdown-item" href="#" id="1500">Cap to 1.5mbit</a>
+												<a class="dropdown-item" href="#" id="2000">Cap to 2mbit</a>
+											</ul>
+										</div>
+									</div>
+								</span>
+							</div>
+							<div class="card-body" id="videolocal"></div>
+						</div>
+					</div>
+					<div class="col-md-4">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Remote Video #1 <span class="badge bg-info hide" id="remote1"></span></span>
+							</div>
+							<div class="card-body relative" id="videoremote1"></div>
+						</div>
+					</div>
+					<div class="col-md-4">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Remote Video #2 <span class="badge bg-info hide" id="remote2"></span></span>
+							</div>
+							<div class="card-body relative" id="videoremote2"></div>
+						</div>
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-4">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Remote Video #3 <span class="badge bg-info hide" id="remote3"></span></span>
+							</div>
+							<div class="card-body relative" id="videoremote3"></div>
+						</div>
+					</div>
+					<div class="col-md-4">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Remote Video #4 <span class="badge bg-info hide" id="remote4"></span></span>
+							</div>
+							<div class="card-body relative" id="videoremote4"></div>
+						</div>
+					</div>
+					<div class="col-md-4">
+						<div class="card">
+							<div class="card-header">
+								<span class="card-title">Remote Video #5 <span class="badge bg-info hide" id="remote5"></span></span>
+							</div>
+							<div class="card-body relative" id="videoremote5"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>

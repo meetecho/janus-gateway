@@ -157,9 +157,9 @@ typedef struct janus_rabbitmq_client {
 	GThread *in_thread, *out_thread;		/* Threads to handle incoming and outgoing queues */
 	GAsyncQueue *messages;					/* Queue of outgoing messages to push */
 	janus_mutex mutex;						/* Mutex to lock/unlock this session */
-	gint session_timeout:1;					/* Whether a Janus session timeout occurred in the core */
-	gint destroy:1;							/* Flag to trigger a lazy session destruction */
-	gint connected:1;							/* Flag to specify whether or not RabbitMQ connection is deemed to be up */
+	gboolean session_timeout;				/* Whether a Janus session timeout occurred in the core */
+	gboolean destroy;						/* Flag to trigger a lazy session destruction */
+	gboolean connected;						/* Flag to specify whether or not RabbitMQ connection is deemed to be up */
 } janus_rabbitmq_client;
 
 /* RabbitMQ response */
@@ -461,7 +461,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		}
 
 		rmq_client->messages = g_async_queue_new();
-		rmq_client->destroy = 0;
+		rmq_client->destroy = FALSE;
 		/* Prepare the transport session (again, just one) */
 		rmq_session = janus_transport_session_create(rmq_client, NULL);
 		/* Start the threads */
@@ -531,7 +531,7 @@ error:
 }
 
 int janus_rabbitmq_connect(void) {
-	rmq_client->connected = 0;
+	rmq_client->connected = FALSE;
 	/* Connect */
 	rmq_client->rmq_conn = amqp_new_connection();
 	amqp_socket_t *socket = NULL;
@@ -713,7 +713,7 @@ int janus_rabbitmq_connect(void) {
 		}
 	}
 
-	rmq_client->connected = 1;
+	rmq_client->connected = TRUE;
 
 	JANUS_LOG(LOG_INFO, "RabbitMQ Connected successfully");
 
@@ -726,7 +726,7 @@ void janus_rabbitmq_destroy(void) {
 	g_atomic_int_set(&stopping, 1);
 
 	if(rmq_client) {
-		rmq_client->destroy = 1;
+		rmq_client->destroy = TRUE;
 		g_async_queue_push(rmq_client->messages, &exit_message);
 		if(rmq_client->in_thread)
 			g_thread_join(rmq_client->in_thread);
@@ -937,7 +937,7 @@ void *janus_rmq_in_thread(void *data) {
 				continue;
 			JANUS_LOG(LOG_VERB, "Error on amqp_simple_wait_frame_noblock: %d (%s)\n", res, amqp_error_string2(res));
 
-			rmq_client->connected = 0;
+			rmq_client->connected = FALSE;
 
 			/* Try and reconnect */
 			if(rmq_client->rmq_conn) {

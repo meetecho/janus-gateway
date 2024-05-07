@@ -152,7 +152,7 @@ void janus_sctp_deinit(void) {
 	usrsctp_finish();
 	sctp_running = FALSE;
 	janus_mutex_lock(&sctp_mutex);
-	g_hash_table_unref(sctp_ids);
+	g_clear_pointer(&sctp_ids, g_hash_table_destroy);
 	janus_mutex_unlock(&sctp_mutex);
 }
 
@@ -577,7 +577,7 @@ void janus_sctp_request_more_streams(janus_sctp_association *sctp) {
 	}
 	memset(&sas, 0, sizeof(struct sctp_add_streams));
 	sas.sas_instrms = 0;
-	sas.sas_outstrms = (uint16_t)streams_needed; /* XXX eror handling */
+	sas.sas_outstrms = (uint16_t)streams_needed; /* XXX error handling */
 	if(usrsctp_setsockopt(sctp->sock, IPPROTO_SCTP, SCTP_ADD_STREAMS, &sas, (socklen_t)sizeof(struct sctp_add_streams)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_ADD_STREAMS\n", sctp->handle_id);
 	}

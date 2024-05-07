@@ -44,7 +44,7 @@
  * reference should you be interested in writing a new plugin from
  * scratch (and you're definitely welcome to!). A \ref pluginapi to
  * create new plugins, or understand how they're conceived, is documented
- * as well. A documentation on the available API tranports and the
+ * as well. A documentation on the available API transports and the
  * HTTP/WebSocket JavaScript API to use Janus and the plugins it
  * makes available in your web application can be found in the \ref JS
  * and \ref rest pages. New API transports can be created referring to
@@ -75,7 +75,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Server © 2014-2023 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2024 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -346,6 +346,9 @@ var janus = new Janus(
  * when WebRTC is actually up and running between you and Janus (e.g., to notify
  * a user they're actually now active in a conference); notice that in case
  * of <b>false</b> a reason string may be present as an optional parameter;
+ * 		- \c connectionState: this callback is triggered when the connection state for the
+ * PeerConnection associated to the handle changes: the argument of the callback
+ * is the new state as a string (e.g., "connected" or "failed");
  * 		- \c iceState: this callback is triggered when the ICE state for the
  * PeerConnection associated to the handle changes: the argument of the callback
  * is the new state as a string (e.g., "connected" or "failed");
@@ -360,7 +363,7 @@ var janus = new Janus(
  * problems on the media path (e.g., media never started, or stopped at some time);
  * 		- \c slowLink: this callback is triggered when Janus reports trouble
  * either sending or receiving media on the specified PeerConnection, typically
- * as a consequence of too many NACKs received from/sent to the user in the
+ * as a consequence of too lost packets detected to/from the user in the
  * last second: for instance, a \c slowLink with uplink=<b>true</b> means
  * you notified several missing packets from Janus, while uplink=<b>false</b>
  * means Janus is not receiving all your packets; useful to figure out when
@@ -496,7 +499,7 @@ janus.attach(
  *   - \c tracks: you can use this property to tell the library which media (audio/video/data)
  * you're interested in, and whether you're going to send and/or receive any of them; by default
  * no device is captured, and Data Channels are disabled as well; incoming audio and video
- * is instead autoaccepted unless you tell the library otherwose; the same property can also
+ * is instead autoaccepted unless you tell the library otherwise; the same property can also
  * be used to update sessions (e.g., to add/remove/replace tracks); this option is an array of
  * objects, where each object can take any of the following properties:
  *     - \c type: mandatory, must be one of "audio", "video", "screen" and "data";
@@ -685,13 +688,15 @@ janus.attach(
  * identified by its \c deviceId is the following:
  *
  \verbatim
-echotest.replaceTracks([
-    {
-        type: 'video',
-        mid: '1',    // We assume mid 1 is video
-        capture: { deviceId: { exact: videoDeviceId } }
-    }
-]);
+echotest.replaceTracks({
+    tracks: [
+        {
+            type: 'video',
+            mid: '1',    // We assume mid 1 is video
+            capture: { deviceId: { exact: videoDeviceId } }
+        }
+    ]
+});
  \endverbatim
  *
  * In case a new track needs to be added to a session, or an existing
@@ -754,7 +759,7 @@ echotest.createOffer(
         tracks: [{ type: 'video', mid: '1', remove: true }],
         success: function(jsep) {
             echotest.send({ message: { video: true }, jsep: jsep })
-        }
+        },
         error: function(error) {
             bootbox.alert('WebRTC error... ' + error.message);
         }
@@ -771,7 +776,7 @@ echotest.createOffer(
         tracks: [{ type: 'screen', add: true, capture: true }],
         success: function(jsep) {
             echotest.send({ message: { video: true }, jsep: jsep })
-        }
+        },
         error: function(error) {
             bootbox.alert('WebRTC error... ' + error.message);
         }
@@ -901,7 +906,7 @@ echotest.createOffer(
  * \section js-webpack Using janus.js directly with Webpack and other bundlers
  *
  * Generating a converted version of \c janus.js and copying it to your project is not always the best
- * solution. In many situations it may be prefered to let your JavaScript module bundler (e.g.
+ * solution. In many situations it may be preferred to let your JavaScript module bundler (e.g.
  * <a href="https://webpack.js.org">Webpack</a>) grab the file directly from the official Janus repository.
  * Doing that you can manage \c janus.js just like any other dependency coming from Github or the npm Registry,
  * getting rid of the manual copy step and letting the bundler take care of version management, updates
@@ -1062,7 +1067,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
  *
  * The \c options argument may contain the following keys:
  *
- * -# \c timeout: a timeout in miliseconds which should be imposed on the request.
+ * -# \c timeout: a timeout in milliseconds which should be imposed on the request.
  *    The \c httpAPICall implementation is required to implement support for imposing timeouts
  *    on HTTP API requests.
  * -# \c body: payload to include as body of the outgoing HTTP request.
@@ -1732,7 +1737,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
 	"session_id" : <the session identifier>,
 	"sender" : <the handle identifier>
 	"uplink" : true,
-	"nacks" : <number of NACKs in the last second>
+	"lost" : <number of lost packets in the last second>
 }
 \endverbatim
  *
@@ -2673,7 +2678,7 @@ else
 	server = "https://" + window.location.hostname + ":8089/janus";
  \endverbatim
  *
- * that is evaulate the right address to use at runtime.
+ * that is evaluate the right address to use at runtime.
  *
  * Anyway, there's a much easier way to address these scenarios, which
  * is explained in the next section.
@@ -2938,7 +2943,7 @@ WantedBy=multi-user.target
  * \note Remember to adjust the path in ExecStart to match the Janus binary path.
  *
  * \warning Please beware that, per the default \c RateLimitInterval and
- * and \c RateLimitBurst values in the default sytemd configuration, logger
+ * and \c RateLimitBurst values in the default systemd configuration, logger
  * messages are dropped if they arrive faster than ~33 per second. You
  * may want to configure them accordingly, or otherwise Janus log messages
  * may be missing. To fix this, setting <code>RateLimitInterval=1s</code>
@@ -3860,7 +3865,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Server © 2014-2023 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2024 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -4008,7 +4013,7 @@ ldd janus | grep asan
  *    When we chose the name, we wanted it to sound like
  *    <a href="https://www.youtube.com/watch?v=TkgDOMSv9PE">this</a>,
  *    which means \a awesome! in Italian. The extra H was a mistake on our
- *    side, as obviously \a echo is pronouced differently than \a eco! Long
+ *    side, as obviously \a echo is pronounced differently than \a eco! Long
  *    story short, it doesn't really matter how you pronounce it: just
  *    do it and help us be famous! :-)\n\n
  *    .
@@ -4069,7 +4074,7 @@ ldd janus | grep asan
  *    - Presentation on SIP call transfers and multiple calls at <a href="https://youtu.be/vSFZe8SsTbM?t=6379">OpenSIPS 2022</a>;
  *    - Presentation on SFU/VideoRoom cascading at <a href="https://www.youtube.com/watch?v=z7SvEQcDEgM">IIT RTC 2022</a>;
  *    - Presentation on Social audio applications with Janus at <a href="https://fosdem.org/2023/schedule/event/janus/">FOSDEM 2023</a>;
- *    - Presentation on Real-Time Text in SIP and WebRTC at <a href="https://www.youtube.com/watch?v=yehYE34d3mI&t=10957s">Kamailio World 2023</a>;
+ *    - Presentation on Real-Time Text in SIP and WebRTC at <a href="https://www.youtube.com/watch?v=yehYE34d3mI&t=19937s">Kamailio World 2023</a>;
  *    - Presentation on Hybrid meetings using Janus at <a href="https://www.youtube.com/watch?v=ZqRvUxgf00s">CommCon 2023</a>;
  *    - Presentation on Bandwidth Estimation (BWE) in Janus at <a href="https://www.youtube.com/watch?v=7L35Q_5aqCc">RTC.ON 2023</a>;
  *    - Presentation on WHIP, WHEP and WebRTC broadcasting at <a href="https://www.youtube.com/watch?v=L0JkNphlEmw">TADSummit Paris 2023</a>. \n\n
@@ -4156,7 +4161,7 @@ ldd janus | grep asan
  *    before the \c bootstrap and \c configure steps in the \c usrsctp
  *    compilation:\n\n
  *\verbatim
-   export CFLAGS="-fno-strict-aliasing" ./boostrap
+   export CFLAGS="-fno-strict-aliasing" ./bootstrap
    export CFLAGS="-fno-strict-aliasing" ./configure --prefix=/usr
    make && make install
  \endverbatim
@@ -4240,7 +4245,7 @@ ldd janus | grep asan
  *    Since version \c 0.0.6, you can! This is a feature that several
  *    developers asked for, especially those that are interested in wrapping
  *    the Janus API on the server side, and implement the communication
- *    on the client side their own way. Specificaly, Janus now supports
+ *    on the client side their own way. Specifically, Janus now supports
  *    RabbitMQ based messaging as an alternative "transport" for API
  *    requests, responses and notifications, meaning it can be used with
  *    or without HTTP and WebSockets, depending on your requirements.

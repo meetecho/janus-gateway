@@ -53,7 +53,7 @@ typedef struct rtp_header
 	uint16_t seq_number;
 	uint32_t timestamp;
 	uint32_t ssrc;
-	uint32_t csrc[16];
+	uint32_t csrc[0];
 } rtp_header;
 typedef rtp_header janus_rtp_header;
 
@@ -88,8 +88,6 @@ typedef struct janus_rtp_rfc2833_payload {
 	uint16_t duration;
 #endif
 } janus_rtp_rfc2833_payload;
-
-#define JANUS_RTP_RFC2833_DEFAULT_PAYLOAD_TYPE 101
 
 /*! \brief a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
 #define JANUS_RTP_EXTMAP_AUDIO_LEVEL		"urn:ietf:params:rtp-hdrext:ssrc-audio-level"

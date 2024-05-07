@@ -38,7 +38,7 @@ gboolean janus_pprec_options_parse(janus_pprec_options *options, int argc, char 
 		{ "restamp-packets", 'c', 0, G_OPTION_ARG_INT, &options->restamp_packets, "Number of packets used for calculating moving average latency for timestamp correction (default=10)", NULL },
 		{ "restamp-min-th", 'n', 0, G_OPTION_ARG_INT, &options->restamp_min_th, "Minimum latency of moving average to reach before starting to correct timestamps. (default=500)", NULL },
 		{ G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &options->paths, NULL, NULL },
-		{ NULL },
+		{ NULL, 0, 0, 0, NULL, NULL, NULL },
 	};
 
 	/* Parse the command-line arguments */
