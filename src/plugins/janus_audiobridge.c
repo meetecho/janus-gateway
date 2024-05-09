@@ -8805,12 +8805,13 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					rtp = (janus_rtp_header *)buffer;
 					/* If this is Opus, check if there's a packet gap we should fix with FEC */
 					use_fec = FALSE;
-					if(!first && participant->codec == JANUS_AUDIOCODEC_OPUS && participant->fec) {
-						if(ntohs(rtp->seq_number) == (participant->expected_seq + 1)) {
-							/* Lost a packet here? Use FEC to recover */
-							use_fec = TRUE;
-						}
-					}
+					/* FIXME Temporarily disable inbound FEC due to potential deadlocks */
+					//if(!first && participant->codec == JANUS_AUDIOCODEC_OPUS && participant->fec) {
+					//	if(ntohs(rtp->seq_number) == (participant->expected_seq + 1)) {
+					//		/* Lost a packet here? Use FEC to recover */
+					//		use_fec = TRUE;
+					//	}
+					//}
 					first = FALSE;
 					if(use_fec) {
 						/* There was a gap, try to get decode from redundant info first */
