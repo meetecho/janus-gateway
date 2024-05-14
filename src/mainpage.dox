@@ -3554,7 +3554,7 @@ ldd janus | grep asan
  * <tr>
  * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/mquander">Marshall Quander</a></td>
- * 		<td><a href="https://github.com/mquander/minijanus.js">minijanus.js</a></td>
+ * 		<td><a href="https://github.com/networked-aframe/minijanus.js">minijanus.js</a></td>
  * 		<td>A super-simplistic and -minimal wrapper for talking to the Janus signalling API</td>
  * </tr>
  * <tr>
@@ -3736,7 +3736,7 @@ ldd janus | grep asan
  * </tr>
  * <tr>
  * 		<td><a href="https://github.com/mquander">Marshall Quander</a></td>
- * 		<td><a href="https://github.com/mquander/janus-plugin-rs">janus-plugin-rs</a></td>
+ * 		<td><a href="https://github.com/networked-aframe/janus-plugin-rs">janus-plugin-rs</a></td>
  * 		<td>Rust bindings and wrappers for creating Janus plugins in Rust</td>
  * </tr>
  * </table>
