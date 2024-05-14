@@ -205,6 +205,8 @@ janus_sdp_mtype janus_sdp_parse_mtype(const char *type) {
 		return JANUS_SDP_APPLICATION;
 	if(!strcasecmp(type, "text"))
 		return JANUS_SDP_TEXT;
+	if(!strcasecmp(type, "message"))
+		return JANUS_SDP_MESSAGE;
 	return JANUS_SDP_OTHER;
 }
 
@@ -218,6 +220,8 @@ const char *janus_sdp_mtype_str(janus_sdp_mtype type) {
 			return "application";
 		case JANUS_SDP_TEXT:
 			return "text";
+		case JANUS_SDP_MESSAGE:
+			return "message";
 		case JANUS_SDP_OTHER:
 		default:
 			break;

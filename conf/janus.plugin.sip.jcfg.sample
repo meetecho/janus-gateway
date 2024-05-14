@@ -46,6 +46,12 @@ general: {
 	# meaning that attempts to negotiate RTT on either side will be rejected.
 	#allow_t140 = true
 
+	# If you want to allow the plugin to also negotiate MSRP on the SIP
+	# side and datachannels on the WebRTC side, you need to set the
+	# 'allow_msrp' property to true: by default, the property is disabled,
+	# meaning that attempts to negotiate MSRP on either side will be rejected.
+	#allow_msrp = true
+
 	# In case you want to use SIPS for some sessions, Sofia may need to
 	# have access to a certificate to use: this is especially true for
 	# Sofia >= 1.13, which will fail to create the agent if no certificate

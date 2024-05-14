@@ -868,7 +868,7 @@ static uint16_t rtp_range_min = 10000;
 static uint16_t rtp_range_max = 60000;
 static int dscp_audio_rtp = 0;
 static int dscp_video_rtp = 0;
-static gboolean allow_t140 = FALSE;
+static gboolean allow_t140 = FALSE, allow_msrp = FALSE;
 static char *sips_certs_dir = NULL;
 #define JANUS_DEFAULT_SIP_TIMER_T1X64 32000
 static int sip_timer_t1x64 = JANUS_DEFAULT_SIP_TIMER_T1X64;
@@ -1009,6 +1009,7 @@ typedef struct janus_sip_media {
 	char *remote_audio_ip;			/* Peer audio media IP address */
 	char *remote_video_ip;			/* Peer video media IP address */
 	char *remote_text_ip;			/* Peer text (T.140) media IP address */
+	char *remote_msrp_ip;			/* Peer text (MSRP) media IP address */
 	gboolean earlymedia;
 	gboolean update;
 	gboolean autoaccept_reinvites;
@@ -1062,6 +1063,10 @@ typedef struct janus_sip_media {
 	char *text_srtp_local_profile, *text_srtp_local_crypto;
 	gboolean text_send, text_recv;
 	janus_sdp_mdirection hold_text_dir, pre_hold_text_dir;
+	/* The following only makes sense if MSRP is involved */
+	gboolean has_msrp;
+	int msrp_fd, msrp_peer_fd;
+	int local_msrp_port, remote_msrp_port;
 	/* RTP Switching contexts */
 	janus_rtp_switching_context acontext, vcontext;
 	int pipefd[2];
@@ -1232,6 +1237,10 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 		g_free(session->media.remote_text_ip);
 		session->media.remote_text_ip = NULL;
 	}
+	if(session->media.remote_msrp_ip) {
+		g_free(session->media.remote_msrp_ip);
+		session->media.remote_msrp_ip = NULL;
+	}
 	if(session->hangup_reason_header) {
 		g_free(session->hangup_reason_header);
 		session->hangup_reason_header = NULL;
@@ -1288,6 +1297,8 @@ static void janus_sip_transfer_destroy(janus_sip_transfer *t) {
 static int janus_sip_srtp_set_local(janus_sip_session *session, janus_sdp_mtype mtype, char **profile, char **crypto) {
 	if(session == NULL)
 		return -1;
+	if(mtype == JANUS_SDP_MESSAGE)	/* MSRP doesn't use RTP */
+		return 0;
 	/* Which SRTP profile are we going to negotiate? */
 	int key_length = 0, salt_length = 0, master_length = 0;
 	if(session->media.srtp_profile == JANUS_SRTP_AES128_CM_SHA1_32) {
@@ -1588,6 +1599,10 @@ static void janus_sip_media_reset(janus_sip_session *session) {
 	session->media.text_send = TRUE;
 	g_list_free_full(session->media.text_red_blocks, (GDestroyNotify)janus_sip_red_block_free);
 	session->media.text_red_blocks = NULL;
+	session->media.msrp_fd = -1;
+	session->media.msrp_peer_fd = -1;
+	session->media.local_msrp_port = 0;
+	session->media.remote_msrp_port = 0;
 	janus_rtp_switching_context_reset(&session->media.acontext);
 	janus_rtp_switching_context_reset(&session->media.vcontext);
 }
@@ -1663,13 +1678,14 @@ static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_
 	return headers;
 }
 
-/* Helper method to convert a m=text offer to a m=application one: the
+/* Helper method to convert a m=text/message offer to a m=application one: the
  * reverse part is done in janus_sip_sdp_manipulate instead */
 static void janus_sip_sdp_text2application(janus_sip_session *session, janus_sdp_mline *m) {
-	if(session == NULL || m == NULL || m->type != JANUS_SDP_TEXT)
+	if(session == NULL || m == NULL ||
+			(m->type != JANUS_SDP_TEXT && m->type != JANUS_SDP_MESSAGE))
 		return;
-	JANUS_LOG(LOG_VERB, "[SIP-%s] Replacing m=text with m=application\n",
-		session->account.username);
+	JANUS_LOG(LOG_VERB, "[SIP-%s] Replacing m=%s with m=application\n",
+		session->account.username, (m->type == JANUS_SDP_TEXT ? "text" : "message"));
 	m->type = JANUS_SDP_APPLICATION;
 	g_free(m->type_str);
 	m->type_str = g_strdup("application");
@@ -1701,14 +1717,20 @@ static void janus_sip_sdp_text2application(janus_sip_session *session, janus_sdp
 		janus_sdp_attribute_destroy(a);
 		temp = temp->next;
 	}
-	session->media.text_pt = text_pt;
-	session->media.text_red_pt = text_red_pt;
+	if(m->type == JANUS_SDP_TEXT) {
+		session->media.text_pt = text_pt;
+		session->media.text_red_pt = text_red_pt;
+	}
 	g_list_free(m->attributes);
 	m->attributes = NULL;
 	janus_sdp_attribute *a = janus_sdp_attribute_create("sctp-port", "5000");
 	m->attributes = g_list_append(m->attributes, a);
 	/* FIXME Send a dcmap attribute as well, to specify the subprotocol and a label */
-	a = janus_sdp_attribute_create("dcmap", "1 label=\"RTT\";subprotocol=\"t140\"");
+	if(m->type == JANUS_SDP_TEXT) {
+		a = janus_sdp_attribute_create("dcmap", "1 label=\"RTT\";subprotocol=\"t140\"");
+	} else {
+		a = janus_sdp_attribute_create("dcmap", "1 label=\"MSRP\";subprotocol=\"msrp\"");
+	}
 	m->attributes = g_list_append(m->attributes, a);
 }
 
@@ -2132,6 +2154,12 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			allow_t140 = janus_is_true(item->value);
 		}
 
+		/* Check if we should allow MSRP sessions to be negotiated */
+		item = janus_config_get(config, config_general, janus_config_type_item, "allow_msrp");
+		if(item && item->value) {
+			allow_msrp = janus_is_true(item->value);
+		}
+
 		/* Check if Sofia should find certificates in a custom folder  */
 		item = janus_config_get(config, config_general, janus_config_type_item, "sips_certs_dir");
 		if(item && item->value) {
@@ -2407,6 +2435,11 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.text_send = TRUE;
 	session->media.hold_text_dir = JANUS_SDP_DEFAULT;
 	session->media.pre_hold_text_dir = JANUS_SDP_DEFAULT;
+	session->media.has_msrp = FALSE;
+	session->media.msrp_fd = -1;
+	session->media.msrp_peer_fd = -1;
+	session->media.local_msrp_port = 0;
+	session->media.remote_msrp_port = 0;
 	/* Initialize the RTP context */
 	janus_rtp_switching_context_reset(&session->media.acontext);
 	janus_rtp_switching_context_reset(&session->media.vcontext);
@@ -2838,101 +2871,123 @@ void janus_sip_incoming_data(janus_plugin_session *handle, janus_plugin_data *pa
 	char *protocol = packet->protocol;
 	char *buf = packet->buffer;
 	uint16_t len = packet->length;
-	if(buf == NULL || len < 1 || !session->media.has_text || session->media.text_rtp_fd == -1)
+	if(buf == NULL || len < 1 || (!session->media.has_text && !session->media.has_msrp))
 		return;
-	if(label == NULL || strcmp(label, "RTT")) {
-		JANUS_LOG(LOG_WARN, "Unknown data channel with label '%s', ignoring...\n", label);
-		return;
-	}
-	if(protocol == NULL || strcmp(protocol, "t140")) {
-		JANUS_LOG(LOG_WARN, "Unsupported datachannel subprotocol '%s', ignoring...\n", protocol);
-		return;
-	}
-	/* If T.140 is involved, relay the real-time text chunk */
-	if(session->media.text_ssrc == 0) {
-		session->media.text_ssrc = janus_random_uint32();
-		JANUS_LOG(LOG_VERB, "[SIP-%s] Generating SSRC for real-time text: %"SCNu32"\n",
-			session->account.username, session->media.text_ssrc);
-	}
-	JANUS_LOG(LOG_HUGE, "[SIP-%s] Have real-time text to relay (%d bytes)\n",
-		session->account.username, len);
-	/* Should we use red or t140? */
-	gboolean red = (session->media.text_red_pt != -1);
-	/* Create an RTP packet to send */
-	char buffer[1500];
-	memset(buffer, 0, sizeof(buffer));
-	janus_rtp_header *rtp = (janus_rtp_header *)buffer;
-	rtp->version = 2;
-	rtp->type = red ? session->media.text_red_pt : session->media.text_pt;
-	rtp->ssrc = htonl(session->media.text_ssrc);
-	session->media.text_seq++;
-	rtp->seq_number = htons(session->media.text_seq);
-	int64_t now = janus_get_monotonic_time();
-	if(session->media.text_ts == 0)
-		session->media.text_ts = now;
-	if(session->media.text_last_activity == 0)
-		session->media.text_last_activity = session->media.text_ts;
-	uint32_t timestamp = (now - session->media.text_ts)/1000;
-	uint32_t diff = (now - session->media.text_last_activity)/1000;
-	rtp->timestamp = htonl(timestamp);
-	/* Marker bit should be 1 if this came after a bit of inactivity */
-	rtp->markerbit = ((now - session->media.text_last_activity) >= G_USEC_PER_SEC);
-	session->media.text_last_activity = now;
-	/* Add the payload */
-	if(!red) {
-		/* Append the T.140 block as is */
-		memcpy(buffer + RTP_HEADER_SIZE, buf, len);
-		len += RTP_HEADER_SIZE;
-	} else {
-		/* Prune the RED blocks (we'll send 3 max) */
-		while(g_list_length(session->media.text_red_blocks) > 2) {
-			GList *oldest = g_list_first(session->media.text_red_blocks);
-			janus_red_block *rb = (janus_red_block *)oldest->data;
-			janus_sip_red_block_free(rb);
-			session->media.text_red_blocks = g_list_delete_link(session->media.text_red_blocks, oldest);
-		}
-		/* Update timestamp offsets */
-		GList *block = session->media.text_red_blocks;
-		while(block) {
-			janus_red_block *rb = (janus_red_block *)block->data;
-			rb->ts_offset += diff;
-			block = block->next;
-		}
-		/* Append the T.140 block as the last RED block */
-		janus_red_block *rb = g_malloc(sizeof(janus_red_block));
-		rb->pt = session->media.text_pt;
-		rb->ts_offset = 0;
-		rb->data = g_malloc(len);
-		memcpy(rb->data, buf, len);
-		rb->length = len;
-		session->media.text_red_blocks = g_list_append(session->media.text_red_blocks, rb);
-		/* Prepare the red packet */
-		len = janus_red_pack_blocks(buffer + RTP_HEADER_SIZE, 1500 - RTP_HEADER_SIZE, session->media.text_red_blocks);
-		if(len == 1) {
-			JANUS_LOG(LOG_ERR, "[SIP-%s] Error packing RED blocks...\n", session->account.username);
+	if(session->media.has_text) {
+		/* Real-time text (T.140) */
+		if(session->media.text_rtp_fd == -1)
+			return;
+		if(label == NULL || strcmp(label, "RTT")) {
+			JANUS_LOG(LOG_WARN, "Unknown data channel with label '%s', ignoring...\n", label);
 			return;
 		}
-		len += RTP_HEADER_SIZE;
-	}
-	/* Is SRTP involved? */
-	if(session->media.has_srtp_local_text) {
-		int protected = len;
-		int res = srtp_protect_rtcp(session->media.text_srtp_out, &buffer, &protected);
-		if(res != srtp_err_status_ok) {
-			JANUS_LOG(LOG_ERR, "[SIP-%s] Text SRTCP protect error... %s (len=%d-->%d)...\n",
-				session->account.username, janus_srtp_error_str(res), len, protected);
+		if(protocol == NULL || strcmp(protocol, "t140")) {
+			JANUS_LOG(LOG_WARN, "Unsupported datachannel subprotocol '%s', ignoring...\n", protocol);
+			return;
+		}
+		/* If T.140 is involved, relay the real-time text chunk */
+		if(session->media.text_ssrc == 0) {
+			session->media.text_ssrc = janus_random_uint32();
+			JANUS_LOG(LOG_VERB, "[SIP-%s] Generating SSRC for real-time text: %"SCNu32"\n",
+				session->account.username, session->media.text_ssrc);
+		}
+		JANUS_LOG(LOG_HUGE, "[SIP-%s] Have real-time text to relay (%d bytes)\n",
+			session->account.username, len);
+		/* Should we use red or t140? */
+		gboolean red = (session->media.text_red_pt != -1);
+		/* Create an RTP packet to send */
+		char buffer[1500];
+		memset(buffer, 0, sizeof(buffer));
+		janus_rtp_header *rtp = (janus_rtp_header *)buffer;
+		rtp->version = 2;
+		rtp->type = red ? session->media.text_red_pt : session->media.text_pt;
+		rtp->ssrc = htonl(session->media.text_ssrc);
+		session->media.text_seq++;
+		rtp->seq_number = htons(session->media.text_seq);
+		int64_t now = janus_get_monotonic_time();
+		if(session->media.text_ts == 0)
+			session->media.text_ts = now;
+		if(session->media.text_last_activity == 0)
+			session->media.text_last_activity = session->media.text_ts;
+		uint32_t timestamp = (now - session->media.text_ts)/1000;
+		uint32_t diff = (now - session->media.text_last_activity)/1000;
+		rtp->timestamp = htonl(timestamp);
+		/* Marker bit should be 1 if this came after a bit of inactivity */
+		rtp->markerbit = ((now - session->media.text_last_activity) >= G_USEC_PER_SEC);
+		session->media.text_last_activity = now;
+		/* Add the payload */
+		if(!red) {
+			/* Append the T.140 block as is */
+			memcpy(buffer + RTP_HEADER_SIZE, buf, len);
+			len += RTP_HEADER_SIZE;
+		} else {
+			/* Prune the RED blocks (we'll send 3 max) */
+			while(g_list_length(session->media.text_red_blocks) > 2) {
+				GList *oldest = g_list_first(session->media.text_red_blocks);
+				janus_red_block *rb = (janus_red_block *)oldest->data;
+				janus_sip_red_block_free(rb);
+				session->media.text_red_blocks = g_list_delete_link(session->media.text_red_blocks, oldest);
+			}
+			/* Update timestamp offsets */
+			GList *block = session->media.text_red_blocks;
+			while(block) {
+				janus_red_block *rb = (janus_red_block *)block->data;
+				rb->ts_offset += diff;
+				block = block->next;
+			}
+			/* Append the T.140 block as the last RED block */
+			janus_red_block *rb = g_malloc(sizeof(janus_red_block));
+			rb->pt = session->media.text_pt;
+			rb->ts_offset = 0;
+			rb->data = g_malloc(len);
+			memcpy(rb->data, buf, len);
+			rb->length = len;
+			session->media.text_red_blocks = g_list_append(session->media.text_red_blocks, rb);
+			/* Prepare the red packet */
+			len = janus_red_pack_blocks(buffer + RTP_HEADER_SIZE, 1500 - RTP_HEADER_SIZE, session->media.text_red_blocks);
+			if(len == 1) {
+				JANUS_LOG(LOG_ERR, "[SIP-%s] Error packing RED blocks...\n", session->account.username);
+				return;
+			}
+			len += RTP_HEADER_SIZE;
+		}
+		/* Is SRTP involved? */
+		if(session->media.has_srtp_local_text) {
+			int protected = len;
+			int res = srtp_protect_rtcp(session->media.text_srtp_out, &buffer, &protected);
+			if(res != srtp_err_status_ok) {
+				JANUS_LOG(LOG_ERR, "[SIP-%s] Text SRTCP protect error... %s (len=%d-->%d)...\n",
+					session->account.username, janus_srtp_error_str(res), len, protected);
+			} else {
+				/* Forward the message to the peer */
+				if(send(session->media.text_rtp_fd, buffer, protected, 0) < 0) {
+					JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTP text packet... %s (len=%d)...\n",
+						session->account.username, strerror(errno), protected);
+				}
+			}
 		} else {
 			/* Forward the message to the peer */
-			if(send(session->media.text_rtp_fd, buffer, protected, 0) < 0) {
-				JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTP text packet... %s (len=%d)...\n",
-					session->account.username, strerror(errno), protected);
+			if(send(session->media.text_rtp_fd, buffer, len, 0) < 0) {
+				JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTP text packet... %s (len=%d)...\n",
+					session->account.username, strerror(errno), len);
 			}
 		}
 	} else {
-		/* Forward the message to the peer */
-		if(send(session->media.text_rtp_fd, buffer, len, 0) < 0) {
-			JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTP text packet... %s (len=%d)...\n",
-				session->account.username, strerror(errno), len);
+		/* MSRP */
+		if(session->media.msrp_peer_fd == -1)
+			return;
+		if(label == NULL || strcmp(label, "MSRP")) {
+			JANUS_LOG(LOG_WARN, "Unknown data channel with label '%s', ignoring...\n", label);
+			return;
+		}
+		if(protocol == NULL || strcmp(protocol, "msrp")) {
+			JANUS_LOG(LOG_WARN, "Unsupported datachannel subprotocol '%s', ignoring...\n", protocol);
+			return;
+		}
+		/* TODO Send the message via MSRP */
+		ssize_t sent = send(session->media.msrp_peer_fd, buf, len, 0);
+		if(sent < len) {
+			JANUS_LOG(LOG_WARN, "Sent %ld out of %"SCNu16" bytes...\n", sent, len);
 		}
 	}
 }
@@ -3857,7 +3912,7 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Media encryption unsupported by this plugin");
 				goto error;
 			}
-			if(!allow_t140 && strstr(msg_sdp, "m=application")) {
+			if(!allow_t140 && !allow_msrp && strstr(msg_sdp, "m=application")) {
 				JANUS_LOG(LOG_ERR, "The SIP plugin does not support DataChannels\n");
 				error_code = JANUS_SIP_ERROR_MISSING_SDP;
 				g_snprintf(error_cause, 512, "The SIP plugin does not support DataChannels");
@@ -3897,6 +3952,7 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
+			/* TODO We should discriminate usage of datachannels for T.140 and MSRP */
 			if(allow_t140 && strstr(msg_sdp, "m=application") && !strstr(msg_sdp, "m=application 0")) {
 				/* Replace m=application with m=text and negotiate t140 */
 				JANUS_LOG(LOG_VERB, "Going to negotiate real-time text...\n");
@@ -4220,6 +4276,7 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
+			/* TODO We should discriminate usage of datachannels for T.140 and MSRP */
 			if(allow_t140 && strstr(msg_sdp, "m=application") && !strstr(msg_sdp, "m=application 0")) {
 				/* Replace m=application with m=text and negotiate t140 */
 				JANUS_LOG(LOG_VERB, "Going to negotiate real-time text...\n");
@@ -5589,14 +5646,16 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(sdp) {
 				janus_sip_sdp_process(session, sdp, FALSE, reinvite, &changed);
 				/* Check if offer has neither audio nor video, fail with 488 */
-				if(!session->media.has_audio && !session->media.has_video && !session->media.has_text) {
+				if(!session->media.has_audio && !session->media.has_video &&
+						!session->media.has_text && !session->media.has_msrp) {
 					g_atomic_int_set(&session->establishing, 0);
 					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
 					janus_sdp_destroy(sdp);
 					break;
 				}
 				/* Also fail with 488 if there's no remote IP addresses that can be used for RTP */
-				if(!session->media.remote_audio_ip && !session->media.remote_video_ip && !session->media.remote_text_ip) {
+				if(!session->media.remote_audio_ip && !session->media.remote_video_ip &&
+						!session->media.remote_text_ip && !session->media.remote_msrp_ip) {
 					g_atomic_int_set(&session->establishing, 0);
 					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
 					janus_sdp_destroy(sdp);
@@ -5631,13 +5690,16 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			/* Notify the application about the new incoming call or re-INVITE */
 			json_t *jsep = NULL;
 			if(sdp) {
-				/* Replace m=text with m=application if real-time text is negotiated */
-				janus_sdp_mline *m = allow_t140 ? janus_sdp_mline_find(sdp, JANUS_SDP_TEXT) : NULL;
-				if(m == NULL) {
+				/* Replace m=text/message with m=application if real-time text or MSRP are negotiated */
+				janus_sdp_mline *m_text = allow_t140 ? janus_sdp_mline_find(sdp, JANUS_SDP_TEXT) : NULL;
+				janus_sdp_mline *m_msg = allow_msrp ? janus_sdp_mline_find(sdp, JANUS_SDP_MESSAGE) : NULL;
+				if(m_text == NULL && m_msg == NULL) {
 					jsep = json_pack("{ssss}", "type", "offer", "sdp", sip->sip_payload->pl_data);
 				} else {
-					/* Replace the m-line */
-					janus_sip_sdp_text2application(session, m);
+					/* FIXME Replace the m-line (we can only do one at
+					 * a time at the moment, this will break if both
+					 * are negotiated as part of the same session) */
+					janus_sip_sdp_text2application(session, m_text ? m_text : m_msg);
 					/* Generate the updated SDP */
 					char *updated_offer = janus_sdp_write(sdp);
 					jsep = json_pack("{ssss}", "type", "offer", "sdp", updated_offer);
@@ -6234,7 +6296,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				janus_mutex_unlock(&session->mutex);
 				break;
 			}
-			if(!session->media.remote_audio_ip && !session->media.remote_video_ip && !session->media.remote_text_ip) {
+			if(!session->media.remote_audio_ip && !session->media.remote_video_ip &&
+					!session->media.remote_text_ip && !session->media.remote_msrp_ip) {
 				/* No remote address parsed? Give up */
 				JANUS_LOG(LOG_ERR, "\tNo remote IP address found for RTP, something's wrong with the SDP!\n");
 				janus_sdp_destroy(sdp);
@@ -6303,13 +6366,16 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			/* Send event back to the application */
 			json_t *jsep = NULL;
 			if(!session->media.earlymedia) {
-				/* Replace m=text with m=application if real-time text is negotiated */
-				janus_sdp_mline *m = allow_t140 ? janus_sdp_mline_find(sdp, JANUS_SDP_TEXT) : NULL;
-				if(m == NULL) {
+				/* Replace m=text/message with m=application if real-time text or MSRP are negotiated */
+				janus_sdp_mline *m_text = allow_t140 ? janus_sdp_mline_find(sdp, JANUS_SDP_TEXT) : NULL;
+				janus_sdp_mline *m_msg = allow_msrp ? janus_sdp_mline_find(sdp, JANUS_SDP_MESSAGE) : NULL;
+				if(m_text == NULL && m_msg == NULL) {
 					jsep = json_pack("{ssss}", "type", "answer", "sdp", fixed_sdp);
 				} else {
-					/* Replace the m-line */
-					janus_sip_sdp_text2application(session, m);
+					/* FIXME Replace the m-line (we can only do one at
+					 * a time at the moment, this will break if both
+					 * are negotiated as part of the same session) */
+					janus_sip_sdp_text2application(session, m_text ? m_text : m_msg);
 					/* Generate the updated SDP */
 					char *updated_offer = janus_sdp_write(sdp);
 					jsep = json_pack("{ssss}", "type", "answer", "sdp", updated_offer);
@@ -6754,9 +6820,19 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 			} else {
 				session->media.text_send = FALSE;
 			}
+		} else if(m->type == JANUS_SDP_MESSAGE) {
+			if(m->port) {
+				if(m->port != session->media.remote_msrp_port) {
+					/* This is an update and an address changed */
+					if(changed)
+						*changed = TRUE;
+				}
+				session->media.has_msrp = TRUE;
+				session->media.remote_msrp_port = m->port;
+			}
 		} else {
-			JANUS_LOG(LOG_WARN, "Unsupported media line (not audio/video%s)\n",
-				(allow_t140 ? "/text" : ""));
+			JANUS_LOG(LOG_WARN, "Unsupported media line (not audio/video%s%s)\n",
+				(allow_t140 ? "/text" : ""), (allow_msrp ? "/message" : ""));
 			temp = temp->next;
 			continue;
 		}
@@ -6784,6 +6860,14 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 			}
 			g_free(session->media.remote_text_ip);
 			session->media.remote_text_ip = g_strdup(m->c_addr);
+		} else if(m->c_addr && m->type == JANUS_SDP_MESSAGE) {
+			if(update && (!session->media.remote_msrp_ip || strcmp(m->c_addr, session->media.remote_msrp_ip))) {
+				/* This is an update and an address changed */
+				if(changed)
+					*changed = TRUE;
+			}
+			g_free(session->media.remote_msrp_ip);
+			session->media.remote_msrp_ip = g_strdup(m->c_addr);
 		}
 
 		GList *tempA = m->attributes;
@@ -6934,51 +7018,72 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 					session->media.video_srtp_tag, session->media.video_srtp_local_profile, session->media.video_srtp_local_crypto);
 				m->attributes = g_list_append(m->attributes, a);
 			}
-		} else if(allow_t140 && (m->type == JANUS_SDP_TEXT || m->type == JANUS_SDP_APPLICATION)) {
-			/* If it's m=application, turn in m=text */
-			m->type = JANUS_SDP_TEXT;
+		} else if((allow_t140 || allow_msrp) && (m->type == JANUS_SDP_TEXT || m->type == JANUS_SDP_MESSAGE || m->type == JANUS_SDP_APPLICATION)) {
+			/* FIXME If it's m=application, turn in m=text or m=message */
+			m->type = (session->media.has_text ? JANUS_SDP_TEXT : JANUS_SDP_MESSAGE);
 			g_free(m->type_str);
-			m->type_str = g_strdup("text");
-			m->port = session->media.local_text_rtp_port;
+			m->type_str = g_strdup(session->media.has_text ? "text" : "message");
+			m->port = (session->media.has_text ? session->media.local_text_rtp_port : session->media.local_msrp_port);
 			g_free(m->b_name);
 			m->b_name = NULL;
 			m->b_value = 0;
-			/* Get rid of payload types, and negotiate real-time text instead */
+			if(session->media.has_msrp) {
+				/* FIXME */
+				g_free(m->proto);
+				m->proto = g_strdup("TCP/MSRP");
+			}
+			/* Get rid of payload types, and if this is T.140 negotiate real-time text instead */
 			g_list_free_full(m->fmts, (GDestroyNotify)g_free);
 			m->fmts = NULL;
 			g_list_free(m->ptypes);
 			m->ptypes = NULL;
-			if(session->media.text_red_pt != -1)
-				m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(session->media.text_red_pt));
-			m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(session->media.text_pt));
+			if(session->media.has_text) {
+				if(session->media.text_red_pt != -1)
+					m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(session->media.text_red_pt));
+				m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(session->media.text_pt));
+			} else if(session->media.has_msrp) {
+				m->fmts = g_list_append(m->fmts, g_strdup("*"));
+			}
 			/* Get rid of all datachannel attributes */
 			GList *temp = m->attributes;
+			janus_sdp_attribute *a = NULL;
 			while(temp) {
-				janus_sdp_attribute *a = (janus_sdp_attribute *)temp->data;
+				a = (janus_sdp_attribute *)temp->data;
 				janus_sdp_attribute_destroy(a);
 				temp = temp->next;
 			}
 			g_list_free(m->attributes);
 			m->attributes = NULL;
-			janus_sdp_attribute *a = NULL;
-			if(session->media.text_red_pt != -1) {
-				/* Negotiate red as well */
-				a = janus_sdp_attribute_create("rtpmap", "%d red/1000", session->media.text_red_pt);
-				m->attributes = g_list_append(m->attributes, a);
-				a = janus_sdp_attribute_create("fmtp", "%d %d/%d/%d", session->media.text_red_pt,
-					session->media.text_pt, session->media.text_pt, session->media.text_pt);
-				m->attributes = g_list_append(m->attributes, a);
-			}
-			a = janus_sdp_attribute_create("rtpmap", "%d t140/1000", session->media.text_pt);
-			m->attributes = g_list_append(m->attributes, a);
-			if(session->media.has_srtp_local_text) {
-				if(!session->media.text_srtp_local_profile || !session->media.text_srtp_local_crypto) {
-					janus_sip_srtp_set_local(session, m->type, &session->media.text_srtp_local_profile, &session->media.text_srtp_local_crypto);
+			if(session->media.has_text) {
+				if(session->media.text_red_pt != -1) {
+					/* Negotiate red as well */
+					a = janus_sdp_attribute_create("rtpmap", "%d red/1000", session->media.text_red_pt);
+					m->attributes = g_list_append(m->attributes, a);
+					a = janus_sdp_attribute_create("fmtp", "%d %d/%d/%d", session->media.text_red_pt,
+						session->media.text_pt, session->media.text_pt, session->media.text_pt);
+					m->attributes = g_list_append(m->attributes, a);
 				}
-				if(session->media.text_srtp_tag == 0)
-					session->media.text_srtp_tag = 1;
-				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "%"SCNi32" %s inline:%s",
-					session->media.text_srtp_tag, session->media.text_srtp_local_profile, session->media.text_srtp_local_crypto);
+				a = janus_sdp_attribute_create("rtpmap", "%d t140/1000", session->media.text_pt);
+				m->attributes = g_list_append(m->attributes, a);
+				if(session->media.has_srtp_local_text) {
+					if(!session->media.text_srtp_local_profile || !session->media.text_srtp_local_crypto) {
+						janus_sip_srtp_set_local(session, m->type, &session->media.text_srtp_local_profile, &session->media.text_srtp_local_crypto);
+					}
+					if(session->media.text_srtp_tag == 0)
+						session->media.text_srtp_tag = 1;
+					a = janus_sdp_attribute_create("crypto", "%"SCNi32" %s inline:%s",
+						session->media.text_srtp_tag, session->media.text_srtp_local_profile, session->media.text_srtp_local_crypto);
+					m->attributes = g_list_append(m->attributes, a);
+				}
+			} else if(session->media.has_msrp) {
+				/* FIXME We should use what the client wants to use, here */
+				const char *msrp_id = "janusmsrp";
+				a = janus_sdp_attribute_create("path", "msrp://%s:%"SCNu16"/%s;tcp",
+					sdp_ip, session->media.local_msrp_port, msrp_id);
+				m->attributes = g_list_append(m->attributes, a);
+				a = janus_sdp_attribute_create("accept-types", "text/plain");
+				m->attributes = g_list_append(m->attributes, a);
+				a = janus_sdp_attribute_create("setup", "passive");
 				m->attributes = g_list_append(m->attributes, a);
 			}
 		}
@@ -7105,6 +7210,11 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 		}
 		session->media.local_text_rtp_port = 0;
 		session->media.text_ssrc = 0;
+		if(session->media.msrp_fd != -1) {
+			close(session->media.msrp_fd);
+			session->media.msrp_fd = -1;
+		}
+		session->media.local_msrp_port = 0;
 		if(session->media.pipefd[0] > 0) {
 			close(session->media.pipefd[0]);
 			session->media.pipefd[0] = -1;
@@ -7348,6 +7458,59 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			session->media.local_text_rtp_port = rtp_port;
 		}
 	}
+	if(session->media.has_msrp) {
+		JANUS_LOG(LOG_VERB, "Allocating MSRP port using address [%s]\n",
+			janus_network_address_is_null(&janus_network_local_media_ip  ) ?"any" : local_media_ip);
+		struct sockaddr_storage msrp_address;
+		while(session->media.local_msrp_port == 0) {
+			if(attempts == 0)	/* Too many failures */
+				return -1;
+			memset(&msrp_address, 0, sizeof(msrp_address));
+			if(session->media.msrp_fd == -1) {
+				session->media.msrp_fd = socket(use_ipv6_address_family ? AF_INET6 : AF_INET, SOCK_STREAM, 0);
+				int v6only = 0;
+				if(use_ipv6_address_family && session->media.msrp_fd != -1 &&
+						setsockopt(session->media.msrp_fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+					JANUS_LOG(LOG_WARN, "Error setting v6only to false on MSRP socket (error=%s)\n",
+						g_strerror(errno));
+				}
+			}
+			if(session->media.msrp_fd == -1) {
+				JANUS_LOG(LOG_ERR, "Error creating MSRP socket...\n");
+				return -1;
+			}
+			int port = g_random_int_range(rtp_range_min, rtp_range_max);
+			if(use_ipv6_address_family) {
+				struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&msrp_address;
+				addr->sin6_family = AF_INET6;
+				addr->sin6_port = htons(port);
+				addr->sin6_addr = janus_network_address_is_null(&janus_network_local_media_ip) ? in6addr_any : janus_network_local_media_ip.ipv6;
+			} else {
+				struct sockaddr_in *addr = (struct sockaddr_in *)&msrp_address;
+				addr->sin_family = AF_INET;
+				addr->sin_port = htons(port);
+				addr->sin_addr.s_addr = janus_network_address_is_null(&janus_network_local_media_ip) ? INADDR_ANY : janus_network_local_media_ip.ipv4.s_addr;
+			}
+			if(bind(session->media.msrp_fd, (struct sockaddr *)(&msrp_address), addrlen) < 0) {
+				JANUS_LOG(LOG_ERR, "Bind failed for MSRP (port %d), error (%s), trying a different one...\n", port, g_strerror(errno));
+				close(session->media.msrp_fd);
+				session->media.msrp_fd = -1;
+				attempts--;
+				continue;
+			}
+			JANUS_LOG(LOG_VERB, "Text RTP listener bound to [%s]:%d(%d)\n",
+				janus_network_address_is_null(&janus_network_local_media_ip) ? "any" : local_media_ip, port, session->media.msrp_fd);
+			/* TODO This experimental version only supports receiving connections (passive) */
+			if(listen(session->media.msrp_fd, 1) < 0) {
+				JANUS_LOG(LOG_ERR, "Listen failed for MSRP (port %d), error (%s), trying a different one...\n", port, g_strerror(errno));
+				close(session->media.msrp_fd);
+				session->media.msrp_fd = -1;
+				attempts--;
+				continue;
+			}
+			session->media.local_msrp_port = port;
+		}
+	}
 	if(!update) {
 		/* We need this to quickly interrupt the poll when it's time to update a session or wrap up */
 		pipe(session->media.pipefd);
@@ -7432,6 +7595,7 @@ static void janus_sip_connect_sockets(janus_sip_session *session,
 			JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, g_strerror(errno));
 		}
 	}
+	/* TODO For MSRP, in case we're active this is probably where we should try to connect */
 }
 
 static void janus_sip_media_cleanup(janus_sip_session *session) {
@@ -7472,6 +7636,16 @@ static void janus_sip_media_cleanup(janus_sip_session *session) {
 	session->media.remote_text_rtp_port = 0;
 	session->media.text_ssrc = 0;
 	session->media.text_ssrc_peer = 0;
+	if(session->media.msrp_fd != -1) {
+		close(session->media.msrp_fd);
+		session->media.msrp_fd = -1;
+	}
+	if(session->media.msrp_peer_fd != -1) {
+		close(session->media.msrp_peer_fd);
+		session->media.msrp_peer_fd = -1;
+	}
+	session->media.local_msrp_port = 0;
+	session->media.remote_msrp_port = 0;
 	if(session->media.pipefd[0] > 0) {
 		close(session->media.pipefd[0]);
 		session->media.pipefd[0] = -1;
@@ -7511,7 +7685,7 @@ static void *janus_sip_relay_thread(void *data) {
 	socklen_t addrlen;
 	struct sockaddr_in remote;
 	int resfd = 0, bytes = 0, pollerrs = 0;
-	struct pollfd fds[6];
+	struct pollfd fds[8];
 	int pipe_fd = session->media.pipefd[0];
 	char buffer[1500];
 	memset(buffer, 0, 1500);
@@ -7576,7 +7750,8 @@ static void *janus_sip_relay_thread(void *data) {
 			if(have_audio_server_ip || have_video_server_ip || have_text_server_ip) {
 				janus_sip_connect_sockets(session, have_audio_server_ip ? &audio_server_addr : NULL,
 					have_video_server_ip ? &video_server_addr : NULL, have_text_server_ip ? &text_server_addr : NULL);
-			} else if(session->media.remote_audio_ip == NULL && session->media.remote_video_ip == NULL) {
+			} else if(session->media.remote_audio_ip == NULL && session->media.remote_video_ip == NULL &&
+					session->media.remote_text_ip == NULL && session->media.remote_msrp_ip == NULL) {
 				JANUS_LOG(LOG_ERR, "[SIP-%p] Couldn't update session details: all remote IP addresses are NULL\n",
 					session->account.username);
 			} else {
@@ -7634,6 +7809,19 @@ static void *janus_sip_relay_thread(void *data) {
 		}
 		if(session->media.text_rtp_fd != -1) {
 			fds[num].fd = session->media.text_rtp_fd;
+			fds[num].events = POLLIN;
+			fds[num].revents = 0;
+			num++;
+		}
+		if(session->media.msrp_fd != -1 && session->media.msrp_peer_fd == -1 &&
+				g_atomic_int_get(&session->established)) {
+			fds[num].fd = session->media.msrp_fd;
+			fds[num].events = POLLIN;
+			fds[num].revents = 0;
+			num++;
+		}
+		if(session->media.msrp_peer_fd != -1) {
+			fds[num].fd = session->media.msrp_peer_fd;
 			fds[num].events = POLLIN;
 			fds[num].revents = 0;
 			num++;
@@ -7956,6 +8144,48 @@ static void *janus_sip_relay_thread(void *data) {
 						}
 					}
 					continue;
+				} else if(session->media.msrp_fd != -1 && fds[i].fd == session->media.msrp_fd) {
+					/* We have an incoming connection */
+					if(session->media.msrp_peer_fd != -1) {
+						/* FIXME We already have a socket with the peer */
+						continue;
+					}
+					JANUS_LOG(LOG_WARN, "[SIP-%s] Accepting incoming MSRP connection\n", session->account.username);
+					addrlen = sizeof(remote);
+					session->media.msrp_peer_fd = accept(session->media.msrp_fd, (struct sockaddr *)&remote, &addrlen);
+					if(session->media.msrp_peer_fd == -1) {
+						JANUS_LOG(LOG_ERR, "[SIP-%s] Error accepting MSRP connection... %d (%s)\n",
+							session->account.username, errno, g_strerror(errno));
+						continue;
+					}
+					close(session->media.msrp_fd);
+					session->media.msrp_fd = -1;
+					pollerrs = 0;
+				} else if(session->media.msrp_peer_fd != -1 && fds[i].fd == session->media.msrp_peer_fd) {
+					/* We have an incoming MSRP message */
+					bytes = recv(session->media.msrp_peer_fd, buffer, 1500, 0);
+					if(bytes < 0) {
+						/* Failed to read */
+						continue;
+					} else if(bytes == 0) {
+						/* Connection closed */
+						JANUS_LOG(LOG_WARN, "[SIP-%s] MSRP connection closed\n", session->account.username);
+						shutdown(session->media.msrp_peer_fd, SHUT_RDWR);
+						close(session->media.msrp_peer_fd);
+						session->media.msrp_peer_fd = -1;
+						continue;
+					}
+					JANUS_LOG(LOG_WARN, "[SIP-%s] Read %d bytes via MSRP\n", session->account.username, bytes);
+					pollerrs = 0;
+					/* FIXME Relay via data channels */
+					janus_plugin_data msrp = {
+						.label = (char *)"MSRP",
+						.protocol = (char *)"msrp",
+						.binary = FALSE,
+						.buffer = (char *)buffer,
+						.length = bytes
+					};
+					gateway->relay_data(session->handle, &msrp);
 				}
 			}
 		}
