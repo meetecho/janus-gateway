@@ -338,6 +338,14 @@ Janus.trackConstraints = function(track) {
 
 Janus.noop = function() {};
 
+// Console logging (all debugging disabled by default)
+Janus.trace = Janus.noop;
+Janus.debug = Janus.noop;
+Janus.vdebug = Janus.noop;
+Janus.log = Janus.noop;
+Janus.warn = Janus.noop;
+Janus.error = Janus.noop;
+
 Janus.dataChanDefaultLabel = "JanusDataChannel";
 
 // Note: in the future we may want to change this, e.g., as was
@@ -357,8 +365,60 @@ Janus.stopAllTracks = function(stream) {
 		}
 	} catch(e) {
 		// Do nothing if this fails
+		return e;
 	}
-}
+};
+
+// Helper methods to attach/reattach a stream to a video element (previously part of adapter.js)
+Janus.attachMediaStream = function(element, stream) {
+	try {
+		element.srcObject = stream;
+	} catch (e) {
+		try {
+			element.src = URL.createObjectURL(stream);
+		} catch (e) {
+			Janus.error("Error attaching stream to element", e);
+			return e;
+		}
+	}
+};
+Janus.reattachMediaStream = function(to, from) {
+	try {
+		to.srcObject = from.srcObject;
+	} catch (e) {
+		try {
+			to.src = from.src;
+		} catch (e) {
+			Janus.error("Error reattaching stream to element", e);
+			return e;
+		}
+	}
+};
+
+// Helper method to enumerate devices
+Janus.listDevices = function(callback, config) {
+	callback = (typeof callback == "function") ? callback : Janus.noop;
+	if(!config)
+		config = { audio: true, video: true };
+	if(Janus.isGetUserMediaAvailable()) {
+		navigator.mediaDevices.getUserMedia(config)
+			.then(function(stream) {
+				navigator.mediaDevices.enumerateDevices().then(function(devices) {
+					Janus.debug(devices);
+					callback(devices);
+					// Get rid of the now useless stream
+					Janus.stopAllTracks(stream);
+				});
+			})
+			.catch(function(err) {
+				Janus.error(err);
+				callback([]);
+			});
+	} else {
+		Janus.warn("navigator.mediaDevices unavailable");
+		callback([]);
+	}
+};
 
 // Initialization
 Janus.init = function(options) {
@@ -371,13 +431,7 @@ Janus.init = function(options) {
 		if(typeof console.log == "undefined") {
 			console.log = function() {};
 		}
-		// Console logging (all debugging disabled by default)
-		Janus.trace = Janus.noop;
-		Janus.debug = Janus.noop;
-		Janus.vdebug = Janus.noop;
-		Janus.log = Janus.noop;
-		Janus.warn = Janus.noop;
-		Janus.error = Janus.noop;
+		
 		if(options.debug === true || options.debug === "all") {
 			// Enable all debugging levels
 			Janus.trace = console.trace.bind(console);
@@ -422,54 +476,7 @@ Janus.init = function(options) {
 		Janus.newWebSocket = usedDependencies.newWebSocket;
 		Janus.extension = usedDependencies.extension;
 		Janus.extension.init();
-
-		// Helper method to enumerate devices
-		Janus.listDevices = function(callback, config) {
-			callback = (typeof callback == "function") ? callback : Janus.noop;
-			if(!config)
-				config = { audio: true, video: true };
-			if(Janus.isGetUserMediaAvailable()) {
-				navigator.mediaDevices.getUserMedia(config)
-					.then(function(stream) {
-						navigator.mediaDevices.enumerateDevices().then(function(devices) {
-							Janus.debug(devices);
-							callback(devices);
-							// Get rid of the now useless stream
-							Janus.stopAllTracks(stream)
-						});
-					})
-					.catch(function(err) {
-						Janus.error(err);
-						callback([]);
-					});
-			} else {
-				Janus.warn("navigator.mediaDevices unavailable");
-				callback([]);
-			}
-		};
-		// Helper methods to attach/reattach a stream to a video element (previously part of adapter.js)
-		Janus.attachMediaStream = function(element, stream) {
-			try {
-				element.srcObject = stream;
-			} catch (e) {
-				try {
-					element.src = URL.createObjectURL(stream);
-				} catch (e) {
-					Janus.error("Error attaching stream to element", e);
-				}
-			}
-		};
-		Janus.reattachMediaStream = function(to, from) {
-			try {
-				to.srcObject = from.srcObject;
-			} catch (e) {
-				try {
-					to.src = from.src;
-				} catch (e) {
-					Janus.error("Error reattaching stream to element", e);
-				}
-			}
-		};
+		
 		// Detect tab close: make sure we don't loose existing onbeforeunload handlers
 		// (note: for iOS we need to subscribe to a different event, 'pagehide', see
 		// https://gist.github.com/thehunmonkgroup/6bee8941a49b86be31a787fe8f4b8cfe)
