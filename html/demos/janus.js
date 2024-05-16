@@ -24,6 +24,16 @@
 	OTHER DEALINGS IN THE SOFTWARE.
  */
 
+(function (root, factory) {
+	if (typeof define === 'function' && define.amd) {
+		define(factory);
+	} else if (typeof module === 'object' && module.exports) {
+		module.exports = factory();
+	} else {
+		root.Janus = factory();
+	}
+}(this, function () {
+
 // List of sessions
 Janus.sessions = new Map();
 
@@ -3204,3 +3214,7 @@ function Janus(gatewayCallbacks) {
 		return (trickle === false) ? false : true;
 	}
 }
+
+return Janus;
+
+}));
