@@ -21,7 +21,6 @@ CFLAGS="$CFLAGS \
 	-fPIC \
 	-fstack-protector-all \
 	-fstrict-aliasing \
-	-ggdb3 \
 	-pthread \
 	-Wall \
 	-Warray-bounds \
@@ -30,7 +29,7 @@ CFLAGS="$CFLAGS \
 	-Wformat-security \
 	-Wformat=2 \
 	-Winit-self \
-	-Wlarger-than=65537 \
+	-Wlarger-than=2097152 \
 	-Wmissing-declarations \
 	-Wmissing-format-attribute \
 	-Wmissing-include-dirs \
@@ -53,7 +52,6 @@ case "$CC" in
 *clang*)
 	# Specific clang flags
 	CFLAGS="$CFLAGS \
-		-Wno-cast-align \
 		-Wno-initializer-overrides \
 		-Wno-missing-noreturn"
 ;;
@@ -65,7 +63,6 @@ cc*)
 *)
 	# Specific gcc flags
 	CFLAGS="$CFLAGS \
-		-Wcast-align \
 		-Wno-override-init \
 		-Wunsafe-loop-optimizations \
 		-Wunused-but-set-variable"

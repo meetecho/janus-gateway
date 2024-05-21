@@ -3111,6 +3111,15 @@ sudo supervisorctl update
  * bugs and the like, as it can provide information about the values of
  * variables when they were used and the application crashed.
  *
+ * First of all make sure that debugging symbols are enabled by reconfiguring Janus like this:
+ *
+ \verbatim
+CFLAGS="-Og -g3 -ggdb3 -fno-omit-frame-pointer" ./configure --prefix=/opt/janus
+ \endverbatim
+ *
+ * Once done configuring, do a \c make \c clean (to make sure
+ * everything is recompiled from scratch) and then a \c make and \c make \c install.
+ *
  * When Janus crashes, you should get a core dump file somewhere. This is
  * a recorded state of the application memory at the time of crashing, and
  * so a backtrace of what lead to an issue can help. You can open such
@@ -3145,7 +3154,7 @@ gdb bt
  * Once you've installed libasan, reconfigure Janus like this:
  *
  \verbatim
-CFLAGS="-O1 -g3 -ggdb3 -fno-omit-frame-pointer -fsanitize=address -fno-sanitize-recover=all -fsanitize-address-use-after-scope" LDFLAGS="-fsanitize=address" ./configure --prefix=/opt/janus
+CFLAGS="-O0 -g3 -ggdb3 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize=address -fsanitize-address-use-after-scope -fno-sanitize-recover=all" LDFLAGS="-fsanitize=address" ./configure --prefix=/opt/janus
  \endverbatim
  *
  * Of course you're free to add whatever additional configuration parameter
