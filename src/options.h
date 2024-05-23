@@ -56,6 +56,7 @@ typedef struct janus_options {
 	const char *token_auth_secret;
 	gboolean event_handlers;
 	gboolean no_webrtc_encryption;
+	gboolean print_version;
 } janus_options;
 
 /*! \brief Helper method to parse the command line options

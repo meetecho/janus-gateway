@@ -4421,6 +4421,11 @@ gint main(int argc, char *argv[]) {
 	if(!janus_options_parse(&options, argc, argv))
 		exit(1);
 
+	if(options.print_version) {
+		janus_options_destroy();
+		exit(0);
+	}
+
 	/* Any configuration to open? */
 	if(options.config_file) {
 		config_file = g_strdup(options.config_file);

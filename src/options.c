@@ -56,6 +56,7 @@ gboolean janus_options_parse(janus_options *options, int argc, char *argv[]) {
 		{ "token-auth-secret", 0, 0, G_OPTION_ARG_STRING, &options->token_auth_secret, "Secret to verify HMAC-signed tokens with, to be used with -A", "randomstring" },
 		{ "event-handlers", 'e', 0, G_OPTION_ARG_NONE, &options->event_handlers, "Enable event handlers", NULL },
 		{ "no-webrtc-encryption", 'w', 0, G_OPTION_ARG_NONE, &options->no_webrtc_encryption, "Disable WebRTC encryption, so no DTLS or SRTP (only for debugging!)", NULL },
+		{ "version", 'V', 0, G_OPTION_ARG_NONE, &options->print_version, "Print version and exit", NULL },
 		{ NULL, 0, 0, 0, NULL, NULL, NULL },
 	};
 
