@@ -365,7 +365,6 @@ Janus.stopAllTracks = function(stream) {
 		}
 	} catch(e) {
 		// Do nothing if this fails
-		return e;
 	}
 };
 
@@ -378,7 +377,6 @@ Janus.attachMediaStream = function(element, stream) {
 			element.src = URL.createObjectURL(stream);
 		} catch (e) {
 			Janus.error("Error attaching stream to element", e);
-			return e;
 		}
 	}
 };
@@ -390,7 +388,6 @@ Janus.reattachMediaStream = function(to, from) {
 			to.src = from.src;
 		} catch (e) {
 			Janus.error("Error reattaching stream to element", e);
-			return e;
 		}
 	}
 };
