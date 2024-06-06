@@ -5169,13 +5169,15 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(sip && sip->sip_to && is_peer) {
 				/* FIXME What should be here? Just the username? The whole address? */
 				const char *to = sip->sip_to->a_url[0].url_user;
-				JANUS_LOG(LOG_HUGE, "[%s]: Looking up trunk user '%s'\n", username, to);
-				s = g_hash_table_lookup(sip_trunk->sessions, to);
-				if(s) {
-					/* Create the mapping between this session and the NUA handle */
-					JANUS_LOG(LOG_HUGE, "[%s]: Trunk user '%s' found! %p\n", username, to, s);
-					janus_refcount_increase(&s->ref);
-					g_hash_table_insert(sip_trunk->sessions_bynh, nh, s);
+				if(to && strlen(to) > 0) {
+					JANUS_LOG(LOG_HUGE, "[%s]: Looking up trunk user '%s'\n", username, to);
+					s = g_hash_table_lookup(sip_trunk->sessions, to);
+					if(s) {
+						/* Create the mapping between this session and the NUA handle */
+						JANUS_LOG(LOG_HUGE, "[%s]: Trunk user '%s' found! %p\n", username, to, s);
+						janus_refcount_increase(&s->ref);
+						g_hash_table_insert(sip_trunk->sessions_bynh, nh, s);
+					}
 				}
 			}
 		}
