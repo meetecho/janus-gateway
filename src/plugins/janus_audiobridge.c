@@ -884,7 +884,7 @@ room-<unique room ID>: {
 	"request" : "join",
 	[..]
 	"rtp" : {
-		"generate_offer" : "true|false, if true other rtp parameters below are ignored. ",
+        "generate_offer: <true|false (default false), whether audioroom reserve a local port to receive plain RTP. \c configure request with \c rtp should be later send to setup the PeerConnection. If true all other rtp properties are discarded.\>,
 		"ip" : "<IP address you want media to be sent to>",
 		"port" : <port you want media to be sent to>,
 		"payload_type" : <payload type to use for RTP packets (optional; only needed in case Opus is used, automatic for G.711)>,
