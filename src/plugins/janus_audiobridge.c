@@ -884,6 +884,7 @@ room-<unique room ID>: {
 	"request" : "join",
 	[..]
 	"rtp" : {
+		"generate_offer" : "true|false, if true other rtp parameters below are ignored. ",
 		"ip" : "<IP address you want media to be sent to>",
 		"port" : <port you want media to be sent to>,
 		"payload_type" : <payload type to use for RTP packets (optional; only needed in case Opus is used, automatic for G.711)>,
@@ -6742,61 +6743,74 @@ static void *janus_audiobridge_handler(void *data) {
 			/* If this is a plain RTP participant, create the socket */
 			if(rtp != NULL) {
 				gen_offer = NULL;
-				const char *ip = json_string_value(json_object_get(rtp, "ip"));
-				uint16_t port = json_integer_value(json_object_get(rtp, "port"));
-				if(participant->codec == JANUS_AUDIOCODEC_OPUS) {
-					int pt = json_integer_value(json_object_get(rtp, "payload_type"));
-					if(pt == 0)
-						pt = 100;
-					participant->opus_pt = pt;
-				}
-				int audiolevel_ext_id = json_integer_value(json_object_get(rtp, "audiolevel_ext"));
-				if(audiolevel_ext_id > 0)
-					participant->extmap_id = audiolevel_ext_id;
-				gboolean fec = json_is_true(json_object_get(rtp, "fec"));
-				if(participant->codec == JANUS_AUDIOCODEC_OPUS && fec) {
-					participant->fec = TRUE;
-					opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
-					opus_encoder_ctl(participant->encoder, OPUS_SET_PACKET_LOSS_PERC(participant->expected_loss));
-				}
-				/* Create the socket */
-				janus_mutex_lock(&participant->pmutex);
-				janus_audiobridge_plainrtp_media_cleanup(&participant->plainrtp_media);
-				if(janus_audiobridge_plainrtp_allocate_port(&participant->plainrtp_media) < 0) {
-					JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Couldn't bind to local port\n", session);
-				} else if(ip != NULL && port > 0) {
-					/* Connect the socket, if there's a remote address */
-					g_free(participant->plainrtp_media.remote_audio_ip);
-					participant->plainrtp_media.remote_audio_ip = g_strdup(ip);
-					participant->plainrtp_media.remote_audio_rtp_port = port;
-					/* Resolve the address */
-					gboolean have_audio_server_ip = FALSE;
-					struct sockaddr_storage audio_server_addr = { 0 };
-					if(janus_network_resolve_address(participant->plainrtp_media.remote_audio_ip, &audio_server_addr) < 0) {
-						JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Couldn't get host '%s'\n", session,
-							participant->plainrtp_media.remote_audio_ip);
-					} else {
-						/* Address resolved */
-						have_audio_server_ip = TRUE;
-						if(audio_server_addr.ss_family == AF_INET6) {
-							struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&audio_server_addr;
-							addr6->sin6_port = htons(port);
-						} else if(audio_server_addr.ss_family == AF_INET) {
-							struct sockaddr_in *addr = (struct sockaddr_in *)&audio_server_addr;
-							addr->sin_port = htons(port);
-						}
+				json_t *gen_rtp_offer = json_object_get(rtp, "generate_offer");
+
+				if(gen_rtp_offer != NULL && json_is_true(gen_rtp_offer))
+				{
+					janus_mutex_lock(&participant->pmutex);
+					janus_audiobridge_plainrtp_media_cleanup(&participant->plainrtp_media);
+					if(janus_audiobridge_plainrtp_allocate_port(&participant->plainrtp_media) < 0) {
+						JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Couldn't bind to local port\n", session);
 					}
-					if(have_audio_server_ip) {
-						if(connect(participant->plainrtp_media.audio_rtp_fd, (struct sockaddr *)&audio_server_addr, sizeof(audio_server_addr)) == -1) {
-							JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Couldn't connect audio RTP? (%s:%d)\n", session,
-								participant->plainrtp_media.remote_audio_ip, participant->plainrtp_media.remote_audio_rtp_port);
-							JANUS_LOG(LOG_ERR, "[AudioBridge-%p]   -- %d (%s)\n", session, errno, g_strerror(errno));
+					janus_mutex_unlock(&participant->pmutex);
+				}
+				else{
+					const char *ip = json_string_value(json_object_get(rtp, "ip"));
+					uint16_t port = json_integer_value(json_object_get(rtp, "port"));
+					if(participant->codec == JANUS_AUDIOCODEC_OPUS) {
+						int pt = json_integer_value(json_object_get(rtp, "payload_type"));
+						if(pt == 0)
+							pt = 100;
+						participant->opus_pt = pt;
+					}
+					int audiolevel_ext_id = json_integer_value(json_object_get(rtp, "audiolevel_ext"));
+					if(audiolevel_ext_id > 0)
+						participant->extmap_id = audiolevel_ext_id;
+					gboolean fec = json_is_true(json_object_get(rtp, "fec"));
+					if(participant->codec == JANUS_AUDIOCODEC_OPUS && fec) {
+						participant->fec = TRUE;
+						opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
+						opus_encoder_ctl(participant->encoder, OPUS_SET_PACKET_LOSS_PERC(participant->expected_loss));
+					}
+					/* Create the socket */
+					janus_mutex_lock(&participant->pmutex);
+					janus_audiobridge_plainrtp_media_cleanup(&participant->plainrtp_media);
+					if(janus_audiobridge_plainrtp_allocate_port(&participant->plainrtp_media) < 0) {
+						JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Couldn't bind to local port\n", session);
+					} else if(ip != NULL && port > 0) {
+						/* Connect the socket, if there's a remote address */
+						g_free(participant->plainrtp_media.remote_audio_ip);
+						participant->plainrtp_media.remote_audio_ip = g_strdup(ip);
+						participant->plainrtp_media.remote_audio_rtp_port = port;
+						/* Resolve the address */
+						gboolean have_audio_server_ip = FALSE;
+						struct sockaddr_storage audio_server_addr = { 0 };
+						if(janus_network_resolve_address(participant->plainrtp_media.remote_audio_ip, &audio_server_addr) < 0) {
+							JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Couldn't get host '%s'\n", session,
+								participant->plainrtp_media.remote_audio_ip);
 						} else {
-							participant->plainrtp_media.audio_send = TRUE;
+							/* Address resolved */
+							have_audio_server_ip = TRUE;
+							if(audio_server_addr.ss_family == AF_INET6) {
+								struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&audio_server_addr;
+								addr6->sin6_port = htons(port);
+							} else if(audio_server_addr.ss_family == AF_INET) {
+								struct sockaddr_in *addr = (struct sockaddr_in *)&audio_server_addr;
+								addr->sin_port = htons(port);
+							}
+						}
+						if(have_audio_server_ip) {
+							if(connect(participant->plainrtp_media.audio_rtp_fd, (struct sockaddr *)&audio_server_addr, sizeof(audio_server_addr)) == -1) {
+								JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Couldn't connect audio RTP? (%s:%d)\n", session,
+									participant->plainrtp_media.remote_audio_ip, participant->plainrtp_media.remote_audio_rtp_port);
+								JANUS_LOG(LOG_ERR, "[AudioBridge-%p]   -- %d (%s)\n", session, errno, g_strerror(errno));
+							} else {
+								participant->plainrtp_media.audio_send = TRUE;
+							}
 						}
 					}
+					janus_mutex_unlock(&participant->pmutex);
 				}
-				janus_mutex_unlock(&participant->pmutex);
 			}
 			/* Check if we need to record this participant right away */
 			janus_mutex_lock(&participant->rec_mutex);
