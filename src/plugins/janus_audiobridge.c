@@ -514,7 +514,7 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
- * A successful request will produce a list of participants in a
+ * A successful request will produce a list of participants and a list of announcements in a
  * \c participants response:
  *
 \verbatim
@@ -532,6 +532,15 @@ room-<unique room ID>: {
 			"spatial_position" : <in case spatial audio is used, the panning of this participant (0=left, 50=center, 100=right)>,
 		},
 		// Other participants
+	],
+	"announcements" : [		// Array of announcement objects
+		{	// Announcement #1
+			"file_id" : "<unique string ID of the announcement>",
+			"filename": "<path to the Opus file to play>",
+			"playing" : <true|false, whether or not the file is playing>,
+			"loop": <true|false, depending on whether or not the file is playing in a loop forever>
+		}
+		// Other announcements
 	]
 }
 \endverbatim
@@ -4784,12 +4793,30 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				json_object_set_new(pl, "suspended", json_true());
 			json_array_append_new(list, pl);
 		}
+
+		json_t *listAnnc = json_array();
+		GHashTableIter iterAnnc;
+		gpointer valueAnnc;
+		g_hash_table_iter_init(&iterAnnc, audiobridge->anncs);
+		while(g_hash_table_iter_next(&iterAnnc, NULL, &valueAnnc)) {
+			janus_audiobridge_participant *p = valueAnnc;
+			json_t *pl = json_object();
+			json_object_set_new(pl, "file_id", json_string(p->annc->id));
+			if(p->annc->filename)
+				json_object_set_new(pl, "filename", json_string(p->annc->filename));
+			json_object_set_new(pl, "playing", p->annc->started ? json_true() : json_false());
+			json_object_set_new(pl, "loop", p->annc->loop ? json_true() : json_false());
+			json_array_append_new(listAnnc, pl);
+		}
+
 		janus_refcount_decrease(&audiobridge->ref);
 		janus_mutex_unlock(&rooms_mutex);
 		response = json_object();
 		json_object_set_new(response, "audiobridge", json_string("participants"));
 		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 		json_object_set_new(response, "participants", list);
+		json_object_set_new(response, "announcements", listAnnc);
+
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "resetdecoder")) {
 		/* Mark the Opus decoder for the participant invalid and recreate it */
