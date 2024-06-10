@@ -884,7 +884,7 @@ room-<unique room ID>: {
 	"request" : "join",
 	[..]
 	"rtp" : {
-        "generate_offer: <true|false (default false), whether audioroom reserve a local port to receive plain RTP. \c configure request with \c rtp should be later send to setup the PeerConnection. If true all other rtp properties are discarded.\>,
+		"generate_offer: <true|false (default false), whether audioroom reserve a local port to receive plain RTP. \c configure request with \c rtp should be later send to setup the PeerConnection. If true all other rtp properties are discarded>,
 		"ip" : "<IP address you want media to be sent to>",
 		"port" : <port you want media to be sent to>,
 		"payload_type" : <payload type to use for RTP packets (optional; only needed in case Opus is used, automatic for G.711)>,
@@ -6744,9 +6744,7 @@ static void *janus_audiobridge_handler(void *data) {
 			if(rtp != NULL) {
 				gen_offer = NULL;
 				json_t *gen_rtp_offer = json_object_get(rtp, "generate_offer");
-
-				if(gen_rtp_offer != NULL && json_is_true(gen_rtp_offer))
-				{
+				if(gen_rtp_offer != NULL && json_is_true(gen_rtp_offer)) {
 					janus_mutex_lock(&participant->pmutex);
 					janus_audiobridge_plainrtp_media_cleanup(&participant->plainrtp_media);
 					if(janus_audiobridge_plainrtp_allocate_port(&participant->plainrtp_media) < 0) {
@@ -6754,7 +6752,7 @@ static void *janus_audiobridge_handler(void *data) {
 					}
 					janus_mutex_unlock(&participant->pmutex);
 				}
-				else{
+				else {
 					const char *ip = json_string_value(json_object_get(rtp, "ip"));
 					uint16_t port = json_integer_value(json_object_get(rtp, "port"));
 					if(participant->codec == JANUS_AUDIOCODEC_OPUS) {
@@ -7163,9 +7161,8 @@ static void *janus_audiobridge_handler(void *data) {
 				g_snprintf(error_cause, 512, "Plain RTP participants is not set while joining, you can not reconfigure plain rtp");
 				goto error;
 			}
-			/* Reconfigure remote RTP*/
-			if(rtp != NULL)
-			{
+			/* Reconfigure remote RTP */
+			if(rtp != NULL) {
 				gen_offer = NULL;
 				const char *ip = json_string_value(json_object_get(rtp, "ip"));
 				uint16_t port = json_integer_value(json_object_get(rtp, "port"));
