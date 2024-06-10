@@ -5480,61 +5480,61 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		goto prepare_response;
 #endif
 	} else if(!strcasecmp(request_text, "listannouncements")) {
-      		/* List all announcements in a room */
-      		if(!string_ids) {
-      			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
-      				error_code, error_cause, TRUE,
-      				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
-      		} else {
-      			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
-      				error_code, error_cause, TRUE,
-      				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
-      		}
-      		if(error_code != 0)
-      			goto prepare_response;
-      		json_t *room = json_object_get(root, "room");
-      		guint64 room_id = 0;
-      		char room_id_num[30], *room_id_str = NULL;
-      		if(!string_ids) {
-      			room_id = json_integer_value(room);
-      			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
-      			room_id_str = room_id_num;
-      		} else {
-      			room_id_str = (char *)json_string_value(room);
-      		}
-      		janus_mutex_lock(&rooms_mutex);
-      		janus_audiobridge_room *audiobridge = g_hash_table_lookup(rooms,
-      			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
-      		if(audiobridge == NULL) {
-      			janus_mutex_unlock(&rooms_mutex);
-      			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
-      			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
-      			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
-      			goto prepare_response;
-      		}
-      		janus_refcount_increase(&audiobridge->ref);
-      		/* Return a list of all announcements */
-      		json_t *list = json_array();
-			GHashTableIter iter;
-			gpointer value;
-			g_hash_table_iter_init(&iter, audiobridge->anncs);
-			while(g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_audiobridge_participant *p = value;
-				json_t *pl = json_object();
-				json_object_set_new(pl, "file_id", json_string(p->annc->id));
-				if(p->annc->filename)
-					json_object_set_new(pl, "filename", json_string(p->annc->filename));
-				json_object_set_new(pl, "playing", p->annc->started ? json_true() : json_false());
-				json_object_set_new(pl, "loop", p->annc->loop ? json_true() : json_false());
-				json_array_append_new(list, pl);
-			}
-      		janus_refcount_decrease(&audiobridge->ref);
-      		janus_mutex_unlock(&rooms_mutex);
-      		response = json_object();
-      		json_object_set_new(response, "audiobridge", json_string("announcements"));
-      		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
-      		json_object_set_new(response, "announcements", list);
+	    /* List all announcements in a room */
+	    if(!string_ids) {
+      		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+      			error_code, error_cause, TRUE,
+      			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+	    } else {
+      		JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+      			error_code, error_cause, TRUE,
+      			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+	    }
+	    if(error_code != 0)
       		goto prepare_response;
+	    json_t *room = json_object_get(root, "room");
+	    guint64 room_id = 0;
+	    char room_id_num[30], *room_id_str = NULL;
+	    if(!string_ids) {
+      		room_id = json_integer_value(room);
+      		g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+      		room_id_str = room_id_num;
+	    } else {
+      		room_id_str = (char *)json_string_value(room);
+	    }
+	    janus_mutex_lock(&rooms_mutex);
+	    janus_audiobridge_room *audiobridge = g_hash_table_lookup(rooms,
+      		string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
+	    if(audiobridge == NULL) {
+      		janus_mutex_unlock(&rooms_mutex);
+      		error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
+      		JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
+      		g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
+      		goto prepare_response;
+	    }
+	    janus_refcount_increase(&audiobridge->ref);
+	    /* Return a list of all announcements */
+	    json_t *list = json_array();
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, audiobridge->anncs);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_audiobridge_participant *p = value;
+			json_t *pl = json_object();
+			json_object_set_new(pl, "file_id", json_string(p->annc->id));
+			if(p->annc->filename)
+				json_object_set_new(pl, "filename", json_string(p->annc->filename));
+			json_object_set_new(pl, "playing", p->annc->started ? json_true() : json_false());
+			json_object_set_new(pl, "loop", p->annc->loop ? json_true() : json_false());
+			json_array_append_new(list, pl);
+		}
+	    janus_refcount_decrease(&audiobridge->ref);
+	    janus_mutex_unlock(&rooms_mutex);
+	    response = json_object();
+	    json_object_set_new(response, "audiobridge", json_string("announcements"));
+	    json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
+	    json_object_set_new(response, "announcements", list);
+	    goto prepare_response;
       	} else if(!strcasecmp(request_text, "stop_file")) {
 #ifndef HAVE_LIBOGG
 		JANUS_LOG(LOG_VERB, "Playing files unsupported in this instance\n");
