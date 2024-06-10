@@ -796,7 +796,7 @@ room-<unique room ID>: {
 	"room" : <unique numeric ID, same as request>,
 	"file_id_list" : [
 		// Array of file_Id: "<unique string ID of the now interrupted announcement>""
-		]
+	]
 }
 \endverbatim
  *
@@ -5654,7 +5654,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			goto prepare_response;
 		}
 
-		/* Get list of started announcements and send a stop announcement notification*/
+		/* Get list of started announcements and send a stop announcement notification */
 		GList *items_to_remove = NULL;
 		GHashTableIter iterAnnc;
 		gpointer valueAnnc;
@@ -5689,12 +5689,12 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 
 		/* Get rid of the announcements */
-		json_t *listAnncRemoved = json_array();
-		for (GList *l = items_to_remove; l!= NULL; l = l->next) {
+		json_t *list_annc_removed = json_array();
+		GList *l =NULL;
+		for(l = items_to_remove; l!= NULL; l = l->next) {
 			json_t *file_id = json_string(l->data);
-		    if( g_hash_table_remove(audiobridge->anncs, l->data))
-			{
-				json_array_append_new(listAnncRemoved, file_id);
+		    if(g_hash_table_remove(audiobridge->anncs, l->data)) {
+				json_array_append_new(list_annc_removed, file_id);
 			}
 		}
 		g_list_free(items_to_remove);
@@ -5706,7 +5706,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		response = json_object();
 		json_object_set_new(response, "audiobridge", json_string("success"));
 		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
- 		json_object_set_new(response, "file_id_list", listAnncRemoved);
+ 		json_object_set_new(response, "file_id_list", list_annc_removed);
 		goto prepare_response;
 #endif
 	} else if(!strcasecmp(request_text, "suspend") || !strcasecmp(request_text, "resume")) {
