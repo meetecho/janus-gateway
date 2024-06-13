@@ -24,7 +24,9 @@
 	OTHER DEALINGS IN THE SOFTWARE.
  */
 
+/*eslint indent: ["error", "tab", { "ignoredNodes": ["CallExpression[callee.type=FunctionExpression][arguments.length=2] > FunctionExpression.arguments > BlockStatement"] }]*/
 (function (root, factory) {
+	/* global define, module */
 	if (typeof define === 'function' && define.amd) {
 		define(factory);
 	} else if (typeof module === 'object' && module.exports) {
