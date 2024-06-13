@@ -24,6 +24,18 @@
 	OTHER DEALINGS IN THE SOFTWARE.
  */
 
+/*eslint indent: ["warn", "tab", { "ignoredNodes": ["CallExpression[callee.type=FunctionExpression][arguments.length=2] > FunctionExpression.arguments > BlockStatement"] }]*/
+(function (root, factory) {
+	/* global define, module */
+	if (typeof define === 'function' && define.amd) {
+		define(factory);
+	} else if (typeof module === 'object' && module.exports) {
+		module.exports = factory();
+	} else {
+		root.Janus = factory();
+	}
+}(this, function () {
+
 // List of sessions
 Janus.sessions = new Map();
 
@@ -389,27 +401,27 @@ Janus.init = function(options) {
 		} else if(Array.isArray(options.debug)) {
 			for(let d of options.debug) {
 				switch(d) {
-					case "trace":
-						Janus.trace = console.trace.bind(console);
-						break;
-					case "debug":
-						Janus.debug = console.debug.bind(console);
-						break;
-					case "vdebug":
-						Janus.vdebug = console.debug.bind(console);
-						break;
-					case "log":
-						Janus.log = console.log.bind(console);
-						break;
-					case "warn":
-						Janus.warn = console.warn.bind(console);
-						break;
-					case "error":
-						Janus.error = console.error.bind(console);
-						break;
-					default:
-						console.error("Unknown debugging option '" + d + "' (supported: 'trace', 'debug', 'vdebug', 'log', warn', 'error')");
-						break;
+				case "trace":
+					Janus.trace = console.trace.bind(console);
+					break;
+				case "debug":
+					Janus.debug = console.debug.bind(console);
+					break;
+				case "vdebug":
+					Janus.vdebug = console.debug.bind(console);
+					break;
+				case "log":
+					Janus.log = console.log.bind(console);
+					break;
+				case "warn":
+					Janus.warn = console.warn.bind(console);
+					break;
+				case "error":
+					Janus.error = console.error.bind(console);
+					break;
+				default:
+					console.error("Unknown debugging option '" + d + "' (supported: 'trace', 'debug', 'vdebug', 'log', warn', 'error')");
+					break;
 				}
 			}
 		}
@@ -3204,3 +3216,7 @@ function Janus(gatewayCallbacks) {
 		return (trickle === false) ? false : true;
 	}
 }
+
+return Janus;
+
+}));
