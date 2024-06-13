@@ -401,27 +401,27 @@ Janus.init = function(options) {
 		} else if(Array.isArray(options.debug)) {
 			for(let d of options.debug) {
 				switch(d) {
-					case "trace":
-						Janus.trace = console.trace.bind(console);
-						break;
-					case "debug":
-						Janus.debug = console.debug.bind(console);
-						break;
-					case "vdebug":
-						Janus.vdebug = console.debug.bind(console);
-						break;
-					case "log":
-						Janus.log = console.log.bind(console);
-						break;
-					case "warn":
-						Janus.warn = console.warn.bind(console);
-						break;
-					case "error":
-						Janus.error = console.error.bind(console);
-						break;
-					default:
-						console.error("Unknown debugging option '" + d + "' (supported: 'trace', 'debug', 'vdebug', 'log', warn', 'error')");
-						break;
+				case "trace":
+					Janus.trace = console.trace.bind(console);
+					break;
+				case "debug":
+					Janus.debug = console.debug.bind(console);
+					break;
+				case "vdebug":
+					Janus.vdebug = console.debug.bind(console);
+					break;
+				case "log":
+					Janus.log = console.log.bind(console);
+					break;
+				case "warn":
+					Janus.warn = console.warn.bind(console);
+					break;
+				case "error":
+					Janus.error = console.error.bind(console);
+					break;
+				default:
+					console.error("Unknown debugging option '" + d + "' (supported: 'trace', 'debug', 'vdebug', 'log', warn', 'error')");
+					break;
 				}
 			}
 		}
