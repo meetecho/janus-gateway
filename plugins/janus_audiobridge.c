@@ -980,6 +980,7 @@ room-<unique room ID>: {
 	"request" : "changeroom",
 	"room" : <numeric ID of the room to move to>,
 	"id" : <unique ID to assign to the participant; optional, assigned by the plugin if missing>,
+ 	"pin" : "<password required to join the room, optional>",
 	"group" : "<group to assign to this participant (for forwarding purposes only; optional, mandatory if enabled in the new room)>",
 	"display" : "<display name to have in the room; optional>",
 	"token" : "<invitation token, in case the new room has an ACL; optional>",
