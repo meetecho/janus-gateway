@@ -575,6 +575,8 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-webm.c \
 	postprocessing/pp-webm.h \
 	postprocessing/janus-pp-rec.c \
+	postprocessing/obuparse.c \
+	postprocessing/obuparse.h \
 	log.c \
 	utils.c \
 	version.c \
