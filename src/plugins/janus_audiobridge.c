@@ -4245,6 +4245,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			goto prepare_response;
 		}
 
+		janus_mutex_lock(&participant->qmutex);
 		if(participant->muted == muted) {
 			/* If someone trying to mute an already muted user, or trying to unmute a user that is not mute),
 			then we should do nothing */
@@ -4254,6 +4255,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			json_object_set_new(response, "audiobridge", json_string("success"));
 
 			/* Done */
+			janus_mutex_unlock(&participant->qmutex);
 			janus_mutex_unlock(&audiobridge->mutex);
 			janus_refcount_decrease(&audiobridge->ref);
 			goto prepare_response;
@@ -4261,14 +4263,11 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 
 		participant->muted = muted;
 		JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %s, user %s)\n",
-			participant->muted ? "true" : "false", participant->room->room_id_str, participant->user_id_str);
-		if(participant->muted) {
-			/* Clear the queued packets waiting to be handled */
-			janus_mutex_lock(&participant->qmutex);
-			janus_audiobridge_participant_clear_jitter_buffer(participant);
-			janus_audiobridge_participant_clear_inbuf(participant);
-			janus_mutex_unlock(&participant->qmutex);
-		}
+			muted ? "true" : "false", participant->room->room_id_str, participant->user_id_str);
+		/* Clear the queued packets waiting to be handled */
+		janus_audiobridge_participant_clear_jitter_buffer(participant);
+		janus_audiobridge_participant_clear_inbuf(participant);
+		janus_mutex_unlock(&participant->qmutex);
 
 		json_t *list = json_array();
 		json_t *pl = json_object();
@@ -4397,6 +4396,13 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		g_hash_table_iter_init(&iter, audiobridge->participants);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_audiobridge_participant *p = value;
+			janus_mutex_lock(&p->qmutex);
+			if(p->muted != audiobridge->muted) {
+				/* Clear the queued packets waiting to be handled */
+				janus_audiobridge_participant_clear_jitter_buffer(p);
+				janus_audiobridge_participant_clear_inbuf(p);
+			}
+			janus_mutex_unlock(&p->qmutex);
 			if(g_atomic_int_get(&p->paused_events))
 				continue;
 			JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", p->user_id_str, p->display ? p->display : "??");
@@ -7036,16 +7042,16 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			if(muted || display || (participant->stereo && spatial) || denoise) {
 				if(muted) {
-					participant->muted = json_is_true(muted);
-					JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %s, user %s)\n",
-						participant->muted ? "true" : "false", participant->room->room_id_str, participant->user_id_str);
-					if(participant->muted) {
+					janus_mutex_lock(&participant->qmutex);
+					if (participant->muted != json_is_true(muted)) {
+						participant->muted = json_is_true(muted);
+						JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %s, user %s)\n",
+							json_is_true(muted) ? "true" : "false", participant->room->room_id_str, participant->user_id_str);
 						/* Clear the queued packets waiting to be handled */
-						janus_mutex_lock(&participant->qmutex);
 						janus_audiobridge_participant_clear_jitter_buffer(participant);
 						janus_audiobridge_participant_clear_inbuf(participant);
-						janus_mutex_unlock(&participant->qmutex);
 					}
+					janus_mutex_unlock(&participant->qmutex);
 				}
 				if(display) {
 					char *old_display = participant->display;
@@ -7523,7 +7529,11 @@ static void *janus_audiobridge_handler(void *data) {
 			g_free(participant->display);
 			participant->display = display_text ? g_strdup(display_text) : NULL;
 			participant->room = audiobridge;
+			janus_mutex_lock(&participant->qmutex);
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* When switching to a new room, you're unmuted by default */
+			janus_audiobridge_participant_clear_jitter_buffer(participant);
+			janus_audiobridge_participant_clear_inbuf(participant);
+			janus_mutex_unlock(&participant->qmutex);
 			if(suspended && json_is_true(suspended)) {
 				janus_mutex_lock(&participant->suspend_cond_mutex);
 				g_atomic_int_set(&participant->suspended, 1);
