@@ -95,7 +95,7 @@ janus_plugin *create(void) {
  * on the \c janus_config helpers for the purpose) but again, if you prefer
  * a different format (XML, JSON, etc.) that's up to you.
  *
- * Both the the Janus core and a plugin can have several different sessions
+ * Both the Janus core and a plugin can have several different sessions
  * with the same and/or different peers: to match a specific session,
  * a plugin can rely on a mapping called janus_plugin_session that
  * is what all the communication between the plugins and the core
