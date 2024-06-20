@@ -8798,6 +8798,8 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							g_atomic_int_set(&participant->decoding, 0);
 							janus_mutex_unlock(&participant->qmutex);
 							janus_audiobridge_buffer_packet_destroy(bpkt);
+							g_free(pkt->data);
+							g_free(pkt);
 							break;
 						}
 						int i = 0;
