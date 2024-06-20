@@ -8764,11 +8764,11 @@ static void *janus_audiobridge_participant_thread(void *data) {
 		janus_mutex_unlock(&participant->suspend_cond_mutex);
 		/* Start with packets to decode and queue for the mixer */
 		now = janus_get_monotonic_time();
-		janus_mutex_lock(&participant->qmutex);
 		/* Start by reading packets to decode from the jitter buffer on a clock */
 		if(now - before >= 18000) {
 			before += 20000;
 			if(participant->jitter) {
+				janus_mutex_lock(&participant->qmutex);
 				ret = jitter_buffer_get(participant->jitter, &jbp, participant->codec == JANUS_AUDIOCODEC_OPUS ? 960 : 160, NULL);
 				jitter_ticks++;
 				/* Adjust the buffer size every 50 ticks (~1 second) */
@@ -8777,6 +8777,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					jitter_ticks = 0;
 				}
 				jitter_buffer_tick(participant->jitter);
+				janus_mutex_unlock(&participant->qmutex);
 				if(ret != JITTER_BUFFER_OK) {
 					/* No packet in the jitter buffer? Move on the talking detection, if needed */
 					janus_audiobridge_participant_istalking(session, participant, NULL, NULL);
@@ -8784,7 +8785,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					/* Decode the audio packet */
 					bpkt = (janus_audiobridge_buffer_packet *)jbp.data;
 					if(!g_atomic_int_compare_and_exchange(&participant->decoding, 0, 1)) {
-						janus_mutex_unlock(&participant->qmutex);
 						/* This means we're cleaning up, so don't try to decode */
 						janus_audiobridge_buffer_packet_destroy(bpkt);
 						break;
@@ -8798,14 +8798,14 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						JANUS_LOG(LOG_ERR, "[%s] Ops! got an error accessing the RTP payload\n",
 							participant->codec == JANUS_AUDIOCODEC_OPUS ? "Opus" : "G.711");
 						g_atomic_int_set(&participant->decoding, 0);
-						janus_mutex_unlock(&participant->qmutex);
 						janus_audiobridge_buffer_packet_destroy(bpkt);
 						break;
 					}
 					rtp = (janus_rtp_header *)buffer;
 					/* If this is Opus, check if there's a packet gap we should fix with FEC */
 					use_fec = FALSE;
-					/* FIXME Temporarily disable inbound FEC due to potential deadlocks */
+					/* FIXME Disable inbound FEC due to potential deadlocks on qmutex */
+					/* TODO replacing FEC with PLC will eliminate the issue */
 					//if(!first && participant->codec == JANUS_AUDIOCODEC_OPUS && participant->fec) {
 					//	if(ntohs(rtp->seq_number) == (participant->expected_seq + 1)) {
 					//		/* Lost a packet here? Use FEC to recover */
@@ -8832,7 +8832,10 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							janus_audiobridge_participant_denoise(participant, (char *)pkt->data, pkt->length);
 #endif
 						/* Queue the decoded redundant packet for the mixer */
+						/* FIXME This mutex lock can race with hangup_media_internal */
+						janus_mutex_lock(&participant->qmutex);
 						participant->inbuf = g_list_append(participant->inbuf, pkt);
+						janus_mutex_unlock(&participant->qmutex);
 						/* Now we can process the next packet */
 					}
 					/* Decode the packet */
@@ -8853,7 +8856,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						if(plen != 160) {
 							JANUS_LOG(LOG_WARN, "[G.711] Wrong packet size (expected 160, got %d), skipping audio packet\n", plen);
 							g_atomic_int_set(&participant->decoding, 0);
-							janus_mutex_unlock(&participant->qmutex);
 							janus_audiobridge_buffer_packet_destroy(bpkt);
 							g_free(pkt->data);
 							g_free(pkt);
@@ -8889,12 +8891,12 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						} else {
 							JANUS_LOG(LOG_ERR, "[G.711] Ops! got an error decoding the audio frame\n");
 						}
-						janus_mutex_unlock(&participant->qmutex);
 						g_free(pkt->data);
 						g_free(pkt);
 						break;
 					}
 					/* Queue the decoded packet for the mixer */
+					janus_mutex_lock(&participant->qmutex);
 					/* Do not let queue-in grow too much */
 					guint count = g_list_length(participant->inbuf);
 					if(count > QUEUE_IN_MAX_PACKETS) {
@@ -8902,10 +8904,10 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						janus_audiobridge_participant_clear_inbuf(participant);
 					}
 					participant->inbuf = g_list_append(participant->inbuf, pkt);
+					janus_mutex_unlock(&participant->qmutex);
 				}
 			}
 		}
-		janus_mutex_unlock(&participant->qmutex);
 		/* Now check if there's packets to encode */
 		mixedpkt = g_async_queue_try_pop(participant->outbuf);
 		if(mixedpkt != NULL && g_atomic_int_get(&session->destroyed) == 0 && g_atomic_int_get(&session->started)) {
