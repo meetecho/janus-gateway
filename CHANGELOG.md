@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.2.3] - 2024-06-20
+
+- Reduced size of RTP header struct in core
+- Added support for helper threads to VideoRoom [[PR-3067]((https://github.com/meetecho/janus-gateway/pull/3067)]
+- Fixed rare race condition in VideoRoom when destroying rooms [[PR-3361]((https://github.com/meetecho/janus-gateway/pull/3361)]
+- Fixed rare crash in VideoRoom when using SVC
+- Added optional RNNoise support to AudioBridge [[PR-3185]((https://github.com/meetecho/janus-gateway/pull/3185)]
+- Handle jitter buffer delay manually in AudioBridge [[PR-3353]((https://github.com/meetecho/janus-gateway/pull/3353)]
+- Fixed rare segfault when changing rooms in AudioBridge [[PR-3356]((https://github.com/meetecho/janus-gateway/pull/3356)]
+- Empty queues in AudioBridge when muting status changes [[PR-3368]((https://github.com/meetecho/janus-gateway/pull/3368)]
+- Fixed rare deadlock in AudioBridge plugin when closing connections [[PR-3387]((https://github.com/meetecho/janus-gateway/pull/3387)]
+- Fixed compilation errors on MacOS for HTTP transport plugin [[Issue-3366]((https://github.com/meetecho/janus-gateway/issues/3366)]
+- Fixed missing '--version' command line switch (thanks @fancycode!) [[PR-3384]((https://github.com/meetecho/janus-gateway/pull/3384)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.2.2] - 2024-04-02
 
 * Update demos and docs to Bootstrap 5.x [[PR-3300](https://github.com/meetecho/janus-gateway/pull/3300)]
