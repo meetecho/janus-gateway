@@ -10,7 +10,7 @@
 # audiolevel_event = true|false (whether to emit event to other users or not, default=false)
 # audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 # audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
-# default_expectedloss = percent of packets we expect participants may miss, to help with FEC (default=0, max=20; automatically used for forwarders too)
+# default_expectedloss = percent of packets we expect participants may miss, to help with outgoing FEC (default=0, max=20; automatically used for forwarders too)
 # default_bitrate = default bitrate in bps to use for the all participants (default=0, which means libopus decides; automatically used for forwarders too)
 # denoise = true|false (whether denoising via RNNoise should be performed for each participant by default)
 # record = true|false (whether this room should be recorded, default=false)
