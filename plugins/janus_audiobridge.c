@@ -8721,7 +8721,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 				jitter_buffer_tick(participant->jitter);
 				janus_mutex_unlock(&participant->qmutex);
 				if(ret != JITTER_BUFFER_OK) {
-					/* We didnn't get a packet: check if PLC can help */
+					/* We didn't get a packet: check if PLC can help */
 					if(!first && participant->codec == JANUS_AUDIOCODEC_OPUS && lost_packets_gap <= JITTER_BUFFER_MAX_GAP_SIZE && !participant->muted) {
 						lost_packets_gap++;
 						if(!g_atomic_int_compare_and_exchange(&participant->decoding, 0, 1)) {
