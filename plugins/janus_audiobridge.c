@@ -38,7 +38,7 @@ room-<unique room ID>: {
 	audiolevel_event = true|false (whether to emit event to other users or not, default=false)
 	audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 	audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
-	default_expectedloss = percent of packets we expect participants may miss, to help with FEC (default=0, max=20; automatically used for forwarders too)
+	default_expectedloss = percent of packets we expect participants may miss, to help with outgoing FEC (default=0, max=20; automatically used for forwarders too)
 	default_bitrate = default bitrate in bps to use for the all participants (default=0, which means libopus decides; automatically used for forwarders too)
 	denoise = true|false (whether denoising via RNNoise should be performed for each participant by default)
 	record = true|false (whether this room should be recorded, default=false)
@@ -141,7 +141,7 @@ room-<unique room ID>: {
 	"audiolevel_event" : <true|false (whether to emit event to other users or not)>,
 	"audio_active_packets" : <number of packets with audio level (default=100, 2 seconds)>,
 	"audio_level_average" : <average value of audio level (127=muted, 0='too loud', default=25)>,
-	"default_expectedloss" : <percent of packets we expect participants may miss, to help with FEC (default=0, max=20; automatically used for forwarders too)>,
+	"default_expectedloss" : <percent of packets we expect participants may miss, to help with outgoing FEC (default=0, max=20; automatically used for forwarders too)>,
 	"default_bitrate" : <bitrate in bps to use for the all participants (default=0, which means libopus decides; automatically used for forwarders too)>,
 	"denoise" : <true|false, whether denoising via RNNoise should be performed for each participant by default, default=false>,
 	"record" : <true|false, whether to record the room or not, default=false>,
@@ -785,7 +785,7 @@ room-<unique room ID>: {
 	"codec" : "<codec to use, among opus (default), pcma (A-Law) or pcmu (mu-Law)>",
 	"bitrate" : <bitrate to use for the Opus stream in bps; optional, default=0 (libopus decides)>,
 	"quality" : <0-10, Opus-related complexity to use, the higher the value, the better the quality (but more CPU); optional, default is 4>,
-	"expected_loss" : <0-20, a percentage of the expected loss (capped at 20%), only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>,
+	"expected_loss" : <0-20, a percentage of the expected loss (capped at 20%), only needed in case outgoing FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>,
 	"volume" : <percent value, <100 reduces volume, >100 increases volume; optional, default is 100 (no volume change)>,
 	"spatial_position" : <in case spatial audio is enabled for the room, panning of this participant (0=left, 50=center, 100=right)>,
 	"denoise" : <true|false, whether denoising via RNNoise should be performed for this participant (default=room value)>,
@@ -835,7 +835,7 @@ room-<unique room ID>: {
 		"port" : <port you want media to be sent to>,
 		"payload_type" : <payload type to use for RTP packets (optional; only needed in case Opus is used, automatic for G.711)>,
 		"audiolevel_ext" : <ID of the audiolevel RTP extension, if used (optional)>,
-		"fec" : <true|false, whether FEC should be enabled for the Opus stream (optional; only needed in case Opus is used)>
+		"fec" : <true|false, whether FEC from Janus to the user should be enabled for the Opus stream (optional; only needed in case Opus is used)>
 	}
 }
 \endverbatim
@@ -989,7 +989,7 @@ room-<unique room ID>: {
 	"pause_events" : <whether room events should be paused, if the user is joining as suspended; optional, false by default>
 	"bitrate" : <bitrate to use for the Opus stream in bps; optional, default=0 (libopus decides)>,
 	"quality" : <0-10, Opus-related complexity to use, higher is higher quality; optional, default is 4>,
-	"expected_loss" : <0-20, a percentage of the expected loss (capped at 20%), only needed in case FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>,
+	"expected_loss" : <0-20, a percentage of the expected loss (capped at 20%), only needed in case outgoing FEC is used; optional, default is 0 (FEC disabled even when negotiated) or the room default>,
 	"volume" : <new volume percent value (see "join" for more info)>,
 	"spatial_position" : <in case spatial audio is enabled for the room, new panning of this participant (0=left, 50=center, 100=right)>,
 	"denoise" : <true|false, whether denoising via RNNoise should be performed for this participant (default=room value, or whether it was active before)>
@@ -1395,7 +1395,7 @@ typedef struct janus_audiobridge_room {
 	gboolean spatial_audio;		/* Whether the mix will use spatial audio, using stereo */
 	gboolean audiolevel_ext;	/* Whether the ssrc-audio-level extension must be negotiated or not for new joins */
 	gboolean audiolevel_event;	/* Whether to emit event to other users about audiolevel */
-	uint default_expectedloss;	/* Percent of packets we expect participants may miss, to help with FEC: can be overridden per-participant */
+	uint default_expectedloss;	/* Percent of packets we expect participants may miss, to help with outgoing FEC: can be overridden per-participant */
 	int32_t default_bitrate;	/* Default bitrate to use for all Opus streams when encoding */
 	int audio_active_packets;	/* Amount of packets with audio level for checkup */
 	int audio_level_average;	/* Average audio level */
@@ -1672,9 +1672,8 @@ typedef struct janus_audiobridge_participant {
 	uint32_t sampling_rate;		/* Sampling rate to decode at */
 	OpusEncoder *encoder;		/* Opus encoder instance */
 	OpusDecoder *decoder;		/* Opus decoder instance */
-	gboolean fec;				/* Opus FEC status */
-	int expected_loss;			/* Percentage of expected loss, to configure libopus FEC behaviour (default=0, no FEC even if negotiated) */
-	uint16_t probation; 		/* Used to determine new ssrc validity */
+	gboolean fec;				/* Opus FEC (from Janus to user) status */
+	int expected_loss;			/* Percentage of expected loss, to configure libopus outgoing FEC behaviour (default=0, no FEC even if negotiated) */
 	uint32_t last_timestamp;	/* Last in seq timestamp */
 	uint16_t last_seq; 		/* Last sequence number */
 	gboolean reset;				/* Whether or not the Opus context must be reset, without re-joining the room */
@@ -2291,7 +2290,7 @@ static int janus_audiobridge_create_opus_encoder_if_needed(janus_audiobridge_roo
 		opus_encoder_ctl(audiobridge->rtp_encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
 	}
 
-	/* Check if we need FEC */
+	/* Check if we need FEC on the way out */
 	if(audiobridge->default_expectedloss > 0) {
 		opus_encoder_ctl(audiobridge->rtp_encoder, OPUS_SET_INBAND_FEC(TRUE));
 		opus_encoder_ctl(audiobridge->rtp_encoder, OPUS_SET_PACKET_LOSS_PERC(audiobridge->default_expectedloss));
@@ -6535,7 +6534,6 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->decoder = NULL;
 				participant->reset = FALSE;
 				participant->fec = FALSE;
-				participant->probation = 0;
 				participant->last_timestamp = 0;
 				participant->last_seq = 0;
 				janus_mutex_init(&participant->qmutex);
@@ -7726,12 +7724,11 @@ static void *janus_audiobridge_handler(void *data) {
 			if(sdp != NULL) {
 				participant->opus_pt = janus_sdp_get_codec_pt(sdp, "opus");
 				if(participant->opus_pt > 0 && strstr(msg_sdp, "useinbandfec=1")){
-					/* Opus codec, inband FEC set */
+					/* Opus codec, inband FEC (from Janus to user) set */
 					participant->fec = TRUE;
-					participant->probation = MIN_SEQUENTIAL;
 					opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
 				}
-				JANUS_LOG(LOG_VERB, "Opus payload type is %d, FEC %s\n", participant->opus_pt, participant->fec ? "enabled" : "disabled");
+				JANUS_LOG(LOG_VERB, "Opus payload type is %d, outgoing FEC %s\n", participant->opus_pt, participant->fec ? "enabled" : "disabled");
 			}
 			/* Check if the audio level extension was offered */
 			int extmap_id = generate_offer ? 2 : -1;
@@ -8055,7 +8052,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				JANUS_LOG(LOG_WARN, "Unsupported sampling rate %d, setting 16kHz\n", audiobridge->sampling_rate);
 				opus_encoder_ctl(rtp_encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
 			}
-			/* Check if we need FEC */
+			/* Check if we need outgoing FEC */
 			if(audiobridge->default_expectedloss > 0) {
 				opus_encoder_ctl(rtp_encoder, OPUS_SET_INBAND_FEC(TRUE));
 				opus_encoder_ctl(rtp_encoder, OPUS_SET_PACKET_LOSS_PERC(audiobridge->default_expectedloss));
@@ -8724,18 +8721,17 @@ static void *janus_audiobridge_participant_thread(void *data) {
 				jitter_buffer_tick(participant->jitter);
 				janus_mutex_unlock(&participant->qmutex);
 				if(ret != JITTER_BUFFER_OK) {
+					/* We didnn't get a packet: check if PLC can help */
 					if(!first && participant->codec == JANUS_AUDIOCODEC_OPUS && lost_packets_gap <= JITTER_BUFFER_MAX_GAP_SIZE && !participant->muted) {
-						lost_packets_gap += 1;
-
+						lost_packets_gap++;
 						if(!g_atomic_int_compare_and_exchange(&participant->decoding, 0, 1)) {
 							/* This means we're cleaning up, so don't try to decode */
 							janus_audiobridge_buffer_packet_destroy(bpkt);
 							break;
 						}
-
-						int32_t output_samples;
+						int32_t output_samples = 0;
 						opus_decoder_ctl(participant->decoder, OPUS_GET_LAST_PACKET_DURATION(&output_samples));
-
+						/* Allocate a fake packet we can queue */
 						pkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
 						pkt->data = g_malloc0(BUFFER_SAMPLES * sizeof(opus_int16));
 						pkt->ssrc = 0;
