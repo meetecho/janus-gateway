@@ -89,7 +89,7 @@ room-<unique room ID>: {
  * you to edit who's allowed to join a room via ad-hoc tokens; \c list
  * lists all the available rooms, while \c listparticipants lists all
  * the participants of a specific room and their details; \c listannouncements
- * list all playing announcements of a specific room and their details;
+ * lists all playing announcements of a specific room and their details;
  * \c resetdecoder marks the Opus decoder for the participant as invalid, and
  * forces it to be recreated (which might be needed if the audio for generated
  * by the participant becomes garbled); \c rtp_forward allows you to forward
@@ -760,6 +760,7 @@ room-<unique room ID>: {
 \verbatim
 {
 	"request" : "listannouncements",
+	"secret" : "<room secret, mandatory if configured>",
 	"room" : <unique numeric ID of the room>
 }
 \endverbatim
@@ -5512,7 +5513,22 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		    g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 		    goto prepare_response;
 		}
+		if(audiobridge->destroyed) {
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
+			janus_mutex_unlock(&rooms_mutex);
+			goto prepare_response;
+		}
 		janus_refcount_increase(&audiobridge->ref);
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
+			janus_refcount_decrease(&audiobridge->ref);
+			goto prepare_response;
+		}
 		/* Return a list of all announcements */
 		json_t *list = json_array();
 		GHashTableIter iter;
