@@ -1807,7 +1807,7 @@ static void janus_sip_sofia_logger_siptrace_single_log_callback(void *stream, ch
 	char *buffer = va_arg(ap, char *);
 
 	/* Check if this is a message we need */
-	if(buffer[0] == 's' && buffer[1] == 'e' && buffer[2] == 'n' && buffer[3] == 'd' && buffer[4] == ' ') {
+	if(strstr(buffer, "send ") == buffer) {
 		/* An outgoing message is going to be logged, prepare for that */
 		int length = atoi(&buffer[5]);
 		JANUS_LOG(LOG_HUGE, "Intercepting message (%d bytes)\n", length);
