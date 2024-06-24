@@ -1829,18 +1829,16 @@ static void janus_sip_sofia_logger_siptrace_single_log_callback(void *stream, ch
 		if(strstr(buffer, "OPTIONS") == buffer)
 			return;
 		/* Search for the Call-ID header and extract its value if it exists */
-		{
-			char *from = strstr(buffer, "Call-ID: ");
-			if(from) {
-				char *start = from + 9;
-				if(start) {
-					char *end = strchr(start, '\n');
-					if(end) {
-						size_t count = end - start;
-						count = count >= sizeof(call_id) ? sizeof(call_id) - 1 : count;
-						memcpy(call_id, start, count);
-						call_id[count] = '\0';
-					}
+		char *from = strstr(buffer, "Call-ID: ");
+		if(from) {
+			char *start = from + 9;
+			if(start) {
+				char *end = strchr(start, '\n');
+				if(end) {
+					size_t count = end - start;
+					count = count >= sizeof(call_id) ? sizeof(call_id) - 1 : count;
+					memcpy(call_id, start, count);
+					call_id[count] = '\0';
 				}
 			}
 		}
