@@ -65,8 +65,9 @@ general: {
 									# handlers (default=true)
 
 	# By default, integers are used as a unique ID for both rooms and participants.
-	# In case you want to use strings instead (e.g., a UUID), set string_ids to true.
+	# In case you want to use strings instead (e.g., a UUID), set string_ids/string_ids_user to true.
 	#string_ids = true
+  #string_ids_user = true
 }
 
 room-1234: {

@@ -1949,6 +1949,7 @@ static janus_mutex config_mutex = JANUS_MUTEX_INITIALIZER;
 static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static gboolean string_ids = FALSE;
+static gboolean string_ids_user = FALSE;
 static gboolean ipv6_disabled = FALSE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
@@ -2922,7 +2923,7 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 	janus_refcount_increase(&publisher->ref);
 	janus_refcount_increase(&publisher->session->ref);
 	g_hash_table_insert(room->participants,
-		string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
+		string_ids_user ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
 		publisher);
 }
 
@@ -3215,18 +3216,18 @@ static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscr
 			while(temp) {
 				dps = (janus_videoroom_publisher_stream *)temp->data;
 				if(dps && dps->publisher)
-					json_array_append_new(ids, string_ids ? json_string(dps->publisher->user_id_str) : json_integer(dps->publisher->user_id));
+					json_array_append_new(ids, string_ids_user ? json_string(dps->publisher->user_id_str) : json_integer(dps->publisher->user_id));
 				temp = temp->next;
 			}
 			json_object_set_new(m, "source_ids", ids);
 		} else if(ps && stream->type != JANUS_VIDEOROOM_MEDIA_DATA) {
 			if(ps->publisher) {
-				json_object_set_new(m, "feed_id", string_ids ? json_string(ps->publisher->user_id_str) : json_integer(ps->publisher->user_id));
+				json_object_set_new(m, "feed_id", string_ids_user ? json_string(ps->publisher->user_id_str) : json_integer(ps->publisher->user_id));
 				if(ps->publisher->display)
 					json_object_set_new(m, "feed_display", json_string(ps->publisher->display));
 				/* If this is a legacy subscription, put the info in the generic part too */
 				if(legacy && event) {
-					json_object_set_new(event, "id", string_ids ? json_string(ps->publisher->user_id_str) : json_integer(ps->publisher->user_id));
+					json_object_set_new(event, "id", string_ids_user ? json_string(ps->publisher->user_id_str) : json_integer(ps->publisher->user_id));
 					if(ps->publisher->display)
 						json_object_set_new(event, "display", json_string(ps->publisher->display));
 				}
@@ -3407,7 +3408,13 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 		if(ids != NULL && ids->value != NULL)
 			string_ids = janus_is_true(ids->value);
 		if(string_ids) {
-			JANUS_LOG(LOG_INFO, "VideoRoom will use alphanumeric IDs, not numeric\n");
+			JANUS_LOG(LOG_INFO, "VideoRoom will use alphanumeric IDs for rooms, not numeric\n");
+		}
+    janus_config_item *ids_user = janus_config_get(config, config_general, janus_config_type_item, "string_ids_user");
+		if(ids_user != NULL && ids_user->value != NULL)
+			string_ids_user = janus_is_true(ids_user->value);
+		if(string_ids_user) {
+			JANUS_LOG(LOG_INFO, "VideoRoom will use alphanumeric IDs for users, not numeric\n");
 		}
 	}
 	rooms = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
@@ -3661,7 +3668,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			g_atomic_int_set(&videoroom->destroyed, 0);
 			janus_mutex_init(&videoroom->mutex);
 			janus_refcount_init(&videoroom->ref, janus_videoroom_room_free);
-			videoroom->participants = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
+			videoroom->participants = g_hash_table_new_full(string_ids_user ? g_str_hash : g_int64_hash, string_ids_user ? g_str_equal : g_int64_equal,
 				(GDestroyNotify)g_free, (GDestroyNotify)janus_videoroom_publisher_dereference);
 			videoroom->private_ids = g_hash_table_new(NULL, NULL);
 			videoroom->check_allowed = FALSE;	/* Static rooms can't have an "allowed" list yet, no hooks to the configuration file */
@@ -3969,7 +3976,7 @@ static void janus_videoroom_notify_about_publisher(janus_videoroom_publisher *p,
 	/* Notify all other participants that there's a new boy in town */
 	json_t *list = json_array();
 	json_t *pl = json_object();
-	json_object_set_new(pl, "id", string_ids ? json_string(p->user_id_str) : json_integer(p->user_id));
+	json_object_set_new(pl, "id", string_ids_user ? json_string(p->user_id_str) : json_integer(p->user_id));
 	if(p->display)
 		json_object_set_new(pl, "display", json_string(p->display));
 	/* Add proper info on all the streams */
@@ -4044,7 +4051,7 @@ static void janus_videoroom_notify_about_publisher(janus_videoroom_publisher *p,
 		json_t *info = json_object();
 		json_object_set_new(info, "event", json_string(update ? "updated" : "published"));
 		json_object_set_new(info, "room", string_ids ? json_string(p->room_id_str) : json_integer(p->room_id));
-		json_object_set_new(info, "id", string_ids ? json_string(p->user_id_str) : json_integer(p->user_id));
+		json_object_set_new(info, "id", string_ids_user ? json_string(p->user_id_str) : json_integer(p->user_id));
 		if(p->display)
 				json_object_set_new(info, "display", json_string(p->display));
 		json_t *media = json_array();
@@ -4087,7 +4094,7 @@ static void janus_videoroom_participant_joining(janus_videoroom_publisher *p) {
 	if(!g_atomic_int_get(&p->room->destroyed) && p->room->notify_joining) {
 		json_t *event = json_object();
 		json_t *user = json_object();
-		json_object_set_new(user, "id", string_ids ? json_string(p->user_id_str) : json_integer(p->user_id));
+		json_object_set_new(user, "id", string_ids_user ? json_string(p->user_id_str) : json_integer(p->user_id));
 		if (p->display) {
 			json_object_set_new(user, "display", json_string(p->display));
 		}
@@ -4127,19 +4134,19 @@ static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *partic
 	json_object_set_new(event, "videoroom", json_string("event"));
 	json_object_set_new(event, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
 	json_object_set_new(event, is_leaving ? (kicked ? "kicked" : "leaving") : "unpublished",
-		string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+		string_ids_user ? json_string(participant->user_id_str) : json_integer(participant->user_id));
 	janus_videoroom_notify_participants(participant, event, FALSE);
 	/* Also notify event handlers */
 	if(notify_events && gateway->events_is_enabled()) {
 		json_t *info = json_object();
 		json_object_set_new(info, "event", json_string(is_leaving ? (kicked ? "kicked" : "leaving") : "unpublished"));
 		json_object_set_new(info, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
-		json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+		json_object_set_new(info, "id", string_ids_user ? json_string(participant->user_id_str) : json_integer(participant->user_id));
 		gateway->notify_event(&janus_videoroom_plugin, NULL, info);
 	}
 	if(is_leaving) {
 		g_hash_table_remove(participant->room->participants,
-			string_ids ? (gpointer)participant->user_id_str : (gpointer)&participant->user_id);
+			string_ids_user ? (gpointer)participant->user_id_str : (gpointer)&participant->user_id);
 		g_hash_table_remove(participant->room->private_ids, GUINT_TO_POINTER(participant->pvt_id));
 		janus_mutex_lock(&participant->mutex);
 		g_clear_pointer(&participant->room, janus_videoroom_room_dereference);
@@ -4242,7 +4249,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				janus_videoroom *room = participant->room;
 				json_object_set_new(info, "room", room ?
 					(string_ids ? json_string(room->room_id_str) : json_integer(room->room_id)) : NULL);
-				json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+				json_object_set_new(info, "id", string_ids_user ? json_string(participant->user_id_str) : json_integer(participant->user_id));
 				json_object_set_new(info, "private_id", json_integer(participant->pvt_id));
 				if(participant->display)
 					json_object_set_new(info, "display", json_string(participant->display));
@@ -4341,6 +4348,7 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 	} else {
 		room_id_str = (char *)json_string_value(room);
 	}
+
 	*videoroom = g_hash_table_lookup(rooms,
 		string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 	if(*videoroom == NULL) {
@@ -4780,7 +4788,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		g_atomic_int_set(&videoroom->destroyed, 0);
 		janus_mutex_init(&videoroom->mutex);
 		janus_refcount_init(&videoroom->ref, janus_videoroom_room_free);
-		videoroom->participants = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
+		videoroom->participants = g_hash_table_new_full(string_ids_user ? g_str_hash : g_int64_hash, string_ids_user ? g_str_equal : g_int64_equal,
 			(GDestroyNotify)g_free, (GDestroyNotify)janus_videoroom_publisher_dereference);
 		videoroom->private_ids = g_hash_table_new(NULL, NULL);
 		videoroom->allowed = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
@@ -5337,7 +5345,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		if(error_code != 0)
 			goto prepare_response;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			JANUS_VALIDATE_JSON_OBJECT(root, pid_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -5389,7 +5397,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		guint64 publisher_id = 0;
 		char publisher_id_num[30], *publisher_id_str = NULL;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			publisher_id = json_integer_value(pub_id);
 			g_snprintf(publisher_id_num, sizeof(publisher_id_num), "%"SCNu64, publisher_id);
 			publisher_id_str = publisher_id_num;
@@ -5530,7 +5538,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&videoroom->mutex);
 		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
-			string_ids ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
+			string_ids_user ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
 		if(publisher == NULL) {
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
@@ -5596,7 +5604,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 							json_object_set_new(info, "room",
 								string_ids ? json_string(room_id_str) : json_integer(room_id));
 							json_object_set_new(info, "publisher_id",
-								string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+								string_ids_user ? json_string(publisher_id_str) : json_integer(publisher_id));
 							json_object_set_new(info, "media", json_string("data"));
 							json_object_set_new(info, "stream_id", json_integer(f->stream_id));
 							json_object_set_new(info, "host", json_string(host));
@@ -5625,7 +5633,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 							json_object_set_new(info, "room",
 								string_ids ? json_string(room_id_str) : json_integer(room_id));
 							json_object_set_new(info, "publisher_id",
-								string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+								string_ids_user ? json_string(publisher_id_str) : json_integer(publisher_id));
 							json_object_set_new(info, "media", json_string("audio"));
 							json_object_set_new(info, "codec", json_string(janus_audiocodec_name(ps->acodec)));
 							json_object_set_new(info, "stream_id", json_integer(f->stream_id));
@@ -5650,7 +5658,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 							json_object_set_new(info, "room",
 								string_ids ? json_string(room_id_str) : json_integer(room_id));
 							json_object_set_new(info, "publisher_id",
-								string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+								string_ids_user ? json_string(publisher_id_str) : json_integer(publisher_id));
 							json_object_set_new(info, "media", json_string("video"));
 							json_object_set_new(info, "codec", json_string(janus_videocodec_name(ps->vcodec)));
 							json_object_set_new(info, "stream_id", json_integer(f->stream_id));
@@ -5679,7 +5687,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 									json_object_set_new(info, "room",
 										string_ids ? json_string(room_id_str) : json_integer(room_id));
 									json_object_set_new(info, "publisher_id",
-										string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+										string_ids_user ? json_string(publisher_id_str) : json_integer(publisher_id));
 									json_object_set_new(info, "media", json_string("video"));
 									json_object_set_new(info, "codec", json_string(janus_videocodec_name(ps->vcodec)));
 									json_object_set_new(info, "video_substream", json_integer(1));
@@ -5708,7 +5716,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 									json_object_set_new(info, "room",
 										string_ids ? json_string(room_id_str) : json_integer(room_id));
 									json_object_set_new(info, "publisher_id",
-										string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+										string_ids_user ? json_string(publisher_id_str) : json_integer(publisher_id));
 									json_object_set_new(info, "media", json_string("video"));
 									json_object_set_new(info, "codec", json_string(janus_videocodec_name(ps->vcodec)));
 									json_object_set_new(info, "video_substream", json_integer(2));
@@ -5824,7 +5832,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 						json_object_set_new(info, "event", json_string("rtp_forward"));
 						json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 						json_object_set_new(info, "publisher_id",
-							string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+							string_ids_user ? json_string(publisher_id_str) : json_integer(publisher_id));
 						json_object_set_new(info, "media", json_string("audio"));
 						json_object_set_new(info, "stream_id", json_integer(f->stream_id));
 						json_object_set_new(info, "host", json_string(host));
@@ -5859,7 +5867,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 							json_object_set_new(info, "event", json_string("rtp_forward"));
 							json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 							json_object_set_new(info, "publisher_id",
-								string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+								string_ids_user ? json_string(publisher_id_str) : json_integer(publisher_id));
 							json_object_set_new(info, "media", json_string("video"));
 							json_object_set_new(info, "stream_id", json_integer(f->stream_id));
 							json_object_set_new(info, "host", json_string(host));
@@ -5878,7 +5886,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 							json_object_set_new(info, "event", json_string("rtp_forward"));
 							json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 							json_object_set_new(info, "publisher_id",
-								string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+								string_ids_user ? json_string(publisher_id_str) : json_integer(publisher_id));
 							json_object_set_new(info, "media", json_string("video"));
 							json_object_set_new(info, "video_substream", json_integer(1));
 							json_object_set_new(info, "stream_id", json_integer(f->stream_id));
@@ -5898,7 +5906,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 							json_object_set_new(info, "event", json_string("rtp_forward"));
 							json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 							json_object_set_new(info, "publisher_id",
-								string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+								string_ids_user ? json_string(publisher_id_str) : json_integer(publisher_id));
 							json_object_set_new(info, "media", json_string("video"));
 							json_object_set_new(info, "video_substream", json_integer(2));
 							json_object_set_new(info, "stream_id", json_integer(f->stream_id));
@@ -5934,7 +5942,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 						json_object_set_new(info, "event", json_string("rtp_forward"));
 						json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 						json_object_set_new(info, "publisher_id",
-							string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+							string_ids_user ? json_string(publisher_id_str) : json_integer(publisher_id));
 						json_object_set_new(info, "media", json_string("data"));
 						json_object_set_new(info, "stream_id", json_integer(f->stream_id));
 						json_object_set_new(info, "host", json_string(host));
@@ -5978,7 +5986,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_refcount_decrease(&publisher->ref);
 		janus_refcount_decrease(&videoroom->ref);
 		json_object_set_new(rtp_stream, "host", json_string(host));
-		json_object_set_new(response, "publisher_id", string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+		json_object_set_new(response, "publisher_id", string_ids_user ? json_string(publisher_id_str) : json_integer(publisher_id));
 		if(new_forwarders != NULL)
 			json_object_set_new(response, "forwarders", new_forwarders);
 		if(rtp_stream != NULL)
@@ -5998,7 +6006,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		if(error_code != 0)
 			goto prepare_response;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			JANUS_VALIDATE_JSON_OBJECT(root, pid_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -6041,7 +6049,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		guint64 publisher_id = 0;
 		char publisher_id_num[30], *publisher_id_str = NULL;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			publisher_id = json_integer_value(pub_id);
 			g_snprintf(publisher_id_num, sizeof(publisher_id_num), "%"SCNu64, publisher_id);
 			publisher_id_str = publisher_id_num;
@@ -6060,7 +6068,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&videoroom->mutex);
 		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
-			string_ids ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
+			string_ids_user ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
 		if(publisher == NULL) {
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
@@ -6111,14 +6119,14 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("stop_rtp_forward"));
 		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
-		json_object_set_new(response, "publisher_id", string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+		json_object_set_new(response, "publisher_id", string_ids_user ? json_string(publisher_id_str) : json_integer(publisher_id));
 		json_object_set_new(response, "stream_id", json_integer(stream_id));
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("stop_rtp_forward"));
 			json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
-			json_object_set_new(info, "publisher_id", string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+			json_object_set_new(info, "publisher_id", string_ids_user ? json_string(publisher_id_str) : json_integer(publisher_id));
 			json_object_set_new(info, "stream_id", json_integer(stream_id));
 			gateway->notify_event(&janus_videoroom_plugin, NULL, info);
 		}
@@ -6276,7 +6284,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 		}
-		if(!string_ids) {
+		if(!string_ids_user) {
 			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -6315,7 +6323,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_mutex_lock(&videoroom->mutex);
 		guint64 user_id = 0;
 		char user_id_num[30], *user_id_str = NULL;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			user_id = json_integer_value(id);
 			g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, user_id);
 			user_id_str = user_id_num;
@@ -6323,7 +6331,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			user_id_str = (char *)json_string_value(id);
 		}
 		janus_videoroom_publisher *participant = g_hash_table_lookup(videoroom->participants,
-			string_ids ? (gpointer)user_id_str : (gpointer)&user_id);
+			string_ids_user ? (gpointer)user_id_str : (gpointer)&user_id);
 		if(participant == NULL) {
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
@@ -6395,7 +6403,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 		}
-		if(!string_ids) {
+		if(!string_ids_user) {
 			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -6434,7 +6442,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_mutex_lock(&videoroom->mutex);
 		guint64 user_id = 0;
 		char user_id_num[30], *user_id_str = NULL;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			user_id = json_integer_value(id);
 			g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, user_id);
 			user_id_str = user_id_num;
@@ -6442,7 +6450,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			user_id_str = (char *)json_string_value(id);
 		}
 		janus_videoroom_publisher *participant = g_hash_table_lookup(videoroom->participants,
-			string_ids ? (gpointer)user_id_str : (gpointer)&user_id);
+			string_ids_user ? (gpointer)user_id_str : (gpointer)&user_id);
 		if(participant == NULL) {
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
@@ -6489,7 +6497,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *event = json_object();
 		json_object_set_new(event, "videoroom", json_string("event"));
 		json_object_set_new(event, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
-		json_object_set_new(event, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+		json_object_set_new(event, "id", string_ids_user ? json_string(participant->user_id_str) : json_integer(participant->user_id));
 		json_object_set_new(event, "mid", json_string(mid));
 		json_object_set_new(event, "moderation", muted ? json_string("muted") : json_string("unmuted"));
 		/* Notify the speaker this event is related to as well */
@@ -6500,7 +6508,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			json_t *info = json_object();
 			json_object_set_new(info, "videoroom", json_string("moderated"));
 			json_object_set_new(info, "room", string_ids ? json_string(videoroom->room_id_str) : json_integer(videoroom->room_id));
-			json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+			json_object_set_new(info, "id", string_ids_user ? json_string(participant->user_id_str) : json_integer(participant->user_id));
 			json_object_set_new(info, "mid", json_string(mid));
 			json_object_set_new(info, "moderation", muted ? json_string("muted") : json_string("unmuted"));
 			gateway->notify_event(&janus_videoroom_plugin, NULL, info);
@@ -6554,7 +6562,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		while (!g_atomic_int_get(&videoroom->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_videoroom_publisher *p = value;
 			json_t *pl = json_object();
-			json_object_set_new(pl, "id", string_ids ? json_string(p->user_id_str) : json_integer(p->user_id));
+			json_object_set_new(pl, "id", string_ids_user ? json_string(p->user_id_str) : json_integer(p->user_id));
 			if(p->display)
 				json_object_set_new(pl, "display", json_string(p->display));
 			if(p->dummy)
@@ -6633,7 +6641,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				continue;
 			}
 			json_t *pl = json_object();
-			json_object_set_new(pl, "publisher_id", string_ids ? json_string(p->user_id_str) : json_integer(p->user_id));
+			json_object_set_new(pl, "publisher_id", string_ids_user ? json_string(p->user_id_str) : json_integer(p->user_id));
 			if(p->display)
 				json_object_set_new(pl, "display", json_string(p->display));
 			json_t *flist = json_array();
@@ -6762,7 +6770,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		if(error_code != 0)
 			goto prepare_response;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			JANUS_VALIDATE_JSON_OBJECT(root, pid_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -6813,7 +6821,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		guint64 publisher_id = 0;
 		char publisher_id_num[30], *publisher_id_str = NULL;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			publisher_id = json_integer_value(pub_id);
 			g_snprintf(publisher_id_num, sizeof(publisher_id_num), "%"SCNu64, publisher_id);
 			publisher_id_str = publisher_id_num;
@@ -6864,7 +6872,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&videoroom->mutex);
 		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
-			string_ids ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
+			string_ids_user ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
 		if(publisher == NULL) {
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
@@ -6986,7 +6994,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
 		json_object_set_new(response, "room", string_ids ? json_string(publisher->room_id_str) : json_integer(publisher->room_id));
-		json_object_set_new(response, "id", string_ids ? json_string(publisher->user_id_str) : json_integer(publisher->user_id));
+		json_object_set_new(response, "id", string_ids_user ? json_string(publisher->user_id_str) : json_integer(publisher->user_id));
 		json_object_set_new(response, "remote_id", json_string(remote_id));
 		janus_refcount_decrease(&publisher->ref);	/* This is just to handle the request for now */
 		goto prepare_response;
@@ -7008,7 +7016,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		if(error_code != 0)
 			goto prepare_response;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			JANUS_VALIDATE_JSON_OBJECT(root, pid_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -7033,7 +7041,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *pub_id = json_object_get(root, "publisher_id");
 		guint64 publisher_id = 0;
 		char publisher_id_num[30], *publisher_id_str = NULL;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			publisher_id = json_integer_value(pub_id);
 			g_snprintf(publisher_id_num, sizeof(publisher_id_num), "%"SCNu64, publisher_id);
 			publisher_id_str = publisher_id_num;
@@ -7041,7 +7049,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			publisher_id_str = (char *)json_string_value(pub_id);
 		}
 		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
-			string_ids ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
+			string_ids_user ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
 		if(publisher == NULL || g_atomic_int_get(&publisher->destroyed)) {
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
@@ -7091,7 +7099,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
 		json_object_set_new(response, "room", string_ids ? json_string(publisher->room_id_str) : json_integer(publisher->room_id));
-		json_object_set_new(response, "id", string_ids ? json_string(publisher->user_id_str) : json_integer(publisher->user_id));
+		json_object_set_new(response, "id", string_ids_user ? json_string(publisher->user_id_str) : json_integer(publisher->user_id));
 		janus_refcount_decrease(&publisher->ref);
 		janus_refcount_decrease(&videoroom->ref);
 		goto prepare_response;
@@ -7110,7 +7118,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		if(error_code != 0)
 			goto prepare_response;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			JANUS_VALIDATE_JSON_OBJECT(root, pid_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -7134,7 +7142,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *id = json_object_get(root, "publisher_id");
 		guint64 publisher_id = 0;
 		char publisher_id_num[30], *publisher_id_str = NULL;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			publisher_id = json_integer_value(id);
 			g_snprintf(publisher_id_num, sizeof(publisher_id_num), "%"SCNu64, publisher_id);
 			publisher_id_str = publisher_id_num;
@@ -7142,7 +7150,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			publisher_id_str = (char *)json_string_value(id);
 		}
 		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
-			string_ids ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
+			string_ids_user ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
 		if(publisher == NULL || g_atomic_int_get(&publisher->destroyed)) {
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
@@ -7176,7 +7184,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
 		json_object_set_new(response, "room", string_ids ? json_string(publisher->room_id_str) : json_integer(publisher->room_id));
-		json_object_set_new(response, "id", string_ids ? json_string(publisher->user_id_str) : json_integer(publisher->user_id));
+		json_object_set_new(response, "id", string_ids_user ? json_string(publisher->user_id_str) : json_integer(publisher->user_id));
 		json_object_set_new(response, "list", list);
 		janus_refcount_decrease(&publisher->ref);
 		janus_refcount_decrease(&videoroom->ref);
@@ -7194,7 +7202,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		if(error_code != 0)
 			goto prepare_response;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			JANUS_VALIDATE_JSON_OBJECT(root, idopt_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -7272,7 +7280,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		gboolean user_id_allocated = FALSE;
 		json_t *id = json_object_get(root, "id");
 		if(id) {
-			if(!string_ids) {
+			if(!string_ids_user) {
 				user_id = json_integer_value(id);
 				g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, user_id);
 				user_id_str = user_id_num;
@@ -7280,7 +7288,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				user_id_str = (char *)json_string_value(id);
 			}
 			if(g_hash_table_lookup(videoroom->participants,
-					string_ids ? (gpointer)user_id_str : (gpointer)&user_id) != NULL) {
+					string_ids_user ? (gpointer)user_id_str : (gpointer)&user_id) != NULL) {
 				/* User ID already taken */
 				janus_mutex_unlock(&videoroom->mutex);
 				janus_refcount_decrease(&videoroom->ref);
@@ -7290,7 +7298,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				goto prepare_response;
 			}
 		}
-		if(!string_ids) {
+		if(!string_ids_user) {
 			if(user_id == 0) {
 				/* Generate a random ID */
 				while(user_id == 0) {
@@ -7551,7 +7559,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
 		json_object_set_new(response, "room", string_ids ? json_string(publisher->room_id_str) : json_integer(publisher->room_id));
-		json_object_set_new(response, "id", string_ids ? json_string(publisher->user_id_str) : json_integer(publisher->user_id));
+		json_object_set_new(response, "id", string_ids_user ? json_string(publisher->user_id_str) : json_integer(publisher->user_id));
 		/* Return connectivity information */
 		if(strlen(host) > 0)
 			json_object_set_new(response, "ip", json_string(host));
@@ -7571,7 +7579,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		if(error_code != 0)
 			goto prepare_response;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -7640,7 +7648,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *id = json_object_get(root, "id");
 		guint64 publisher_id = 0;
 		char publisher_id_num[30], *publisher_id_str = NULL;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			publisher_id = json_integer_value(id);
 			g_snprintf(publisher_id_num, sizeof(publisher_id_num), "%"SCNu64, publisher_id);
 			publisher_id_str = publisher_id_num;
@@ -7648,7 +7656,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			publisher_id_str = (char *)json_string_value(id);
 		}
 		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
-			string_ids ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
+			string_ids_user ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
 		if(publisher == NULL || !publisher->remote || g_atomic_int_get(&publisher->remote_leaving)) {
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
@@ -7825,7 +7833,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		if(error_code != 0)
 			goto prepare_response;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -7849,7 +7857,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *id = json_object_get(root, "id");
 		guint64 publisher_id = 0;
 		char publisher_id_num[30], *publisher_id_str = NULL;
-		if(!string_ids) {
+		if(!string_ids_user) {
 			publisher_id = json_integer_value(id);
 			g_snprintf(publisher_id_num, sizeof(publisher_id_num), "%"SCNu64, publisher_id);
 			publisher_id_str = publisher_id_num;
@@ -7857,7 +7865,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			publisher_id_str = (char *)json_string_value(id);
 		}
 		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
-			string_ids ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
+			string_ids_user ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
 		if(publisher == NULL || !publisher->remote || !g_atomic_int_compare_and_exchange(&publisher->remote_leaving, 0, 1)) {
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
@@ -8191,7 +8199,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 					json_t *event = json_object();
 					json_object_set_new(event, "videoroom", json_string(ps->talking ? "talking" : "stopped-talking"));
 					json_object_set_new(event, "room", string_ids ? json_string(videoroom->room_id_str) : json_integer(videoroom->room_id));
-					json_object_set_new(event, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+					json_object_set_new(event, "id", string_ids_user ? json_string(participant->user_id_str) : json_integer(participant->user_id));
 					json_object_set_new(event, "mindex", json_integer(ps->mindex));
 					json_object_set_new(event, "mid", json_string(ps->mid));
 					json_object_set_new(event, "audio-level-dBov-avg", json_real(audio_dBov_avg));
@@ -8204,7 +8212,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 						json_t *info = json_object();
 						json_object_set_new(info, "videoroom", json_string(ps->talking ? "talking" : "stopped-talking"));
 						json_object_set_new(info, "room", string_ids ? json_string(videoroom->room_id_str) : json_integer(videoroom->room_id));
-						json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+						json_object_set_new(info, "id", string_ids_user ? json_string(participant->user_id_str) : json_integer(participant->user_id));
 						json_object_set_new(info, "mindex", json_integer(ps->mindex));
 						json_object_set_new(info, "mid", json_string(ps->mid));
 						json_object_set_new(info, "audio-level-dBov-avg", json_real(audio_dBov_avg));
@@ -8916,7 +8924,7 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 							json_object_set_new(info, "event", json_string("unsubscribed"));
 							json_object_set_new(info, "room", string_ids ?
 								json_string(ps->publisher->room_id_str) : json_integer(ps->publisher->room_id));
-							json_object_set_new(info, "feed",  string_ids ?
+							json_object_set_new(info, "feed",  string_ids_user ?
 								json_string(ps->publisher->user_id_str) : json_integer(ps->publisher->user_id));
 							json_object_set_new(info, "mid", json_string(ps->mid));
 							gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
@@ -9070,7 +9078,7 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
-				if(!string_ids) {
+				if(!string_ids_user) {
 					JANUS_VALIDATE_JSON_OBJECT(root, idopt_parameters,
 						error_code, error_cause, TRUE,
 						JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -9123,7 +9131,7 @@ static void *janus_videoroom_handler(void *data) {
 				gboolean user_id_allocated = FALSE;
 				json_t *id = json_object_get(root, "id");
 				if(id) {
-					if(!string_ids) {
+					if(!string_ids_user) {
 						user_id = json_integer_value(id);
 						g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, user_id);
 						user_id_str = user_id_num;
@@ -9131,7 +9139,7 @@ static void *janus_videoroom_handler(void *data) {
 						user_id_str = (char *)json_string_value(id);
 					}
 					if(g_hash_table_lookup(videoroom->participants,
-							string_ids ? (gpointer)user_id_str : (gpointer)&user_id) != NULL) {
+							string_ids_user ? (gpointer)user_id_str : (gpointer)&user_id) != NULL) {
 						/* User ID already taken */
 						janus_mutex_unlock(&videoroom->mutex);
 						janus_mutex_unlock(&sessions_mutex);
@@ -9142,7 +9150,7 @@ static void *janus_videoroom_handler(void *data) {
 						goto error;
 					}
 				}
-				if(!string_ids) {
+				if(!string_ids_user) {
 					if(user_id == 0) {
 						/* Generate a random ID */
 						while(user_id == 0) {
@@ -9324,7 +9332,7 @@ static void *janus_videoroom_handler(void *data) {
 				janus_refcount_increase(&publisher->ref);
 				janus_refcount_increase(&publisher->session->ref);
 				g_hash_table_insert(publisher->room->participants,
-					string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
+					string_ids_user ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
 					publisher);
 				g_hash_table_insert(publisher->room->private_ids, GUINT_TO_POINTER(publisher->pvt_id), publisher);
 				janus_mutex_unlock(&session->mutex);
@@ -9335,7 +9343,7 @@ static void *janus_videoroom_handler(void *data) {
 						/* Check if we're also notifying normal joins and not just publishers */
 						if(p != publisher && publisher->room->notify_joining) {
 							json_t *al = json_object();
-							json_object_set_new(al, "id", string_ids ? json_string(p->user_id_str) : json_integer(p->user_id));
+							json_object_set_new(al, "id", string_ids_user ? json_string(p->user_id_str) : json_integer(p->user_id));
 							if(p->display)
 								json_object_set_new(al, "display", json_string(p->display));
 							json_array_append_new(attendees, al);
@@ -9343,7 +9351,7 @@ static void *janus_videoroom_handler(void *data) {
 						continue;
 					}
 					json_t *pl = json_object();
-					json_object_set_new(pl, "id", string_ids ? json_string(p->user_id_str) : json_integer(p->user_id));
+					json_object_set_new(pl, "id", string_ids_user ? json_string(p->user_id_str) : json_integer(p->user_id));
 					if(p->display)
 						json_object_set_new(pl, "display", json_string(p->display));
 					if(p->dummy)
@@ -9417,7 +9425,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", string_ids ? json_string(publisher->room->room_id_str) :
 					json_integer(publisher->room->room_id));
 				json_object_set_new(event, "description", json_string(publisher->room->room_name));
-				json_object_set_new(event, "id", string_ids ? json_string(user_id_str) : json_integer(user_id));
+				json_object_set_new(event, "id", string_ids_user ? json_string(user_id_str) : json_integer(user_id));
 				json_object_set_new(event, "private_id", json_integer(publisher->pvt_id));
 				json_object_set_new(event, "publishers", list);
 				if(publisher->user_audio_active_packets)
@@ -9435,7 +9443,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(info, "event", json_string("joined"));
 					json_object_set_new(info, "room", string_ids ? json_string(publisher->room->room_id_str) :
 					json_integer(publisher->room->room_id));
-					json_object_set_new(info, "id", string_ids ? json_string(user_id_str) : json_integer(user_id));
+					json_object_set_new(info, "id", string_ids_user ? json_string(user_id_str) : json_integer(user_id));
 					json_object_set_new(info, "private_id", json_integer(publisher->pvt_id));
 					if(publisher->room->check_allowed) {
 						const char *token = json_string_value(json_object_get(root, "token"));
@@ -9502,7 +9510,7 @@ static void *janus_videoroom_handler(void *data) {
 				if(feeds == NULL || json_array_size(feeds) == 0) {
 					/* For backwards compatibility, we still support the old "feed" property, which means
 					 * "subscribe to all the feeds from this publisher" (depending on offer_audio, etc.) */
-					if(!string_ids) {
+					if(!string_ids_user) {
 						JANUS_VALIDATE_JSON_OBJECT(root, feed_parameters,
 							error_code, error_cause, TRUE,
 							JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -9527,7 +9535,7 @@ static void *janus_videoroom_handler(void *data) {
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
-					if(!string_ids) {
+					if(!string_ids_user) {
 						feed_id = json_integer_value(feed);
 						g_snprintf(feed_id_num, sizeof(feed_id_num), "%"SCNu64, feed_id);
 						feed_id_str = feed_id_num;
@@ -9537,7 +9545,7 @@ static void *janus_videoroom_handler(void *data) {
 					/* Create a fake "streams" array and put the only feed there */
 					json_t *m = json_array();
 					json_t *s = json_object();
-					json_object_set_new(s, "feed", string_ids ? json_string(feed_id_str) : json_integer(feed_id));
+					json_object_set_new(s, "feed", string_ids_user ? json_string(feed_id_str) : json_integer(feed_id));
 					json_array_append_new(m, s);
 					json_object_set_new(root, "streams", m);
 					feeds = json_object_get(root, "streams");
@@ -9570,7 +9578,7 @@ static void *janus_videoroom_handler(void *data) {
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
-					if(!string_ids) {
+					if(!string_ids_user) {
 						JANUS_VALIDATE_JSON_OBJECT(s, feed_parameters,
 							error_code, error_cause, TRUE,
 							JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -9593,7 +9601,7 @@ static void *janus_videoroom_handler(void *data) {
 						goto error;
 					}
 					json_t *feed = json_object_get(s, "feed");
-					if(!string_ids) {
+					if(!string_ids_user) {
 						feed_id = json_integer_value(feed);
 						g_snprintf(feed_id_num, sizeof(feed_id_num), "%"SCNu64, feed_id);
 						feed_id_str = feed_id_num;
@@ -9601,7 +9609,7 @@ static void *janus_videoroom_handler(void *data) {
 						feed_id_str = (char *)json_string_value(feed);
 					}
 					janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
-						string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
+						string_ids_user ? (gpointer)feed_id_str : (gpointer)&feed_id);
 					if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) ||
 							!g_atomic_int_get(&publisher->session->started)) {
 						JANUS_LOG(LOG_ERR, "No such feed (%s)\n", feed_id_str);
@@ -9789,7 +9797,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_t *feed = json_object_get(s, "feed");
 					guint64 feed_id = 0;
 					char *feed_id_str = NULL;
-					if(!string_ids) {
+					if(!string_ids_user) {
 						feed_id = json_integer_value(feed);
 						g_snprintf(feed_id_num, sizeof(feed_id_num), "%"SCNu64, feed_id);
 						feed_id_str = feed_id_num;
@@ -9797,7 +9805,7 @@ static void *janus_videoroom_handler(void *data) {
 						feed_id_str = (char *)json_string_value(feed);
 					}
 					janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants,
-						string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
+						string_ids_user ? (gpointer)feed_id_str : (gpointer)&feed_id);
 					if(publisher == NULL) {
 						/* TODO We shouldn't let this happen... */
 						JANUS_LOG(LOG_WARN, "Skipping feed %s...\n", feed_id_str);
@@ -10028,7 +10036,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 				/* If this is a legacy subscription, put the feed ID too */
 				if(legacy) {
-					json_object_set_new(event, "id", string_ids ? json_string(feed_id_str) : json_integer(feed_id));
+					json_object_set_new(event, "id", string_ids_user ? json_string(feed_id_str) : json_integer(feed_id));
 					json_object_set_new(event, "warning", json_string("deprecated_api"));
 				}
 				janus_mutex_lock(&subscriber->streams_mutex);
@@ -10475,7 +10483,7 @@ static void *janus_videoroom_handler(void *data) {
 						/* The display name changed, notify this */
 						json_t *display_event = json_object();
 						json_object_set_new(display_event, "videoroom", json_string("event"));
-						json_object_set_new(display_event, "id", string_ids ?
+						json_object_set_new(display_event, "id", string_ids_user ?
 							json_string(participant->user_id_str) : json_integer(participant->user_id));
 						json_object_set_new(display_event, "display", json_string(participant->display));
 						if(participant->room && !g_atomic_int_get(&participant->room->destroyed)) {
@@ -10521,7 +10529,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string("configured"));
 					json_object_set_new(info, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
-					json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+					json_object_set_new(info, "id", string_ids_user ? json_string(participant->user_id_str) : json_integer(participant->user_id));
 						/* TODO Add info on all the configured stuff here, here */
 					json_object_set_new(info, "bitrate", json_integer(participant->bitrate));
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
@@ -10645,7 +10653,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&subscriber->ref);
 							goto error;
 						}
-						if(!string_ids) {
+						if(!string_ids_user) {
 							JANUS_VALIDATE_JSON_OBJECT(s, feedopt_parameters,
 								error_code, error_cause, TRUE,
 								JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -10688,7 +10696,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&subscriber->ref);
 							goto error;
 						}
-						if(!string_ids) {
+						if(!string_ids_user) {
 							JANUS_VALIDATE_JSON_OBJECT(s, feed_parameters,
 								error_code, error_cause, TRUE,
 								JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -10711,7 +10719,7 @@ static void *janus_videoroom_handler(void *data) {
 						json_t *feed = json_object_get(s, "feed");
 						guint64 feed_id = 0;
 						char feed_id_num[30], *feed_id_str = NULL;
-						if(!string_ids) {
+						if(!string_ids_user) {
 							feed_id = json_integer_value(feed);
 							g_snprintf(feed_id_num, sizeof(feed_id_num), "%"SCNu64, feed_id);
 							feed_id_str = feed_id_num;
@@ -10720,7 +10728,7 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						janus_mutex_lock(&subscriber->room->mutex);
 						janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants,
-							string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
+							string_ids_user ? (gpointer)feed_id_str : (gpointer)&feed_id);
 						janus_mutex_unlock(&subscriber->room->mutex);
 						if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) ||
 								!g_atomic_int_get(&publisher->session->started)) {
@@ -10827,7 +10835,7 @@ static void *janus_videoroom_handler(void *data) {
 						json_t *feed = json_object_get(s, "feed");
 						guint64 feed_id = 0;
 						char feed_id_num[30], *feed_id_str = NULL;
-						if(!string_ids) {
+						if(!string_ids_user) {
 							feed_id = json_integer_value(feed);
 							g_snprintf(feed_id_num, sizeof(feed_id_num), "%"SCNu64, feed_id);
 							feed_id_str = feed_id_num;
@@ -10848,7 +10856,7 @@ static void *janus_videoroom_handler(void *data) {
 						} else if(feed_id_str != NULL) {
 							janus_mutex_lock(&subscriber->room->mutex);
 							janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants,
-								string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
+								string_ids_user ? (gpointer)feed_id_str : (gpointer)&feed_id);
 							janus_mutex_unlock(&subscriber->room->mutex);
 							if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) ||
 									!g_atomic_int_get(&publisher->session->started)) {
@@ -10893,7 +10901,7 @@ static void *janus_videoroom_handler(void *data) {
 						json_t *feed = json_object_get(s, "feed");
 						guint64 feed_id = 0;
 						char feed_id_num[30], *feed_id_str = NULL;
-						if(!string_ids) {
+						if(!string_ids_user) {
 							feed_id = json_integer_value(feed);
 							g_snprintf(feed_id_num, sizeof(feed_id_num), "%"SCNu64, feed_id);
 							feed_id_str = feed_id_num;
@@ -10902,7 +10910,7 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						janus_mutex_lock(&subscriber->room->mutex);
 						janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants,
-							string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
+							string_ids_user ? (gpointer)feed_id_str : (gpointer)&feed_id);
 						janus_mutex_unlock(&subscriber->room->mutex);
 						if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) ||
 								!g_atomic_int_get(&publisher->session->started)) {
@@ -11443,6 +11451,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", string_ids ? json_string(subscriber->room_id_str) : json_integer(subscriber->room_id));
 				json_object_set_new(event, "configured", json_string("ok"));
+
 				/* The user may be interested in an ICE restart */
 				gboolean do_restart = restart ? json_is_true(restart) : FALSE;
 				gboolean do_update = update ? json_is_true(update) : FALSE;
@@ -11519,7 +11528,7 @@ static void *janus_videoroom_handler(void *data) {
 					 * "switch to all the feeds from this publisher" (much less sophisticated, though) */
 					guint64 feed_id = 0;
 					char feed_id_num[30], *feed_id_str = NULL;
-					if(!string_ids) {
+					if(!string_ids_user) {
 						feed_id = json_integer_value(feed);
 						g_snprintf(feed_id_num, sizeof(feed_id_num), "%"SCNu64, feed_id);
 						feed_id_str = feed_id_num;
@@ -11535,7 +11544,7 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					janus_mutex_lock(&subscriber->room->mutex);
 					janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants,
-						string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
+						string_ids_user ? (gpointer)feed_id_str : (gpointer)&feed_id);
 					janus_mutex_unlock(&subscriber->room->mutex);
 					if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) ||
 							!g_atomic_int_get(&publisher->session->started)) {
@@ -11563,7 +11572,7 @@ static void *janus_videoroom_handler(void *data) {
 								/* This streams looks right */
 								touched_already = g_list_append(touched_already, stream);
 								json_t *s = json_object();
-								json_object_set_new(s, "feed",  string_ids ?
+								json_object_set_new(s, "feed",  string_ids_user ?
 									json_string(publisher->user_id_str) : json_integer(publisher->user_id));
 								json_object_set_new(s, "mid", json_string(ps->mid));
 								json_object_set_new(s, "sub_mid", json_string(stream->mid));
@@ -11607,7 +11616,7 @@ static void *janus_videoroom_handler(void *data) {
 						janus_refcount_decrease(&subscriber->ref);
 						goto error;
 					}
-					if(!string_ids) {
+					if(!string_ids_user) {
 						JANUS_VALIDATE_JSON_OBJECT(s, feed_parameters,
 							error_code, error_cause, TRUE,
 							JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
@@ -11631,7 +11640,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_t *feed = json_object_get(s, "feed");
 					guint64 feed_id = 0;
 					char feed_id_num[30], *feed_id_str = NULL;
-					if(!string_ids) {
+					if(!string_ids_user) {
 						feed_id = json_integer_value(feed);
 						g_snprintf(feed_id_num, sizeof(feed_id_num), "%"SCNu64, feed_id);
 						feed_id_str = feed_id_num;
@@ -11640,7 +11649,7 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					janus_mutex_lock(&subscriber->room->mutex);
 					janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants,
-						string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
+						string_ids_user ? (gpointer)feed_id_str : (gpointer)&feed_id);
 					janus_mutex_unlock(&subscriber->room->mutex);
 					if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) ||
 							!g_atomic_int_get(&publisher->session->started)) {
@@ -11716,7 +11725,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_t *feed = json_object_get(s, "feed");
 					guint64 feed_id = 0;
 					char feed_id_num[30], *feed_id_str = NULL;
-					if(!string_ids) {
+					if(!string_ids_user) {
 						feed_id = json_integer_value(feed);
 						g_snprintf(feed_id_num, sizeof(feed_id_num), "%"SCNu64, feed_id);
 						feed_id_str = feed_id_num;
@@ -11726,7 +11735,7 @@ static void *janus_videoroom_handler(void *data) {
 					const char *mid = json_string_value(json_object_get(s, "mid"));
 					janus_mutex_lock(&subscriber->room->mutex);
 					janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants,
-						string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
+						string_ids_user ? (gpointer)feed_id_str : (gpointer)&feed_id);
 					janus_mutex_unlock(&subscriber->room->mutex);
 					if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) ||
 							!g_atomic_int_get(&publisher->session->started)) {
@@ -13184,7 +13193,7 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 	janus_videoroom *videoroom = publisher->room;
 	janus_refcount_increase(&videoroom->ref);
 	g_hash_table_insert(videoroom->participants,
-		string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
+		string_ids_user ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
 		publisher);
 	/* Let's also notify all other participants that the publisher is here */
 	janus_videoroom_notify_about_publisher(publisher, FALSE);
