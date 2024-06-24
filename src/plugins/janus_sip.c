@@ -1863,7 +1863,6 @@ static void janus_sip_sofia_logger_siptrace_single_log_callback(void *stream, ch
 							count = count >= sizeof(call_id) ? sizeof(call_id) - 1 : count;
 							memcpy(call_id, start, count);
 							call_id[count] = '\0';
-
 							session = g_hash_table_lookup(identities, call_id);
 						}
 					}
