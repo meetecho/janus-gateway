@@ -2431,6 +2431,8 @@ static void janus_videoroom_publisher_dereference_nodebug(janus_videoroom_publis
 	janus_refcount_decrease_nodebug(&p->ref);
 }
 
+static void janus_videoroom_session_destroy(janus_videoroom_session *session);
+
 static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 	if(p && g_atomic_int_compare_and_exchange(&p->destroyed, 0, 1)) {
 		/* Forwarders with RTCP support may have an extra reference, stop their source */
@@ -2466,6 +2468,9 @@ static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 			}
 		}
 		janus_mutex_unlock(&p->rtp_forwarders_mutex);
+		/* Release dummy session of the forwarder */
+		if(p->session && p->session->handle == NULL)
+			janus_videoroom_session_destroy(p->session);
 		janus_refcount_decrease(&p->ref);
 	}
 }
@@ -2515,7 +2520,8 @@ static void janus_videoroom_session_destroy(janus_videoroom_session *session) {
 static void janus_videoroom_session_free(const janus_refcount *session_ref) {
 	janus_videoroom_session *session = janus_refcount_containerof(session_ref, janus_videoroom_session, ref);
 	/* Remove the reference to the core plugin session */
-	janus_refcount_decrease(&session->handle->ref);
+	if (session->handle)
+		janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	janus_mutex_destroy(&session->mutex);
 	g_free(session);
@@ -6989,6 +6995,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_object_set_new(response, "id", string_ids ? json_string(publisher->user_id_str) : json_integer(publisher->user_id));
 		json_object_set_new(response, "remote_id", json_string(remote_id));
 		janus_refcount_decrease(&publisher->ref);	/* This is just to handle the request for now */
+		janus_refcount_decrease(&videoroom->ref);
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "unpublish_remotely")) {
 		/* Configure a local publisher to stop restreaming to a remote VideoRomm instance */
@@ -13462,7 +13469,7 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 	}
 	g_list_free(subscribers);
 	/* Free streams */
-	g_list_free(publisher->streams);
+	g_list_free_full(publisher->streams, (GDestroyNotify)(janus_videoroom_publisher_stream_unref));
 	publisher->streams = NULL;
 	g_hash_table_remove_all(publisher->streams_byid);
 	g_hash_table_remove_all(publisher->streams_bymid);
