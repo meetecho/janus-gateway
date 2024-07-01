@@ -189,6 +189,13 @@ static struct janus_json_parameter text2pcap_parameters[] = {
 	{"filename", JSON_STRING, 0},
 	{"truncate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter debug_bwe_parameters[] = {
+	{"csv", JANUS_JSON_BOOL, 0},
+	{"path", JSON_STRING, 0},
+	{"live", JANUS_JSON_BOOL, 0},
+	{"host", JSON_STRING, 0},
+	{"port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+};
 static struct janus_json_parameter handleinfo_parameters[] = {
 	{"plugin_only", JANUS_JSON_BOOL, 0}
 };
@@ -612,6 +619,9 @@ void janus_plugin_relay_data(janus_plugin_session *plugin_session, janus_plugin_
 void janus_plugin_send_pli(janus_plugin_session *plugin_session);
 void janus_plugin_send_pli_stream(janus_plugin_session *plugin_session, int mindex);
 void janus_plugin_send_remb(janus_plugin_session *plugin_session, uint32_t bitrate);
+void janus_plugin_enable_bwe(janus_plugin_session *plugin_session);
+void janus_plugin_set_bwe_target(janus_plugin_session *plugin_session, uint32_t bitrate);
+void janus_plugin_disable_bwe(janus_plugin_session *plugin_session);
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
 void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event);
@@ -627,6 +637,9 @@ static janus_callbacks janus_handler_plugin =
 		.send_pli = janus_plugin_send_pli,
 		.send_pli_stream = janus_plugin_send_pli_stream,
 		.send_remb = janus_plugin_send_remb,
+		.enable_bwe = janus_plugin_enable_bwe,
+		.set_bwe_target = janus_plugin_set_bwe_target,
+		.disable_bwe = janus_plugin_disable_bwe,
 		.close_pc = janus_plugin_close_pc,
 		.end_session = janus_plugin_end_session,
 		.events_is_enabled = janus_events_is_enabled,
@@ -3005,8 +3018,88 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
+		} else if(!strcasecmp(message_text, "debug_bwe")) {
+			/* Enable or disable BWE debugging (to CSV and/or external UDP address) */
+			JANUS_VALIDATE_JSON_OBJECT(root, debug_bwe_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			json_t *csv = json_object_get(root, "csv");
+			json_t *live = json_object_get(root, "live");
+			gboolean changes = FALSE;
+			janus_mutex_lock(&handle->mutex);
+			if(json_is_true(csv)) {
+				/* Enable CSV offline debugging */
+				if(handle->bwe_csv) {
+					janus_mutex_unlock(&handle->mutex);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN,
+						"CSV debugging already configured");
+					goto jsondone;
+				}
+				json_t *path = json_object_get(root, "path");
+				const char *path_value = json_string_value(path);
+				if(path_value == NULL) {
+					janus_mutex_unlock(&handle->mutex);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE,
+						"Missing or invalid element (path)");
+					goto jsondone;
+				}
+				changes = TRUE;
+				handle->bwe_csv = g_strdup(path_value);
+			} else {
+				/* Disable CSV offline debugging */
+				if(handle->bwe_csv)
+					changes = TRUE;
+				g_free(handle->bwe_csv);
+				handle->bwe_csv = NULL;
+			}
+			if(json_is_true(live)) {
+				/* Enable live debugging */
+				if(handle->bwe_host) {
+					janus_mutex_unlock(&handle->mutex);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN,
+						"Live debugging already configured");
+					goto jsondone;
+				}
+				json_t *host = json_object_get(root, "host");
+				json_t *port = json_object_get(root, "port");
+				const char *host_value = json_string_value(host);
+				uint16_t port_value = json_integer_value(port);
+				if(host_value == NULL) {
+					janus_mutex_unlock(&handle->mutex);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE,
+						"Missing or invalid element (host)");
+					goto jsondone;
+				}
+				if(port_value == 0) {
+					janus_mutex_unlock(&handle->mutex);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE,
+						"Missing or invalid element (port)");
+					goto jsondone;
+				}
+				changes = TRUE;
+				handle->bwe_host = g_strdup(host_value);
+				handle->bwe_port = port_value;
+			} else {
+				/* Disable live debugging */
+				if(handle->bwe_host)
+					changes = TRUE;
+				g_free(handle->bwe_host);
+				handle->bwe_host = NULL;
+				handle->bwe_port = 0;
+			}
+			janus_mutex_unlock(&handle->mutex);
+			/* Apply the changes, if needed */
+			if(changes)
+				janus_ice_handle_debug_bwe(handle);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
 		}
-		/* If this is not a request to start/stop debugging to text2pcap, it must be a handle_info */
+		/* If we git here, it must be a handle_info */
 		if(strcasecmp(message_text, "handle_info")) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
@@ -3282,6 +3375,10 @@ json_t *janus_admin_peerconnection_summary(janus_ice_peerconnection *pc) {
 	json_object_set_new(bwe, "twcc", pc->do_transport_wide_cc ? json_true() : json_false());
 	if(pc->transport_wide_cc_ext_id >= 0)
 		json_object_set_new(bwe, "twcc-ext-id", json_integer(pc->transport_wide_cc_ext_id));
+	if(pc->bwe) {
+		json_object_set_new(bwe, "estimate", json_integer(pc->bwe->estimate));
+		json_object_set_new(bwe, "status", json_string(janus_bwe_status_description(pc->bwe->status)));
+	}
 	json_object_set_new(w, "bwe", bwe);
 	json_t *media = json_object();
 	/* Iterate on all media */
@@ -3327,6 +3424,7 @@ json_t *janus_admin_peerconnection_medium_summary(janus_ice_peerconnection_mediu
 	if(medium->type != JANUS_MEDIA_DATA) {
 		json_object_set_new(m, "do_nacks", medium->do_nacks ? json_true() : json_false());
 		json_object_set_new(m, "nack-queue-ms", json_integer(medium->nack_queue_ms));
+		json_object_set_new(m, "do_twcc", medium->do_twcc ? json_true() : json_false());
 	}
 	if(medium->type != JANUS_MEDIA_DATA) {
 		json_t *ms = json_object();
@@ -4272,6 +4370,30 @@ void janus_plugin_send_remb(janus_plugin_session *plugin_session, uint32_t bitra
 			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
 	janus_ice_send_remb(handle, bitrate);
+}
+
+void janus_plugin_enable_bwe(janus_plugin_session *plugin_session) {
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+		return;
+	janus_ice_handle_enable_bwe(handle);
+}
+
+void janus_plugin_set_bwe_target(janus_plugin_session *plugin_session, uint32_t bitrate) {
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+		return;
+	janus_ice_handle_set_bwe_target(handle, bitrate);
+}
+
+void janus_plugin_disable_bwe(janus_plugin_session *plugin_session) {
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+		return;
+	janus_ice_handle_disable_bwe(handle);
 }
 
 static gboolean janus_plugin_close_pc_internal(gpointer user_data) {

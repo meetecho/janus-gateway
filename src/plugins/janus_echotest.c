@@ -125,6 +125,7 @@
 #include "../rtcp.h"
 #include "../sdp-utils.h"
 #include "../utils.h"
+#include "../bwe.h"
 
 
 /* Plugin information */
@@ -155,6 +156,7 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtc
 void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
 void janus_echotest_data_ready(janus_plugin_session *handle);
 void janus_echotest_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
+void janus_echotest_estimated_bandwidth(janus_plugin_session *handle, uint32_t estimate);
 void janus_echotest_hangup_media(janus_plugin_session *handle);
 void janus_echotest_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_echotest_query_session(janus_plugin_session *handle);
@@ -182,6 +184,7 @@ static janus_plugin janus_echotest_plugin =
 		.incoming_data = janus_echotest_incoming_data,
 		.data_ready = janus_echotest_data_ready,
 		.slow_link = janus_echotest_slow_link,
+		.estimated_bandwidth = janus_echotest_estimated_bandwidth,
 		.hangup_media = janus_echotest_hangup_media,
 		.destroy_session = janus_echotest_destroy_session,
 		.query_session = janus_echotest_query_session,
@@ -253,6 +256,7 @@ typedef struct janus_echotest_session {
 	janus_vp8_simulcast_context vp8_context;
 	gboolean svc;
 	janus_rtp_svc_context svc_context;
+	janus_bwe_stream_bitrate *ab, *vb;
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *drc;	/* The Janus recorder instance for this user's data, if enabled */
@@ -525,6 +529,18 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "temporal-layer", json_integer(session->svc_context.temporal));
 		json_object_set_new(info, "temporal-layer-target", json_integer(session->svc_context.temporal_target));
 	}
+	if(session->ab && session->ab->packets[0])
+		json_object_set_new(info, "audio-bitrate", json_integer(session->ab->bitrate[0]));
+	if(session->vb) {
+		int i=0;
+		for(i=0; i<9; i++) {
+			if(session->vb->packets[i]) {
+				char name[20];
+				g_snprintf(name, sizeof(name), "video-bitrate-%d", i);
+				json_object_set_new(info, name, json_integer(session->vb->bitrate[i]));
+			}
+		}
+	}
 	if(session->arc || session->vrc || session->drc) {
 		json_t *recording = json_object();
 		if(session->arc && session->arc->filename)
@@ -588,6 +604,8 @@ void janus_echotest_setup_media(janus_plugin_session *handle) {
 		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
+	session->ab = janus_bwe_stream_bitrate_create();
+	session->vb = janus_bwe_stream_bitrate_create();
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_unlock(&sessions_mutex);
 	/* We really don't care, as we only send RTP/RTCP we get in the first place back anyway */
@@ -626,6 +644,8 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 				relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
 					buf, len, packet->extensions.dd_content, packet->extensions.dd_len,
 					session->ssrc, session->rid, session->vcodec, &session->context, &session->rid_mutex);
+				janus_bwe_stream_bitrate_update(session->vb, janus_get_monotonic_time(),
+					session->sim_context.substream_last, session->sim_context.temporal_last, len);
 			} else {
 				/* Process this SVC packet: don't relay if it's not the layer we wanted to handle */
 				relay = janus_rtp_svc_context_process_rtp(&session->svc_context,
@@ -695,6 +715,11 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 			if((!video && session->audio_active) || (video && session->video_active)) {
 				/* Save the frame if we're recording */
 				janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
+				/* Update the bitrate counter */
+				if(video)
+					janus_bwe_stream_bitrate_update(session->vb, janus_get_monotonic_time(), 0, 0, len);
+				else
+					janus_bwe_stream_bitrate_update(session->ab, janus_get_monotonic_time(), 0, 0, len);
 				/* Send the frame back */
 				gateway->relay_rtp(handle, packet);
 			}
@@ -831,6 +856,28 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int mindex, gboolean
 	janus_refcount_decrease(&session->ref);
 }
 
+void janus_echotest_estimated_bandwidth(janus_plugin_session *handle, uint32_t estimate) {
+	/* The core is informing us that our peer got or sent too many NACKs, are we pushing media too hard? */
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return;
+	janus_mutex_lock(&sessions_mutex);
+	janus_echotest_session *session = janus_echotest_lookup_session(handle);
+	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return;
+	}
+	if(g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&sessions_mutex);
+		return;
+	}
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
+	/* TODO Actually use this estimate for something */
+	JANUS_LOG(LOG_WARN, "[echotest] BWE=%"SCNu32"\n", estimate);
+	janus_refcount_decrease(&session->ref);
+}
+
 static void janus_echotest_recorder_close(janus_echotest_session *session) {
 	if(session->arc) {
 		janus_recorder *rc = session->arc;
@@ -903,6 +950,10 @@ static void janus_echotest_hangup_media_internal(janus_plugin_session *handle) {
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
+	janus_bwe_stream_bitrate_destroy(session->ab);
+	session->ab = NULL;
+	janus_bwe_stream_bitrate_destroy(session->vb);
+	session->vb = NULL;
 	session->min_delay = -1;
 	session->max_delay = -1;
 	g_atomic_int_set(&session->hangingup, 0);
