@@ -2753,7 +2753,7 @@ static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 		janus_mutex_unlock(&p->rtp_forwarders_mutex);
 		janus_mutex_unlock(&p->streams_mutex);
 		/* Release dummy session of the forwarder */
-		if(p->session && p->session->handle == NULL)
+		if(p->remote && p->session)
 			janus_videoroom_session_destroy(p->session);
 		janus_refcount_decrease(&p->ref);
 	}
