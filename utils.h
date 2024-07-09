@@ -31,8 +31,12 @@ struct janus_json_parameter {
 	unsigned int flags;
 };
 
+/*! Helper method used by the core to mark when Janus started */
+void janus_mark_started(void);
+
 /*! \brief Helper to retrieve the system monotonic time, as Glib's
  * g_get_monotonic_time may not be available (only since 2.28)
+ * @note The monotonic time will be normalized from the Janus start time
  * @returns The system monotonic time */
 gint64 janus_get_monotonic_time(void);
 
