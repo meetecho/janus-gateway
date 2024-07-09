@@ -4408,6 +4408,7 @@ gint main(int argc, char *argv[]) {
 	g_print("Janus version: %d (%s)\n", janus_version, janus_version_string);
 	g_print("Janus commit: %s\n", janus_build_git_sha);
 	g_print("Compiled on:  %s\n\n", janus_build_git_time);
+	janus_mark_started();
 
 	/* Initialize some command line options defaults */
 	options.debug_level = -1;
