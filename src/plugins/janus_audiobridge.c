@@ -239,6 +239,7 @@ room-<unique room ID>: {
 {
 	"audiobridge" : "destroyed",
 	"room" : <unique numeric ID>
+	"permanent" : <true|false, whether the room is also removed from the config file>
 }
 \endverbatim
  *
