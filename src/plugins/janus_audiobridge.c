@@ -238,7 +238,7 @@ room-<unique room ID>: {
 \verbatim
 {
 	"audiobridge" : "destroyed",
-	"room" : <unique numeric ID>
+	"room" : <unique numeric ID>,
 	"permanent" : <true|false, whether the room is also removed from the config file>
 }
 \endverbatim
