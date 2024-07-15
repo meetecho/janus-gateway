@@ -258,7 +258,7 @@ static GSource *janus_http_request_timeout_create(janus_transport_session *ts, j
 	janus_http_request_timeout *t = (janus_http_request_timeout *)source;
 	t->ts = ts;
 	t->session = session;
-	g_source_set_ready_time(source, janus_get_monotonic_time() + timeout*G_USEC_PER_SEC);
+	g_source_set_ready_time(source, janus_get_monotonic_time_internal() + timeout*G_USEC_PER_SEC);
 	JANUS_LOG(LOG_DBG, "[%p] create (%d)\n", source, timeout);
 	return source;
 }
