@@ -2310,7 +2310,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	janus_mutex_unlock(&mountpoints_mutex);
 
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_streaming_session_destroy);
-	messages = g_async_queue_new_full((GDestroyNotify) janus_streaming_message_free);
+	messages = g_async_queue_new_full((GDestroyNotify)janus_streaming_message_free);
 	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
@@ -6079,7 +6079,8 @@ static int janus_streaming_get_fd_port(int fd) {
 }
 
 /* Helpers to destroy a streaming mountpoint. */
-static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) {
+static void janus_streaming_rtp_source_free(gpointer data) {
+	janus_streaming_rtp_source *source = (janus_streaming_rtp_source *)data;
 	if(source->audio_fd > -1) {
 		close(source->audio_fd);
 	}
@@ -6154,7 +6155,8 @@ static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) 
 	g_free(source);
 }
 
-static void janus_streaming_file_source_free(janus_streaming_file_source *source) {
+static void janus_streaming_file_source_free(gpointer data) {
+	janus_streaming_file_source *source = (janus_streaming_file_source *)data;
 	g_free(source->filename);
 	g_free(source);
 }
@@ -6507,7 +6509,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->last_msg = NULL;
 	janus_mutex_init(&live_rtp_source->buffermsg_mutex);
 	live_rtp->source = live_rtp_source;
-	live_rtp->source_destroy = (GDestroyNotify) janus_streaming_rtp_source_free;
+	live_rtp->source_destroy = (GDestroyNotify)janus_streaming_rtp_source_free;
 	live_rtp->codecs.audio_pt = doaudio ? acodec : -1;
 	live_rtp->codecs.audio_rtpmap = doaudio ? g_strdup(artpmap) : NULL;
 	live_rtp->codecs.audio_fmtp = doaudio ? (afmtp ? g_strdup(afmtp) : NULL) : NULL;
@@ -6684,7 +6686,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	janus_streaming_file_source *file_source_source = g_malloc0(sizeof(janus_streaming_file_source));
 	file_source_source->filename = g_strdup(filename);
 	file_source->source = file_source_source;
-	file_source->source_destroy = (GDestroyNotify) janus_streaming_file_source_free;
+	file_source->source_destroy = (GDestroyNotify)janus_streaming_file_source_free;
 	if(strstr(filename, ".opus")) {
 		file_source_source->opus = TRUE;
 		file_source->codecs.audio_pt = acodec;
@@ -7634,7 +7636,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp_source->reconnect_timer = 0;
 	janus_mutex_init(&live_rtsp_source->rtsp_mutex);
 	live_rtsp->source = live_rtsp_source;
-	live_rtsp->source_destroy = (GDestroyNotify) janus_streaming_rtp_source_free;
+	live_rtsp->source_destroy = (GDestroyNotify)janus_streaming_rtp_source_free;
 	live_rtsp->viewers = NULL;
 	g_atomic_int_set(&live_rtsp->destroyed, 0);
 	janus_refcount_init(&live_rtsp->ref, janus_streaming_mountpoint_free);
