@@ -413,6 +413,7 @@ static void *janus_lua_async_event_helper(void *data) {
 	g_free(asev->transaction);
 	janus_refcount_decrease(&asev->session->ref);
 	g_free(asev);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
