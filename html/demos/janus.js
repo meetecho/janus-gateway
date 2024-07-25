@@ -40,7 +40,7 @@ var Janus = (function (factory) {
 
 	Janus.isExtensionEnabled = function() {
 		if(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-		// No need for the extension, getDisplayMedia is supported
+			// No need for the extension, getDisplayMedia is supported
 			return true;
 		}
 		if(window.navigator.userAgent.match('Chrome')) {
@@ -49,18 +49,18 @@ var Janus = (function (factory) {
 			if(window.navigator.userAgent.match('Linux'))
 				maxver = 35;	// "known" crash in chrome 34 and 35 on linux
 			if(chromever >= 26 && chromever <= maxver) {
-			// Older versions of Chrome don't support this extension-based approach, so lie
+				// Older versions of Chrome don't support this extension-based approach, so lie
 				return true;
 			}
 			return Janus.extension.isInstalled();
 		} else {
-		// Firefox and others, no need for the extension (but this doesn't mean it will work)
+			// Firefox and others, no need for the extension (but this doesn't mean it will work)
 			return true;
 		}
 	};
 
 	var defaultExtension = {
-	// Screensharing Chrome Extension ID
+		// Screensharing Chrome Extension ID
 		extensionId: 'hapfgfdkleiggjjpfpenajgdnfckjpaj',
 		isInstalled: function() { return document.querySelector('#janus-extension-installed') !== null; },
 		getScreen: function (callback) {
@@ -83,7 +83,7 @@ var Janus = (function (factory) {
 					let callback = cache[event.data.id];
 					delete cache[event.data.id];
 					if(event.data.sourceId === '') {
-					// user canceled
+						// user canceled
 						let error = new Error('NavigatorUserMediaError');
 						error.name = 'You cancelled the request for permission, giving up...';
 						callback(error);
@@ -216,13 +216,13 @@ var Janus = (function (factory) {
 	Janus.mediaToTracks = function(media) {
 		let tracks = [];
 		if(!media) {
-		// Default is bidirectional audio and video, using default devices
+			// Default is bidirectional audio and video, using default devices
 			tracks.push({ type: 'audio', capture: true, recv: true });
 			tracks.push({ type: 'video', capture: true, recv: true });
 		} else {
 			if(!media.keepAudio && media.audio !== false && ((typeof media.audio === 'undefined') || media.audio || media.audioSend || media.audioRecv ||
-				media.addAudio || media.replaceAudio || media.removeAudio)) {
-			// We may need an audio track
+					media.addAudio || media.replaceAudio || media.removeAudio)) {
+				// We may need an audio track
 				let track = { type: 'audio' };
 				if(media.removeAudio) {
 					track.remove = true;
@@ -243,8 +243,8 @@ var Janus = (function (factory) {
 					tracks.push(track);
 			}
 			if(!media.keepVideo && media.video !== false && ((typeof media.video === 'undefined') || media.video || media.videoSend || media.videoRecv ||
-				media.addVideo || media.replaceVideo || media.removeVideo)) {
-			// We may need a video track
+					media.addVideo || media.replaceVideo || media.removeVideo)) {
+				// We may need a video track
 				let track = { type: 'video' };
 				if(media.removeVideo) {
 					track.remove = true;
@@ -257,7 +257,7 @@ var Janus = (function (factory) {
 					if(media.videoSend !== false) {
 						track.capture = media.video || true;
 						if(['screen', 'window', 'desktop'].includes(track.capture)) {
-						// Change the type to 'screen'
+							// Change the type to 'screen'
 							track.type = 'screen';
 							track.capture = { video: {} };
 							// Check if there's constraints
@@ -278,7 +278,7 @@ var Janus = (function (factory) {
 					tracks.push(track);
 			}
 			if(media.data) {
-			// We need a data channel
+				// We need a data channel
 				tracks.push({ type: 'data' });
 			}
 		}
@@ -292,44 +292,44 @@ var Janus = (function (factory) {
 		if(!track || !track.capture)
 			return constraints;
 		if(track.type === 'audio') {
-		// Just put the capture part in the constraints
+			// Just put the capture part in the constraints
 			constraints.audio = track.capture;
 		} else if(track.type === 'video') {
-		// Check if one of the keywords was passed
+			// Check if one of the keywords was passed
 			if((track.simulcast || track.svc) && track.capture === true)
 				track.capture = 'hires';
 			if(track.capture === true || typeof track.capture === 'object') {
-			// Use the provided capture object as video constraint
+				// Use the provided capture object as video constraint
 				constraints.video = track.capture;
 			} else {
 				let width = 0;
 				let height = 0;
 				if(track.capture === 'lowres') {
-				// Small resolution, 4:3
+					// Small resolution, 4:3
 					width = 320;
 					height = 240;
 				} else if(track.capture === 'lowres-16:9') {
-				// Small resolution, 16:9
+					// Small resolution, 16:9
 					width = 320;
 					height = 180;
 				} else if(track.capture === 'hires' || track.capture === 'hires-16:9' || track.capture === 'hdres') {
-				// High(HD) resolution is only 16:9
+					// High(HD) resolution is only 16:9
 					width = 1280;
 					height = 720;
 				} else if(track.capture === 'fhdres') {
-				// Full HD resolution is only 16:9
+					// Full HD resolution is only 16:9
 					width = 1920;
 					height = 1080;
 				} else if(track.capture === '4kres') {
-				// 4K resolution is only 16:9
+					// 4K resolution is only 16:9
 					width = 3840;
 					height = 2160;
 				} else if(track.capture === 'stdres') {
-				// Normal resolution, 4:3
+					// Normal resolution, 4:3
 					width = 640;
 					height = 480;
 				} else if(track.capture === 'stdres-16:9') {
-				// Normal resolution, 16:9
+					// Normal resolution, 16:9
 					width = 640;
 					height = 360;
 				} else {
@@ -343,7 +343,7 @@ var Janus = (function (factory) {
 				};
 			}
 		} else if(track.type === 'screen') {
-		// Use the provided capture object as video constraint
+			// Use the provided capture object as video constraint
 			constraints.video = track.capture;
 		}
 		return constraints;
@@ -360,7 +360,7 @@ var Janus = (function (factory) {
 	// Stop all tracks from a given stream
 	Janus.stopAllTracks = function(stream) {
 		try {
-		// Try a MediaStreamTrack.stop() for each track
+			// Try a MediaStreamTrack.stop() for each track
 			let tracks = stream.getTracks();
 			for(let mst of tracks) {
 				Janus.log(mst);
@@ -370,7 +370,7 @@ var Janus = (function (factory) {
 			}
 		// eslint-disable-next-line no-unused-vars
 		} catch(e) {
-		// Do nothing if this fails
+			// Do nothing if this fails
 		}
 	}
 
@@ -379,7 +379,7 @@ var Janus = (function (factory) {
 		options = options || {};
 		options.callback = (typeof options.callback == "function") ? options.callback : Janus.noop;
 		if(Janus.initDone) {
-		// Already initialized
+			// Already initialized
 			options.callback();
 		} else {
 			if(typeof console.log == "undefined") {
@@ -393,7 +393,7 @@ var Janus = (function (factory) {
 			Janus.warn = Janus.noop;
 			Janus.error = Janus.noop;
 			if(options.debug === true || options.debug === "all") {
-			// Enable all debugging levels
+				// Enable all debugging levels
 				Janus.trace = console.trace.bind(console);
 				Janus.debug = console.debug.bind(console);
 				Janus.vdebug = console.debug.bind(console);
@@ -509,7 +509,7 @@ var Janus = (function (factory) {
 			Janus.safariVp9 = false;
 			if(Janus.webRTCAdapter.browserDetails.browser === 'safari' &&
 				Janus.webRTCAdapter.browserDetails.version >= 605) {
-			// Let's see if RTCRtpSender.getCapabilities() is there
+				// Let's see if RTCRtpSender.getCapabilities() is there
 				if(RTCRtpSender && RTCRtpSender.getCapabilities && RTCRtpSender.getCapabilities("video") &&
 					RTCRtpSender.getCapabilities("video").codecs && RTCRtpSender.getCapabilities("video").codecs.length) {
 					for(let codec of RTCRtpSender.getCapabilities("video").codecs) {
@@ -526,8 +526,8 @@ var Janus = (function (factory) {
 						"try enabling the 'WebRTC VP8 codec' setting in the 'Experimental Features' Develop menu");
 					}
 				} else {
-				// We do it in a very ugly way, as there's no alternative...
-				// We create a PeerConnection to see if VP8 is in an offer
+					// We do it in a very ugly way, as there's no alternative...
+					// We create a PeerConnection to see if VP8 is in an offer
 					let testpc = new RTCPeerConnection({});
 					testpc.createOffer({offerToReceiveVideo: true}).then(function(offer) {
 						Janus.safariVp8 = offer.sdp.indexOf("VP8") !== -1;
@@ -711,7 +711,7 @@ var Janus = (function (factory) {
 					Janus.error(textStatus + ":", errorThrown);
 					retries++;
 					if(retries > 3) {
-					// Did we just lose the server? :-(
+						// Did we just lose the server? :-(
 						connected = false;
 						gatewayCallbacks.error("Lost connection to the server (is it down?)");
 						return;
@@ -727,18 +727,18 @@ var Janus = (function (factory) {
 			if(!websockets && typeof sessionId !== 'undefined' && sessionId !== null && skipTimeout !== true)
 				eventHandler();
 			if(!websockets && Janus.isArray(json)) {
-			// We got an array: it means we passed a maxev > 1, iterate on all objects
+				// We got an array: it means we passed a maxev > 1, iterate on all objects
 				for(let i=0; i<json.length; i++) {
 					handleEvent(json[i], true);
 				}
 				return;
 			}
 			if(json["janus"] === "keepalive") {
-			// Nothing happened
+				// Nothing happened
 				Janus.vdebug("Got a keepalive on session " + sessionId);
 				return;
 			} else if(json["janus"] === "server_info") {
-			// Just info on the Janus instance
+				// Just info on the Janus instance
 				Janus.debug("Got info on the Janus instance");
 				Janus.debug(json);
 				const transaction = json["transaction"];
@@ -750,7 +750,7 @@ var Janus = (function (factory) {
 				}
 				return;
 			} else if(json["janus"] === "ack") {
-			// Just an ack, we can probably ignore
+				// Just an ack, we can probably ignore
 				Janus.debug("Got an ack on session " + sessionId);
 				Janus.debug(json);
 				const transaction = json["transaction"];
@@ -762,7 +762,7 @@ var Janus = (function (factory) {
 				}
 				return;
 			} else if(json["janus"] === "success") {
-			// Success!
+				// Success!
 				Janus.debug("Got a success on session " + sessionId);
 				Janus.debug(json);
 				const transaction = json["transaction"];
@@ -774,7 +774,7 @@ var Janus = (function (factory) {
 				}
 				return;
 			} else if(json["janus"] === "trickle") {
-			// We got a trickle candidate from Janus
+				// We got a trickle candidate from Janus
 				const sender = json["sender"];
 				if(!sender) {
 					Janus.warn("Missing sender...");
@@ -790,17 +790,17 @@ var Janus = (function (factory) {
 				Janus.debug(candidate);
 				let config = pluginHandle.webrtcStuff;
 				if(config.pc && config.remoteSdp) {
-				// Add candidate right now
+					// Add candidate right now
 					Janus.debug("Adding remote candidate:", candidate);
 					if(!candidate || candidate.completed === true) {
-					// end-of-candidates
+						// end-of-candidates
 						config.pc.addIceCandidate(Janus.endOfCandidates);
 					} else {
-					// New candidate
+						// New candidate
 						config.pc.addIceCandidate(candidate);
 					}
 				} else {
-				// We didn't do setRemoteDescription (trickle got here before the offer?)
+					// We didn't do setRemoteDescription (trickle got here before the offer?)
 					Janus.debug("We didn't do setRemoteDescription (trickle got here before the offer?), caching candidate");
 					if(!config.candidates)
 						config.candidates = [];
@@ -808,7 +808,7 @@ var Janus = (function (factory) {
 					Janus.debug(config.candidates);
 				}
 			} else if(json["janus"] === "webrtcup") {
-			// The PeerConnection with the server is up! Notify this
+				// The PeerConnection with the server is up! Notify this
 				Janus.debug("Got a webrtcup event on session " + sessionId);
 				Janus.debug(json);
 				const sender = json["sender"];
@@ -824,7 +824,7 @@ var Janus = (function (factory) {
 				pluginHandle.webrtcState(true);
 				return;
 			} else if(json["janus"] === "hangup") {
-			// A plugin asked the core to hangup a PeerConnection on one of our handles
+				// A plugin asked the core to hangup a PeerConnection on one of our handles
 				Janus.debug("Got a hangup event on session " + sessionId);
 				Janus.debug(json);
 				const sender = json["sender"];
@@ -840,7 +840,7 @@ var Janus = (function (factory) {
 				pluginHandle.webrtcState(false, json["reason"]);
 				pluginHandle.hangup();
 			} else if(json["janus"] === "detached") {
-			// A plugin asked the core to detach one of our handles
+				// A plugin asked the core to detach one of our handles
 				Janus.debug("Got a detached event on session " + sessionId);
 				Janus.debug(json);
 				const sender = json["sender"];
@@ -850,13 +850,13 @@ var Janus = (function (factory) {
 				}
 				const pluginHandle = pluginHandles.get(sender);
 				if(!pluginHandle) {
-				// Don't warn here because destroyHandle causes this situation.
+					// Don't warn here because destroyHandle causes this situation.
 					return;
 				}
 				pluginHandle.ondetached();
 				pluginHandle.detach();
 			} else if(json["janus"] === "media") {
-			// Media started/stopped flowing
+				// Media started/stopped flowing
 				Janus.debug("Got a media event on session " + sessionId);
 				Janus.debug(json);
 				const sender = json["sender"];
@@ -886,7 +886,7 @@ var Janus = (function (factory) {
 				}
 				pluginHandle.slowLink(json["uplink"], json["lost"], json["mid"]);
 			} else if(json["janus"] === "error") {
-			// Oops, something wrong happened
+				// Oops, something wrong happened
 				Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 				Janus.debug(json);
 				let transaction = json["transaction"];
@@ -930,7 +930,7 @@ var Janus = (function (factory) {
 					// Send to callback specified when attaching plugin handle
 					callback(data, jsep);
 				} else {
-				// Send to generic callback (?)
+					// Send to generic callback (?)
 					Janus.debug("No provided notification callback");
 				}
 			} else if(json["janus"] === "timeout") {
@@ -964,7 +964,7 @@ var Janus = (function (factory) {
 			let transaction = Janus.randomString(12);
 			let request = { "janus": "create", "transaction": transaction };
 			if(callbacks["reconnect"]) {
-			// We're reconnecting, claim the session
+				// We're reconnecting, claim the session
 				connected = false;
 				request["janus"] = "claim";
 				request["session_id"] = sessionId;
@@ -984,7 +984,7 @@ var Janus = (function (factory) {
 			if(apisecret)
 				request["apisecret"] = apisecret;
 			if(!server && Janus.isArray(servers)) {
-			// We still need to find a working server from the list we were given
+				// We still need to find a working server from the list we were given
 				server = servers[serversIndex];
 				if(server.indexOf("ws") === 0) {
 					websockets = true;
@@ -1002,7 +1002,7 @@ var Janus = (function (factory) {
 						if(Janus.isArray(servers) && !callbacks["reconnect"]) {
 							serversIndex++;
 							if(serversIndex === servers.length) {
-							// We tried all the servers the user gave us and they all failed
+								// We tried all the servers the user gave us and they all failed
 								callbacks.error("Error connecting to any of the provided Janus servers: Is the server down?");
 								return;
 							}
@@ -1017,7 +1017,7 @@ var Janus = (function (factory) {
 					},
 
 					'open': function() {
-					// We need to be notified about the success
+						// We need to be notified about the success
 						transactions.set(transaction, function(json) {
 							Janus.debug(json);
 							if(json["janus"] !== "success") {
@@ -1086,7 +1086,7 @@ var Janus = (function (factory) {
 					if(Janus.isArray(servers) && !callbacks["reconnect"]) {
 						serversIndex++;
 						if(serversIndex === servers.length) {
-						// We tried all the servers the user gave us and they all failed
+							// We tried all the servers the user gave us and they all failed
 							callbacks.error("Error connecting to any of the provided Janus servers: Is the server down?");
 							return;
 						}
@@ -1194,8 +1194,8 @@ var Janus = (function (factory) {
 			if(apisecret)
 				request["apisecret"] = apisecret;
 			if(unload) {
-			// We're unloading the page: use sendBeacon for HTTP instead,
-			// or just close the WebSocket connection if we're using that
+				// We're unloading the page: use sendBeacon for HTTP instead,
+				// or just close the WebSocket connection if we're using that
 				if(websockets) {
 					ws.onclose = null;
 					ws.close();
@@ -1528,7 +1528,7 @@ var Janus = (function (factory) {
 								let params = tr.sender.getParameters();
 								if(params && params.encodings && params.encodings[0] &&
 									params.encodings[0].scalabilityMode) {
-								// This video stream uses SVC
+									// This video stream uses SVC
 									if(!svc)
 										svc = [];
 									svc.push({
@@ -1553,7 +1553,7 @@ var Janus = (function (factory) {
 					Janus.debug("Message sent!");
 					Janus.debug(json);
 					if(json["janus"] === "success") {
-					// We got a success, must have been a synchronous transaction
+						// We got a success, must have been a synchronous transaction
 						let plugindata = json["plugindata"];
 						if(!plugindata) {
 							Janus.warn("Request succeeded, but missing plugindata...");
@@ -1566,7 +1566,7 @@ var Janus = (function (factory) {
 						callbacks.success(data);
 						return;
 					} else if(json["janus"] !== "ack") {
-					// Not a success and not an ack, must be an error
+						// Not a success and not an ack, must be an error
 						if(json["error"]) {
 							Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 							callbacks.error(json["error"].code + " " + json["error"].reason);
@@ -1590,7 +1590,7 @@ var Janus = (function (factory) {
 					Janus.debug("Message sent!");
 					Janus.debug(json);
 					if(json["janus"] === "success") {
-					// We got a success, must have been a synchronous transaction
+						// We got a success, must have been a synchronous transaction
 						let plugindata = json["plugindata"];
 						if(!plugindata) {
 							Janus.warn("Request succeeded, but missing plugindata...");
@@ -1603,7 +1603,7 @@ var Janus = (function (factory) {
 						callbacks.success(data);
 						return;
 					} else if(json["janus"] !== "ack") {
-					// Not a success and not an ack, must be an error
+						// Not a success and not an ack, must be an error
 						if(json["error"]) {
 							Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 							callbacks.error(json["error"].code + " " + json["error"].reason);
@@ -1689,7 +1689,7 @@ var Janus = (function (factory) {
 				let dcState = config.dataChannel[label] ? config.dataChannel[label].readyState : "null";
 				Janus.log('State change on <' + label + '> data channel: ' + dcState);
 				if(dcState === 'open') {
-				// Any pending messages to send?
+					// Any pending messages to send?
 					if(config.dataChannel[label].pending && config.dataChannel[label].pending.length > 0) {
 						Janus.log("Sending pending messages on <" + label + ">:", config.dataChannel[label].pending.length);
 						for(let data of config.dataChannel[label].pending) {
@@ -1705,16 +1705,16 @@ var Janus = (function (factory) {
 			};
 			let onDataChannelError = function(error) {
 				Janus.error('Got error on data channel:', error);
-			// TODO
+				// TODO
 			};
 			if(!incoming) {
-			// FIXME Add options (ordered, maxRetransmits, etc.)
+				// FIXME Add options (ordered, maxRetransmits, etc.)
 				let dcoptions = config.dataChannelOptions;
 				if(dcprotocol)
 					dcoptions.protocol = dcprotocol;
 				config.dataChannel[dclabel] = config.pc.createDataChannel(dclabel, dcoptions);
 			} else {
-			// The channel was created by Janus
+				// The channel was created by Janus
 				config.dataChannel[dclabel] = incoming;
 			}
 			config.dataChannel[dclabel].onmessage = onDataChannelMessage;
@@ -1746,7 +1746,7 @@ var Janus = (function (factory) {
 			}
 			let label = callbacks.label ? callbacks.label : Janus.dataChanDefaultLabel;
 			if(!config.dataChannel[label]) {
-			// Create new data channel and wait for it to open
+				// Create new data channel and wait for it to open
 				createDataChannel(handleId, label, callbacks.protocol, false, data, callbacks.protocol);
 				callbacks.success();
 				return;
@@ -1775,7 +1775,7 @@ var Janus = (function (factory) {
 			}
 			let config = pluginHandle.webrtcStuff;
 			if(!config.dtmfSender) {
-			// Create the DTMF sender the proper way, if possible
+				// Create the DTMF sender the proper way, if possible
 				if(config.pc) {
 					let senders = config.pc.getSenders();
 					let audioSender = senders.find(function(sender) {
@@ -1827,14 +1827,14 @@ var Janus = (function (factory) {
 			cleanupWebrtc(handleId);
 			let pluginHandle = pluginHandles.get(handleId);
 			if(!pluginHandle || pluginHandle.detached) {
-			// Plugin was already detached by Janus, calling detach again will return a handle not found error, so just exit here
+				// Plugin was already detached by Janus, calling detach again will return a handle not found error, so just exit here
 				pluginHandles.delete(handleId);
 				callbacks.success();
 				return;
 			}
 			pluginHandle.detached = true;
 			if(noRequest) {
-			// We're only removing the handle locally
+				// We're only removing the handle locally
 				pluginHandles.delete(handleId);
 				callbacks.success();
 				return;
@@ -1889,7 +1889,7 @@ var Janus = (function (factory) {
 			}
 			let config = pluginHandle.webrtcStuff;
 			if(config.pc) {
-			// Nothing to do, we have a PeerConnection already
+				// Nothing to do, we have a PeerConnection already
 				return;
 			}
 			let pc_config = {
@@ -1941,22 +1941,22 @@ var Janus = (function (factory) {
 					Janus.log('End of candidates.');
 					config.iceDone = true;
 					if(config.trickle === true) {
-					// Notify end of candidates
+						// Notify end of candidates
 						sendTrickleCandidate(handleId, { completed : true });
 					} else {
-					// No trickle, time to send the complete SDP (including all candidates)
+						// No trickle, time to send the complete SDP (including all candidates)
 						sendSDP(handleId, callbacks);
 					}
 				} else {
-				// JSON.stringify doesn't work on some WebRTC objects anymore
-				// See https://code.google.com/p/chromium/issues/detail?id=467366
+					// JSON.stringify doesn't work on some WebRTC objects anymore
+					// See https://code.google.com/p/chromium/issues/detail?id=467366
 					let candidate = {
 						candidate: event.candidate.candidate,
 						sdpMid: event.candidate.sdpMid,
 						sdpMLineIndex: event.candidate.sdpMLineIndex
 					};
 					if(config.trickle === true) {
-					// Send candidate
+						// Send candidate
 						sendTrickleCandidate(handleId, candidate);
 					}
 				}
@@ -1971,8 +1971,8 @@ var Janus = (function (factory) {
 				let mid = event.transceiver ? event.transceiver.mid : event.track.id;
 				try {
 					if(event.transceiver && event.transceiver.mid && event.track.id) {
-					// Keep track of the mapping between track ID and mid, since
-					// when a track is removed the transceiver may be gone already
+						// Keep track of the mapping between track ID and mid, since
+						// when a track is removed the transceiver may be gone already
 						if(!pluginHandle.mids)
 							pluginHandle.mids = {};
 						pluginHandle.mids[event.track.id] = event.transceiver.mid;
@@ -2032,7 +2032,7 @@ var Janus = (function (factory) {
 						trackMutedTimeoutId = null;
 					} else {
 						try {
-						// Notify the application the track is back
+							// Notify the application the track is back
 							let transceivers = config.pc ? config.pc.getTransceivers() : null;
 							let transceiver = transceivers ? transceivers.find(
 								t => t.receiver.track === ev.target) : null;
@@ -2068,7 +2068,7 @@ var Janus = (function (factory) {
 			if(callbacks.media && !callbacks.tracks) {
 				callbacks.tracks = Janus.mediaToTracks(callbacks.media);
 				if(callbacks.simulcast === true || callbacks.simulcast2 === true || callbacks.svc) {
-				// Find the video track and add simulcast/SVC info there
+					// Find the video track and add simulcast/SVC info there
 					for(let track of callbacks.tracks) {
 						if(track.type === 'video') {
 							if(callbacks.simulcast === true || callbacks.simulcast2 === true)
@@ -2097,10 +2097,10 @@ var Janus = (function (factory) {
 			let config = pluginHandle.webrtcStuff;
 			config.trickle = isTrickleEnabled(callbacks.trickle);
 			try {
-			// Create a PeerConnection, if needed
+				// Create a PeerConnection, if needed
 				createPeerconnectionIfNeeded(handleId, callbacks);
 				if(offer) {
-				// Capture devices and setup tracks, if needed
+					// Capture devices and setup tracks, if needed
 					await captureDevices(handleId, callbacks);
 				}
 				// Create offer or answer now (depending on the context)
@@ -2117,10 +2117,10 @@ var Janus = (function (factory) {
 							let candidate = config.candidates[i];
 							Janus.debug("Adding remote candidate:", candidate);
 							if(!candidate || candidate.completed === true) {
-							// end-of-candidates
+								// end-of-candidates
 								config.pc.addIceCandidate(Janus.endOfCandidates);
 							} else {
-							// New candidate
+								// New candidate
 								config.pc.addIceCandidate(candidate);
 							}
 						}
@@ -2168,10 +2168,10 @@ var Janus = (function (factory) {
 								let candidate = config.candidates[i];
 								Janus.debug("Adding remote candidate:", candidate);
 								if(!candidate || candidate.completed === true) {
-								// end-of-candidates
+									// end-of-candidates
 									config.pc.addIceCandidate(Janus.endOfCandidates);
 								} else {
-								// New candidate
+									// New candidate
 									config.pc.addIceCandidate(candidate);
 								}
 							}
@@ -2220,7 +2220,7 @@ var Janus = (function (factory) {
 			await config.pc.setLocalDescription(offer);
 			config.mediaConstraints = mediaConstraints;
 			if(!config.iceDone && !config.trickle) {
-			// FIXME Don't do anything until we have all candidates
+				// FIXME Don't do anything until we have all candidates
 				Janus.log("Waiting for all candidates...");
 				return null;
 			}
@@ -2257,7 +2257,7 @@ var Janus = (function (factory) {
 			};
 			await config.pc.setLocalDescription(answer);
 			if(!config.iceDone && !config.trickle) {
-			// FIXME Don't do anything until we have all candidates
+				// FIXME Don't do anything until we have all candidates
 				Janus.log("Waiting for all candidates...");
 				return null;
 			}
@@ -2330,7 +2330,7 @@ var Janus = (function (factory) {
 			}
 			let tracks = callbacks.tracks;
 			if(!tracks || !Array.isArray(tracks) || tracks.length === 0) {
-			// Nothing to do
+				// Nothing to do
 				return;
 			}
 			let openedConsentDialog = false;
@@ -2368,7 +2368,7 @@ var Janus = (function (factory) {
 					continue;
 				}
 				if(track.type === 'data') {
-				// Easy enough: create a datachannel if we don't have one already
+					// Easy enough: create a datachannel if we don't have one already
 					if(config.pc.ondatachannel) {
 						Janus.warn('Data channel exists already, not creating another one');
 						continue;
@@ -2382,9 +2382,9 @@ var Janus = (function (factory) {
 					continue;
 				}
 				if((typeof track.add === 'undefined' || track.add === null) &&
-					(typeof track.remove === 'undefined' || track.remove === null) &&
-					(typeof track.replace === 'undefined' || track.replace === null)) {
-				// Let's default to 'add'
+						(typeof track.remove === 'undefined' || track.remove === null) &&
+						(typeof track.replace === 'undefined' || track.replace === null)) {
+					// Let's default to 'add'
 					track.add = true;
 				}
 				if((track.add && track.remove) || (track.add && track.remove && track.replace)) {
@@ -2403,11 +2403,11 @@ var Janus = (function (factory) {
 					kind = 'video';	// FIXME
 				let transceiver = null, sender = null;
 				if(track.mid) {
-				// Search by mid
+					// Search by mid
 					transceiver = config.pc.getTransceivers()
 						.find(t => (t.mid === track.mid && t.receiver.track.kind === kind));
-				} else {
-				// Find the first track of this type
+				} else if(!track.add) {
+					// Find the first track of this type
 					transceiver = config.pc.getTransceivers()
 						.find(t => (t.receiver.track.kind === kind));
 				}
@@ -2455,7 +2455,7 @@ var Janus = (function (factory) {
 							}
 						}
 						if(rt) {
-						// Remove the track and notify the application
+							// Remove the track and notify the application
 							try {
 								config.myStream.removeTrack(rt);
 								pluginHandle.onlocaltrack(rt, false);
@@ -2474,14 +2474,14 @@ var Janus = (function (factory) {
 				}
 				if(track.capture) {
 					if(track.gumGroup && groups[track.gumGroup] && groups[track.gumGroup].stream) {
-					// We did a getUserMedia before already
+						// We did a getUserMedia before already
 						let stream = groups[track.gumGroup].stream;
 						nt = (track.type === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]);
 						delete groups[track.gumGroup].stream;
 						delete groups[track.gumGroup];
 						delete track.gumGroup;
 					} else if(track.capture instanceof MediaStreamTrack) {
-					// An external track was provided, use that
+						// An external track was provided, use that
 						nt = track.capture;
 					} else {
 						if(!openedConsentDialog) {
@@ -2490,7 +2490,7 @@ var Janus = (function (factory) {
 						}
 						let constraints = Janus.trackConstraints(track), stream = null;
 						if(track.type === 'audio' || track.type === 'video') {
-						// Use getUserMedia: check if we need to group audio and video together
+							// Use getUserMedia: check if we need to group audio and video together
 							if(track.gumGroup) {
 								let otherType = (track.type === 'audio' ? 'video' : 'audio');
 								if(groups[track.gumGroup] && groups[track.gumGroup][otherType]) {
@@ -2501,19 +2501,19 @@ var Janus = (function (factory) {
 							}
 							stream = await navigator.mediaDevices.getUserMedia(constraints);
 							if(track.gumGroup && constraints.audio && constraints.video) {
-							// We just performed a grouped getUserMedia, keep track of the
-							// stream so that we can immediately assign the track later
+								// We just performed a grouped getUserMedia, keep track of the
+								// stream so that we can immediately assign the track later
 								groups[track.gumGroup].stream = stream;
 								delete track.gumGroup;
 							}
 						} else {
-						// Use getDisplayMedia
+							// Use getDisplayMedia
 							stream = await navigator.mediaDevices.getDisplayMedia(constraints);
 						}
 						nt = (track.type === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]);
 					}
 					if(track.replace) {
-					// Replace the track
+						// Replace the track
 						await sender.replaceTrack(nt);
 						// Update the transceiver direction
 						let newDirection = 'sendrecv';
@@ -2524,7 +2524,7 @@ var Janus = (function (factory) {
 						else
 							transceiver.direction = newDirection;
 					} else {
-					// FIXME Add as a new track
+						// FIXME Add as a new track
 						if(!config.myStream)
 							config.myStream = new MediaStream();
 						if(kind === 'audio' || (!track.simulcast && !track.svc)) {
@@ -2533,7 +2533,7 @@ var Janus = (function (factory) {
 								.find(t => (t.sender === sender));
 						} else if(track.simulcast) {
 							if(Janus.webRTCAdapter.browserDetails.browser !== 'firefox') {
-							// Standard RID
+								// Standard RID
 								Janus.log('Enabling rid-based simulcasting:', nt);
 								let maxBitrates = getMaxBitrates(track.simulcastMaxBitrates);
 								transceiver = config.pc.addTransceiver(nt, {
@@ -2546,7 +2546,7 @@ var Janus = (function (factory) {
 									]
 								});
 							} else {
-							// Firefox-based RID, based on https://gist.github.com/voluntas/088bc3cc62094730647b
+								// Firefox-based RID, based on https://gist.github.com/voluntas/088bc3cc62094730647b
 								Janus.log('Enabling Simulcasting for Firefox (RID)');
 								transceiver = config.pc.addTransceiver(nt, {
 									direction: 'sendrecv',
@@ -2601,7 +2601,7 @@ var Janus = (function (factory) {
 							}
 						}
 						if(track.bitrate) {
-						// Override maximum bitrate
+							// Override maximum bitrate
 							if(track.simulcast || track.svc) {
 								Janus.warn('Ignoring bitrate for simulcast/SVC track, use sendEncodings for that');
 							} else if(isNaN(track.bitrate) || track.bitrate < 0) {
@@ -2617,7 +2617,7 @@ var Janus = (function (factory) {
 							}
 						}
 						if(kind === 'video' && track.framerate) {
-						// Override maximum framerate
+							// Override maximum framerate
 							if(track.simulcast || track.svc) {
 								Janus.warn('Ignoring framerate for simulcast/SVC track, use sendEncodings for that');
 							} else if(isNaN(track.framerate) || track.framerate < 0) {
@@ -2635,7 +2635,7 @@ var Janus = (function (factory) {
 						// Check if insertable streams are involved
 						if(track.transforms) {
 							if(sender && track.transforms.sender) {
-							// There's a sender transform, set it on the transceiver sender
+								// There's a sender transform, set it on the transceiver sender
 								let senderStreams = null;
 								if(RTCRtpSender.prototype.createEncodedStreams) {
 									senderStreams = sender.createEncodedStreams();
@@ -2660,7 +2660,7 @@ var Janus = (function (factory) {
 								}
 							}
 							if(transceiver && transceiver.receiver && track.transforms.receiver) {
-							// There's a receiver transform, set it on the transceiver receiver
+								// There's a receiver transform, set it on the transceiver receiver
 								let receiverStreams = null;
 								if(RTCRtpReceiver.prototype.createEncodedStreams) {
 									receiverStreams = transceiver.receiver.createEncodedStreams();
@@ -2689,11 +2689,11 @@ var Janus = (function (factory) {
 					if(nt && track.dontStop === true)
 						nt.dontStop = true;
 				} else if(track.recv) {
-				// Maybe a new recvonly track
+					// Maybe a new recvonly track
 					if(!transceiver)
 						transceiver = config.pc.addTransceiver(kind);
 					if(transceiver) {
-					// Check if we need to override some settings
+						// Check if we need to override some settings
 						if(track.codec) {
 							if(Janus.webRTCAdapter.browserDetails.browser === 'firefox') {
 								Janus.warn('setCodecPreferences not supported in Firefox, ignoring codec for track:', track);
@@ -2717,7 +2717,7 @@ var Janus = (function (factory) {
 						}
 						// Check if insertable streams are involved
 						if(transceiver.receiver && track.transforms && track.transforms.receiver) {
-						// There's a receiver transform, set it on the transceiver receiver
+							// There's a receiver transform, set it on the transceiver receiver
 							let receiverStreams = null;
 							if(RTCRtpReceiver.prototype.createEncodedStreams) {
 								receiverStreams = transceiver.receiver.createEncodedStreams();
@@ -2744,7 +2744,7 @@ var Janus = (function (factory) {
 					}
 				}
 				if(nt) {
-				// FIXME Add the new track locally
+					// FIXME Add the new track locally
 					config.myStream.addTrack(nt);
 					// Notify the application about the new local track, if any
 					nt.onended = function(ev) {
@@ -2856,8 +2856,8 @@ var Janus = (function (factory) {
 			// Start getting the volume, if audioLevel in getStats is supported (apparently
 			// they're only available in Chrome/Safari right now: https://webrtc-stats.callstats.io/)
 			if(config.pc && config.pc.getStats && (Janus.webRTCAdapter.browserDetails.browser === "chrome" ||
-				Janus.webRTCAdapter.browserDetails.browser === "safari")) {
-			// Are we interested in a mid in particular?
+					Janus.webRTCAdapter.browserDetails.browser === "safari")) {
+				// Are we interested in a mid in particular?
 				let query = config.pc;
 				if(mid) {
 					let transceiver = config.pc.getTransceivers()
@@ -2890,8 +2890,8 @@ var Janus = (function (factory) {
 					});
 				return config.volume[stream].value;
 			} else {
-			// audioInputLevel and audioOutputLevel seem only available in Chrome? audioLevel
-			// seems to be available on Chrome and Firefox, but they don't seem to work
+				// audioInputLevel and audioOutputLevel seem only available in Chrome? audioLevel
+				// seems to be available on Chrome and Firefox, but they don't seem to work
 				Janus.warn("Getting the " + stream + " volume unsupported by browser");
 				result(0);
 				return;
@@ -2914,7 +2914,7 @@ var Janus = (function (factory) {
 				return true;
 			}
 			if(video) {
-			// Check video track
+				// Check video track
 				if(!config.myStream.getVideoTracks() || config.myStream.getVideoTracks().length === 0) {
 					Janus.warn("No video track");
 					return true;
@@ -2935,7 +2935,7 @@ var Janus = (function (factory) {
 					return !config.myStream.getVideoTracks()[0].enabled;
 				}
 			} else {
-			// Check audio track
+				// Check audio track
 				if(!config.myStream.getAudioTracks() || config.myStream.getAudioTracks().length === 0) {
 					Janus.warn("No audio track");
 					return true;
@@ -2974,7 +2974,7 @@ var Janus = (function (factory) {
 				return false;
 			}
 			if(video) {
-			// Mute/unmute video track
+				// Mute/unmute video track
 				if(!config.myStream.getVideoTracks() || config.myStream.getVideoTracks().length === 0) {
 					Janus.warn("No video track");
 					return false;
@@ -2997,7 +2997,7 @@ var Janus = (function (factory) {
 					}
 				}
 			} else {
-			// Mute/unmute audio track
+				// Mute/unmute audio track
 				if(!config.myStream.getAudioTracks() || config.myStream.getAudioTracks().length === 0) {
 					Janus.warn("No audio track");
 					return false;
@@ -3070,12 +3070,12 @@ var Janus = (function (factory) {
 									let inStats = false;
 									// Check if these are statistics on incoming media
 									if((res.mediaType === "video" || res.kind === "video" || res.id.toLowerCase().indexOf("video") > -1) &&
-										res.type === "inbound-rtp" && res.id.indexOf("rtcp") < 0) {
-									// New stats
+											res.type === "inbound-rtp" && res.id.indexOf("rtcp") < 0) {
+										// New stats
 										inStats = true;
 									} else if(res.type == 'ssrc' && res.bytesReceived &&
-										(res.googCodecName === "VP8" || res.googCodecName === "")) {
-									// Older Chromer versions
+											(res.googCodecName === "VP8" || res.googCodecName === "")) {
+										// Older Chromer versions
 										inStats = true;
 									}
 									// Parse stats now
@@ -3083,11 +3083,11 @@ var Janus = (function (factory) {
 										config.bitrate[target].bsnow = res.bytesReceived;
 										config.bitrate[target].tsnow = res.timestamp;
 										if(config.bitrate[target].bsbefore === null || config.bitrate[target].tsbefore === null) {
-										// Skip this round
+											// Skip this round
 											config.bitrate[target].bsbefore = config.bitrate[target].bsnow;
 											config.bitrate[target].tsbefore = config.bitrate[target].tsnow;
 										} else {
-										// Calculate bitrate
+											// Calculate bitrate
 											let timePassed = config.bitrate[target].tsnow - config.bitrate[target].tsbefore;
 											if(Janus.webRTCAdapter.browserDetails.browser === "safari")
 												timePassed = timePassed/1000;	// Apparently the timestamp is in microseconds, in Safari
@@ -3153,13 +3153,13 @@ var Janus = (function (factory) {
 			Janus.log("Cleaning WebRTC stuff");
 			let pluginHandle = pluginHandles.get(handleId);
 			if(!pluginHandle) {
-			// Nothing to clean
+				// Nothing to clean
 				return;
 			}
 			let config = pluginHandle.webrtcStuff;
 			if(config) {
 				if(hangupRequest === true) {
-				// Send a hangup request (we don't really care about the response)
+					// Send a hangup request (we don't really care about the response)
 					let request = { "janus": "hangup", "transaction": Janus.randomString(12) };
 					if(pluginHandle.token)
 						request["token"] = pluginHandle.token;
@@ -3202,7 +3202,7 @@ var Janus = (function (factory) {
 					config.pc.close();
 				// eslint-disable-next-line no-unused-vars
 				} catch(e) {
-				// Do nothing
+					// Do nothing
 				}
 				config.pc = null;
 				config.candidates = null;
