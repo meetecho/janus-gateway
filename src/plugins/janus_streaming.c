@@ -5588,15 +5588,6 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 				}
 				janus_mutex_unlock(&stream->keyframe.mutex);
 			}
-			if(stream->buffermsg) {
-				JANUS_LOG(LOG_HUGE, "Any recent datachannel message to send? (%s)\n", stream->mid);
-				janus_mutex_lock(&stream->buffermsg_mutex);
-				if(stream->last_msg != NULL) {
-					JANUS_LOG(LOG_HUGE, "Yep!\n");
-					janus_streaming_relay_rtp_packet(session, stream->last_msg);
-				}
-				janus_mutex_unlock(&stream->buffermsg_mutex);
-			}
 			/* If this mountpoint has RTCP support, send a PLI */
 			if(stream->type == JANUS_STREAMING_MEDIA_VIDEO)
 				janus_streaming_rtcp_pli_send(stream);
@@ -5680,9 +5671,29 @@ void janus_streaming_data_ready(janus_plugin_session *handle) {
 	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;
 	if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->hangingup))
 		return;
+	janus_refcount_increase(&session->ref);
 	if(g_atomic_int_compare_and_exchange(&session->dataready, 0, 1)) {
 		JANUS_LOG(LOG_INFO, "[%s-%p] Data channel available\n", JANUS_STREAMING_PACKAGE, handle);
 	}
+	/* Try to send a buffered datachannel message when datachannel is ready */
+	GList *temp = session->streams;
+	janus_streaming_rtp_source_stream *stream;
+	while(temp) {
+		stream = (janus_streaming_rtp_source_stream *)temp->data;
+		if(stream->buffermsg) {
+			janus_refcount_increase(&stream->ref);
+			JANUS_LOG(LOG_VERB, "[%s-%p] Trying to send the most recent message (%s)\n", JANUS_STREAMING_PACKAGE, handle, stream->mid);
+			janus_mutex_lock(&stream->buffermsg_mutex);
+			if(stream->last_msg != NULL) {
+				JANUS_LOG(LOG_HUGE, "Buffered datachannel message found!\n");
+				janus_streaming_relay_rtp_packet(session, stream->last_msg);
+			}
+			janus_mutex_unlock(&stream->buffermsg_mutex);
+			janus_refcount_decrease(&stream->ref);
+		}
+		temp = temp->next;
+	}
+	janus_refcount_decrease(&session->ref);
 }
 
 void janus_streaming_hangup_media(janus_plugin_session *handle) {
@@ -10093,7 +10104,8 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 	if(!session || !session->handle) {
 		return;
 	}
-	if(!packet->is_keyframe && (!g_atomic_int_get(&session->started) || g_atomic_int_get(&session->paused))) {
+	/* This check considers early data (buffered KF / datachannel message) */
+	if((!g_atomic_int_get(&session->started) && !packet->is_data && !packet->is_keyframe) || g_atomic_int_get(&session->paused)) {
 		return;
 	}
 	janus_streaming_session_stream *s = g_hash_table_lookup(session->streams_byid, GINT_TO_POINTER(packet->mindex));
