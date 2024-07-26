@@ -5674,26 +5674,26 @@ void janus_streaming_data_ready(janus_plugin_session *handle) {
 	janus_refcount_increase(&session->ref);
 	if(g_atomic_int_compare_and_exchange(&session->dataready, 0, 1)) {
 		JANUS_LOG(LOG_INFO, "[%s-%p] Data channel available\n", JANUS_STREAMING_PACKAGE, handle);
-	}
-	/* Try to send a buffered datachannel message when datachannel is ready */
-	GList *temp = session->streams;
-	janus_streaming_session_stream *s;
-	janus_streaming_rtp_source_stream *stream;
-	while(temp) {
-		s = (janus_streaming_session_stream *)temp->data;
-		stream = s->stream;
-		if(stream->buffermsg) {
-			janus_refcount_increase(&stream->ref);
-			JANUS_LOG(LOG_VERB, "[%s-%p] Trying to send the most recent message (%s)\n", JANUS_STREAMING_PACKAGE, handle, stream->mid);
-			janus_mutex_lock(&stream->buffermsg_mutex);
-			if(stream->last_msg != NULL) {
-				JANUS_LOG(LOG_HUGE, "Buffered datachannel message found!\n");
-				janus_streaming_relay_rtp_packet(session, stream->last_msg);
+		/* Try to send a buffered datachannel message when datachannel is ready */
+		GList *temp = session->streams;
+		janus_streaming_session_stream *s;
+		janus_streaming_rtp_source_stream *stream;
+		while(temp) {
+			s = (janus_streaming_session_stream *)temp->data;
+			stream = s->stream;
+			if(stream->buffermsg) {
+				janus_refcount_increase(&stream->ref);
+				JANUS_LOG(LOG_VERB, "[%s-%p] Trying to send the most recent message (%s)\n", JANUS_STREAMING_PACKAGE, handle, stream->mid);
+				janus_mutex_lock(&stream->buffermsg_mutex);
+				if(stream->last_msg != NULL) {
+					JANUS_LOG(LOG_HUGE, "Buffered datachannel message found!\n");
+					janus_streaming_relay_rtp_packet(session, stream->last_msg);
+				}
+				janus_mutex_unlock(&stream->buffermsg_mutex);
+				janus_refcount_decrease(&stream->ref);
 			}
-			janus_mutex_unlock(&stream->buffermsg_mutex);
-			janus_refcount_decrease(&stream->ref);
+			temp = temp->next;
 		}
-		temp = temp->next;
 	}
 	janus_refcount_decrease(&session->ref);
 }
