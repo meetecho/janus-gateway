@@ -5677,9 +5677,11 @@ void janus_streaming_data_ready(janus_plugin_session *handle) {
 	}
 	/* Try to send a buffered datachannel message when datachannel is ready */
 	GList *temp = session->streams;
+	janus_streaming_session_stream *s;
 	janus_streaming_rtp_source_stream *stream;
 	while(temp) {
-		stream = (janus_streaming_rtp_source_stream *)temp->data;
+		s = (janus_streaming_session_stream *)temp->data;
+		stream = s->stream;
 		if(stream->buffermsg) {
 			janus_refcount_increase(&stream->ref);
 			JANUS_LOG(LOG_VERB, "[%s-%p] Trying to send the most recent message (%s)\n", JANUS_STREAMING_PACKAGE, handle, stream->mid);
