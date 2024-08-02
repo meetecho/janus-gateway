@@ -390,11 +390,15 @@ typedef struct janus_rtp_simulcasting_context {
 	/*! \brief Which simulcast substream we should forward back */
 	int substream;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */
-	int substream_target, substream_target_temp;
+	int substream_target, substream_target_temp, substream_target_bwe;
+	/*! \brief Last substream that was identified by janus_rtp_simulcasting_context_process_rtp */
+	int substream_last;
 	/*! \brief Which simulcast temporal layer we should forward back */
 	int templayer;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe) */
-	int templayer_target;
+	int templayer_target, templayer_target_bwe;
+	/*! \brief Last temporal layer that was identified by janus_rtp_simulcasting_context_process_rtp */
+	int temporal_last;
 	/*! \brief How much time (in us, default 250000) without receiving packets will make us drop to the substream below */
 	guint32 drop_trigger;
 	/*! \brief When we relayed the last packet (used to detect when substreams become unavailable) */

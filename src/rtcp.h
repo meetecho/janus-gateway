@@ -27,6 +27,8 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include "bwe.h"
+
 /*! \brief RTCP Packet Types (http://www.networksorcery.com/enp/protocol/rtcp.htm) */
 typedef enum {
     RTCP_FIR = 192,
@@ -287,14 +289,12 @@ typedef struct rtcp_context
 typedef rtcp_context janus_rtcp_context;
 
 /*! \brief Stores transport wide packet reception statistics */
-typedef struct rtcp_transport_wide_cc_stats
-{
+typedef struct janus_rtcp_transport_wide_cc_stats {
 	/*! \brief Transwport wide sequence number */
 	guint32 transport_seq_num;
 	/*! \brief Reception time */
 	guint64 timestamp;
-} rtcp_transport_wide_cc_stats;
-typedef rtcp_transport_wide_cc_stats janus_rtcp_transport_wide_cc_stats;
+} janus_rtcp_transport_wide_cc_stats;
 
 /*! \brief Method to retrieve the estimated round-trip time from an existing RTCP context
  * @param[in] ctx The RTCP context to query
@@ -378,10 +378,11 @@ gboolean janus_is_rtcp(char *buf, guint len);
 
 /*! \brief Method to parse/validate an RTCP message
  * @param[in] ctx RTCP context to update, if needed (optional)
+ * @param[in] bwe Bandwidth estimation context to update, if needed (optional)
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_parse(janus_rtcp_context *ctx, char *packet, int len);
+int janus_rtcp_parse(janus_rtcp_context *ctx, janus_bwe_context *bwe, char *packet, int len);
 
 /*! \brief Method to fix incoming RTCP SR and RR data
  * @param[in] packet The message data
@@ -397,13 +398,14 @@ int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t
 
 /*! \brief Method to fix an RTCP message (http://tools.ietf.org/html/draft-ietf-straw-b2bua-rtcp-00)
  * @param[in] ctx RTCP context to update, if needed (optional)
+ * @param[in] bwe Bandwidth estimation context to update, if needed (optional)
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @param[in] fixssrc Whether the method needs to fix the message or just parse it
  * @param[in] newssrcl The SSRC of the sender to put in the message
  * @param[in] newssrcr The SSRC of the receiver to put in the message
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixssrc, uint32_t newssrcl, uint32_t newssrcr);
+int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, janus_bwe_context *bwe, char *packet, int len, int fixssrc, uint32_t newssrcl, uint32_t newssrcr);
 
 /*! \brief Method to filter an outgoing RTCP message (http://tools.ietf.org/html/draft-ietf-straw-b2bua-rtcp-00)
  * @param[in] packet The message data
