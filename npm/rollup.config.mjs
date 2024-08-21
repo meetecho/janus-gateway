@@ -5,7 +5,8 @@ import { readFileSync } from 'fs';
 export default {
 	input: 'npm/module.js',
 	output: {
-		strict: false
+		strict: false,
+		name: 'Janus',
 	},
 	plugins: [
 		replace({
