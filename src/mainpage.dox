@@ -886,11 +886,10 @@ echotest.createOffer(
  \endverbatim
  *
  * \section manual-build-modules Building modules manually with NPM
- * You can also opt to build modules by invoking \c npm manually. The \c npm subdirectory contains the necessary
+ * You can also opt to build modules by invoking \c npm manually. The project root folder contains the necessary
  * configuration files to get you started:
  *
  \verbatim
- cd ./npm
  npm install
  npm run rollup -- --o /path/to/desired/output/file-name.js --f cjs # or es, iffe, umd, amd, ...
  \endverbatim
