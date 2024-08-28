@@ -959,7 +959,7 @@ room-<unique room ID>: {
 		// Other publishers
 	]
 }
-\endverbatim *
+\endverbatim
  *
  * To enable or disable recording on all participants while the conference
  * is in progress, you can make use of the \c enable_recording request,
@@ -972,7 +972,7 @@ room-<unique room ID>: {
 	"secret" : "<room secret; mandatory if configured>"
 	"record" : <true|false, whether participants in this room should be automatically recorded or not>,
 }
-\endverbatim *
+\endverbatim
  *
  * Notice that, as we'll see later, participants can normally change their
  * own recording state via \c configure requests as well: this was done to
