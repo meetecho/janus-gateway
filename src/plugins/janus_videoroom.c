@@ -1510,6 +1510,286 @@ room-<unique room ID>: {
 	"left" : "ok",
 }
 \endverbatim
+ *
+ * \subsection vroomcasc Remote publishers (room cascading)
+ *
+ * Normally, the VideoRoom plugin can only route streams associated to
+ * users connected to the Janus instance the plugin lives in: this means
+ * that, within the context of a room, you can only subscribe to publishers
+ * connected to the same server (and room) you're on.
+ *
+ * That said, there are obviously ways to address this constraint. In
+ * the past, a typical approach for handling this (e.g., for scalability
+ * or geo-distribution purposes) was to use the \c rtp_forward request
+ * to feed one or more local/remote Streaming plugin mountpoints, so that
+ * a VideoRoom publisher could be consumed using the Streaming plugin
+ * instead, possibly on a completely different Janus instance. This works
+ * and has been used extensively (by ourselves too), but has the downside
+ * that this completely excludes the VideoRoom API in terms of presence
+ * and subscriptions: it's up to you, for instance, to advertise these
+ * redistributed streams somehow, and associate them to the original
+ * publisher from a semantics perspective.
+ *
+ * That said, the VideoRoom plugin now also has a concept of remote
+ * publishers, that allows you to remotize local VideoRoom publishers
+ * to different VideoRoom instances, which can in turn advertise the
+ * presence of these remote subscribers along with their local publishers.
+ * This allows subscribers to use the VideoRoom API, transparently, to
+ * subscribe to both local and remote publishers seamlessly, knowing
+ * that the involved VideoRoom instances will exchange the media packets
+ * among them to make it happen.
+ *
+ * It's important to point out that this is not something that's completely
+ * automated: it's still up to you, via API calls, to instruct all involved
+ * VideoRoom instances, so that the remotization can happen, and to keep
+ * it up do that (e.g., after renegotiations occur).
+ *
+ * Specifically, the VideoRoom API exposes the \c add_remote_publisher ,
+ * \c update_remote_publisher , \c remove_remote_publisher ,
+ * \c publish_remotely , \c unpublish_remotely and \c list_remotes
+ * requests.
+ *
+ * Assuming that \b Janus \b A wants to make one of its local publishers available
+ * in a room on \b Janus \b B as well, this is the process you must follow:
+ *
+ *   - you use \c add_remote_publisher on \b Janus \b B (the target instance)
+ * to add a new remote publisher; this will return some connectivity info
+ * to the caller, and immediately advertise the new publisher to other
+ * attendees in \b Janus \b B even before media actually arrives;
+ *   - you use \c publish_remotely on \b Janus \b A (the source instance),
+ * using the info returned from the previous call; this has the result
+ * of instructing \b Janus \b A to start relaying all RTP packets associated
+ * to that publisher to \b Janus \b B ;
+ *   - any time the publisher on \b Janus \b A renegotiates their session (e.g.,
+ * a new audio or video stream is added, or removed), you should use
+ * \c update_remote_publisher on \b Janus \b B so that the remote instance
+ * is aware of the changes, and can notify people in the room accordingly
+ * (e.g., so that they can update their subscriptions accordingly);
+ *   - when the publisher on \b Janus \b A leaves, an \c unpublish_remotely
+ * request must be sent on \b Janus \b A to ensure no media is forwarded anymore,
+ * and at the same time a \c remove_remote_publisher must be sent to
+ * \b Janus \b B so that other attendees can be notified the participant
+ * has left.
+ *
+ * Using these requests, the two Janus instances will transparently and
+ * automatically communicate using internally created RTP forwarders. The
+ * same ports are used for all RTP packets, so multiplexing is performed
+ * using a simple math on SSRC identifiers: this means that there's no need
+ * to open new ports as a consequence of renegotiations of a publisher,
+ * but only to notify the recipient about what media is on its way, and
+ * demultiplexing will be performed automatically.
+ *
+ * Everything else (subscribing to, and unsubscribing from, remote publishers)
+ * works exactly the same way as shown in the previous sections. As far as
+ * local attendees are concerned, a remote publisher is advertised and looks
+ * exactly like any other local publisher. The details about how the
+ * remotization works behind the scenes is hidden from them, and not
+ * relevant to the subscription process.
+ *
+ * Coming to how the requests need to be formatted, the \c add_remote_publisher
+ * must be formatted like the following:
+ *
+\verbatim
+{
+	"request" : "add_remote_publisher",
+	"room" : <unique ID of the room to add the remote publisher to>,
+	"id" : <unique ID to register for the remote publisher; optional, will be chosen by the plugin if missing; doesn't need to be the same as the source one>,
+	"secret" : "<password required to edit the room, mandatory if configured in the room>",
+	"display" : "<display name for the remote publisher; optional>",
+	"mcast" : "<multicast group port for receiving RTP packets, if any>",
+	"iface" : "<network interface or IP address to bind to, if any (binds to all otherwise)>",
+	"port" : <local port for receiving all RTP packets; 0 will bind to a random one (default)>,
+	"streams" : [
+		{
+			"type" : "<type of published stream #1 (audio|video|data)">,
+			"mindex" : "<unique mindex of published stream #1>",
+			"mid" : "<unique mid of of published stream #1>",
+			"disabled" : <if true, it means this stream is currently inactive/disabled (and so codec, description, etc. will be missing)>,
+			"codec" : "<codec used for published stream #1>",
+			"description" : "<text description of published stream #1, if any>",
+			"disabled" : <true if published stream #1 is currently disabled>,
+			"stereo" : <true if published stream #1 is audio and stereo>,
+			"fec" : <true if published stream #1 is audio and uses FEC>,
+			"dtx" : <true if published stream #1 is audio and uses DTX>,
+			"h264-profile" : "<in case H.264 is used by the stream, the negotiated profile>",
+			"vp9-profile" : "<in case VP9 is used by the stream, the negotiated profile>",
+			"simulcast" : <true if published stream #1 is video and uses simulcast>,
+			"svc" : <true if published stream #1 is video and uses SVC (VP9 and AV1 only)>,
+			"audiolevel_ext_id" : <in case the audio level extension is used by this stream, its ID>,
+			"videoorient_ext_id" : <in case the video orientation extension is used by this stream, its ID>,
+			"playoutdelay_ext_id" : <in case the playout delay extension is used by this stream, its ID>
+		},
+		// Other streams, if any
+	]
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"videoroom" : "success",
+	"room" : <same as request>,
+	"id" : <unique ID associated to the new remote publisher>,
+	"ip" : "<host address to use to send RTP associated to this remote publisher>",
+	"port" : <port to use to send RTP associated to this remote publisher>,
+	"rtcp_port" : <port to latch to in order to receive RTCP feedback from this remote publisher>
+}
+\endverbatim
+ *
+ * To update a previously created remote publisher, the \c update_remote_publisher
+ * request is used, which must be formatted like the following:
+ *
+\verbatim
+{
+	"request" : "update_remote_publisher",
+	"room" : <unique ID of the room the remote publisher is in>,
+	"id" : <unique ID of the remote publisher>,
+	"secret" : "<password required to edit the room, mandatory if configured in the room>",
+	"display" : "<new display name for the remote publisher; optional>",
+	"streams" : [
+		{
+			// Same syntax as add_remote_publisher: only needs to
+			// reference new or modified streams, not all of them
+		},
+		// Other streams, if any
+	]
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"videoroom" : "success"
+}
+\endverbatim
+ *
+ * To remove a previously created remote publisher, the \c remove_remote_publisher
+ * request is used, which must be formatted like the following:
+ *
+\verbatim
+{
+	"request" : "remove_remote_publisher",
+	"room" : <unique ID of the room the remote publisher is in>,
+	"id" : <unique ID of the remote publisher>,
+	"secret" : "<password required to edit the room, mandatory if configured in the room>"
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"videoroom" : "success"
+}
+\endverbatim
+ *
+ * Other attendees in the same room as the remote publishers will be
+ * notified accordingly, exactly as it happens when a local publisher
+ * goes aeay or close their PeerConnection.
+ *
+ * For what concerns the source instance (from where the publisher is
+ * remotized to a different VideoRoom instance), the \c publish_remotely
+ * request is used, which must be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "publish_remotely",
+	"room" : <unique ID of the room the local publisher to remotize is in>,
+	"publisher_id" : <unique ID of the local publisher to remotize>,
+	"remote_id" : "<unique ID to associate to this remotization; this has nothing to do with the ID the publisher will have in the remote instance, and is only used to address this specific remotization on the source instance>",
+	"secret" : "<password required to edit the room, mandatory if configured in the room>",
+	"host" : "<host address to forward the RTP and data packets to>",
+	"host_family" : "<ipv4|ipv6, if we need to resolve the host address to an IP; by default, whatever we get>",
+	"port" : <port to forward the packets to>,
+	"rtcp_port" : <port to contact to receive RTCP feedback from the recipient; optional, and only for RTP streams, not data>
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"videoroom" : "success",
+	"room" : <same as request>,
+	"id" : <unique ID of the local publisher>,
+	"remote_id" : "<unique ID of this remotization (needed for unpublish_remotely)>"
+}
+\endverbatim
+ *
+ * Notice that, as explained before, \c publish_remotely expects a remote publisher
+ * ready to receive their media, which is why \c add_remote_publisher must
+ * be sent on the target Janus instance first: the info returned by that
+ * request (IP and ports) are what you then feed to \c publish_remotely .
+ *
+ * The \c publish_remotely request can be used multiple times for the same
+ * local publisher, e.g., to make the same publisher available on more than
+ * one remote Janus/VideoRoom instance. This is why \c remote_id is needed
+ * to be able to individually address each specific remotization, in case
+ * you want to, e.g., stop making a specific publisher available on a
+ * specigic Janus instance, but keep it available on others.
+ *
+ * To disable a specific remotization of a local publisher, the \c unpublish_remotely
+ * request is used, which must be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "unpublish_remotely",
+	"room" : <unique ID of the room the local publisher is in>,
+	"publisher_id" : <unique ID of the local publisher>,
+	"remote_id" : "<unique ID to associate to this remotization of the local publisher>",
+	"secret" : "<password required to edit the room, mandatory if configured in the room>"
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"videoroom" : "success",
+	"room" : <same as request>,
+	"id" : <unique ID of the local publisher>
+}
+\endverbatim
+ *
+ * Notice that removing a remotization from the source instance only stops
+ * the delivery of RTP packets to the target of the remotization: it does
+ * \b NOT also remove the remote publisher from the remote instance. It's
+ * up to you to notify the target instance with \c remove_remote_publisher .
+ *
+ * You can list all the remotizations for a local publisher using
+ * \c list_remotes, which must be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "list_remotes",
+	"room" : <unique ID of the room the local publisher is in>,
+	"publisher_id" : <unique ID of the local publisher>,
+	"secret" : "<password required to edit the room, mandatory if configured in the room>"
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"videoroom" : "success",
+	"room" : <same as request>,
+	"id" : <unique ID of the local publisher>,
+	"list" : [
+		{
+			"remote_id" : "<unique ID of this remotization of this local publisher">,
+			"host" : "<address all RTP packets are being sent to">,
+			"port" : "port all RTP packets are being sent to>
+			"rtcp_port" : "RTCP port, if enabled>
+		},
+		// Other remotizations, if any
+	]
+}
+\endverbatim
+ *
+ *
  */
 
 #include "plugin.h"
