@@ -10106,8 +10106,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 	if(!session || !session->handle) {
 		return;
 	}
-	/* This check considers early data (buffered KF / datachannel message) */
-	if((!g_atomic_int_get(&session->started) && !packet->is_data && !packet->is_keyframe) || g_atomic_int_get(&session->paused)) {
+	if(!packet->is_keyframe && (!g_atomic_int_get(&session->started) || g_atomic_int_get(&session->paused))) {
 		return;
 	}
 	janus_streaming_session_stream *s = g_hash_table_lookup(session->streams_byid, GINT_TO_POINTER(packet->mindex));
