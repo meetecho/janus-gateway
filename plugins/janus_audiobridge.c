@@ -6118,8 +6118,8 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 			JitterBufferPacket jbp = {0};
 			jbp.data = (char *)pkt;
 			jbp.len = 0;
-			jbp.timestamp = ntohl(rtp->timestamp);
 			jbp.span = (participant->codec == JANUS_AUDIOCODEC_OPUS ? 960 : 160);
+			jbp.timestamp = (uint32_t)ntohs(rtp->seq_number) * jbp.span;
 			jitter_buffer_put(participant->jitter, &jbp);
 			janus_mutex_unlock(&participant->qmutex);
 		}
