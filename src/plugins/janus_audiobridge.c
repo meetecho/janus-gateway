@@ -7147,7 +7147,7 @@ static void *janus_audiobridge_handler(void *data) {
 			if(muted || display || (participant->stereo && spatial) || denoise) {
 				if(muted) {
 					janus_mutex_lock(&participant->qmutex);
-					if (participant->muted != json_is_true(muted)) {
+					if(participant->muted != json_is_true(muted)) {
 						participant->muted = json_is_true(muted);
 						JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %s, user %s)\n",
 							participant->muted ? "true" : "false", participant->room->room_id_str, participant->user_id_str);
