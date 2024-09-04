@@ -4545,15 +4545,6 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 			}
 			janus_mutex_unlock(&source->keyframe.mutex);
 		}
-		if(source->buffermsg) {
-			JANUS_LOG(LOG_HUGE, "Any recent datachannel message to send?\n");
-			janus_mutex_lock(&source->buffermsg_mutex);
-			if(source->last_msg != NULL) {
-				JANUS_LOG(LOG_HUGE, "Yep!\n");
-				janus_streaming_relay_rtp_packet(session, source->last_msg);
-			}
-			janus_mutex_unlock(&source->buffermsg_mutex);
-		}
 		/* If this mountpoint has RTCP support, send a PLI */
 		janus_streaming_rtcp_pli_send(source);
 	}
@@ -4630,9 +4621,25 @@ void janus_streaming_data_ready(janus_plugin_session *handle) {
 	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;
 	if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->hangingup))
 		return;
+	janus_refcount_increase(&session->ref);
 	if(g_atomic_int_compare_and_exchange(&session->dataready, 0, 1)) {
 		JANUS_LOG(LOG_INFO, "[%s-%p] Data channel available\n", JANUS_STREAMING_PACKAGE, handle);
+		/* Try to send a buffered datachannel message when datachannel is ready */
+		janus_streaming_mountpoint *mp = (janus_streaming_mountpoint *)session->mountpoint;
+		if(mp && mp->streaming_source == janus_streaming_source_rtp) {
+			janus_streaming_rtp_source *source = mp->source;
+			if(source->buffermsg) {
+				JANUS_LOG(LOG_HUGE, "Any recent datachannel message to send?\n");
+				janus_mutex_lock(&source->buffermsg_mutex);
+				if(source->last_msg != NULL) {
+					JANUS_LOG(LOG_HUGE, "Yep!\n");
+					janus_streaming_relay_rtp_packet(session, source->last_msg);
+				}
+				janus_mutex_unlock(&source->buffermsg_mutex);
+			}
+		}
 	}
+	janus_refcount_decrease(&session->ref);
 }
 
 void janus_streaming_hangup_media(janus_plugin_session *handle) {
@@ -8726,13 +8733,19 @@ static void *janus_streaming_relay_thread(void *data) {
 						/* Are we keeping track of the last message being relayed? */
 						if(source->buffermsg) {
 							janus_mutex_lock(&source->buffermsg_mutex);
+							if(source->last_msg != NULL) {
+								janus_streaming_rtp_relay_packet_free((janus_streaming_rtp_relay_packet *)source->last_msg);
+								source->last_msg = NULL;
+							}
 							janus_streaming_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_streaming_rtp_relay_packet));
 							pkt->data = g_malloc(bytes);
 							memcpy(pkt->data, data, bytes);
-							packet.is_rtp = FALSE;
-							packet.is_data = TRUE;
-							packet.textdata = source->textdata;
+							pkt->is_rtp = FALSE;
+							pkt->is_data = TRUE;
+							pkt->textdata = source->textdata;
 							pkt->length = bytes;
+							/* Store the latest message */
+							source->last_msg = pkt;
 							janus_mutex_unlock(&source->buffermsg_mutex);
 						}
 						/* Go! */
