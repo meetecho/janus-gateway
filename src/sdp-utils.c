@@ -313,11 +313,22 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 	janus_sdp_mline *mline = NULL;
 	int mlines = 0;
 
-	gchar **parts = g_strsplit(sdp, "\n", -1);
+	/* g_strsplit is inefficient in case of SDPs with a large number of lines,
+	 * so we limit the max tokens. Set to -1 for "unlimited". */
+	const gint MAX_ALLOWED_SDP_LINES = 10000;
+	gchar **parts = g_strsplit(sdp, "\n", MAX_ALLOWED_SDP_LINES);
 	if(parts) {
 		int index = 0;
 		char *line = NULL, *cr = NULL;
 		while(success && (line = parts[index]) != NULL) {
+			cr = strchr(line, '\n');
+			if(cr != NULL) {
+				printf("Can't parse more than %d lines\n", MAX_ALLOWED_SDP_LINES);
+				if(error)
+					g_snprintf(error, errlen, "Can't parse more than %d lines", MAX_ALLOWED_SDP_LINES);
+				success = FALSE;
+				break;
+			}
 			cr = strchr(line, '\r');
 			if(cr != NULL)
 				*cr = '\0';
