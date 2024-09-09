@@ -312,23 +312,14 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 	gboolean success = TRUE;
 	janus_sdp_mline *mline = NULL;
 	int mlines = 0;
-
-	/* g_strsplit is inefficient in case of SDPs with a large number of lines,
-	 * so we limit the max tokens. Set to -1 for "unlimited". */
-	const gint MAX_ALLOWED_SDP_LINES = 10000;
-	gchar **parts = g_strsplit(sdp, "\n", MAX_ALLOWED_SDP_LINES);
-	if(parts) {
 		int index = 0;
-		char *line = NULL, *cr = NULL;
-		while(success && (line = parts[index]) != NULL) {
-			cr = strchr(line, '\n');
-			if(cr != NULL) {
-				printf("Can't parse more than %d lines\n", MAX_ALLOWED_SDP_LINES);
-				if(error)
-					g_snprintf(error, errlen, "Can't parse more than %d lines", MAX_ALLOWED_SDP_LINES);
-				success = FALSE;
-				break;
-			}
+		char *line = NULL, *cr = NULL, *rest = NULL;
+		char *sdp_copy = g_strdup(sdp);
+		gboolean first = TRUE, mline_ended = FALSE;
+		/* When a m-line has been detected we re-use the previous SDP line */
+		while(success && (mline_ended || (line = strtok_r(!first ? NULL: sdp_copy, "\n", &rest)) != NULL)) {
+			first = FALSE;
+			mline_ended = FALSE;
 			cr = strchr(line, '\r');
 			if(cr != NULL)
 				*cr = '\0';
@@ -651,6 +642,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						if(mline && mline->attributes)
 							mline->attributes = g_list_reverse(mline->attributes);
 						mline = NULL;
+						mline_ended = TRUE;
 						continue;
 					}
 					default:
@@ -664,8 +656,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 		}
 		if(cr != NULL)
 			*cr = '\r';
-		g_strfreev(parts);
-	}
+		g_free(sdp_copy);
 	/* FIXME Do a last check: is all the stuff that's supposed to be there available? */
 	if(success && (imported->o_name == NULL || imported->o_addr == NULL || imported->s_name == NULL || imported->m_lines == NULL)) {
 		success = FALSE;
