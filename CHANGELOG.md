@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.2.4] - 2024-09-10
+
+- Limit number of SDP lines when parsing (workaround for OSS-Fuzz issue) [[PR-3314](https://github.com/meetecho/janus-gateway/pull/3314)]
+- Normalized monotonic time to Janus start
+- Added documentation for remote publishers feature in VideoRoom (SFU cascading)
+- Added PLC (packet loss concealment) support to the AudioBridge (thanks @spscream!) [[PR-3349](https://github.com/meetecho/janus-gateway/pull/3349)]
+- Cleanup participant queues when muted in the AudioBridge [[PR-3368](https://github.com/meetecho/janus-gateway/pull/3368)]
+- Added "listannouncements" request to the AudioBridge (thanks @keremcadirci!) [[PR-3391](https://github.com/meetecho/janus-gateway/pull/3391)]
+- Use sequence numbers instead of timestamps for the jitter buffer in the AudioBridge [[PR-3406](https://github.com/meetecho/janus-gateway/pull/3406)]
+- Fixed event handers for SIP plugin when using Sofia SIP >= 1.13 (thanks @ ycherniavskyi!) [[PR-3386](https://github.com/meetecho/janus-gateway/pull/3386)]
+- Fixed management of data buffering in Streaming plugin [[PR-3412](https://github.com/meetecho/janus-gateway/pull/3412)]
+- Fixed small leak in Lua and Duktape plugins [[PR-3409](https://github.com/meetecho/janus-gateway/pull/3409)]
+- Fixed recvonly m-lines not being added to SDP in janus.js when offering
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.2.3] - 2024-06-20
 
 - Reduced size of RTP header struct in core
