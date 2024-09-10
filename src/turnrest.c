@@ -170,8 +170,8 @@ janus_turnrest_response *janus_turnrest_request(const char *user) {
 		/* FIXME Some servers don't like a POST with no data */
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query_string);
 	}
-	janus_mutex_unlock(&api_mutex);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, api_timeout);
+	janus_mutex_unlock(&api_mutex);
 	/* For getting data, we use an helper struct and the libcurl callback */
 	janus_turnrest_buffer data;
 	data.buffer = g_malloc0(1);

@@ -377,7 +377,7 @@ gboolean janus_ice_is_enforced(const char *ip) {
 		const char *enforced = (const char *)temp->data;
 		if(enforced != NULL && strstr(ip, enforced) == ip) {
 			janus_mutex_unlock(&ice_list_mutex);
-			return true;
+			return TRUE;
 		}
 		temp = temp->next;
 	}
@@ -407,7 +407,7 @@ gboolean janus_ice_is_ignored(const char *ip) {
 		const char *ignored = (const char *)temp->data;
 		if(ignored != NULL && strstr(ip, ignored) == ip) {
 			janus_mutex_unlock(&ice_list_mutex);
-			return true;
+			return TRUE;
 		}
 		temp = temp->next;
 	}
