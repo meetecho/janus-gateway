@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 
 ## [v1.2.4] - 2024-09-10
 
-- Limit number of SDP lines when parsing (workaround for OSS-Fuzz issue) [[PR-3314](https://github.com/meetecho/janus-gateway/pull/3314)]
+- Limit number of SDP lines when parsing (workaround for OSS-Fuzz issue) [[PR-3414](https://github.com/meetecho/janus-gateway/pull/3414)]
 - Normalized monotonic time to Janus start
 - Added documentation for remote publishers feature in VideoRoom (SFU cascading)
 - Added PLC (packet loss concealment) support to the AudioBridge (thanks @spscream!) [[PR-3349](https://github.com/meetecho/janus-gateway/pull/3349)]
