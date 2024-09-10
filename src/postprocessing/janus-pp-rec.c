@@ -1652,8 +1652,8 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 		exit_status = -1;
 	} else {
 		context->target_ts = 0;
-		/* Do not execute analysis for out of order packets or multi-packets frame */
-		if (context->last_seq == context->prev_seq + 1 && context->last_ts != context->prev_ts) {
+               /* Do not execute analysis for out of order packets or multi-packets frame or if pts < start_time */
+               if (context->last_seq == context->prev_seq + 1 && context->last_ts != context->prev_ts && pts >= context->start_time) {
 			/* Evaluate the local RTP timestamp according to the local clock */
 			guint64 expected_ts = ((pts - context->start_time) * akhz) + context->start_ts;
 			/* Evaluate current delay */

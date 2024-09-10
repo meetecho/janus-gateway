@@ -547,8 +547,14 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 				}
 			}
 			/* Frame manipulation */
-			memcpy(received_frame + frameLen, buffer, len);
-			frameLen += len;
+			if(len > 0) {
+				if(frameLen + len + AV_INPUT_BUFFER_PADDING_SIZE > numBytes) {
+					JANUS_LOG(LOG_WARN, "Frame exceeds buffer size...\n");
+				} else {
+					memcpy(received_frame + frameLen, buffer, len);
+					frameLen += len;
+				}
+			}
 			if(len == 0)
 				break;
 			/* Check if timestamp changes: marker bit is not mandatory, and may be lost as well */

@@ -7374,6 +7374,7 @@ static void *janus_audiobridge_handler(void *data) {
 				if(error_code != 0) {
 					janus_mutex_unlock(&audiobridge->mutex);
 					janus_refcount_decrease(&audiobridge->ref);
+					janus_mutex_unlock(&rooms_mutex);
 					goto error;
 				}
 				admin = TRUE;
@@ -7387,6 +7388,7 @@ static void *janus_audiobridge_handler(void *data) {
 				if(error_code != 0) {
 					janus_mutex_unlock(&audiobridge->mutex);
 					janus_refcount_decrease(&audiobridge->ref);
+					janus_mutex_unlock(&rooms_mutex);
 					goto error;
 				}
 				const char *group_name = json_string_value(json_object_get(root, "group"));
@@ -7394,6 +7396,7 @@ static void *janus_audiobridge_handler(void *data) {
 				if(group == 0) {
 					janus_mutex_unlock(&audiobridge->mutex);
 					janus_refcount_decrease(&audiobridge->ref);
+					janus_mutex_unlock(&rooms_mutex);
 					JANUS_LOG(LOG_ERR, "No such group (%s)\n", group_name);
 					error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_GROUP;
 					g_snprintf(error_cause, 512, "No such group (%s)", group_name);

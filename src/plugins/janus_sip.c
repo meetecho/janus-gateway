@@ -5143,7 +5143,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_i_state:;
 			tagi_t const *ti = tl_find(tags, nutag_callstate);
-			enum nua_callstate callstate = ti ? ti->t_value : -1;
+			enum nua_callstate callstate = ti ? ti->t_value : nua_callstate_init;
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s, call state [%s]\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??", nua_callstate_name(callstate));
 			/* There are several call states, but we care about the terminated state in order to send the 'hangup' event
 			 * and the proceeding state in order to send the 'proceeding' event so the client can play a ringback tone for

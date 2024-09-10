@@ -3304,10 +3304,10 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_
 	GList *temp = subscriber->streams;
 	while(temp) {
 		stream = (janus_videoroom_subscriber_stream *)temp->data;
+		janus_mutex_lock(&ps->subscribers_mutex);
 		janus_videoroom_publisher_stream *stream_ps = stream->publisher_streams ? stream->publisher_streams->data : NULL;
 		if(stream_ps != NULL && stream_ps->type == ps->type && stream->type == JANUS_VIDEOROOM_MEDIA_DATA) {
 			/* We already have a datachannel m-line, no need for others: just update the subscribers list */
-			janus_mutex_lock(&ps->subscribers_mutex);
 			if(g_slist_find(ps->subscribers, stream) == NULL && g_slist_find(stream->publisher_streams, ps) == NULL) {
 				ps->subscribers = g_slist_append(ps->subscribers, stream);
 				stream->publisher_streams = g_slist_append(stream->publisher_streams, ps);
@@ -3340,6 +3340,7 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_
 			janus_mutex_unlock(&ps->subscribers_mutex);
 			return NULL;
 		}
+		janus_mutex_unlock(&ps->subscribers_mutex);
 		if(stream_ps == NULL && stream->type == ps->type) {
 			/* There's an empty m-line of the right type, check if codecs match */
 			if(stream->type == JANUS_VIDEOROOM_MEDIA_DATA ||
@@ -4512,6 +4513,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 	janus_mutex_unlock(&sessions_mutex);
 	/* Show the participant/room info, if any */
 	json_t *info = json_object();
+	janus_mutex_lock(&session->mutex);
 	if(session->participant) {
 		if(session->participant_type == janus_videoroom_p_type_none) {
 			json_object_set_new(info, "type", json_string("none"));
@@ -4604,6 +4606,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 	}
 	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
 	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
+	janus_mutex_unlock(&session->mutex);
 	janus_refcount_decrease(&session->ref);
 	return info;
 }

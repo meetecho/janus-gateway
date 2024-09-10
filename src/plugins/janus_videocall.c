@@ -1137,12 +1137,6 @@ static void *janus_videocall_handler(void *data) {
 			janus_mutex_unlock(&sessions_mutex);
 		} else if(!strcasecmp(request_text, "register")) {
 			/* Map this handle to a username */
-			if(session->username != NULL) {
-				JANUS_LOG(LOG_ERR, "Already registered (%s)\n", session->username);
-				error_code = JANUS_VIDEOCALL_ERROR_ALREADY_REGISTERED;
-				g_snprintf(error_cause, 512, "Already registered (%s)", session->username);
-				goto error;
-			}
 			JANUS_VALIDATE_JSON_OBJECT(root, username_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_VIDEOCALL_ERROR_MISSING_ELEMENT, JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT);
@@ -1151,6 +1145,13 @@ static void *janus_videocall_handler(void *data) {
 			json_t *username = json_object_get(root, "username");
 			const char *username_text = json_string_value(username);
 			janus_mutex_lock(&sessions_mutex);
+			if(session->username != NULL) {
+				janus_mutex_unlock(&sessions_mutex);
+				JANUS_LOG(LOG_ERR, "Already registered (%s)\n", session->username);
+				error_code = JANUS_VIDEOCALL_ERROR_ALREADY_REGISTERED;
+				g_snprintf(error_cause, 512, "Already registered (%s)", session->username);
+				goto error;
+			}
 			if(g_hash_table_lookup(usernames, username_text) != NULL) {
 				janus_mutex_unlock(&sessions_mutex);
 				JANUS_LOG(LOG_ERR, "Username '%s' already taken\n", username_text);
@@ -1564,7 +1565,7 @@ static void *janus_videocall_handler(void *data) {
 					g_snprintf(error_cause, 512, "Error parsing answer: %s", error_str);
 					goto error;
 				}
-				JANUS_LOG(LOG_VERB, "%s is accepting an update from %s\n", session->username, peer->username);
+				JANUS_LOG(LOG_VERB, "%s is accepting an update from %s\n", session->username, peer ? peer->username : "??");
 				session->has_audio = (strstr(msg_sdp, "m=audio") != NULL);
 				session->has_video = (strstr(msg_sdp, "m=video") != NULL);
 				session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);

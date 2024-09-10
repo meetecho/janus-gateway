@@ -367,9 +367,11 @@ void janus_ice_enforce_interface(const char *ip) {
 	janus_mutex_unlock(&ice_list_mutex);
 }
 gboolean janus_ice_is_enforced(const char *ip) {
-	if(ip == NULL || janus_ice_enforce_list == NULL)
-		return false;
 	janus_mutex_lock(&ice_list_mutex);
+	if(ip == NULL || janus_ice_enforce_list == NULL) {
+		janus_mutex_unlock(&ice_list_mutex);
+		return FALSE;
+	}
 	GList *temp = janus_ice_enforce_list;
 	while(temp) {
 		const char *enforced = (const char *)temp->data;
@@ -380,7 +382,7 @@ gboolean janus_ice_is_enforced(const char *ip) {
 		temp = temp->next;
 	}
 	janus_mutex_unlock(&ice_list_mutex);
-	return false;
+	return FALSE;
 }
 
 void janus_ice_ignore_interface(const char *ip) {
@@ -395,9 +397,11 @@ void janus_ice_ignore_interface(const char *ip) {
 	janus_mutex_unlock(&ice_list_mutex);
 }
 gboolean janus_ice_is_ignored(const char *ip) {
-	if(ip == NULL || janus_ice_ignore_list == NULL)
-		return false;
 	janus_mutex_lock(&ice_list_mutex);
+	if(ip == NULL || janus_ice_ignore_list == NULL) {
+		janus_mutex_unlock(&ice_list_mutex);
+		return FALSE;
+	}
 	GList *temp = janus_ice_ignore_list;
 	while(temp) {
 		const char *ignored = (const char *)temp->data;
@@ -408,7 +412,7 @@ gboolean janus_ice_is_ignored(const char *ip) {
 		temp = temp->next;
 	}
 	janus_mutex_unlock(&ice_list_mutex);
-	return false;
+	return FALSE;
 }
 
 
@@ -422,7 +426,7 @@ int janus_ice_get_event_stats_period(void) {
 }
 
 /* How to handle media statistic events (one per media or one per peerConnection) */
-static gboolean janus_ice_event_combine_media_stats = false;
+static gboolean janus_ice_event_combine_media_stats = FALSE;
 void janus_ice_event_set_combine_media_stats(gboolean combine_media_stats_to_one_event) {
 	janus_ice_event_combine_media_stats = combine_media_stats_to_one_event;
 }
