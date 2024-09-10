@@ -154,9 +154,11 @@ static uint32_t janus_pp_h265_eg_decode(uint8_t *base, uint32_t *offset) {
 	while(janus_pp_h265_eg_getbit(base, (*offset)++) == 0)
 		zeros++;
 	uint32_t res = 1 << zeros;
-	int32_t i = 0;
-	for(i=zeros-1; i>=0; i--) {
-		res |= janus_pp_h265_eg_getbit(base, (*offset)++) << i;
+	if(zeros > 0) {
+		int32_t i = 0;
+		for(i=zeros-1; i>=0; i--) {
+			res |= janus_pp_h265_eg_getbit(base, (*offset)++) << i;
+		}
 	}
 	return res-1;
 }

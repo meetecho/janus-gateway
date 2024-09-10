@@ -321,11 +321,15 @@ static void janus_http_allow_address(const char *ip, gboolean admin) {
 static gboolean janus_http_is_allowed(const char *ip, gboolean admin) {
 	if(ip == NULL)
 		return FALSE;
-	if(!admin && janus_http_access_list == NULL)
-		return TRUE;
-	if(admin && janus_http_admin_access_list == NULL)
-		return TRUE;
 	janus_mutex_lock(&access_list_mutex);
+	if(!admin && janus_http_access_list == NULL) {
+		janus_mutex_unlock(&access_list_mutex);
+		return TRUE;
+	}
+	if(admin && janus_http_admin_access_list == NULL) {
+		janus_mutex_unlock(&access_list_mutex);
+		return TRUE;
+	}
 	GList *temp = admin ? janus_http_admin_access_list : janus_http_access_list;
 	while(temp) {
 		const char *allowed = (const char *)temp->data;

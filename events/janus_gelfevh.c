@@ -201,10 +201,10 @@ static int janus_gelfevh_send(char *message) {
 	if(transport == JANUS_GELFEVH_SOCKET_TYPE_TCP) {
 		/* TCP */
 		int out_bytes = 0;
-		int length = strlen(message);
+		int length = strlen(message) + 1;
 		char *buffer = message;
 		while(length > 0) {
-			out_bytes = send(sockfd, buffer, length + 1, 0);
+			out_bytes = send(sockfd, buffer, length, 0);
 			if(out_bytes <= 0) {
 				JANUS_LOG(LOG_WARN, "Sending TCP message failed, dropping event: %d (%s)\n", errno, g_strerror(errno));
 				close(sockfd);
