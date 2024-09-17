@@ -94,7 +94,7 @@ static void *janus_log_thread(void *ctx) {
 			janus_log_buffer_free(b);
 			continue;
 		}
-		/* We have somethinh to log */
+		/* We have something to log */
 		janus_log_print_buffer(b);
 		/* Done, get rid of this log line */
 		janus_log_buffer_free(b);
