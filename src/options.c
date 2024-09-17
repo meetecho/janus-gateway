@@ -9,6 +9,7 @@
  */
 
 #include "options.h"
+#include "debug.h"
 
 static GOptionContext *opts = NULL;
 
@@ -66,7 +67,7 @@ gboolean janus_options_parse(janus_options *options, int argc, char *argv[]) {
 	g_option_context_set_help_enabled(opts, TRUE);
 	g_option_context_add_main_entries(opts, opt_entries, NULL);
 	if(!g_option_context_parse(opts, &argc, &argv, &error)) {
-		g_print("%s\n", error->message);
+		JANUS_PRINT("%s\n", error->message);
 		g_error_free(error);
 		janus_options_destroy();
 		return FALSE;

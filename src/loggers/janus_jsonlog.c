@@ -347,7 +347,8 @@ static void *janus_jsonlog_thread(void *data) {
 			json_len -= written;
 			offset += written;
 		}
-		fwrite("\n", sizeof(char), sizeof("\n"), logfile);
+		const char *lf = "\n";
+		fwrite(lf, sizeof(char), strlen(lf), logfile);
 		fflush(logfile);
 		free(json_text);
 	}
