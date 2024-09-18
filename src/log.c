@@ -25,7 +25,6 @@
 
 typedef struct janus_log_buffer {
 	int64_t timestamp;
-	size_t allocated;
 	char *str;
 } janus_log_buffer;
 static janus_log_buffer exit_message;
@@ -118,33 +117,21 @@ void janus_vprintf(const char *format, ...) {
 		return;
 	if(janus_log_queue == NULL)
 		janus_log_queue = g_async_queue_new_full((GDestroyNotify)janus_log_buffer_free);
-	int len;
-	va_list ap, ap2;
+	/* Serialize it to a string */
+	va_list ap;
 	va_start(ap, format);
-	va_copy(ap2, ap);
-
-	janus_log_buffer *b = g_malloc(sizeof(janus_log_buffer));
-	b->timestamp = janus_get_real_time();
-	b->allocated = 256;	/* FIXME */
-	b->str = g_malloc(b->allocated);
-
-	/* First attempt (we don't know how long the string will actually be) */
+	char *str = NULL;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
-	len = g_vsnprintf(b->str, b->allocated, format, ap);
+	int len = g_vasprintf(&str, format, ap);
 #pragma GCC diagnostic pop
 	va_end(ap);
-	if(len >= (int)b->allocated) {
-		/* The allocated buffer wasn't big enough */
-		b->allocated = len + 1;
-		b->str = g_realloc(b->str, b->allocated);
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-nonliteral"
-		g_vsnprintf(b->str, b->allocated, format, ap2);
-#pragma GCC diagnostic pop
-	}
-	va_end(ap2);
-	/* Queue the output */
+	if(len < 0 || str == NULL)
+		return;
+	/* Queue the new log buffer */
+	janus_log_buffer *b = g_malloc(sizeof(janus_log_buffer));
+	b->timestamp = janus_get_real_time();
+	b->str = str;
 	g_async_queue_push(janus_log_queue, b);
 }
 
