@@ -121,10 +121,7 @@ void janus_vprintf(const char *format, ...) {
 	va_list ap;
 	va_start(ap, format);
 	char *str = NULL;
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-nonliteral"
 	int len = g_vasprintf(&str, format, ap);
-#pragma GCC diagnostic pop
 	va_end(ap);
 	if(len < 0 || str == NULL)
 		return;
