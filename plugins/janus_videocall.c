@@ -10,7 +10,8 @@
  * \page videocall VideoCall plugin documentation
  * This is a simple video call plugin for Janus, allowing two
  * WebRTC peers to call each other through the Janus core. The idea is to
- * provide a similar service as the well known AppRTC demo (https://apprtc.appspot.com),
+ * provide a similar service as the at the time well known (and now
+ * discontinued) AppRTC demo (https://github.com/webrtc/apprtc),
  * but with the media flowing through a server rather than being peer-to-peer.
  *
  * The plugin provides a simple fake registration mechanism. A peer attaching
