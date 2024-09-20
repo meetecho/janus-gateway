@@ -4088,7 +4088,8 @@ ldd janus | grep asan
  *    - Presentation on WHIP, WHEP and WebRTC broadcasting at <a href="https://www.youtube.com/watch?v=L0JkNphlEmw">TADSummit Paris 2023</a>;
  *    - Presentation on AV1/SVC support in Janus at <a href="https://fosdem.org/2024/schedule/event/fosdem-2024-3000-getting-av1-svc-to-work-in-the-janus-webrtc-server/">FOSDEM 2024</a>;
  *    - Presentation on experimental application protocols support in the SIP plugin at <a href="https://www.youtube.com/watch?v=Cho556qHRaE">OpenSIPS Summit 2024</a>;
- *    - Presentation on experimental SIP trunking support in the SIP plugin at <a href="https://www.youtube.com/watch?v=_e0fWnWWOeY&t=3855s">Kamailio World 2024</a>. \n\n
+ *    - Presentation on experimental SIP trunking support in the SIP plugin at <a href="https://www.youtube.com/watch?v=_e0fWnWWOeY&t=3855s">Kamailio World 2024</a>;
+ *    - Presentation on prototyping an interaction between WebRTC and QUIC (RTP Over QUIC, Media Over QUIC) <a href="https://www.youtube.com/watch?v=bq9LRCfxz_E">RTC.ON 2024</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
  *    and presentations from <a href="https://januscon.it">JanusCon</a> (including the
  *    <a href="https://januscon.it/2019">2019 edition</a>),
