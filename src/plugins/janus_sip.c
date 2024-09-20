@@ -5231,13 +5231,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->hangup_reason_header_protocol = NULL;
 				session->hangup_reason_header_cause = NULL;
 				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established)) {
-					if(session->media.has_audio || session->media.has_video) {
-						/* Get rid of the PeerConnection in the core */
-						gateway->close_pc(session->handle);
-					} else {
-						/* No SDP was exchanged, just clean up locally */
-						janus_sip_hangup_media_internal(session->handle);
-					}
+					/* Get rid of the PeerConnection in the core */
+					gateway->close_pc(session->handle);
+					/* Also clean up locally, in case there was no PC */
+					janus_sip_hangup_media_internal(session->handle);
 				}
 			} else if(session->stack->s_nh_i == nh && callstate == nua_callstate_calling && session->status == janus_sip_call_status_incall) {
 				/* Have just sent re-INVITE */
