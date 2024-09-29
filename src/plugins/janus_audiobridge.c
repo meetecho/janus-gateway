@@ -1412,6 +1412,7 @@ static struct janus_json_parameter rtp_forward_parameters[] = {
 static struct janus_json_parameter stop_rtp_forward_parameters[] = {
 	{"stream_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
+#ifdef HAVE_LIBOGG
 static struct janus_json_parameter play_file_parameters[] = {
 	{"filename", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"file_id", JSON_STRING, 0},
@@ -1421,6 +1422,7 @@ static struct janus_json_parameter play_file_parameters[] = {
 static struct janus_json_parameter checkstop_file_parameters[] = {
 	{"file_id", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
+#endif
 static struct janus_json_parameter suspend_parameters[] = {
 	{"pause_events", JANUS_JSON_BOOL, 0},
 	{"stop_record", JANUS_JSON_BOOL, 0},
