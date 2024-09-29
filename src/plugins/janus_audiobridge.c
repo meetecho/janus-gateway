@@ -5491,6 +5491,12 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		goto prepare_response;
 #endif
 	} else if(!strcasecmp(request_text, "listannouncements")) {
+#ifndef HAVE_LIBOGG
+		JANUS_LOG(LOG_VERB, "Listing announcements unsupported in this instance\n");
+		error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Listing announcements unsupported in this instance");
+		goto prepare_response;
+#else
 		/* List all announcements in a room */
 		if(!string_ids) {
 		    JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
@@ -5561,6 +5567,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 		json_object_set_new(response, "announcements", list);
 		goto prepare_response;
+#endif
 	} else if(!strcasecmp(request_text, "stop_file")) {
 #ifndef HAVE_LIBOGG
 		JANUS_LOG(LOG_VERB, "Playing files unsupported in this instance\n");
