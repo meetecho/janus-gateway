@@ -2419,6 +2419,7 @@ typedef struct janus_videoroom_publisher {
 	GHashTable *remote_recipients;
 	/* In case this is a remote publisher */
 	gboolean remote;			/* Whether this is a remote publisher */
+	uint32_t remote_ssrc_offset;	/* SSRC offset to apply to the incoming RTP traffic */
 	int remote_fd, remote_rtcp_fd, pipefd[2];	/* Remote publisher sockets */
 	struct sockaddr_storage rtcp_addr;	/* RTCP address of the remote publisher */
 	GThread *remote_thread;		/* Remote publisher incoming packets thread */
@@ -7697,6 +7698,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		publisher->vcodec = JANUS_VIDEOCODEC_NONE;
 		publisher->data_mindex = -1;
 		publisher->remote = TRUE;
+		publisher->remote_ssrc_offset = janus_random_uint32();
 		publisher->remote_fd = fd;
 		publisher->remote_rtcp_fd = rtcp_fd;
 		pipe(publisher->pipefd);
@@ -13682,6 +13684,9 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 						pkt.extensions.max_delay = max;
 					}
 				}
+				/* Apply an SSRC offset to avoid issues when switching,
+				 * see https://github.com/meetecho/janus-gateway/issues/3444 */
+				rtp->ssrc = htonl(ntohl(rtp->ssrc) + publisher->remote_ssrc_offset);
 				/* Now handle the packet as if coming from a regular publisher */
 				janus_videoroom_incoming_rtp_internal(publisher->session, publisher, &pkt);
 			}
