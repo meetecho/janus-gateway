@@ -2419,6 +2419,7 @@ typedef struct janus_videoroom_publisher {
 	GHashTable *remote_recipients;
 	/* In case this is a remote publisher */
 	gboolean remote;			/* Whether this is a remote publisher */
+	uint32_t remote_ssrc_offset;	/* SSRC offset to apply to the incoming RTP traffic */
 	int remote_fd, remote_rtcp_fd, pipefd[2];	/* Remote publisher sockets */
 	struct sockaddr_storage rtcp_addr;	/* RTCP address of the remote publisher */
 	GThread *remote_thread;		/* Remote publisher incoming packets thread */
@@ -7697,6 +7698,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		publisher->vcodec = JANUS_VIDEOCODEC_NONE;
 		publisher->data_mindex = -1;
 		publisher->remote = TRUE;
+		publisher->remote_ssrc_offset = janus_random_uint32();
 		publisher->remote_fd = fd;
 		publisher->remote_rtcp_fd = rtcp_fd;
 		pipe(publisher->pipefd);
@@ -7794,9 +7796,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					ps->simulcast = json_is_true(json_object_get(s, "simulcast"));
 					ps->svc = json_is_true(json_object_get(s, "svc"));
 					if(ps->simulcast) {
-						ps->vssrc[0] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP);
-						ps->vssrc[1] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 1;
-						ps->vssrc[2] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 2;
+						ps->vssrc[0] = publisher->remote_ssrc_offset + REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP);
+						ps->vssrc[1] = publisher->remote_ssrc_offset + REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 1;
+						ps->vssrc[2] = publisher->remote_ssrc_offset + REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 2;
 					}
 				}
 				int video_orient_extmap_id = json_integer_value(json_object_get(s, "videoorient_ext_id"));
@@ -8072,9 +8074,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					ps->simulcast = json_is_true(json_object_get(s, "simulcast"));
 					ps->svc = json_is_true(json_object_get(s, "svc"));
 					if(ps->simulcast) {
-						ps->vssrc[0] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP);
-						ps->vssrc[1] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 1;
-						ps->vssrc[2] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 2;
+						ps->vssrc[0] = publisher->remote_ssrc_offset + REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP);
+						ps->vssrc[1] = publisher->remote_ssrc_offset + REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 1;
+						ps->vssrc[2] = publisher->remote_ssrc_offset + REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 2;
 					}
 				}
 				int video_orient_extmap_id = json_integer_value(json_object_get(s, "videoorient_ext_id"));
@@ -13682,6 +13684,9 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 						pkt.extensions.max_delay = max;
 					}
 				}
+				/* Apply an SSRC offset to avoid issues when switching,
+				 * see https://github.com/meetecho/janus-gateway/issues/3444 */
+				rtp->ssrc = htonl(ntohl(rtp->ssrc) + publisher->remote_ssrc_offset);
 				/* Now handle the packet as if coming from a regular publisher */
 				janus_videoroom_incoming_rtp_internal(publisher->session, publisher, &pkt);
 			}
