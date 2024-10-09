@@ -7796,9 +7796,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					ps->simulcast = json_is_true(json_object_get(s, "simulcast"));
 					ps->svc = json_is_true(json_object_get(s, "svc"));
 					if(ps->simulcast) {
-						ps->vssrc[0] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP);
-						ps->vssrc[1] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 1;
-						ps->vssrc[2] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 2;
+						ps->vssrc[0] = publisher->remote_ssrc_offset + REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP);
+						ps->vssrc[1] = publisher->remote_ssrc_offset + REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 1;
+						ps->vssrc[2] = publisher->remote_ssrc_offset + REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 2;
 					}
 				}
 				int video_orient_extmap_id = json_integer_value(json_object_get(s, "videoorient_ext_id"));
@@ -8074,9 +8074,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					ps->simulcast = json_is_true(json_object_get(s, "simulcast"));
 					ps->svc = json_is_true(json_object_get(s, "svc"));
 					if(ps->simulcast) {
-						ps->vssrc[0] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP);
-						ps->vssrc[1] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 1;
-						ps->vssrc[2] = REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 2;
+						ps->vssrc[0] = publisher->remote_ssrc_offset + REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP);
+						ps->vssrc[1] = publisher->remote_ssrc_offset + REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 1;
+						ps->vssrc[2] = publisher->remote_ssrc_offset + REMOTE_PUBLISHER_BASE_SSRC + (mindex*REMOTE_PUBLISHER_SSRC_STEP) + 2;
 					}
 				}
 				int video_orient_extmap_id = json_integer_value(json_object_get(s, "videoorient_ext_id"));
