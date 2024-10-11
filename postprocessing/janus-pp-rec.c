@@ -223,14 +223,13 @@ static char *janus_pp_extensions_string(const char **allowed, char *supported, s
 }
 
 /* Main Code */
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
 	struct gengetopt_args_info args_info;
 	/* Let's call our cmdline parser */
 	if(cmdline_parser(argc, argv, &args_info) != 0)
 		exit(1);
 
-	janus_log_init(FALSE, TRUE, NULL);
+	janus_log_init(FALSE, TRUE, NULL, NULL);
 	atexit(janus_log_destroy);
 
 	/* Check if we only need to print the supported extensions for all codecs */

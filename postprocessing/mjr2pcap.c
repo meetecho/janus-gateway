@@ -148,9 +148,8 @@ static void janus_pp_handle_signal(int signum) {
 
 
 /* Main Code */
-int main(int argc, char *argv[])
-{
-	janus_log_init(FALSE, TRUE, NULL);
+int main(int argc, char *argv[]) {
+	janus_log_init(FALSE, TRUE, NULL, NULL);
 	atexit(janus_log_destroy);
 
 	/* Evaluate arguments */
