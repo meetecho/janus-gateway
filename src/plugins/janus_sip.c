@@ -5410,7 +5410,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 						/* External caller, create a new mapping */
 						call = g_malloc0(sizeof(janus_sip_call));
 						call->callee = session;
-						g_hash_table_insert(callids, session->callid, call);
+						g_hash_table_insert(callids, g_strdup(session->callid), call);
 					}
 				}
 				janus_mutex_unlock(&sessions_mutex);
