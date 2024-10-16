@@ -477,7 +477,9 @@ typedef struct janus_ice_queued_packet {
 	gint type;
 	gboolean control;
 	gboolean retransmission;
+	gboolean probing;
 	gboolean encrypted;
+	guint16 twcc_seq;
 	gint64 added;
 } janus_ice_queued_packet;
 /* A few static, fake, messages we use as a trigger: e.g., to start a
@@ -487,6 +489,10 @@ static janus_ice_queued_packet
 	janus_ice_add_candidates,
 	janus_ice_dtls_handshake,
 	janus_ice_media_stopped,
+	janus_ice_enable_bwe,
+	janus_ice_set_bwe_target,
+	janus_ice_debug_bwe,
+	janus_ice_disable_bwe,
 	janus_ice_hangup_peerconnection,
 	janus_ice_detach_handle,
 	janus_ice_data_ready;
@@ -542,6 +548,7 @@ typedef struct janus_ice_outgoing_traffic {
 } janus_ice_outgoing_traffic;
 static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data);
 static gboolean janus_ice_outgoing_stats_handle(gpointer user_data);
+static gboolean janus_ice_outgoing_bwe_handle(gpointer user_data);
 static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janus_ice_queued_packet *pkt);
 static gboolean janus_ice_outgoing_traffic_prepare(GSource *source, gint *timeout) {
 	janus_ice_outgoing_traffic *t = (janus_ice_outgoing_traffic *)source;
@@ -664,6 +671,8 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 	if(pkt == NULL || pkt == &janus_ice_start_gathering ||
 			pkt == &janus_ice_add_candidates ||
 			pkt == &janus_ice_dtls_handshake ||
+			pkt == &janus_ice_enable_bwe || pkt == &janus_ice_set_bwe_target ||
+				pkt == &janus_ice_debug_bwe || pkt == &janus_ice_disable_bwe ||
 			pkt == &janus_ice_media_stopped ||
 			pkt == &janus_ice_hangup_peerconnection ||
 			pkt == &janus_ice_detach_handle ||
@@ -1627,6 +1636,8 @@ static void janus_ice_handle_free(const janus_refcount *handle_ref) {
 	}
 	g_free(handle->opaque_id);
 	g_free(handle->token);
+	g_free(handle->bwe_csv);
+	g_free(handle->bwe_host);
 	g_free(handle);
 }
 
@@ -1861,6 +1872,7 @@ static void janus_ice_peerconnection_free(const janus_refcount *pc_ref) {
 	if(pc->rtx_payload_types_rev != NULL)
 		g_hash_table_destroy(pc->rtx_payload_types_rev);
 	pc->rtx_payload_types_rev = NULL;
+	janus_bwe_context_destroy(pc->bwe);
 	g_free(pc);
 	pc = NULL;
 }
@@ -1892,6 +1904,7 @@ janus_ice_peerconnection_medium *janus_ice_peerconnection_medium_create(janus_ic
 		medium->rtcp_ctx[0]->in_media_link_quality = 100;
 		medium->rtcp_ctx[0]->out_link_quality = 100;
 		medium->rtcp_ctx[0]->out_media_link_quality = 100;
+		medium->nack_queue_ms = min_nack_queue;
 		/* We can address media by SSRC */
 		g_hash_table_insert(pc->media_byssrc, GINT_TO_POINTER(medium->ssrc), medium);
 		janus_refcount_increase(&medium->ref);
@@ -3062,7 +3075,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					int res = janus_rtcp_nacks(nackbuf, sizeof(nackbuf), nacks);
 					if(res > 0) {
 						/* Set the right local and remote SSRC in the RTCP packet */
-						janus_rtcp_fix_ssrc(NULL, nackbuf, res, 1,
+						janus_rtcp_fix_ssrc(NULL, NULL, nackbuf, res, 1,
 							medium->ssrc, medium->ssrc_peer[vindex]);
 						janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = video, .buffer = nackbuf, .length = res };
 						janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
@@ -3141,7 +3154,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				/* Let's process this RTCP (compound?) packet, and update the RTCP context for this stream in case */
 				rtcp_context *rtcp_ctx = medium->rtcp_ctx[vindex];
 				uint32_t rtt = rtcp_ctx ? rtcp_ctx->rtt : 0;
-				if(janus_rtcp_parse(rtcp_ctx, buf, buflen) < 0) {
+				if(janus_rtcp_parse(rtcp_ctx, pc->bwe, buf, buflen) < 0) {
 					/* Drop the packet if the parsing function returns with an error */
 					return;
 				}
@@ -3207,8 +3220,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							pkt->extensions = p->extensions;
 							pkt->control = FALSE;
 							pkt->retransmission = TRUE;
+							pkt->probing = TRUE;
 							pkt->label = NULL;
 							pkt->protocol = NULL;
+							pkt->twcc_seq = 0;
 							pkt->added = janus_get_monotonic_time();
 							/* What to send and how depends on whether we're doing RFC4588 or not */
 							if(!video || !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
@@ -3898,6 +3913,58 @@ void janus_ice_resend_trickles(janus_ice_handle *handle) {
 	janus_ice_notify_trickle(handle, NULL);
 }
 
+void janus_ice_handle_enable_bwe(janus_ice_handle *handle) {
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Enabling bandwidth estimation\n", handle->handle_id);
+	if(handle->queued_packets != NULL) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_enable_bwe);
+#else
+		g_async_queue_push(handle->queued_packets, &janus_ice_enable_bwe);
+#endif
+		g_main_context_wakeup(handle->mainctx);
+	}
+}
+
+/* FIXME */
+void janus_ice_handle_set_bwe_target(janus_ice_handle *handle, uint32_t bitrate) {
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Configuring bandwidth estimation target: %"SCNu32"\n", handle->handle_id, bitrate);
+	janus_mutex_lock(&handle->mutex);
+	handle->bwe_target = bitrate;
+	janus_mutex_unlock(&handle->mutex);
+	if(handle->queued_packets != NULL) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_set_bwe_target);
+#else
+		g_async_queue_push(handle->queued_packets, &janus_ice_set_bwe_target);
+#endif
+		g_main_context_wakeup(handle->mainctx);
+	}
+}
+
+void janus_ice_handle_debug_bwe(janus_ice_handle *handle) {
+	JANUS_LOG(LOG_WARN, "[%"SCNu64"] Tweaking debugging of bandwidth estimation\n", handle->handle_id);
+	if(handle->queued_packets != NULL) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_debug_bwe);
+#else
+		g_async_queue_push(handle->queued_packets, &janus_ice_debug_bwe);
+#endif
+		g_main_context_wakeup(handle->mainctx);
+	}
+}
+
+void janus_ice_handle_disable_bwe(janus_ice_handle *handle) {
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Disabling bandwidth estimation\n", handle->handle_id);
+	if(handle->queued_packets != NULL) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_disable_bwe);
+#else
+		g_async_queue_push(handle->queued_packets, &janus_ice_disable_bwe);
+#endif
+		g_main_context_wakeup(handle->mainctx);
+	}
+}
+
 static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_peerconnection_medium *medium, janus_ice_queued_packet *packet) {
 	if(handle == NULL || handle->pc == NULL || medium == NULL || packet == NULL || packet->data == NULL)
 		return;
@@ -3916,7 +3983,7 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 	/* Add core and plugin extensions, if any */
 	gboolean video = (packet->type == JANUS_ICE_PACKET_VIDEO);
 	if(handle->pc->mid_ext_id > 0 || (video && handle->pc->abs_send_time_ext_id > 0) ||
-			(video && handle->pc->transport_wide_cc_ext_id > 0) ||
+			(medium->do_twcc && handle->pc->transport_wide_cc_ext_id > 0) ||
 			(!video && packet->extensions.audio_level > -1 && handle->pc->audiolevel_ext_id > 0) ||
 			(video && packet->extensions.video_rotation > -1 && handle->pc->videoorientation_ext_id > 0) ||
 			(video && packet->extensions.min_delay > -1 && packet->extensions.max_delay > -1 && handle->pc->playoutdelay_ext_id > 0) ||
@@ -3954,9 +4021,10 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 			}
 		}
 		/* Check if we need to add the transport-wide CC extension */
-		if(video && handle->pc->transport_wide_cc_ext_id > 0) {
+		if(medium->do_twcc && handle->pc->transport_wide_cc_ext_id > 0) {
 			handle->pc->transport_wide_cc_out_seq_num++;
-			uint16_t transSeqNum = htons(handle->pc->transport_wide_cc_out_seq_num);
+			packet->twcc_seq = handle->pc->transport_wide_cc_out_seq_num;
+			uint16_t transSeqNum = htons(packet->twcc_seq);
 			if(!use_2byte) {
 				*index = (handle->pc->transport_wide_cc_ext_id << 4) + 1;
 				memcpy(index+1, &transSeqNum, 2);
@@ -4148,7 +4216,7 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 }
 
 static gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstpointer item2) {
-	return ((rtcp_transport_wide_cc_stats*)item1)->transport_seq_num - ((rtcp_transport_wide_cc_stats*)item2)->transport_seq_num;
+	return ((janus_rtcp_transport_wide_cc_stats *)item1)->transport_seq_num - ((janus_rtcp_transport_wide_cc_stats *)item2)->transport_seq_num;
 }
 static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
@@ -4506,6 +4574,153 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 	return G_SOURCE_CONTINUE;
 }
 
+static gboolean janus_ice_outgoing_bwe_handle(gpointer user_data) {
+	janus_ice_handle *handle = (janus_ice_handle *)user_data;
+	janus_ice_peerconnection *pc = handle->pc;
+	if(pc == NULL || pc->bwe == NULL)
+		return G_SOURCE_CONTINUE;
+	/* First of all, let's check if we have to notify the plugin */
+	if(pc->bwe->notify_plugin) {
+		/* Notify the plugin about the current estimate */
+		pc->bwe->notify_plugin = FALSE;
+		janus_plugin *plugin = (janus_plugin *)handle->app;
+		if(plugin && plugin->estimated_bandwidth && janus_plugin_session_is_alive(handle->app_handle) &&
+				!g_atomic_int_get(&handle->destroyed))
+			plugin->estimated_bandwidth(handle->app_handle, pc->bwe->estimate);
+	}
+	/* Now, let's check if there's probing we need to perform */
+	uint32_t bitrate_out = (pc->bwe->sent->packets[janus_bwe_packet_type_regular*3] ? pc->bwe->sent->bitrate[janus_bwe_packet_type_regular*3] : 0) +
+		(pc->bwe->sent->packets[janus_bwe_packet_type_rtx*3] ? pc->bwe->sent->bitrate[janus_bwe_packet_type_rtx*3] : 0);
+	if(pc->bwe->probing_target == 0 || pc->bwe->probing_target <= bitrate_out)
+		return G_SOURCE_CONTINUE;
+	if(pc->bwe->status != janus_bwe_status_start && pc->bwe->status != janus_bwe_status_regular) {
+		/* The BWE status may be lossy, congested, or recovering: don't probe for now */
+		return G_SOURCE_CONTINUE;
+	}
+	gint64 now = janus_get_monotonic_time();
+	if(pc->bwe->probing_deferred > 0) {
+		if(now < pc->bwe->probing_deferred) {
+			/* The probing has been deferred for a few seconds */
+			return G_SOURCE_CONTINUE;
+		}
+		pc->bwe->probing_deferred = 0;
+		pc->bwe->probing_buildup_timer = now;
+	}
+	/* Get the medium instance we'll use for probing */
+	janus_ice_peerconnection_medium *medium = NULL;
+	if(pc->bwe->probing_mindex != -1)
+		medium = g_hash_table_lookup(pc->media, GINT_TO_POINTER(pc->bwe->probing_mindex));
+	if(medium == NULL || !medium->send || medium->rtx_payload_type == -1 || g_queue_is_empty(medium->retransmit_buffer)) {
+		/* We don't have a video medium we can use for probing (anymore?) */
+		pc->bwe->probing_mindex = -1;
+		return G_SOURCE_CONTINUE;
+	}
+	int attempts = 10;
+	uint16_t seqnr = medium->last_rtp_seqnum;
+	janus_rtp_packet *p = NULL;
+	while(attempts > 0) {
+		p = g_hash_table_lookup(medium->retransmit_seqs, GUINT_TO_POINTER(seqnr));
+		if(p == NULL) {
+			attempts--;
+			seqnr--;
+			continue;
+		}
+		/* FIXME Should we check if the packet is large enough? */
+		break;
+	}
+	if(p == NULL) {
+		/* We don't have a probing packet to send */
+		return G_SOURCE_CONTINUE;
+	}
+	/* Check how many duplicates we have to send of this packet */
+	if(pc->bwe->probing_count == 20) {
+		pc->bwe->probing_count = 0;
+		pc->bwe->probing_sent = 0;
+		pc->bwe->probing_portion = 0.0;
+	}
+	pc->bwe->probing_count++;
+	/* Check if we need to build up probing */
+	uint32_t required = pc->bwe->probing_target - bitrate_out;
+	if(pc->bwe->probing_buildup_timer > 0) {
+		if(pc->bwe->probing_buildup == 0)
+			pc->bwe->probing_buildup = pc->bwe->probing_buildup_step;
+		uint32_t gap = (pc->bwe->probing_buildup_step >= 10000 ? 500000 : 200000);
+		if(now - pc->bwe->probing_buildup_timer >= gap) {
+			pc->bwe->probing_buildup_step += 1000;
+			if(pc->bwe->probing_buildup_step > 10000)
+				pc->bwe->probing_buildup_step = 10000;
+			pc->bwe->probing_buildup += pc->bwe->probing_buildup_step;
+			pc->bwe->probing_buildup_timer = now;
+		}
+		if(pc->bwe->probing_buildup >= required)
+			pc->bwe->probing_buildup = required;
+		required = pc->bwe->probing_buildup;
+	}
+	if(pc->bwe->probing_sent >= required) {
+		/* We sent enough for this round */
+		return G_SOURCE_CONTINUE;
+	}
+	uint32_t required_now = required / (8 * 20);
+	double prev_portion = pc->bwe->probing_portion;
+	double portion = (double)required_now / (double)(p->length+SRTP_MAX_TAG_LEN);
+	double new_portion = prev_portion + portion;
+	int duplicates = (int)(new_portion);
+	if(new_portion - (double)duplicates > 0.5)
+		duplicates++;
+	if(duplicates == 0) {
+		/* Skip this round, we'll send something later */
+		pc->bwe->probing_portion = new_portion;
+		return G_SOURCE_CONTINUE;
+	}
+	pc->bwe->probing_portion = ((double)duplicates < new_portion) ?
+		(new_portion - (double)duplicates) : 0;
+	/* FIXME We have a packet we can retransmit for probing purposes, enqueue it N times */
+	JANUS_LOG(LOG_DBG, "[%"SCNu64"] #%d: Scheduling %u for retransmission (probing, pkt_size=%d)\n",
+		handle->handle_id, (pc->bwe->probing_count - 1), seqnr, p->length+SRTP_MAX_TAG_LEN);
+	int i = 0;
+	uint32_t enqueued = 0;
+	for(i=0; i < duplicates; i++) {
+		p->last_retransmit = now;
+		/* Enqueue it */
+		janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
+		pkt->mindex = medium->mindex;
+		pkt->data = g_malloc(p->length+SRTP_MAX_TAG_LEN);
+		memcpy(pkt->data, p->data, p->length);
+		pkt->length = p->length;
+		pkt->type = JANUS_ICE_PACKET_VIDEO;
+		pkt->extensions = p->extensions;
+		pkt->control = FALSE;
+		pkt->retransmission = TRUE;
+		pkt->probing = TRUE;
+		pkt->label = NULL;
+		pkt->protocol = NULL;
+		pkt->twcc_seq = 0;
+		pkt->added = janus_get_monotonic_time();
+		pkt->encrypted = FALSE;
+		janus_rtp_header *header = (janus_rtp_header *)pkt->data;
+		header->type = medium->rtx_payload_type;
+		header->ssrc = htonl(medium->ssrc_rtx);
+		medium->rtx_seq_number++;
+		header->seq_number = htons(medium->rtx_seq_number);
+		if(handle->queued_packets != NULL) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+			g_async_queue_push_front(handle->queued_packets, pkt);
+#else
+			g_async_queue_push(handle->queued_packets, pkt);
+#endif
+			g_main_context_wakeup(handle->mainctx);
+		} else {
+			janus_ice_free_queued_packet(pkt);
+		}
+		enqueued += p->length+SRTP_MAX_TAG_LEN;
+	}
+	pc->bwe->probing_sent += (enqueued * 8);
+	JANUS_LOG(LOG_DBG, "[%"SCNu64"]   -- Enqueued %d duplicates (%"SCNu32" bytes, %"SCNu32" kbps; sent=%"SCNu32"/%"SCNu32")\n",
+		handle->handle_id, duplicates, enqueued, (enqueued/1000)*8, pc->bwe->probing_sent, required);
+	/* Done */
+	return G_SOURCE_CONTINUE;
+}
+
 static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janus_ice_queued_packet *pkt) {
 	janus_session *session = (janus_session *)handle->session;
 	janus_ice_peerconnection *pc = handle->pc;
@@ -4559,6 +4774,90 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		guint id = g_source_attach(pc->dtlsrt_source, handle->mainctx);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating retransmission timer with ID %u\n", handle->handle_id, id);
 		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_enable_bwe) {
+		/* Create a new bandwidth estimation context for this handle */
+		if(pc == NULL || pc->bwe != NULL)
+			return G_SOURCE_CONTINUE;
+		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling bandwidth estimation\n", handle->handle_id);
+		pc->bwe = janus_bwe_context_create();
+		janus_mutex_lock(&handle->mutex);
+		handle->bwe_target = 0;
+		/* Check if we need debugging */
+		if(handle->bwe_csv) {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling CSV debugging of bandwidth estimation\n", handle->handle_id);
+			janus_bwe_save_csv(pc->bwe, handle->bwe_csv);
+		}
+		if(handle->bwe_host && handle->bwe_port > 0) {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling live debugging of bandwidth estimation\n", handle->handle_id);
+			janus_bwe_save_live(pc->bwe, handle->bwe_host, handle->bwe_port);
+		}
+		janus_mutex_unlock(&handle->mutex);
+		/* Let's create a source for BWE, for plugin notifications and probing */
+		handle->bwe_source = g_timeout_source_new(50);	/* FIXME */
+		g_source_set_priority(handle->bwe_source, G_PRIORITY_DEFAULT);
+		g_source_set_callback(handle->bwe_source, janus_ice_outgoing_bwe_handle, handle, NULL);
+		g_source_attach(handle->bwe_source, handle->mainctx);
+		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_set_bwe_target) {
+		/* Enable probing for the BWE context (assuming BWE is active) */
+		if(pc == NULL || pc->bwe == NULL)
+			return G_SOURCE_CONTINUE;
+		janus_mutex_lock(&handle->mutex);
+		uint32_t target = handle->bwe_target;
+		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Configuring bandwidth estimation target: %"SCNu32"\n", handle->handle_id, target);
+		if(target == pc->bwe->probing_target) {
+			/* Nothing to do */
+			janus_mutex_unlock(&handle->mutex);
+			return G_SOURCE_CONTINUE;
+		}
+		janus_mutex_unlock(&handle->mutex);
+		/* Let's configure probing accordingly */
+		pc->bwe->probing_target = target;
+		pc->bwe->probing_count = 0;
+		pc->bwe->probing_sent = 0;
+		pc->bwe->probing_portion = 0.0;
+		pc->bwe->probing_buildup = 0;
+		//~ pc->bwe->probing_buildup_timer = janus_get_monotonic_time();
+		pc->bwe->probing_deferred = janus_get_monotonic_time() + G_USEC_PER_SEC;
+		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_debug_bwe) {
+		/* Enable or disable debugging for the bandwidth estimator */
+		if(pc == NULL || pc->bwe == NULL)
+			return G_SOURCE_CONTINUE;
+		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Tweaking debugging for bandwidth estimation\n", handle->handle_id);
+		janus_mutex_lock(&handle->mutex);
+		if(handle->bwe_csv) {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling CSV debugging of bandwidth estimation\n", handle->handle_id);
+			janus_bwe_save_csv(pc->bwe, handle->bwe_csv);
+		} else {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Disabling CSV debugging of bandwidth estimation\n", handle->handle_id);
+			janus_bwe_close_csv(pc->bwe);
+		}
+		if(handle->bwe_host && handle->bwe_port > 0) {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Enabling live debugging of bandwidth estimation\n", handle->handle_id);
+			janus_bwe_save_live(pc->bwe, handle->bwe_host, handle->bwe_port);
+		} else {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Disabling live debugging of bandwidth estimation\n", handle->handle_id);
+			janus_bwe_close_live(pc->bwe);
+		}
+		janus_mutex_unlock(&handle->mutex);
+		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_disable_bwe) {
+		/* We need to get rid of the bandwidth estimator */
+		if(pc == NULL || pc->bwe == NULL)
+			return G_SOURCE_CONTINUE;
+		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Disabling bandwidth estimation\n", handle->handle_id);
+		if(handle->bwe_source) {
+			g_source_destroy(handle->bwe_source);
+			g_source_unref(handle->bwe_source);
+			handle->bwe_source = NULL;
+		}
+		janus_bwe_context_destroy(pc->bwe);
+		pc->bwe = NULL;
+		janus_mutex_lock(&handle->mutex);
+		handle->bwe_target = 0;
+		janus_mutex_unlock(&handle->mutex);
+		return G_SOURCE_CONTINUE;
 	} else if(pkt == &janus_ice_media_stopped) {
 		/* Some media has been disabled on the way in, so use the callback to notify the peer */
 		if(pc == NULL)
@@ -4602,6 +4901,11 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			g_source_destroy(handle->twcc_source);
 			g_source_unref(handle->twcc_source);
 			handle->twcc_source = NULL;
+		}
+		if(handle->bwe_source) {
+			g_source_destroy(handle->bwe_source);
+			g_source_unref(handle->bwe_source);
+			handle->bwe_source = NULL;
 		}
 		if(handle->stats_source) {
 			g_source_destroy(handle->stats_source);
@@ -4873,6 +5177,9 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					p->extensions = pkt->extensions;
 					/* Copy the payload */
 					memcpy(p->data+hsize+2, payload, pkt->length - hsize);
+					/* Check if there's a BWE context and we need a medium for probing */
+					if(pc->bwe && pc->bwe->probing_mindex == -1)
+						pc->bwe->probing_mindex = pkt->mindex;
 				}
 				/* Encrypt SRTP */
 				int protected = pkt->length;
@@ -4894,6 +5201,15 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					int sent = nice_agent_send(handle->agent, pc->stream_id, pc->component_id, protected, pkt->data);
 					if(sent < protected) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, protected);
+					}
+					/* Keep track of the packet if we're using TWCC */
+					if(medium->do_twcc && handle->pc->transport_wide_cc_ext_id > 0) {
+						janus_bwe_packet_type type = janus_bwe_packet_type_regular;
+						if(pkt->probing)
+							type = janus_bwe_packet_type_probing;
+						else if(pkt->retransmission)
+							type = janus_bwe_packet_type_rtx;
+						janus_bwe_context_add_inflight(pc->bwe, pkt->twcc_seq, janus_get_monotonic_time(), type, protected);
 					}
 					/* Update stats */
 					if(sent > 0) {
@@ -4918,6 +5234,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 						if(medium->last_ntp_ts == 0 || (gint32)(timestamp - medium->last_rtp_ts) > 0) {
 							medium->last_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
 							medium->last_rtp_ts = timestamp;
+							medium->last_rtp_seqnum = ntohs(header->seq_number);
 						}
 						if(medium->first_ntp_ts[0] == 0) {
 							medium->first_ntp_ts[0] = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
@@ -5041,8 +5358,10 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
+	pkt->probing = FALSE;
 	pkt->label = NULL;
 	pkt->protocol = NULL;
+	pkt->twcc_seq = 0;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 }
@@ -5069,7 +5388,7 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_ice_peerconne
 		 * ones created by the core already have the right SSRCs in the right place */
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id,
 			medium->ssrc, medium->ssrc_peer[0]);
-		janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1,
+		janus_rtcp_fix_ssrc(NULL, NULL, rtcp_buf, rtcp_len, 1,
 			medium->ssrc, medium->ssrc_peer[0]);
 	}
 	/* Queue this packet */
@@ -5083,8 +5402,10 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_ice_peerconne
 	pkt->control = TRUE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
+	pkt->probing = FALSE;
 	pkt->label = NULL;
 	pkt->protocol = NULL;
+	pkt->twcc_seq = 0;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 	if(rtcp_buf != packet->buffer) {
@@ -5119,7 +5440,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, janus_plugin_rtcp *packet) {
 			char plibuf[12];
 			memset(plibuf, 0, 12);
 			janus_rtcp_pli((char *)&plibuf, 12);
-			janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
+			janus_rtcp_fix_ssrc(NULL, NULL, plibuf, sizeof(plibuf), 1,
 				medium->ssrc, medium->ssrc_peer[1]);
 			janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = TRUE, .buffer = plibuf, .length = sizeof(plibuf) };
 			janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
@@ -5128,7 +5449,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, janus_plugin_rtcp *packet) {
 			char plibuf[12];
 			memset(plibuf, 0, 12);
 			janus_rtcp_pli((char *)&plibuf, 12);
-			janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
+			janus_rtcp_fix_ssrc(NULL, NULL, plibuf, sizeof(plibuf), 1,
 				medium->ssrc, medium->ssrc_peer[2]);
 			janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = TRUE, .buffer = plibuf, .length = sizeof(plibuf) };
 			janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
@@ -5182,8 +5503,10 @@ void janus_ice_relay_data(janus_ice_handle *handle, janus_plugin_data *packet) {
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
+	pkt->probing = FALSE;
 	pkt->label = packet->label ? g_strdup(packet->label) : NULL;
 	pkt->protocol = packet->protocol ? g_strdup(packet->protocol) : NULL;
+	pkt->twcc_seq = 0;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 }
@@ -5209,8 +5532,10 @@ void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length) {
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
+	pkt->probing = FALSE;
 	pkt->label = NULL;
 	pkt->protocol = NULL;
+	pkt->twcc_seq = 0;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 #endif

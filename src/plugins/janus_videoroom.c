@@ -1842,6 +1842,7 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
 void janus_videoroom_data_ready(janus_plugin_session *handle);
 void janus_videoroom_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
+void janus_videoroom_estimated_bandwidth(janus_plugin_session *handle, uint32_t estimate);
 void janus_videoroom_hangup_media(janus_plugin_session *handle);
 void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_videoroom_query_session(janus_plugin_session *handle);
@@ -1869,6 +1870,7 @@ static janus_plugin janus_videoroom_plugin =
 		.incoming_data = janus_videoroom_incoming_data,
 		.data_ready = janus_videoroom_data_ready,
 		.slow_link = janus_videoroom_slow_link,
+		.estimated_bandwidth = janus_videoroom_estimated_bandwidth,
 		.hangup_media = janus_videoroom_hangup_media,
 		.destroy_session = janus_videoroom_destroy_session,
 		.query_session = janus_videoroom_query_session,
@@ -2460,6 +2462,8 @@ typedef struct janus_videoroom_publisher_stream {
 	char *rid[3];							/* Only needed if simulcasting is rid-based */
 	int rid_extmap_id;						/* rid extmap ID */
 	janus_mutex rid_mutex;					/* Mutex to protect access to the rid array and the extmap ID */
+	/* Tracker of the bitrate(s) of this stream, for BWE purposes */
+	janus_bwe_stream_bitrate *bitrates;
 	/* RTP extensions, if negotiated */
 	guint8 audio_level_extmap_id;			/* Audio level extmap ID */
 	guint8 video_orient_extmap_id;			/* Video orientation extmap ID */
@@ -2559,6 +2563,8 @@ typedef struct janus_videoroom_subscriber_stream {
 	janus_vp8_simulcast_context vp8_context;
 	/* SVC context */
 	janus_rtp_svc_context svc_context;
+	/* When we last dropped a layer because of BWE (to implement a cooldown period) */
+	gint64 last_bwe_drop;
 	/* Playout delays to enforce when relaying this stream, if the extension has been negotiated */
 	int16_t min_delay, max_delay;
 	volatile gint ready, destroyed;
@@ -2688,6 +2694,7 @@ static void janus_videoroom_publisher_stream_free(const janus_refcount *ps_ref) 
 	g_free(ps->h264_profile);
 	g_free(ps->vp9_profile);
 	janus_recorder_destroy(ps->rc);
+	janus_bwe_stream_bitrate_destroy(ps->bitrates);
 	g_hash_table_destroy(ps->rtp_forwarders);
 	ps->rtp_forwarders = NULL;
 	janus_mutex_destroy(&ps->rtp_forwarders_mutex);
@@ -2927,7 +2934,7 @@ static void janus_videoroom_rtcp_pli_send(janus_videoroom_publisher_stream *ps) 
 	int rtcp_len = 12;
 	janus_rtcp_pli((char *)&rtcp_buf, rtcp_len);
 	uint32_t ssrc = REMOTE_PUBLISHER_BASE_SSRC + (ps->mindex*REMOTE_PUBLISHER_SSRC_STEP);
-	janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1, 1, ssrc);
+	janus_rtcp_fix_ssrc(NULL, NULL, rtcp_buf, rtcp_len, 1, 1, ssrc);
 	/* Send the packet */
 	socklen_t addrlen = publisher->rtcp_addr.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
 	int sent = 0;
@@ -3618,7 +3625,7 @@ static json_t *janus_videoroom_subscriber_offer(janus_videoroom_subscriber *subs
 			JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
 				(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO && (ps && ps->playout_delay_extmap_id > 0)) ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_PLAYOUT_DELAY) : 0,
 			JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
-				(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO && subscriber->room->transport_wide_cc_ext) ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC) : 0,
+				(subscriber->room->transport_wide_cc_ext) ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC) : 0,
 			JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_ABS_SEND_TIME,
 				(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO) ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_ABS_SEND_TIME) : 0,
 			/* TODO Add other properties from original SDP */
@@ -4572,6 +4579,21 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 					if(ps->audio_level_extmap_id > 0) {
 						json_object_set_new(m, "audio-level-dBov", json_integer(ps->audio_dBov_level));
 						json_object_set_new(m, "talking", ps->talking ? json_true() : json_false());
+					}
+					if(ps->bitrates) {
+						int i=0;
+						json_t *bitrates = NULL;
+						for(i=0; i<9; i++) {
+							if(ps->bitrates->packets[i]) {
+								if(bitrates == NULL)
+									bitrates = json_object();
+								char name[2];
+								g_snprintf(name, sizeof(name), "%d", i);
+								json_object_set_new(bitrates, name, json_integer(ps->bitrates->bitrate[i]));
+							}
+						}
+						if(bitrates != NULL)
+							json_object_set_new(m, "bitrates", bitrates);
 					}
 					janus_mutex_lock(&ps->subscribers_mutex);
 					json_object_set_new(m, "subscribers", json_integer(g_slist_length(ps->subscribers)));
@@ -7743,6 +7765,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			ps->vcodec = JANUS_VIDEOCODEC_NONE;
 			ps->min_delay = -1;
 			ps->max_delay = -1;
+			ps->bitrates = janus_bwe_stream_bitrate_create();
 			if(mtype == JANUS_VIDEOROOM_MEDIA_AUDIO) {
 				ps->acodec = janus_audiocodec_from_name(codec);
 				ps->pt = janus_audiocodec_pt(ps->acodec);
@@ -8021,6 +8044,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			ps->vcodec = JANUS_VIDEOCODEC_NONE;
 			ps->min_delay = -1;
 			ps->max_delay = -1;
+			ps->bitrates = janus_bwe_stream_bitrate_create();
 			if(mtype == JANUS_VIDEOROOM_MEDIA_AUDIO) {
 				ps->acodec = janus_audiocodec_from_name(codec);
 				ps->pt = janus_audiocodec_pt(ps->acodec);
@@ -8393,6 +8417,8 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			janus_videoroom_subscriber *s = janus_videoroom_session_get_subscriber(session);
 			if(s && s->streams) {
+				/* FIXME Enable bandwidth estimation for this session */
+				gateway->enable_bwe(session->handle);
 				/* Send a PLI for all the video streams we subscribed to */
 				GList *temp = s->streams;
 				while(temp) {
@@ -8569,11 +8595,14 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 		/* Save the frame if we're recording */
 		if(!video || !ps->simulcast) {
 			janus_recorder_save_frame(ps->rc, buf, len);
+			janus_bwe_stream_bitrate_update(ps->bitrates, janus_get_monotonic_time(), 0, 0, len);
 		} else {
 			/* We're simulcasting, save the best video quality */
 			gboolean save = janus_rtp_simulcasting_context_process_rtp(&ps->rec_simctx,
 				buf, len, pkt->extensions.dd_content, pkt->extensions.dd_len,
 				ps->vssrc, ps->rid, ps->vcodec, &ps->rec_ctx, &ps->rid_mutex);
+			janus_bwe_stream_bitrate_update(ps->bitrates, janus_get_monotonic_time(),
+				ps->rec_simctx.substream_last, ps->rec_simctx.temporal_last, len);
 			if(save) {
 				uint32_t seq_number = ntohs(rtp->seq_number);
 				uint32_t timestamp = ntohl(rtp->timestamp);
@@ -8945,6 +8974,161 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int mindex, gboolea
 		} else {
 			JANUS_LOG(LOG_WARN, "Got a slow downlink on a VideoRoom viewer? Weird, because it doesn't send media...\n");
 		}
+	}
+	janus_refcount_decrease(&session->ref);
+}
+
+void janus_videoroom_estimated_bandwidth(janus_plugin_session *handle, uint32_t estimate) {
+	/* The core is informing us that our peer got or sent too many NACKs, are we pushing media too hard? */
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return;
+	janus_mutex_lock(&sessions_mutex);
+	janus_videoroom_session *session = janus_videoroom_lookup_session(handle);
+	if(!session || g_atomic_int_get(&session->destroyed) || !session->participant) {
+		janus_mutex_unlock(&sessions_mutex);
+		return;
+	}
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
+	/* This will only make sense for subscribers, publishers have their own BWE */
+	if(session->participant_type == janus_videoroom_p_type_subscriber) {
+		janus_videoroom_subscriber *subscriber = janus_videoroom_session_get_subscriber(session);
+		if(subscriber == NULL) {
+			janus_refcount_decrease(&session->ref);
+			return;
+		}
+		if(g_atomic_int_get(&subscriber->destroyed)) {
+			janus_refcount_decrease(&subscriber->ref);
+			janus_refcount_decrease(&session->ref);
+			return;
+		}
+		JANUS_LOG(LOG_WARN, "[videoroom] BWE=%"SCNu32"\n", estimate);
+		janus_mutex_lock(&subscriber->streams_mutex);
+		GList *temp = subscriber->streams;
+		gint64 now = janus_get_monotonic_time();
+		while(temp) {
+			janus_videoroom_subscriber_stream *s = (janus_videoroom_subscriber_stream *)temp->data;
+			if(s->type == JANUS_VIDEOROOM_MEDIA_DATA) {
+				temp = temp->next;
+				continue;
+			}
+			if(s->last_bwe_drop > 0 && s->last_bwe_drop < now)
+				s->last_bwe_drop = 0;
+			GSList *list = s->publisher_streams;
+			if(list) {
+				janus_videoroom_publisher_stream *ps = list->data;
+				if(ps && ps->publisher != NULL && ps->bitrates) {
+					/* FIXME Check the bandwidth usage for this stream */
+					if(s->type == JANUS_VIDEOROOM_MEDIA_AUDIO && ps->bitrates->packets[0]) {
+						if(estimate < ps->bitrates->bitrate[0]) {
+							estimate = 0;
+							JANUS_LOG(LOG_WARN, "Insufficient bandwidth for stream %d (audio): %"SCNu32" < %"SCNu32"\n",
+								s->mindex, estimate, ps->bitrates->bitrate[0]);
+						} else {
+							//~ estimate -= ps->bitrates->bitrate[0];
+						}
+					} else if(s->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+						if(ps->simulcast) {
+							JANUS_LOG(LOG_DBG, "current=%d/%d, target=%d/%d, bwe=%d/%d\n",
+								s->sim_context.substream, s->sim_context.templayer,
+								s->sim_context.substream_target, s->sim_context.templayer_target,
+								s->sim_context.substream_target_bwe, s->sim_context.templayer_target_bwe);
+							/* FIXME Simulcast, check the current targets, and retarget if needed */
+							int substream = (s->sim_context.substream_target_temp == -1) ?
+								s->sim_context.substream_target : s->sim_context.substream_target_temp;
+							if(substream < 0)
+								substream = 0;
+							int templayer = s->sim_context.templayer_target;
+							if(templayer < 0)
+								templayer = 0;
+							int target = 3*substream + templayer;
+							if(target > 8)
+								target = 8;
+							/* Check if the target is actually available */
+							while(ps->bitrates->packets[target] == NULL) {
+								templayer--;
+								if(templayer < 0) {
+									substream--;
+									if(substream < 0) {
+										substream = 0;
+									} else {
+										templayer = 2;
+									}
+								}
+								target = 3*substream + templayer;
+							}
+							if(estimate < (ps->bitrates->bitrate[target] + 20000)) {
+								/* Unavailable layer, or we don't have room for these layers, find one below that fits */
+								if(target == 0) {
+									estimate = 0;
+									JANUS_LOG(LOG_WARN, "Insufficient bandwidth for simulcast stream %d (video)\n", s->mindex);
+								} else {
+									gboolean found = FALSE;
+									int old_target = target;
+									int new_substream = 0, new_templayer = 0;
+									while(target > 0) {
+										target--;
+										new_substream = target/3;
+										new_templayer = target%3;
+										if(ps->bitrates->packets[target] && estimate >= ps->bitrates->bitrate[target]) {
+											/* If we're going up, make sure we're not in the cooldown period */
+											if(s->sim_context.substream_target_bwe != -1 &&
+													new_substream > s->sim_context.substream_target_bwe &&
+													now < s->last_bwe_drop) {
+												/* We are, ignore this layer */
+												continue;
+											}
+											found = TRUE;
+											break;
+										}
+									}
+									if(!found) {
+										estimate = 0;
+										JANUS_LOG(LOG_WARN, "Insufficient bandwidth for simulcast stream %d (video)\n", s->mindex);
+									} else {
+										if(s->sim_context.substream_target_bwe == -1 || s->sim_context.substream_target_bwe > new_substream ||
+												s->sim_context.templayer_target_bwe == -1 || s->sim_context.templayer_target_bwe > new_templayer) {
+											JANUS_LOG(LOG_WARN, "Insufficient bandwidth for simulcast %d/%d of stream %d (%"SCNu32" < %"SCNu32"), switching to %d/%d (%"SCNu32")\n",
+												substream, templayer, s->mindex, estimate, ps->bitrates->bitrate[old_target],
+												new_substream, new_templayer, ps->bitrates->bitrate[target]);
+											/* If BWE made us go down, implement a cooldown period of about 5 seconds */
+											if(s->sim_context.substream_target_bwe == -1 ||
+													new_substream < s->sim_context.substream_target_bwe)
+												s->last_bwe_drop = now + 5*G_USEC_PER_SEC;
+										}
+										estimate -= ps->bitrates->bitrate[target];
+										s->sim_context.substream_target_bwe = new_substream;
+										s->sim_context.templayer_target_bwe = new_templayer;
+										/* Request a PLI if needed */
+										if(s->sim_context.substream_target_bwe != new_substream)
+											janus_videoroom_reqpli(ps, "Simulcasting substream change (BWE)");
+									}
+								}
+							} else {
+								estimate -= ps->bitrates->bitrate[target];
+								s->sim_context.substream_target_bwe = -1;
+								s->sim_context.templayer_target_bwe = -1;
+							}
+						} else if(ps->svc) {
+							/* TODO SVC */
+						} else {
+							/* No simulcast, no SVC */
+							if(ps->bitrates->packets[0]) {
+								if(estimate < ps->bitrates->bitrate[0]) {
+									estimate = 0;
+									JANUS_LOG(LOG_WARN, "Insufficient bandwidth for stream %d (video)\n", s->mindex);
+								} else {
+									estimate -= ps->bitrates->bitrate[0];
+								}
+							}
+						}
+					}
+				}
+			}
+			temp = temp->next;
+		}
+		janus_mutex_unlock(&subscriber->streams_mutex);
+		janus_refcount_decrease(&subscriber->ref);
 	}
 	janus_refcount_decrease(&session->ref);
 }
@@ -12509,6 +12693,7 @@ static void *janus_videoroom_handler(void *data) {
 						ps->pt = -1;
 						ps->min_delay = -1;
 						ps->max_delay = -1;
+						ps->bitrates = janus_bwe_stream_bitrate_create();
 						g_atomic_int_set(&ps->destroyed, 0);
 						janus_refcount_init(&ps->ref, janus_videoroom_publisher_stream_free);
 						janus_refcount_increase(&ps->ref);	/* This is for the mid-indexed hashtable */
@@ -13110,6 +13295,27 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				json_object_set_new(event, "temporal", json_integer(stream->sim_context.templayer));
 				gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
 				json_decref(event);
+			}
+			if(stream->sim_context.changed_substream || stream->sim_context.changed_temporal) {
+				/* FIXME We changed substream, check if we need to reconfigure the bitrate target for probing */
+				if(stream->sim_context.substream < stream->sim_context.substream_target ||
+						(stream->sim_context.substream == stream->sim_context.substream_target &&
+						stream->sim_context.templayer < stream->sim_context.templayer_target)) {
+					/* We're not receiving what we need, aim for a higher layer */
+					uint8_t current_layer = stream->sim_context.substream*3 + stream->sim_context.templayer;
+					uint8_t target_layer = stream->sim_context.substream_target*3 + stream->sim_context.templayer_target;
+					uint32_t target = 0;
+					uint8_t i = 0;
+					JANUS_LOG(LOG_WARN, "[videoroom] current=%d, target=%d\n", current_layer, target_layer);
+					for(i = current_layer+1; i<=target_layer; i++) {
+						JANUS_LOG(LOG_WARN, "[videoroom]   -- %d --> %"SCNu32"\n", i, (ps->bitrates->packets[i] ? ps->bitrates->bitrate[i] : 0));
+						if(ps->bitrates->packets[i])
+							target = ps->bitrates->bitrate[i];
+						if(target > 0)
+							break;
+					}
+					gateway->set_bwe_target(subscriber->session->handle, target ? (target + 50000) : 0);
+				}
 			}
 			/* If we got here, update the RTP header and send the packet */
 			janus_rtp_header_update(packet->data, &stream->context, TRUE, 0);
