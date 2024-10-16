@@ -143,6 +143,11 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len) {
 				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
 				return ntohl(rtcpfb->media);
 			}
+			case RTCP_PSFB: {
+				/* PSFB, Payload-specific FB message (rfc4585) */
+				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
+				return ntohl(rtcpfb->media);
+			}
 			default:
 				break;
 		}
