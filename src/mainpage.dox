@@ -886,11 +886,10 @@ echotest.createOffer(
  \endverbatim
  *
  * \section manual-build-modules Building modules manually with NPM
- * You can also opt to build modules by invoking \c npm manually. The \c npm subdirectory contains the necessary
+ * You can also opt to build modules by invoking \c npm manually. The project root folder contains the necessary
  * configuration files to get you started:
  *
  \verbatim
- cd ./npm
  npm install
  npm run rollup -- --o /path/to/desired/output/file-name.js --f cjs # or es, iffe, umd, amd, ...
  \endverbatim
@@ -3111,6 +3110,15 @@ sudo supervisorctl update
  * bugs and the like, as it can provide information about the values of
  * variables when they were used and the application crashed.
  *
+ * First of all make sure that debugging symbols are enabled by reconfiguring Janus like this:
+ *
+ \verbatim
+CFLAGS="-Og -g3 -ggdb3 -fno-omit-frame-pointer" ./configure --prefix=/opt/janus
+ \endverbatim
+ *
+ * Once done configuring, do a \c make \c clean (to make sure
+ * everything is recompiled from scratch) and then a \c make and \c make \c install.
+ *
  * When Janus crashes, you should get a core dump file somewhere. This is
  * a recorded state of the application memory at the time of crashing, and
  * so a backtrace of what lead to an issue can help. You can open such
@@ -3145,7 +3153,7 @@ gdb bt
  * Once you've installed libasan, reconfigure Janus like this:
  *
  \verbatim
-CFLAGS="-O1 -g3 -ggdb3 -fno-omit-frame-pointer -fsanitize=address -fno-sanitize-recover=all -fsanitize-address-use-after-scope" LDFLAGS="-fsanitize=address" ./configure --prefix=/opt/janus
+CFLAGS="-O0 -g3 -ggdb3 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize=address -fsanitize-address-use-after-scope -fno-sanitize-recover=all" LDFLAGS="-fsanitize=address" ./configure --prefix=/opt/janus
  \endverbatim
  *
  * Of course you're free to add whatever additional configuration parameter
@@ -3554,7 +3562,7 @@ ldd janus | grep asan
  * <tr>
  * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/mquander">Marshall Quander</a></td>
- * 		<td><a href="https://github.com/mquander/minijanus.js">minijanus.js</a></td>
+ * 		<td><a href="https://github.com/networked-aframe/minijanus.js">minijanus.js</a></td>
  * 		<td>A super-simplistic and -minimal wrapper for talking to the Janus signalling API</td>
  * </tr>
  * <tr>
@@ -3736,7 +3744,7 @@ ldd janus | grep asan
  * </tr>
  * <tr>
  * 		<td><a href="https://github.com/mquander">Marshall Quander</a></td>
- * 		<td><a href="https://github.com/mquander/janus-plugin-rs">janus-plugin-rs</a></td>
+ * 		<td><a href="https://github.com/networked-aframe/janus-plugin-rs">janus-plugin-rs</a></td>
  * 		<td>Rust bindings and wrappers for creating Janus plugins in Rust</td>
  * </tr>
  * </table>
@@ -4077,9 +4085,14 @@ ldd janus | grep asan
  *    - Presentation on Real-Time Text in SIP and WebRTC at <a href="https://www.youtube.com/watch?v=yehYE34d3mI&t=19937s">Kamailio World 2023</a>;
  *    - Presentation on Hybrid meetings using Janus at <a href="https://www.youtube.com/watch?v=ZqRvUxgf00s">CommCon 2023</a>;
  *    - Presentation on Bandwidth Estimation (BWE) in Janus at <a href="https://www.youtube.com/watch?v=7L35Q_5aqCc">RTC.ON 2023</a>;
- *    - Presentation on WHIP, WHEP and WebRTC broadcasting at <a href="https://www.youtube.com/watch?v=L0JkNphlEmw">TADSummit Paris 2023</a>. \n\n
+ *    - Presentation on WHIP, WHEP and WebRTC broadcasting at <a href="https://www.youtube.com/watch?v=L0JkNphlEmw">TADSummit Paris 2023</a>;
+ *    - Presentation on AV1/SVC support in Janus at <a href="https://fosdem.org/2024/schedule/event/fosdem-2024-3000-getting-av1-svc-to-work-in-the-janus-webrtc-server/">FOSDEM 2024</a>;
+ *    - Presentation on experimental application protocols support in the SIP plugin at <a href="https://www.youtube.com/watch?v=Cho556qHRaE">OpenSIPS Summit 2024</a>;
+ *    - Presentation on experimental SIP trunking support in the SIP plugin at <a href="https://www.youtube.com/watch?v=_e0fWnWWOeY&t=3855s">Kamailio World 2024</a>;
+ *    - Presentation on prototyping an interaction between WebRTC and QUIC (RTP Over QUIC, Media Over QUIC) <a href="https://www.youtube.com/watch?v=bq9LRCfxz_E">RTC.ON 2024</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
- *    and presentations from <a href="https://januscon.it/2019">JanusCon</a>,
+ *    and presentations from <a href="https://januscon.it">JanusCon</a> (including the
+ *    <a href="https://januscon.it/2019">2019 edition</a>),
  *    the Janus conference we hosted here in Napoli.
  *    \n\n
  *    .

@@ -258,7 +258,7 @@ static GSource *janus_http_request_timeout_create(janus_transport_session *ts, j
 	janus_http_request_timeout *t = (janus_http_request_timeout *)source;
 	t->ts = ts;
 	t->session = session;
-	g_source_set_ready_time(source, janus_get_monotonic_time() + timeout*G_USEC_PER_SEC);
+	g_source_set_ready_time(source, janus_get_monotonic_time_internal() + timeout*G_USEC_PER_SEC);
 	JANUS_LOG(LOG_DBG, "[%p] create (%d)\n", source, timeout);
 	return source;
 }
@@ -321,11 +321,15 @@ static void janus_http_allow_address(const char *ip, gboolean admin) {
 static gboolean janus_http_is_allowed(const char *ip, gboolean admin) {
 	if(ip == NULL)
 		return FALSE;
-	if(!admin && janus_http_access_list == NULL)
-		return TRUE;
-	if(admin && janus_http_admin_access_list == NULL)
-		return TRUE;
 	janus_mutex_lock(&access_list_mutex);
+	if(!admin && janus_http_access_list == NULL) {
+		janus_mutex_unlock(&access_list_mutex);
+		return TRUE;
+	}
+	if(admin && janus_http_admin_access_list == NULL) {
+		janus_mutex_unlock(&access_list_mutex);
+		return TRUE;
+	}
 	GList *temp = admin ? janus_http_admin_access_list : janus_http_access_list;
 	while(temp) {
 		const char *allowed = (const char *)temp->data;

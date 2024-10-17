@@ -213,6 +213,7 @@ $(document).ready(function() {
 													if(mst)
 														mst.stop();
 												}
+											// eslint-disable-next-line no-unused-vars
 											} catch(e) {}
 										}
 										if(track.kind === "video") {
@@ -584,7 +585,7 @@ function stopRecPlay() {
 
 // Helper to parse query string
 function getQueryStringValue(name) {
-	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+	name = name.replace(/[[]/, "\\[").replace(/[\]]/, "\\]");
 	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));

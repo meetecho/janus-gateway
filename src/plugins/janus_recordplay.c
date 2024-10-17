@@ -2203,7 +2203,6 @@ void janus_recordplay_update_recordings_list(void) {
 			janus_config_destroy(nfo);
 			/* Mark that we updated this recording */
 			old_recordings = g_list_remove(old_recordings, &rec->id);
-			janus_refcount_decrease(&rec->ref);
 			continue;
 		}
 		janus_config_item *name = janus_config_get(nfo, cat, janus_config_type_item, "name");

@@ -95,7 +95,7 @@ janus_plugin *create(void) {
  * on the \c janus_config helpers for the purpose) but again, if you prefer
  * a different format (XML, JSON, etc.) that's up to you.
  *
- * Both the the Janus core and a plugin can have several different sessions
+ * Both the Janus core and a plugin can have several different sessions
  * with the same and/or different peers: to match a specific session,
  * a plugin can rely on a mapping called janus_plugin_session that
  * is what all the communication between the plugins and the core
@@ -283,6 +283,10 @@ struct janus_plugin {
 	 * @param[out] error An integer that may contain information about any error */
 	void (* const create_session)(janus_plugin_session *handle, int *error);
 	/*! \brief Method to handle an incoming message/request from a peer
+	 * @note The Janus core leaves ownership of both the \c message and \c jsep
+	 * json_t objects to plugins. This means that you'll have to decrease your own
+	 * reference yourself with a \c json_decref when you're done with them.
+	 * You'll also have to free \c transaction with \c g_free
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[in] transaction The transaction identifier for this message/request
 	 * @param[in] message The json_t object containing the message/request JSON
@@ -354,9 +358,9 @@ struct janus_plugin {
 /*! \brief Callbacks to contact the Janus core */
 struct janus_callbacks {
 	/*! \brief Callback to push events/messages to a peer
-	 * @note The Janus core increases the references to both the message and jsep
+	 * @note The Janus core increases the references to both the \c message and \c jsep
 	 * json_t objects. This means that you'll have to decrease your own
-	 * reference yourself with a \c json_decref after calling push_event.
+	 * reference yourself with a \c json_decref after calling \c push_event
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[in] plugin The plugin instance that is sending the message/event
 	 * @param[in] transaction The transaction identifier this message refers to

@@ -31,10 +31,20 @@
 #include "mach_gettime.h"
 #endif
 
-gint64 janus_get_monotonic_time(void) {
+gint64 janus_get_monotonic_time_internal(void) {
 	struct timespec ts;
 	clock_gettime (CLOCK_MONOTONIC, &ts);
 	return (ts.tv_sec*G_GINT64_CONSTANT(1000000)) + (ts.tv_nsec/G_GINT64_CONSTANT(1000));
+}
+
+static gint64 janus_started = 0;
+void janus_mark_started(void) {
+	if(janus_started == 0)
+		janus_started = janus_get_monotonic_time_internal();
+}
+
+gint64 janus_get_monotonic_time(void) {
+	return janus_get_monotonic_time_internal() - janus_started;
 }
 
 gint64 janus_get_real_time(void) {

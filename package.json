@@ -1,14 +1,14 @@
 {
 	"name": "janus-gateway",
-	"version": "1.2.3",
+	"version": "1.3.0",
 	"description": "A javascript library for interacting with the C based Janus WebRTC Server",
-	"main": "dist/janus.es.js",
-	"types": "janus.d.ts",
+	"main": "npm/dist/janus.es.js",
+	"types": "npm/janus.d.ts",
 	"files": [
-		"dist",
-		"src",
-		"janus.d.ts",
-		"README.md"
+		"npm/dist",
+		"npm/src",
+		"npm/janus.d.ts",
+		"npm/README.md"
 	],
 	"repository": {
 		"type": "git",
@@ -31,13 +31,13 @@
 	"devDependencies": {
 		"@rollup/plugin-replace": "^5.0.2",
 		"@rollup/plugin-strip": "^3.0.2",
-		"eslint": "^8.39.0",
-		"eslint-plugin-html": "^7.1.0",
+		"eslint": "^9.4.0",
+		"eslint-plugin-html": "^8.1.1",
 		"rollup": "^3.21.6"
 	},
 	"scripts": {
-		"lint": "eslint ../html --ext .js,.html --resolve-plugins-relative-to ./npm",
-		"rollup": "rollup -c rollup.config.mjs",
-		"prerelease": "npm run rollup -- --o dist/janus.es.js --f es && node -e \"const fs=require('fs'); const data=fs.readFileSync('../html/demos/janus.js'); fs.mkdirSync('./src', {recursive:true}); fs.writeFileSync('./src/janus.js',data);\""
+		"lint": "npx eslint --debug html",
+		"rollup": "npx rollup -c npm/rollup.config.mjs",
+		"prerelease": "npm run rollup -- --o npm/dist/janus.es.js --f es && node -e \"const fs=require('fs'); const data=fs.readFileSync('./html/demos/janus.js'); fs.mkdirSync('./npm/src', {recursive:true}); fs.writeFileSync('./npm/src/janus.js',data);\""
 	}
 }
