@@ -2594,8 +2594,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		/* If there's a datachannel medium, update the stats there too */
 		janus_ice_peerconnection_medium *medium = g_hash_table_lookup(pc->media_bytype, GINT_TO_POINTER(JANUS_MEDIA_DATA));
 		if(medium) {
-			medium->out_stats.info[0].packets++;
-			medium->out_stats.info[0].bytes += len;
+			medium->in_stats.info[0].packets++;
+			medium->in_stats.info[0].bytes += len;
 		}
 		return;
 	}
