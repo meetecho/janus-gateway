@@ -1218,7 +1218,8 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		context->last_relayed = now;
 	} else if(context->substream > 0) {
 		/* Check if too much time went by with no packet relayed */
-		if((now - context->last_relayed) > (context->drop_trigger ? context->drop_trigger : 250000)) {
+		gint64 delay_us = (now - context->last_relayed);
+		if(delay_us > (context->drop_trigger ? context->drop_trigger : 250000)) {
 			context->last_relayed = now;
 			if(context->substream != substream && context->substream_target_temp != 0) {
 				if(context->substream_target > substream) {
@@ -1230,8 +1231,8 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 					if(context->substream_target_temp < 0)
 						context->substream_target_temp = 0;
 					if(context->substream_target_temp != prev_target) {
-						JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
-							context->substream, context->substream_target_temp);
+						JANUS_LOG(LOG_WARN, "No packet received on substream %d for %d Milliseconds, falling back to %d\n",
+							context->substream, (delay_us / 1000), context->substream_target_temp);
 						/* Notify the caller that we (still) need a PLI */
 						context->need_pli = TRUE;
 					}
