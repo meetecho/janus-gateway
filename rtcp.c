@@ -152,6 +152,7 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len) {
 					janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
 					return ntohl(rtcpfb->media);
 				}
+				break;
 			}
 			default:
 				break;
