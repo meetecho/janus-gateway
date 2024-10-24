@@ -3575,6 +3575,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', error creating data source stream...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 						g_snprintf(error_cause, 512, "Can't add 'rtp' stream, error creating data source stream");
+						g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, string_ids ? (gpointer)mpid_str : (gpointer)&mpid);
 						janus_mutex_unlock(&mountpoints_mutex);
@@ -3665,6 +3666,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', error creating audio source stream...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 						g_snprintf(error_cause, 512, "Can't add 'rtp' stream, error creating audio source stream");
+						g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, string_ids ? (gpointer)mpid_str : (gpointer)&mpid);
 						janus_mutex_unlock(&mountpoints_mutex);
@@ -3753,6 +3755,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', error creating video source stream...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 						g_snprintf(error_cause, 512, "Can't add 'rtp' stream, error creating video source stream");
+						g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, string_ids ? (gpointer)mpid_str : (gpointer)&mpid);
 						janus_mutex_unlock(&mountpoints_mutex);
@@ -3825,6 +3828,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', error creating data source stream...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 						g_snprintf(error_cause, 512, "Can't add 'rtp' stream, error creating data source stream");
+						g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, string_ids ? (gpointer)mpid_str : (gpointer)&mpid);
 						janus_mutex_unlock(&mountpoints_mutex);
@@ -3864,6 +3868,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				JANUS_LOG(LOG_ERR, "Error creating 'rtp' stream...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Error creating 'rtp' stream");
+				g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 				goto prepare_response;
 			}
 			mp->is_private = is_private ? json_is_true(is_private) : FALSE;
