@@ -808,6 +808,11 @@ static struct janus_json_parameter accept_parameters[] = {
 	{"headers", JSON_OBJECT, 0},
 	{"autoaccept_reinvites", JANUS_JSON_BOOL, 0}
 };
+static struct janus_json_parameter pre_accept_parameters[] = {
+	{"srtp", JSON_STRING, 0}, // TODO: Figure out if these params are needed.
+	{"headers", JSON_OBJECT, 0},
+	{"autoaccept_reinvites", JANUS_JSON_BOOL, 0}
+};
 static struct janus_json_parameter decline_parameters[] = {
 	{"code", JANUS_JSON_INTEGER, 0},
 	{"headers", JSON_OBJECT, 0},
@@ -920,6 +925,7 @@ typedef enum {
 	janus_sip_call_status_idle = 0,
 	janus_sip_call_status_inviting,
 	janus_sip_call_status_invited,
+	janus_sip_call_status_pre_accepted,
 	janus_sip_call_status_incall,
 	janus_sip_call_status_incall_reinviting,
 	janus_sip_call_status_incall_reinvited,
@@ -934,6 +940,8 @@ static const char *janus_sip_call_status_string(janus_sip_call_status status) {
 			return "inviting";
 		case janus_sip_call_status_invited:
 			return "invited";
+		case janus_sip_call_status_pre_accepted:
+			return "pre_accepted";
 		case janus_sip_call_status_incall:
 			return "incall";
 		case janus_sip_call_status_incall_reinviting:
@@ -3938,7 +3946,7 @@ static void *janus_sip_handler(void *data) {
 			json_object_set_new(result, "event", json_string("calling"));
 			json_object_set_new(result, "call_id", json_string(session->callid));
 		} else if(!strcasecmp(request_text, "accept")) {
-			if(session->status != janus_sip_call_status_invited) {
+			if(session->status != janus_sip_call_status_invited || session->status != janus_sip_call_status_pre_accepted) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (not invited? status=%s)", janus_sip_call_status_string(session->status));
@@ -4113,6 +4121,199 @@ static void *janus_sip_handler(void *data) {
 			/* Send an ack back */
 			result = json_object();
 			json_object_set_new(result, "event", json_string(answer ? "accepted" : "accepting"));
+			if(answer) {
+				/* Start the media */
+				session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
+				GError *error = NULL;
+				char tname[16];
+				g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
+				janus_refcount_increase(&session->ref);
+				session->relayer_thread = g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
+				if(error != NULL) {
+					session->relayer_thread = NULL;
+					session->media.ready = FALSE;
+					janus_refcount_decrease(&session->ref);
+					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n",
+						error->code, error->message ? error->message : "??");
+					g_error_free(error);
+				}
+			}
+		} else if(!strcasecmp(request_text, "pre_accept")) {
+			if(session->status != janus_sip_call_status_invited) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (not invited? status=%s)", janus_sip_call_status_string(session->status));
+				goto error;
+			}
+			janus_mutex_lock(&session->mutex);
+			if(session->callee == NULL) {
+				janus_mutex_unlock(&session->mutex);
+				JANUS_LOG(LOG_ERR, "Wrong state (no caller?)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no caller?)");
+				goto error;
+			}
+			janus_mutex_unlock(&session->mutex);
+			JANUS_VALIDATE_JSON_OBJECT(root, pre_accept_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			json_t *srtp = json_object_get(root, "srtp");
+			gboolean answer_srtp = FALSE;
+			if(srtp) {
+				const char *srtp_text = json_string_value(srtp);
+				if(!strcasecmp(srtp_text, "sdes_optional")) {
+					/* Negotiate SDES, but make it optional */
+					answer_srtp = TRUE;
+				} else if(!strcasecmp(srtp_text, "sdes_mandatory")) {
+					/* Negotiate SDES, and require it */
+					answer_srtp = TRUE;
+					session->media.require_srtp = TRUE;
+				} else {
+					JANUS_LOG(LOG_ERR, "Invalid element (srtp can only be sdes_optional or sdes_mandatory)\n");
+					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (srtp can only be sdes_optional or sdes_mandatory)");
+					goto error;
+				}
+			}
+			gboolean has_srtp = TRUE;
+			if(session->media.has_audio)
+				has_srtp = (has_srtp && session->media.has_srtp_remote_audio);
+			if(session->media.has_video)
+				has_srtp = (has_srtp && session->media.has_srtp_remote_video);
+			if(session->media.require_srtp && !has_srtp) {
+				JANUS_LOG(LOG_ERR, "Can't pre-accept the call: SDES-SRTP required, but caller didn't offer it\n");
+				error_code = JANUS_SIP_ERROR_TOO_STRICT;
+				g_snprintf(error_cause, 512, "Can't pre-accept the call: SDES-SRTP required, but caller didn't offer it");
+				goto error;
+			}
+			answer_srtp = answer_srtp || session->media.has_srtp_remote_audio || session->media.has_srtp_remote_video;
+			json_t *aar = json_object_get(root, "autoaccept_reinvites");
+			session->media.autoaccept_reinvites = aar ? json_is_true(aar) : TRUE;
+			/* Any SDP to handle? if not, something's wrong */
+			const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
+			const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+			if(!msg_sdp) {
+				JANUS_LOG(LOG_ERR, "Missing SDP in pre-accept\n");
+				error_code = JANUS_SIP_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "Missing SDP");
+				goto error;
+			}
+			if(json_is_true(json_object_get(msg->jsep, "e2ee"))) {
+				/* Media is encrypted, but SIP endpoints will need unencrypted media frames */
+				JANUS_LOG(LOG_ERR, "Media encryption unsupported by this plugin\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Media encryption unsupported by this plugin");
+				goto error;
+			}
+			/* Accept a call from another peer */
+			JANUS_LOG(LOG_VERB, "We're pre-accepting the call from %s\n", session->callee);
+			gboolean answer = !strcasecmp(msg_sdp_type, "answer");
+			if(!answer) {
+				JANUS_LOG(LOG_VERB, "This is a response to an offerless INVITE\n");
+			}
+			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
+			session->media.has_srtp_local_audio = answer_srtp && session->media.has_srtp_remote_audio;
+			session->media.has_srtp_local_video = answer_srtp && session->media.has_srtp_remote_video;
+			if(answer_srtp) {
+				JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", session->media.require_srtp ? "mandatory" : "optional");
+			}
+
+			/* Get video-orientation extension id from SDP we got */
+			session->media.video_orientation_extension_id = janus_rtp_header_extension_get_id(msg_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+			/* Get audio-level extension id from SDP we got */
+			session->media.audio_level_extension_id = janus_rtp_header_extension_get_id(msg_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+			/* Parse the SDP we got, manipulate some things, and generate a new one */
+			char sdperror[100];
+			janus_sdp *parsed_sdp = janus_sdp_parse(msg_sdp, sdperror, sizeof(sdperror));
+			if(!parsed_sdp) {
+				JANUS_LOG(LOG_ERR, "Error parsing SDP: %s\n", sdperror);
+				error_code = JANUS_SIP_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "Error parsing SDP: %s", sdperror);
+				goto error;
+			}
+			/* Allocate RTP ports and merge them with the anonymized SDP */
+			if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
+				JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
+				session->media.has_audio = TRUE;	/* FIXME Maybe we need a better way to signal this */
+			}
+			if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
+				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
+				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
+			}
+			janus_mutex_lock(&session->mutex);
+			if(janus_sip_allocate_local_ports(session, FALSE) < 0) {
+				janus_mutex_unlock(&session->mutex);
+				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
+				janus_sdp_destroy(parsed_sdp);
+				error_code = JANUS_SIP_ERROR_IO_ERROR;
+				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
+				goto error;
+			}
+			janus_mutex_unlock(&session->mutex);
+			char *sdp = janus_sip_sdp_manipulate(session, parsed_sdp, TRUE);
+			if(sdp == NULL) {
+				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
+				janus_sdp_destroy(parsed_sdp);
+				error_code = JANUS_SIP_ERROR_IO_ERROR;
+				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
+				goto error;
+			}
+			if(session->media.audio_pt > -1) {
+				session->media.audio_pt_name = janus_get_codec_from_pt(sdp, session->media.audio_pt);
+				JANUS_LOG(LOG_VERB, "Detected audio codec: %d (%s)\n", session->media.audio_pt, session->media.audio_pt_name);
+			}
+			if(session->media.video_pt > -1) {
+				session->media.video_pt_name = janus_get_codec_from_pt(sdp, session->media.video_pt);
+				JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
+			}
+			/* Take note of the SDP (may be useful for UPDATEs or re-INVITEs) */
+			janus_sdp_destroy(session->sdp);
+			session->sdp = parsed_sdp;
+			JANUS_LOG(LOG_VERB, "Prepared SDP for 183 session progress:\n%s", sdp);
+			/* If the user negotiated simulcasting, just stick with the base substream */
+			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
+			if(msg_simulcast) {
+				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
+				json_t *s = json_object_get(msg_simulcast, "ssrcs");
+				if(s && json_array_size(s) > 0)
+					session->media.simulcast_ssrc = json_integer_value(json_array_get(s, 0));
+			}
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("pre_accepted"));
+				if(session->callid)
+					json_object_set_new(info, "call-id", json_string(session->callid));
+				gateway->notify_event(&janus_sip_plugin, session->handle, info);
+			}
+			/* Check if the OK needs to be enriched with custom headers */
+			char custom_headers[2048];
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
+			/* Send 200 OK */
+			if(!answer) {
+				if(session->transaction)
+					g_free(session->transaction);
+				session->transaction = msg->transaction ? g_strdup(msg->transaction) : NULL;
+			}
+			g_atomic_int_set(&session->hangingup, 0);
+			janus_sip_call_update_status(session, janus_sip_call_status_pre_accepted);
+			if(session->stack->s_nh_i == NULL) {
+				JANUS_LOG(LOG_WARN, "NUA Handle for 200 OK still null??\n");
+			}
+			nua_respond(session->stack->s_nh_i,
+				183, sip_status_phrase(183),
+				SOATAG_USER_SDP_STR(sdp),
+				SOATAG_RTP_SELECT(SOA_RTP_SELECT_COMMON),
+				NUTAG_AUTOANSWER(0),
+				NUTAG_AUTOACK(FALSE),
+				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
+				TAG_END());
+			g_free(sdp);
+			/* Send an ack back */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("pre_accepted"));
 			if(answer) {
 				/* Start the media */
 				session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
