@@ -143,6 +143,17 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len) {
 				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
 				return ntohl(rtcpfb->media);
 			}
+			case RTCP_PSFB: {
+				/* PSFB, Payload-specific FB message (rfc4585) */
+				if(rtcp->rc == 1) {
+					/* PLI has no FCI data */
+					if (!janus_rtcp_check_fci(rtcp, total, 0))
+						break;
+					janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
+					return ntohl(rtcpfb->media);
+				}
+				break;
+			}
 			default:
 				break;
 		}

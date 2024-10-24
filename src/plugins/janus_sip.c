@@ -1638,8 +1638,8 @@ static void janus_sip_parse_custom_headers(json_t *root, char *custom_headers, s
 					iter = json_object_iter_next(headers, iter);
 					continue;
 				}
-				char h[255];
-				g_snprintf(h, 255, "%s: %s", key, json_string_value(value));
+				char h[2048];
+				g_snprintf(h, sizeof(h), "%s: %s", key, json_string_value(value));
 				JANUS_LOG(LOG_VERB, "Adding custom header, %s\n", h);
 				janus_strlcat(custom_headers, h, size - 2);
 				janus_strlcat(custom_headers, "\r\n", size);
@@ -1667,12 +1667,12 @@ static void janus_sip_parse_custom_contact_params(json_t *root, char *custom_par
 					iter = json_object_iter_next(params, iter);
 					continue;
 				}
-				char h[255];
+				char h[1024];
 				if(first) {
 					first = FALSE;
-					g_snprintf(h, 255, "%s=%s", key, json_string_value(value));
+					g_snprintf(h, sizeof(h), "%s=%s", key, json_string_value(value));
 				} else {
-					g_snprintf(h, 255, ";%s=%s", key, json_string_value(value));
+					g_snprintf(h, sizeof(h), ";%s=%s", key, json_string_value(value));
 				}
 				JANUS_LOG(LOG_VERB, "Adding custom param, %s\n", h);
 				janus_strlcat(custom_params, h, size);
@@ -1952,12 +1952,12 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_SIP_PACKAGE);
+	g_snprintf(filename, sizeof(filename), "%s/%s.jcfg", config_path, JANUS_SIP_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
 	if(config == NULL) {
 		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_SIP_PACKAGE);
-		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_SIP_PACKAGE);
+		g_snprintf(filename, sizeof(filename), "%s/%s.cfg", config_path, JANUS_SIP_PACKAGE);
 		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 		config = janus_config_parse(filename);
 	}
@@ -4692,15 +4692,15 @@ static void *janus_sip_handler(void *data) {
 						session->account.username, session->transaction);
 					/* Start recording this peer's audio and/or video */
 					if(record_peer_audio) {
-						memset(filename, 0, 255);
+						memset(filename, 0, sizeof(filename));
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
-							g_snprintf(filename, 255, "%s-peer-audio", recording_base);
+							g_snprintf(filename, sizeof(filename), "%s-peer-audio", recording_base);
 							/* FIXME This only works if offer/answer happened */
 							rc = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
 						} else {
 							/* Build a filename */
-							g_snprintf(filename, 255, "sip-%s-%s-%"SCNi64"-peer-audio",
+							g_snprintf(filename, sizeof(filename), "sip-%s-%s-%"SCNi64"-peer-audio",
 								session->account.username ? session->account.username : "unknown",
 								session->transaction ? session->transaction : "unknown",
 								now);
@@ -4718,15 +4718,15 @@ static void *janus_sip_handler(void *data) {
 						}
 					}
 					if(record_peer_video) {
-						memset(filename, 0, 255);
+						memset(filename, 0, sizeof(filename));
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
-							g_snprintf(filename, 255, "%s-peer-video", recording_base);
+							g_snprintf(filename, sizeof(filename), "%s-peer-video", recording_base);
 							/* FIXME This only works if offer/answer happened */
 							rc = janus_recorder_create(NULL, session->media.video_pt_name, filename);
 						} else {
 							/* Build a filename */
-							g_snprintf(filename, 255, "sip-%s-%s-%"SCNi64"-peer-video",
+							g_snprintf(filename, sizeof(filename), "sip-%s-%s-%"SCNi64"-peer-video",
 								session->account.username ? session->account.username : "unknown",
 								session->transaction ? session->transaction : "unknown",
 								now);
@@ -4753,15 +4753,15 @@ static void *janus_sip_handler(void *data) {
 						(record_audio && record_video ? "audio and video" : (record_audio ? "audio" : "video")),
 						session->account.username, session->transaction);
 					if(record_audio) {
-						memset(filename, 0, 255);
+						memset(filename, 0, sizeof(filename));
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
-							g_snprintf(filename, 255, "%s-user-audio", recording_base);
+							g_snprintf(filename, sizeof(filename), "%s-user-audio", recording_base);
 							/* FIXME This only works if offer/answer happened */
 							rc = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
 						} else {
 							/* Build a filename */
-							g_snprintf(filename, 255, "sip-%s-%s-%"SCNi64"-own-audio",
+							g_snprintf(filename, sizeof(filename), "sip-%s-%s-%"SCNi64"-own-audio",
 								session->account.username ? session->account.username : "unknown",
 								session->transaction ? session->transaction : "unknown",
 								now);
@@ -4779,15 +4779,15 @@ static void *janus_sip_handler(void *data) {
 						}
 					}
 					if(record_video) {
-						memset(filename, 0, 255);
+						memset(filename, 0, sizeof(filename));
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
-							g_snprintf(filename, 255, "%s-user-video", recording_base);
+							g_snprintf(filename, sizeof(filename), "%s-user-video", recording_base);
 							/* FIXME This only works if offer/answer happened */
 							rc = janus_recorder_create(NULL, session->media.video_pt_name, filename);
 						} else {
 							/* Build a filename */
-							g_snprintf(filename, 255, "sip-%s-%s-%"SCNi64"-own-video",
+							g_snprintf(filename, sizeof(filename), "sip-%s-%s-%"SCNi64"-own-video",
 								session->account.username ? session->account.username : "unknown",
 								session->transaction ? session->transaction : "unknown",
 								now);
