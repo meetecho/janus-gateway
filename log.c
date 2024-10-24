@@ -98,6 +98,12 @@ static void *janus_log_thread(void *ctx) {
 		/* Done, get rid of this log line */
 		janus_log_buffer_free(b);
 	}
+	/* Print all that's left to print */
+	while((b = g_async_queue_try_pop(janus_log_queue)) != NULL) {
+		if(b->str != NULL)
+			janus_log_print_buffer(b);
+		janus_log_buffer_free(b);
+	}
 	if(janus_log_console)
 		fflush(stdout);
 	if(janus_log_file)
