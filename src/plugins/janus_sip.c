@@ -3946,7 +3946,7 @@ static void *janus_sip_handler(void *data) {
 			json_object_set_new(result, "event", json_string("calling"));
 			json_object_set_new(result, "call_id", json_string(session->callid));
 		} else if(!strcasecmp(request_text, "accept")) {
-			if(session->status != janus_sip_call_status_invited || session->status != janus_sip_call_status_pre_accepted) {
+			if(session->status != janus_sip_call_status_invited && session->status != janus_sip_call_status_pre_accepted) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (not invited? status=%s)", janus_sip_call_status_string(session->status));
