@@ -4050,7 +4050,7 @@ static void *janus_sip_handler(void *data) {
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
 			janus_mutex_lock(&session->mutex);
-			if(janus_sip_allocate_local_ports(session, FALSE) < 0) {
+			if(janus_sip_allocate_local_ports(session, session->status == janus_sip_call_status_pre_accepted ? TRUE : FALSE) < 0) {
 				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
 				janus_sdp_destroy(parsed_sdp);
