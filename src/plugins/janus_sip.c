@@ -4100,17 +4100,18 @@ static void *janus_sip_handler(void *data) {
 				if(s && json_array_size(s) > 0)
 					session->media.simulcast_ssrc = json_integer_value(json_array_get(s, 0));
 			}
+			const char *event_value;
+			if(progress) {
+				event_value = "progressed";
+			} else if(answer) {
+				event_value = "accepted";
+			} else {
+				event_value = "accepting";
+			}
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				const char *event_value;
-				if(progress) {
-					event_value = "progressed";
-				} else if(answer) {
-					event_value = "accepted";
-				} else {
-					event_value = "accepting";
-				}
+
 				json_object_set_new(info, "event", json_string(event_value));
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
@@ -4142,7 +4143,7 @@ static void *janus_sip_handler(void *data) {
 			g_free(sdp);
 			/* Send an ack back */
 			result = json_object();
-			json_object_set_new(result, "event", json_string(answer ? "accepted" : "accepting"));
+			json_object_set_new(result, "event", json_string(event_value));
 			if(answer) {
 				/* Start the media */
 				session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
