@@ -4183,9 +4183,9 @@ static void *janus_sip_handler(void *data) {
 			if(session->media.has_video)
 				has_srtp = (has_srtp && session->media.has_srtp_remote_video);
 			if(session->media.require_srtp && !has_srtp) {
-				JANUS_LOG(LOG_ERR, "Can't pre-accept the call: SDES-SRTP required, but caller didn't offer it\n");
+				JANUS_LOG(LOG_ERR, "Can't progress the call: SDES-SRTP required, but caller didn't offer it\n");
 				error_code = JANUS_SIP_ERROR_TOO_STRICT;
-				g_snprintf(error_cause, 512, "Can't pre-accept the call: SDES-SRTP required, but caller didn't offer it");
+				g_snprintf(error_cause, 512, "Can't progress the call: SDES-SRTP required, but caller didn't offer it");
 				goto error;
 			}
 			answer_srtp = answer_srtp || session->media.has_srtp_remote_audio || session->media.has_srtp_remote_video;
@@ -4195,7 +4195,7 @@ static void *janus_sip_handler(void *data) {
 			const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 			const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
 			if(!msg_sdp) {
-				JANUS_LOG(LOG_ERR, "Missing SDP in pre-accept\n");
+				JANUS_LOG(LOG_ERR, "Missing SDP in progress\n");
 				error_code = JANUS_SIP_ERROR_MISSING_SDP;
 				g_snprintf(error_cause, 512, "Missing SDP");
 				goto error;
