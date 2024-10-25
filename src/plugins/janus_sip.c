@@ -3968,9 +3968,15 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			janus_mutex_unlock(&session->mutex);
-			JANUS_VALIDATE_JSON_OBJECT(root, progress ? progress_parameters : accept_parameters,
-				error_code, error_cause, TRUE,
-				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(progress) {
+				JANUS_VALIDATE_JSON_OBJECT(root, progress_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			} else {
+				JANUS_VALIDATE_JSON_OBJECT(root, accept_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			}
 			if(error_code != 0)
 				goto error;
 			json_t *srtp = json_object_get(root, "srtp");
@@ -4098,9 +4104,9 @@ static void *janus_sip_handler(void *data) {
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				const char *event_value;
-				if (progress) {
+				if(progress) {
 					event_value = "progressed";
-				} else if (answer) {
+				} else if(answer) {
 					event_value = "accepted";
 				} else {
 					event_value = "accepting";
