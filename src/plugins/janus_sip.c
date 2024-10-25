@@ -925,7 +925,7 @@ typedef enum {
 	janus_sip_call_status_idle = 0,
 	janus_sip_call_status_inviting,
 	janus_sip_call_status_invited,
-	janus_sip_call_status_pre_accepted,
+	janus_sip_call_status_progress,
 	janus_sip_call_status_incall,
 	janus_sip_call_status_incall_reinviting,
 	janus_sip_call_status_incall_reinvited,
@@ -940,8 +940,8 @@ static const char *janus_sip_call_status_string(janus_sip_call_status status) {
 			return "inviting";
 		case janus_sip_call_status_invited:
 			return "invited";
-		case janus_sip_call_status_pre_accepted:
-			return "pre_accepted";
+		case janus_sip_call_status_progress:
+			return "progress";
 		case janus_sip_call_status_incall:
 			return "incall";
 		case janus_sip_call_status_incall_reinviting:
@@ -3946,7 +3946,7 @@ static void *janus_sip_handler(void *data) {
 			json_object_set_new(result, "event", json_string("calling"));
 			json_object_set_new(result, "call_id", json_string(session->callid));
 		} else if(!strcasecmp(request_text, "accept")) {
-			if(session->status != janus_sip_call_status_invited && session->status != janus_sip_call_status_pre_accepted) {
+			if(session->status != janus_sip_call_status_invited && session->status != janus_sip_call_status_progress) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (not invited? status=%s)", janus_sip_call_status_string(session->status));
@@ -4050,7 +4050,7 @@ static void *janus_sip_handler(void *data) {
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
 			janus_mutex_lock(&session->mutex);
-			if(janus_sip_allocate_local_ports(session, session->status == janus_sip_call_status_pre_accepted ? TRUE : FALSE) < 0) {
+			if(janus_sip_allocate_local_ports(session, session->status == janus_sip_call_status_progress ? TRUE : FALSE) < 0) {
 				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
 				janus_sdp_destroy(parsed_sdp);
@@ -4138,7 +4138,7 @@ static void *janus_sip_handler(void *data) {
 					g_error_free(error);
 				}
 			}
-		} else if(!strcasecmp(request_text, "pre_accept")) {
+		} else if(!strcasecmp(request_text, "progress")) {
 			if(session->status != janus_sip_call_status_invited) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
@@ -4283,7 +4283,7 @@ static void *janus_sip_handler(void *data) {
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				json_object_set_new(info, "event", json_string("pre_accepted"));
+				json_object_set_new(info, "event", json_string("progressed"));
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				gateway->notify_event(&janus_sip_plugin, session->handle, info);
@@ -4298,7 +4298,7 @@ static void *janus_sip_handler(void *data) {
 				session->transaction = msg->transaction ? g_strdup(msg->transaction) : NULL;
 			}
 			g_atomic_int_set(&session->hangingup, 0);
-			janus_sip_call_update_status(session, janus_sip_call_status_pre_accepted);
+			janus_sip_call_update_status(session, janus_sip_call_status_progress);
 			if(session->stack->s_nh_i == NULL) {
 				JANUS_LOG(LOG_WARN, "NUA Handle for 200 OK still null??\n");
 			}
@@ -4313,7 +4313,7 @@ static void *janus_sip_handler(void *data) {
 			g_free(sdp);
 			/* Send an ack back */
 			result = json_object();
-			json_object_set_new(result, "event", json_string("pre_accepted"));
+			json_object_set_new(result, "event", json_string("progressed"));
 			if(answer) {
 				/* Start the media */
 				session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
