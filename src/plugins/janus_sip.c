@@ -3947,9 +3947,9 @@ static void *janus_sip_handler(void *data) {
 			json_object_set_new(result, "call_id", json_string(session->callid));
 		} else if(!strcasecmp(request_text, "accept")) {
 			if(session->status != janus_sip_call_status_invited && session->status != janus_sip_call_status_progress) {
-				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
+				JANUS_LOG(LOG_ERR, "Wrong state (not invited or progress? status=%s)\n", janus_sip_call_status_string(session->status));
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
-				g_snprintf(error_cause, 512, "Wrong state (not invited? status=%s)", janus_sip_call_status_string(session->status));
+				g_snprintf(error_cause, 512, "Wrong state (not invited or progress? status=%s)", janus_sip_call_status_string(session->status));
 				goto error;
 			}
 			janus_mutex_lock(&session->mutex);
@@ -4207,8 +4207,8 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Media encryption unsupported by this plugin");
 				goto error;
 			}
-			/* Accept a call from another peer */
-			JANUS_LOG(LOG_VERB, "We're pre-accepting the call from %s\n", session->callee);
+			/* Progress a call from another peer */
+			JANUS_LOG(LOG_VERB, "We're progressing the call from %s\n", session->callee);
 			gboolean answer = !strcasecmp(msg_sdp_type, "answer");
 			if(!answer) {
 				JANUS_LOG(LOG_VERB, "This is a response to an offerless INVITE\n");
@@ -4288,10 +4288,10 @@ static void *janus_sip_handler(void *data) {
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				gateway->notify_event(&janus_sip_plugin, session->handle, info);
 			}
-			/* Check if the OK needs to be enriched with custom headers */
+			/* Check if the session progress needs to be enriched with custom headers */
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
-			/* Send 200 OK */
+			/* Send 183 Session Progress */
 			if(!answer) {
 				if(session->transaction)
 					g_free(session->transaction);
@@ -4300,7 +4300,7 @@ static void *janus_sip_handler(void *data) {
 			g_atomic_int_set(&session->hangingup, 0);
 			janus_sip_call_update_status(session, janus_sip_call_status_progress);
 			if(session->stack->s_nh_i == NULL) {
-				JANUS_LOG(LOG_WARN, "NUA Handle for 200 OK still null??\n");
+				JANUS_LOG(LOG_WARN, "NUA Handle for 183 Session Progress is null.\n");
 			}
 			nua_respond(session->stack->s_nh_i,
 				183, sip_status_phrase(183),
