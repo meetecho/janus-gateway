@@ -4111,7 +4111,6 @@ static void *janus_sip_handler(void *data) {
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-
 				json_object_set_new(info, "event", json_string(event_value));
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
