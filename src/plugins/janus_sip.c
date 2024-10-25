@@ -4022,7 +4022,7 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			/* Accept/Progress a call from another peer */
-			JANUS_LOG(LOG_VERB, "We're %s the call from %s\n", progress : "progressing" : "accepting", session->callee);
+			JANUS_LOG(LOG_VERB, "We're %s the call from %s\n", progress ? "progressing" : "accepting", session->callee);
 			gboolean answer = !strcasecmp(msg_sdp_type, "answer");
 			if(!answer) {
 				JANUS_LOG(LOG_VERB, "This is a response to an offerless INVITE\n");
