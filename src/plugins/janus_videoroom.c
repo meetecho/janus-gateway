@@ -5839,6 +5839,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(publisher->udp_sock <= 0 ||
 					(!ipv6_disabled && setsockopt(publisher->udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)) {
 				janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
+				janus_mutex_unlock(&publisher->streams_mutex);
 				janus_refcount_decrease(&publisher->ref);
 				janus_mutex_unlock(&videoroom->mutex);
 				janus_refcount_decrease(&videoroom->ref);
