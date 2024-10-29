@@ -2841,7 +2841,9 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		session->media.on_hold = FALSE;
 
 		/* Send a BYE or respond with 480 */
-		if(janus_sip_call_is_established(session) || session->status == janus_sip_call_status_inviting) // TODO: Check this
+		if(janus_sip_call_is_established(session) ||
+			session->status == janus_sip_call_status_inviting ||
+			session->status == janus_sip_call_status_progress)
 			nua_bye(session->stack->s_nh_i, TAG_END());
 		else
 			nua_respond(session->stack->s_nh_i, 480, sip_status_phrase(480), TAG_END());
@@ -4446,7 +4448,7 @@ static void *janus_sip_handler(void *data) {
 				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
-			if(!janus_sip_call_is_established(session)) { // TODO: Check
+			if(!janus_sip_call_is_established(session)) { // Not standard practice to perform call transfers before they are established
 				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				goto error;
@@ -4623,7 +4625,7 @@ static void *janus_sip_handler(void *data) {
 			json_object_set_new(result, "event", json_string(hold ? "holding" : "resuming"));
 		} else if(!strcasecmp(request_text, "hangup")) {
 			/* Hangup an ongoing call */
-			if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_inviting) { // TODO: Check
+			if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_inviting && session->status != janus_sip_call_status_progress) { // TODO: Check
 				JANUS_LOG(LOG_ERR, "Wrong state (not established/inviting? status=%s)\n",
 					janus_sip_call_status_string(session->status));
 				/* Ignore */
@@ -4660,7 +4662,8 @@ static void *janus_sip_handler(void *data) {
 		} else if(!strcasecmp(request_text, "recording")) {
 			/* Start or stop recording */
 			if(!(session->status == janus_sip_call_status_inviting || /* Presume it makes sense to start recording with early media? */
-					janus_sip_call_is_established(session))) { // TODO : Check
+					session->status == janus_sip_call_status_progress ||
+					janus_sip_call_is_established(session))) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				goto error;
@@ -4864,7 +4867,7 @@ static void *janus_sip_handler(void *data) {
 			json_object_set_new(result, "event", json_string("recordingupdated"));
 		} else if(!strcasecmp(request_text, "info")) {
 			/* Send a SIP INFO request: we'll need the payload type and content */
-			if(!janus_sip_call_is_established(session)) { // TODO: CHeck
+			if(!janus_sip_call_is_established(session)) { // Should not send SIP info if call not established
 				JANUS_LOG(LOG_ERR, "Wrong state (not established? status=%s)\n", janus_sip_call_status_string(session->status));
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				goto error;
@@ -5028,7 +5031,7 @@ static void *janus_sip_handler(void *data) {
 			/* Send DMTF tones using SIP INFO
 			 * (https://tools.ietf.org/html/draft-kaplan-dispatch-info-dtmf-package-00)
 			 */
-			if(!janus_sip_call_is_established(session)) { // TODO: Check
+			if(!janus_sip_call_is_established(session)) { // should not send dtmf via sip info if not established
 				JANUS_LOG(LOG_ERR, "Wrong state (not established? status=%s)\n", janus_sip_call_status_string(session->status));
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				goto error;
