@@ -13271,6 +13271,7 @@ static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_rtp_forwarder *rf, 
 				janus_mutex_lock(&p->rtp_forwarders_mutex);
 				if(g_hash_table_size(p->rtp_forwarders) == 0) {
 					janus_mutex_unlock(&p->rtp_forwarders_mutex);
+					janus_mutex_unlock(&p->streams_mutex);
 					return;
 				}
 				gboolean found = FALSE;
