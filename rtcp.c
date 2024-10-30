@@ -1195,12 +1195,11 @@ gboolean janus_rtcp_has_pli(char *packet, int len) {
 	return FALSE;
 }
 
-GQueue *janus_rtcp_get_nacks(char *packet, int len) {
-	if(packet == NULL || len == 0)
-		return NULL;
+void janus_rtcp_get_nacks(char *packet, int len, GQueue *nacks_queue) {
+	if(packet == NULL || len == 0 || nacks_queue == NULL)
+		return;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	/* FIXME Get list of sequence numbers we should send again */
-	GQueue *queue = g_queue_new();
+	g_queue_clear(nacks_queue);
 	int total = len;
 	gboolean error = FALSE;
 	while(rtcp) {
@@ -1232,13 +1231,13 @@ GQueue *janus_rtcp_get_nacks(char *packet, int len) {
 					for(i=0; i< nacks; i++) {
 						nack = (janus_rtcp_nack *)rtcpfb->fci + i;
 						pid = ntohs(nack->pid);
-						g_queue_push_head(queue, GUINT_TO_POINTER(pid));
+						g_queue_push_head(nacks_queue, GUINT_TO_POINTER(pid));
 						blp = ntohs(nack->blp);
 						memset(bitmask, 0, 20);
 						for(j=0; j<16; j++) {
 							bitmask[j] = (blp & ( 1 << j )) >> j ? '1' : '0';
 							if((blp & ( 1 << j )) >> j)
-								g_queue_push_head(queue, GUINT_TO_POINTER(pid+j+1));
+								g_queue_push_head(nacks_queue, GUINT_TO_POINTER(pid+j+1));
 						}
 						bitmask[16] = '\n';
 						JANUS_LOG(LOG_DBG, "[%d] %"SCNu16" / %s\n", i, pid, bitmask);
@@ -1256,11 +1255,9 @@ GQueue *janus_rtcp_get_nacks(char *packet, int len) {
 			break;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
-	if (error && queue) {
-		g_queue_free(queue);
-		queue = NULL;
+	if (error) {
+		g_queue_clear(nacks_queue);
 	}
-	return queue;
 }
 
 int janus_rtcp_remove_nacks(char *packet, int len) {
