@@ -4380,7 +4380,7 @@ static void *janus_sip_handler(void *data) {
 				}
 			}
 			/* Reject an incoming call */
-			if(session->status != janus_sip_call_status_invited) {
+			if(session->status != janus_sip_call_status_invited && session->status != janus_sip_call_status_progress) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
 				/* Ignore */
 				janus_sip_message_free(msg);
