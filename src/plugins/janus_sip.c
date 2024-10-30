@@ -2821,7 +2821,6 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	janus_mutex_unlock(&session->rec_mutex);
 	if(!(session->status == janus_sip_call_status_inviting ||
 			session->status == janus_sip_call_status_invited ||
-			session->status == janus_sip_call_status_progress ||
 			janus_sip_call_is_established(session))) { // TODO: Check this
 		g_atomic_int_set(&session->establishing, 0);
 		g_atomic_int_set(&session->established, 0);
@@ -2843,8 +2842,7 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 
 		/* Send a BYE or respond with 480 */
 		if(janus_sip_call_is_established(session) ||
-			session->status == janus_sip_call_status_inviting ||
-			session->status == janus_sip_call_status_progress)
+			session->status == janus_sip_call_status_inviting)
 			nua_bye(session->stack->s_nh_i, TAG_END());
 		else
 			nua_respond(session->stack->s_nh_i, 480, sip_status_phrase(480), TAG_END());
