@@ -3310,17 +3310,17 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				/* Now let's see if there are any NACKs to handle */
 				gint64 now = janus_get_monotonic_time();
-				GSList *nacks = janus_rtcp_get_nacks(buf, buflen);
-				guint nacks_count = g_slist_length(nacks);
+				GQueue *nacks = janus_rtcp_get_nacks(buf, buflen);
+				guint nacks_count = g_queue_get_length(nacks);
 				if(nacks_count && ((!video && component->do_audio_nacks) || (video && component->do_video_nacks))) {
 					/* Handle NACK */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Just got some NACKS (%d) we should handle...\n", handle->handle_id, nacks_count);
 					GHashTable *retransmit_seqs = (video ? component->video_retransmit_seqs : component->audio_retransmit_seqs);
-					GSList *list = (retransmit_seqs != NULL ? nacks : NULL);
+					GQueue *queue = (retransmit_seqs != NULL ? nacks : NULL);
 					int retransmits_cnt = 0;
 					janus_mutex_lock(&component->mutex);
-					while(list) {
-						unsigned int seqnr = GPOINTER_TO_UINT(list->data);
+					while(g_queue_get_length(queue) > 0) {
+						unsigned int seqnr = GPOINTER_TO_UINT(g_queue_pop_tail(queue));
 						JANUS_LOG(LOG_DBG, "[%"SCNu64"]   >> %u\n", handle->handle_id, seqnr);
 						int in_rb = 0;
 						/* Check if we have the packet */
@@ -3331,7 +3331,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							/* Should we retransmit this packet? */
 							if((p->last_retransmit > 0) && (now-p->last_retransmit < MAX_NACK_IGNORE)) {
 								JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Packet %u was retransmitted just %"SCNi64"ms ago, skipping\n", handle->handle_id, seqnr, now-p->last_retransmit);
-								list = list->next;
+								g_queue_pop_tail(queue);
 								continue;
 							}
 							in_rb = 1;
@@ -3377,7 +3377,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						if(rtcp_ctx != NULL && in_rb) {
 							g_atomic_int_inc(&rtcp_ctx->nack_count);
 						}
-						list = list->next;
+						g_queue_pop_tail(queue);
 					}
 					component->retransmit_recent_cnt += retransmits_cnt;
 					/* FIXME Remove the NACK compound packet, we've handled it */
@@ -3389,7 +3389,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						component->in_stats.audio.nacks += nacks_count;
 					}
 					janus_mutex_unlock(&component->mutex);
-					g_slist_free(nacks);
+					g_queue_free(nacks);
 					nacks = NULL;
 				}
 				if(component->retransmit_recent_cnt &&
