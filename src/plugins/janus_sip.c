@@ -2559,7 +2559,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
-		if(!janus_sip_call_is_established(session))
+		if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_progress)
 			return;
 		gboolean video = packet->video;
 		char *buf = packet->buffer;
@@ -2687,7 +2687,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *pa
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
-		if(!janus_sip_call_is_established(session))
+		if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_progress)
 			return;
 		gboolean video = packet->video;
 		char *buf = packet->buffer;
@@ -4379,7 +4379,7 @@ static void *janus_sip_handler(void *data) {
 				}
 			}
 			/* Reject an incoming call */
-			if(session->status != janus_sip_call_status_invited) {
+			if(session->status != janus_sip_call_status_invited && session->status != janus_sip_call_status_progress) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
 				/* Ignore */
 				janus_sip_message_free(msg);
@@ -4623,8 +4623,8 @@ static void *janus_sip_handler(void *data) {
 			json_object_set_new(result, "event", json_string(hold ? "holding" : "resuming"));
 		} else if(!strcasecmp(request_text, "hangup")) {
 			/* Hangup an ongoing call */
-			if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_inviting) {
-				JANUS_LOG(LOG_ERR, "Wrong state (not established/inviting? status=%s)\n",
+			if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_inviting && session->status != janus_sip_call_status_progress) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not established/inviting/progress? status=%s)\n",
 					janus_sip_call_status_string(session->status));
 				/* Ignore */
 				janus_sip_message_free(msg);
@@ -4660,6 +4660,7 @@ static void *janus_sip_handler(void *data) {
 		} else if(!strcasecmp(request_text, "recording")) {
 			/* Start or stop recording */
 			if(!(session->status == janus_sip_call_status_inviting || /* Presume it makes sense to start recording with early media? */
+					session->status == janus_sip_call_status_progress ||
 					janus_sip_call_is_established(session))) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
