@@ -2550,6 +2550,7 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 }
 
 void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
+	JANUS_LOG(LOG_INFO, "Sending RTP");
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	if(gateway) {
@@ -2561,6 +2562,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 		}
 		if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_progress)
 			return;
+		JANUS_LOG(LOG_INFO, "Hello world RTP\n");
 		gboolean video = packet->video;
 		char *buf = packet->buffer;
 		uint16_t len = packet->length;
@@ -2689,6 +2691,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *pa
 		}
 		if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_progress)
 			return;
+		JANUS_LOG(LOG_INFO, "Hello RTCP.\n");
 		gboolean video = packet->video;
 		char *buf = packet->buffer;
 		uint16_t len = packet->length;
