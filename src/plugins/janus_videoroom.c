@@ -4260,6 +4260,7 @@ static void janus_videoroom_notify_about_publisher(janus_videoroom_publisher *p,
 	/* Add proper info on all the streams */
 	gboolean audio_added = FALSE, video_added = FALSE;
 	json_t *media = json_array();
+	janus_mutex_lock(&p->streams_mutex);
 	GList *temp = p->streams;
 	while(temp) {
 		janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
@@ -4309,6 +4310,7 @@ static void janus_videoroom_notify_about_publisher(janus_videoroom_publisher *p,
 		json_array_append_new(media, info);
 		temp = temp->next;
 	}
+	janus_mutex_unlock(&p->streams_mutex);
 	json_object_set_new(pl, "streams", media);
 	json_array_append_new(list, pl);
 	json_t *pub = json_object();
@@ -8110,11 +8112,11 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			g_hash_table_insert(publisher->streams_bymid, g_strdup(ps->mid), ps);
 			changes = TRUE;
 		}
+		janus_mutex_unlock(&publisher->streams_mutex);
 		if(changes) {
 			/* Notify all other participants this publisher's media has changed */
 			janus_videoroom_notify_about_publisher(publisher, TRUE);
 		}
-		janus_mutex_unlock(&publisher->streams_mutex);
 		/* Done */
 		janus_refcount_decrease(&publisher->ref);
 		janus_refcount_decrease(&videoroom->ref);
@@ -8380,9 +8382,9 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 		if(session->participant_type == janus_videoroom_p_type_publisher) {
 			janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
 			/* Notify all other participants that there's a new boy in town */
+			janus_videoroom_notify_about_publisher(participant, FALSE);
 			janus_mutex_lock(&participant->rec_mutex);
 			janus_mutex_lock(&participant->streams_mutex);
-			janus_videoroom_notify_about_publisher(participant, FALSE);
 			/* Check if we need to start recording */
 			if((participant->room && participant->room->record) || participant->recording_active) {
 				GList *temp = participant->streams;
@@ -10825,10 +10827,10 @@ static void *janus_videoroom_handler(void *data) {
 							}
 						}
 					}
+					janus_mutex_unlock(&participant->streams_mutex);
 					/* If at least a description changed, notify everyone else about the publisher details */
 					if(desc_updated)
 						janus_videoroom_notify_about_publisher(participant, TRUE);
-					janus_mutex_unlock(&participant->streams_mutex);
 				}
 				/* Done */
 				event = json_object();
@@ -12952,9 +12954,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* If this is an update/renegotiation, notify participants about this */
 				if(sdp_update && g_atomic_int_get(&session->started)) {
 					/* Notify all other participants this publisher's media has changed */
-					janus_mutex_lock(&participant->streams_mutex);
 					janus_videoroom_notify_about_publisher(participant, TRUE);
-					janus_mutex_unlock(&participant->streams_mutex);
 				}
 				/* Done */
 				if(res != JANUS_OK) {
@@ -13515,9 +13515,7 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 		string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
 		publisher);
 	/* Let's also notify all other participants that the publisher is here */
-	janus_mutex_lock(&publisher->streams_mutex);
 	janus_videoroom_notify_about_publisher(publisher, FALSE);
-	janus_mutex_unlock(&publisher->streams_mutex);
 
 	/* Loop */
 	int num = 0, i = 0;
