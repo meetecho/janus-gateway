@@ -12963,11 +12963,11 @@ static void *janus_videoroom_handler(void *data) {
 				/* If this is an update/renegotiation, notify participants about this */
 				if(sdp_update && g_atomic_int_get(&session->started)) {
 					/* Notify all other participants this publisher's media has changed */
-					janus_mutex_lock(&participant->room->mutex);
+					janus_mutex_lock(&videoroom->mutex);
 					janus_mutex_lock(&participant->streams_mutex);
 					janus_videoroom_notify_about_publisher(participant, TRUE);
 					janus_mutex_unlock(&participant->streams_mutex);
-					janus_mutex_unlock(&participant->room->mutex);
+					janus_mutex_unlock(&videoroom->mutex);
 				}
 				/* Done */
 				if(res != JANUS_OK) {
