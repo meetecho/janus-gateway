@@ -5760,12 +5760,12 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 
 		/* Get list of started announcements and send a stop announcement notification */
-		GList *items_to_remove = NULL;
-		GHashTableIter iterAnnc;
-		gpointer valueAnnc;
-		g_hash_table_iter_init(&iterAnnc, audiobridge->anncs);
-		while(g_hash_table_iter_next(&iterAnnc, NULL, &valueAnnc)) {
-			janus_audiobridge_participant *p = valueAnnc;
+		GHashTableIter iter;
+		gpointer value;
+		json_t *list_annc_removed = json_array();
+		g_hash_table_iter_init(&iter, audiobridge->anncs);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_audiobridge_participant *p = value;
 			gboolean started = (p && p->annc && p->annc->started);
 			if(p)
 				janus_refcount_increase(&p->ref);
@@ -5787,22 +5787,12 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 					json_object_set_new(info, "file_id", json_string(p->annc->id));
 					gateway->notify_event(&janus_audiobridge_plugin, NULL, info);
 				}
-				items_to_remove = g_list_prepend(items_to_remove, p->annc->id);
+				json_array_append_new(list_annc_removed, json_string(p->annc->id));
 			}
+			g_hash_table_iter_remove(&iter);
 			if(p)
 				janus_refcount_decrease(&p->ref);
 		}
-
-		/* Get rid of the announcements */
-		json_t *list_annc_removed = json_array();
-		GList *l =NULL;
-		for(l = items_to_remove; l!= NULL; l = l->next) {
-			json_t *file_id = json_string(l->data);
-		    if(g_hash_table_remove(audiobridge->anncs, l->data)) {
-				json_array_append_new(list_annc_removed, file_id);
-			}
-		}
-		g_list_free(items_to_remove);
 
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
