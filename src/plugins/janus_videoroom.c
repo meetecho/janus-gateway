@@ -2799,7 +2799,10 @@ static void janus_videoroom_session_destroy(janus_videoroom_session *session) {
 static void janus_videoroom_session_free(const janus_refcount *session_ref) {
 	janus_videoroom_session *session = janus_refcount_containerof(session_ref, janus_videoroom_session, ref);
 	/* Remove the reference to the core plugin session */
-	janus_refcount_decrease(&session->handle->ref);
+	if(session->handle) {
+		/* Could be NULL for dummy publishers */
+		janus_refcount_decrease(&session->handle->ref);
+	}
 	/* This session can be destroyed, free all the resources */
 	janus_mutex_destroy(&session->mutex);
 	g_free(session);
@@ -7292,6 +7295,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_object_set_new(response, "id", string_ids ? json_string(publisher->user_id_str) : json_integer(publisher->user_id));
 		json_object_set_new(response, "remote_id", json_string(remote_id));
 		janus_refcount_decrease(&publisher->ref);	/* This is just to handle the request for now */
+		janus_refcount_decrease(&videoroom->ref);
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "unpublish_remotely")) {
 		/* Configure a local publisher to stop restreaming to a remote VideoRomm instance */
@@ -7835,8 +7839,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			mindex++;
 		}
 		/* Done, spawn a thread for this remote publisher */
-		janus_refcount_increase(&publisher->ref);
-		janus_refcount_increase(&publisher->session->ref);
 		GError *error = NULL;
 		char tname[16];
 		g_snprintf(tname, sizeof(tname), "vremote %s", publisher->user_id_str);
@@ -7845,9 +7847,15 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			/* Something went wrong */
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
-			janus_videoroom_publisher_destroy(publisher);
-			janus_refcount_decrease(&publisher->ref);
+			janus_mutex_lock(&publisher->streams_mutex);
+			g_list_free_full(publisher->streams, (GDestroyNotify)(janus_videoroom_publisher_stream_unref));
+			publisher->streams = NULL;
+			g_hash_table_remove_all(publisher->streams_byid);
+			g_hash_table_remove_all(publisher->streams_bymid);
+			janus_mutex_unlock(&publisher->streams_mutex);
+			janus_videoroom_leave_or_unpublish(publisher, TRUE, FALSE);
 			janus_refcount_decrease(&publisher->session->ref);
+			janus_videoroom_publisher_destroy(publisher);
 			JANUS_LOG(LOG_ERR, "Could not spawn thread for remote publisher, %d (%s)\n",
 				errno, g_strerror(errno));
 			error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
@@ -13478,6 +13486,11 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 	JANUS_LOG(LOG_VERB, "[%s/%s] Joining remote publisher thread...\n",
 		publisher->room->room_id_str, publisher->user_id_str);
 
+	janus_videoroom *videoroom = publisher->room;
+	janus_refcount_increase(&videoroom->ref);
+	janus_refcount_increase(&publisher->ref);
+	janus_refcount_increase(&publisher->session->ref);
+
 	/* File descriptors */
 	socklen_t addrlen;
 	struct sockaddr_storage remote = { 0 };
@@ -13491,12 +13504,10 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 		 * and/or we may never be notified about sessions being closed, so give up */
 		JANUS_LOG(LOG_WARN, "[%s/%s] Leaving remote publisher thread, no pipe file descriptor...\n",
 			publisher->room->room_id_str, publisher->user_id_str);
-		janus_videoroom_publisher_destroy(publisher);
-		janus_refcount_decrease(&publisher->session->ref);
-		janus_refcount_decrease(&publisher->ref);
-		g_thread_unref(g_thread_self());
-		return NULL;
+		janus_videoroom_publisher_dereference(publisher);
+		goto cleanup;
 	}
+
 	/* RTP stuff */
 	janus_rtp_header *rtp = NULL;
 	uint32_t ssrc = 0, diff = 0;
@@ -13507,10 +13518,6 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 	GList *temp = NULL;
 
 	/* As the first thing, we add the remote publisher to the list */
-	janus_refcount_increase(&publisher->ref);
-	janus_refcount_increase(&publisher->session->ref);
-	janus_videoroom *videoroom = publisher->room;
-	janus_refcount_increase(&videoroom->ref);
 	g_hash_table_insert(videoroom->participants,
 		string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
 		publisher);
@@ -13699,6 +13706,7 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 			}
 		}
 	}
+cleanup:
 	/* If we got here, the remote publisher has been removed from the
 	 * room: let's notify all other publishers in the room */
 	janus_mutex_lock(&publisher->rec_mutex);
@@ -13795,21 +13803,20 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 			temp = temp->next;
 		}
 	}
+	JANUS_LOG(LOG_VERB, "[%s/%s] Leaving remote publisher thread...\n",
+		videoroom->room_id_str, publisher->user_id_str);
 	g_list_free(subscribers);
 	/* Free streams */
-	g_list_free(publisher->streams);
+	g_list_free_full(publisher->streams, (GDestroyNotify)(janus_videoroom_publisher_stream_unref));
 	publisher->streams = NULL;
 	g_hash_table_remove_all(publisher->streams_byid);
 	g_hash_table_remove_all(publisher->streams_bymid);
 	janus_mutex_unlock(&publisher->streams_mutex);
 	janus_videoroom_leave_or_unpublish(publisher, TRUE, FALSE);
+	janus_refcount_decrease(&publisher->session->ref);
 	janus_videoroom_publisher_destroy(publisher);
 	/* Done */
-	JANUS_LOG(LOG_VERB, "[%s/%s] Leaving remote publisher thread...\n",
-		videoroom->room_id_str, publisher->user_id_str);
 	janus_refcount_decrease(&videoroom->ref);
-	janus_refcount_decrease(&publisher->session->ref);
-	janus_refcount_decrease(&publisher->ref);
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
