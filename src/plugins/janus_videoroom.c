@@ -2903,13 +2903,22 @@ static void janus_videoroom_codecstr(janus_videoroom *videoroom, char *audio_cod
 	}
 }
 
-/* Helper method to send an RTCP PLI to a remote publisher */
-static void janus_videoroom_rtcp_pli_send(janus_videoroom_publisher_stream *ps) {
-	if(ps == NULL || ps->publisher == NULL)
+/* Helper method to send PLI to publishers.
+ * Send an PLI to local publisher and RTCP PLI to a remote publishers */
+static void janus_videoroom_reqpli(janus_videoroom_publisher_stream *ps, const char *reason) {
+	if (ps == NULL || g_atomic_int_get(&ps->destroyed))
 		return;
-	janus_videoroom_publisher *publisher = ps->publisher;
-	if(publisher->remote_rtcp_fd < 0 || publisher->rtcp_addr.ss_family == 0)
-		return;
+
+	janus_videoroom_publisher *remote_publisher = NULL;
+
+	if(ps->publisher->remote) {
+		if(ps->publisher == NULL || g_atomic_int_get(&ps->publisher->destroyed))
+			return;
+		remote_publisher = ps->publisher;
+		if(remote_publisher->remote_rtcp_fd < 0 || remote_publisher->rtcp_addr.ss_family == 0)
+			return;
+	}
+
 	if(!g_atomic_int_compare_and_exchange(&ps->sending_pli, 0, 1))
 		return;
 	gint64 now = janus_get_monotonic_time();
@@ -2919,44 +2928,38 @@ static void janus_videoroom_rtcp_pli_send(janus_videoroom_publisher_stream *ps) 
 		g_atomic_int_set(&ps->sending_pli, 0);
 		return;
 	}
+
+	JANUS_LOG(LOG_VERB, "%s, sending PLI to %s (#%d, %s)\n", reason,
+		ps->publisher->user_id_str, ps->mindex, ps->publisher->display ? ps->publisher->display : "??");
+
 	/* Update the time of when we last sent a keyframe request */
 	g_atomic_int_set(&ps->need_pli, 0);
 	ps->pli_latest = janus_get_monotonic_time();
-	JANUS_LOG(LOG_HUGE, "Sending PLI\n");
-	/* Generate a PLI */
-	char rtcp_buf[12];
-	int rtcp_len = 12;
-	janus_rtcp_pli((char *)&rtcp_buf, rtcp_len);
-	uint32_t ssrc = REMOTE_PUBLISHER_BASE_SSRC + (ps->mindex*REMOTE_PUBLISHER_SSRC_STEP);
-	janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1, 1, ssrc);
-	/* Send the packet */
-	socklen_t addrlen = publisher->rtcp_addr.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
-	int sent = 0;
-	if((sent = sendto(publisher->remote_rtcp_fd, rtcp_buf, rtcp_len, 0,
-			(struct sockaddr *)&publisher->rtcp_addr, addrlen)) < 0) {
-		JANUS_LOG(LOG_ERR, "Error in sendto... %d (%s)\n", errno, g_strerror(errno));
-	} else {
-		JANUS_LOG(LOG_HUGE, "Sent %d/%d bytes\n", sent, rtcp_len);
-	}
-	g_atomic_int_set(&ps->sending_pli, 0);
-}
+	/* Update the time of when we last sent a keyframe request */
+	ps->fir_latest = ps->pli_latest;
 
-static void janus_videoroom_reqpli(janus_videoroom_publisher_stream *ps, const char *reason) {
-	if(ps == NULL || g_atomic_int_get(&ps->destroyed) || ps->publisher == NULL || g_atomic_int_get(&ps->publisher->destroyed))
-		return;
-	/* Send a PLI */
-	JANUS_LOG(LOG_VERB, "%s sending PLI to %s (#%d, %s)\n", reason,
-		ps->publisher->user_id_str, ps->mindex, ps->publisher->display ? ps->publisher->display : "??");
-	if(!ps->publisher->remote) {
-		/* Easy enough, local publisher so we ask the Janus core to send a PLI */
+	if (!remote_publisher) {
+		/* local publisher so we ask the Janus core to send a PLI */
 		gateway->send_pli_stream(ps->publisher->session->handle, ps->mindex);
 	} else {
-		/* This is a remote publisher, so we'll need to send a PLI to the remote RTCP address */
-		JANUS_LOG(LOG_VERB, "Sending PLI to remote publisher\n");
-		janus_videoroom_rtcp_pli_send(ps);
+		/* Generate a PLI */
+		char rtcp_buf[12];
+		int rtcp_len = 12;
+		janus_rtcp_pli((char *)&rtcp_buf, rtcp_len);
+		uint32_t ssrc = REMOTE_PUBLISHER_BASE_SSRC + (ps->mindex*REMOTE_PUBLISHER_SSRC_STEP);
+		janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1, 1, ssrc);
+		/* Send the packet */
+		socklen_t addrlen = remote_publisher->rtcp_addr.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
+		int sent = 0;
+		if((sent = sendto(remote_publisher->remote_rtcp_fd, rtcp_buf, rtcp_len, 0,
+				(struct sockaddr *)&remote_publisher->rtcp_addr, addrlen)) < 0) {
+			JANUS_LOG(LOG_ERR, "Error in sendto... %d (%s)\n", errno, g_strerror(errno));
+		} else {
+			JANUS_LOG(LOG_HUGE, "Sent %d/%d bytes\n", sent, rtcp_len);
+		}
 	}
-	/* Update the time of when we last sent a keyframe request */
-	ps->fir_latest = janus_get_monotonic_time();
+
+	g_atomic_int_set(&ps->sending_pli, 0);
 }
 
 /* Error codes */
@@ -10004,9 +10007,12 @@ static void *janus_videoroom_handler(void *data) {
 					json_t *sc_substream = json_object_get(s, "substream");
 					if(json_integer_value(spatial) < 0 || json_integer_value(spatial) > 2 ||
 							json_integer_value(sc_substream) < 0 || json_integer_value(sc_substream) > 2) {
-						JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");
+						/*JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");*/
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");
+						/* g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)"); */
+						g_snprintf(error_cause, 512, "Invalid value (substream(%lld)/spatial_layer(%lld) should be 0, 1 or 2)",
+											json_integer_value(sc_substream), json_integer_value(spatial));
+						JANUS_LOG(LOG_ERR, "Invalid element, %s\n", error_cause);
 						janus_mutex_unlock(&videoroom->mutex);
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
@@ -13552,7 +13558,7 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 			ps = (janus_videoroom_publisher_stream *)temp->data;
 			/* Any PLI and/or REMB we should send back to the source? */
 			if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO && g_atomic_int_get(&ps->need_pli))
-				janus_videoroom_rtcp_pli_send(ps);
+				janus_videoroom_reqpli(ps, "Delayed PLI request");
 			temp = temp->next;
 		}
 		janus_mutex_unlock(&publisher->streams_mutex);
