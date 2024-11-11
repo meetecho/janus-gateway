@@ -1174,7 +1174,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 					if(context->substream_target_temp < 0)
 						context->substream_target_temp = 0;
 					if(context->substream_target_temp != prev_target) {
-						JANUS_LOG(LOG_WARN, "No packet received on substream %d for %d Milliseconds, falling back to %d\n",
+						JANUS_LOG(LOG_WARN, "No packet received on substream %d for %"SCNi64" Milliseconds, falling back to %d\n",
 							context->substream, (delay_us / 1000), context->substream_target_temp);
 						/* Notify the caller that we (still) need a PLI */
 						context->need_pli = TRUE;
