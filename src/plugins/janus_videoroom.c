@@ -13531,14 +13531,7 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 	GList *temp = NULL;
 
 	/* As the first thing, we add the remote publisher to the list */
-<<<<<<< HEAD
-=======
-	janus_refcount_increase(&publisher->ref);
-	janus_refcount_increase(&publisher->session->ref);
-	janus_videoroom *videoroom = publisher->room;
-	janus_refcount_increase(&videoroom->ref);
 	janus_mutex_lock(&videoroom->mutex);
->>>>>>> master
 	g_hash_table_insert(videoroom->participants,
 		string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
 		publisher);
