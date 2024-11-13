@@ -11093,7 +11093,7 @@ static void *janus_videoroom_handler(void *data) {
 								json_integer_value(sc_substream) < 0 || json_integer_value(sc_substream) > 2) {
 							JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");
 							error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-							g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");							
+							g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");
 							janus_mutex_unlock(&videoroom->mutex);
 							/* Unref publishers we may have taken note of so far */
 							while(publishers) {
