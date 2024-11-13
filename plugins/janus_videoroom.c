@@ -1972,7 +1972,6 @@ static void janus_videoroom_reqpli(janus_videoroom_publisher *publisher, const c
 		return;
 	if(!g_atomic_int_compare_and_exchange(&publisher->sending_pli, 0, 1))
 		return;
-
 	gint64 now = janus_get_monotonic_time();
 	if(now - publisher->fir_latest < G_USEC_PER_SEC) {
 		/* We just sent a PLI less than a second ago, schedule a new delivery later */
@@ -1980,16 +1979,12 @@ static void janus_videoroom_reqpli(janus_videoroom_publisher *publisher, const c
 		g_atomic_int_set(&publisher->sending_pli, 0);
 		return;
 	}
-
 	/* Send a PLI */
 	JANUS_LOG(LOG_VERB, "%s sending PLI to %s (%s)\n", reason,
 		publisher->user_id_str, publisher->display ? publisher->display : "??");
-
 	g_atomic_int_set(&publisher->need_pli, 0);
 	publisher->fir_latest =  janus_get_monotonic_time();
-
 	gateway->send_pli(publisher->session->handle);
-
 	/* Update the time of when we last sent a keyframe request */
 	g_atomic_int_set(&publisher->sending_pli, 0);
 }
