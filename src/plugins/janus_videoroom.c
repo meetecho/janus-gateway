@@ -2906,11 +2906,9 @@ static void janus_videoroom_codecstr(janus_videoroom *videoroom, char *audio_cod
 /* Helper method to send PLI to publishers.
  * Send an PLI to local publisher and RTCP PLI to a remote publishers */
 static void janus_videoroom_reqpli(janus_videoroom_publisher_stream *ps, const char *reason) {
-	if (ps == NULL || g_atomic_int_get(&ps->destroyed))
+	if(ps == NULL || g_atomic_int_get(&ps->destroyed))
 		return;
-
 	janus_videoroom_publisher *remote_publisher = NULL;
-
 	if(ps->publisher->remote) {
 		if(ps->publisher == NULL || g_atomic_int_get(&ps->publisher->destroyed))
 			return;
@@ -2918,7 +2916,6 @@ static void janus_videoroom_reqpli(janus_videoroom_publisher_stream *ps, const c
 		if(remote_publisher->remote_rtcp_fd < 0 || remote_publisher->rtcp_addr.ss_family == 0)
 			return;
 	}
-
 	if(!g_atomic_int_compare_and_exchange(&ps->sending_pli, 0, 1))
 		return;
 	gint64 now = janus_get_monotonic_time();
@@ -2928,18 +2925,14 @@ static void janus_videoroom_reqpli(janus_videoroom_publisher_stream *ps, const c
 		g_atomic_int_set(&ps->sending_pli, 0);
 		return;
 	}
-
 	JANUS_LOG(LOG_VERB, "%s, sending PLI to %s (#%d, %s)\n", reason,
 		ps->publisher->user_id_str, ps->mindex, ps->publisher->display ? ps->publisher->display : "??");
-
-	/* Update the time of when we last sent a keyframe request */
 	g_atomic_int_set(&ps->need_pli, 0);
 	ps->pli_latest = janus_get_monotonic_time();
 	/* Update the time of when we last sent a keyframe request */
 	ps->fir_latest = ps->pli_latest;
-
-	if (!remote_publisher) {
-		/* local publisher so we ask the Janus core to send a PLI */
+	if(remote_publisher == NULL) {
+		/* Local publisher so we ask the Janus core to send a PLI */
 		gateway->send_pli_stream(ps->publisher->session->handle, ps->mindex);
 	} else {
 		/* Generate a PLI */
@@ -2958,7 +2951,6 @@ static void janus_videoroom_reqpli(janus_videoroom_publisher_stream *ps, const c
 			JANUS_LOG(LOG_HUGE, "Sent %d/%d bytes\n", sent, rtcp_len);
 		}
 	}
-
 	g_atomic_int_set(&ps->sending_pli, 0);
 }
 
@@ -10007,12 +9999,9 @@ static void *janus_videoroom_handler(void *data) {
 					json_t *sc_substream = json_object_get(s, "substream");
 					if(json_integer_value(spatial) < 0 || json_integer_value(spatial) > 2 ||
 							json_integer_value(sc_substream) < 0 || json_integer_value(sc_substream) > 2) {
-						/*JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");*/
+						JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-						/* g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)"); */
-						g_snprintf(error_cause, 512, "Invalid value (substream(%lld)/spatial_layer(%lld) should be 0, 1 or 2)",
-											json_integer_value(sc_substream), json_integer_value(spatial));
-						JANUS_LOG(LOG_ERR, "Invalid element, %s\n", error_cause);
+						g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");
 						janus_mutex_unlock(&videoroom->mutex);
 						/* Unref publishers we may have taken note of so far */
 						while(publishers) {
@@ -11104,7 +11093,7 @@ static void *janus_videoroom_handler(void *data) {
 								json_integer_value(sc_substream) < 0 || json_integer_value(sc_substream) > 2) {
 							JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");
 							error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-							g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");
+							g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");							
 							janus_mutex_unlock(&videoroom->mutex);
 							/* Unref publishers we may have taken note of so far */
 							while(publishers) {
