@@ -36,16 +36,18 @@
  * as events with the same transaction.
  *
  * The supported requests are \c register , \c unregister , \c call ,
- * \c accept, \c decline , \c info , \c message , \c dtmf_info ,
+ * \progress , \c accept , \c decline , \c info , \c message , \c dtmf_info ,
  * \c subscribe , \c unsubscribe , \c transfer , \c recording ,
  * \c hold , \c unhold , \c update and \c hangup . \c register can be used,
  * as the name suggests, to register a username at a SIP registrar to
  * call and be called, while \c unregister unregisters it; \c call is used
- * to send an INVITE to a different SIP URI through the plugin, while
- * \c accept and \c decline are used to accept or reject the call in
- * case one is invited instead of inviting; \c transfer takes care of
- * attended and blind transfers (see \ref siptr for more details);
- * \c hold and \c unhold can be used respectively to put a
+ * to send an INVITE to a different SIP URI through the plugin; in case one
+ * is invited instead of inviting, \c progress, \c accept and \c decline
+ * requests may be used. \c progress request is optional, and it is used to
+ * send 183 Session Progress response back to the caller, while
+ * \c accept and \c decline are used to accept or reject the call respectively;
+ * \c transfer takes care of attended and blind transfers (see \ref siptr for
+ * more details); \c hold and \c unhold can be used respectively to put a
  * call on-hold and to resume it; \c info allows you to send a generic
  * SIP INFO request, while \c dtmf_info is focused on using INFO for DTMF
  * instead; \c message is the method you use to send a SIP message
@@ -299,8 +301,28 @@
 \endverbatim
  *
  * The \c incomingcall may or may not be accompanied by a JSEP offer, depending
- * on whether the caller sent an offerless INVITE or a regular one. Either
- * way, you can accept the incoming call with the \c accept request:
+ * on whether the caller sent an offerless INVITE or a regular one. Optionally,
+ * you can progress the incoming call with the \c progress request:
+ *
+\verbatim
+{
+	"request" : "progress",
+	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
+	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP OK; optional>"
+	"autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
+}
+\endverbatim
+ *
+ * A \c progressing event will be sent back, as this is an asynchronous request.
+ *
+ * This will result in a <code>183 Session Progress</code> to be sent back to the caller.
+ * A \c progress request must always be accompanied by a JSEP answer (if the
+ * \c incomingcall event contained an offer) or offer (in case it was an
+ * offerless INVITE). This request can be used to inform the caller that the early
+ * media is available, such as ringback audio, announcements or other audio streams,
+ * without the call being fully established.
+ *
+ * Furthermore, you can accept the incoming call with the \c accept request:
  *
 \verbatim
 {
@@ -314,13 +336,13 @@
  * An \c accepting event will be sent back, as this is an asynchronous request.
  *
  * This will result in a <code>200 OK</code> to be sent back to the caller.
- * An \c accept request must always be accompanied by a JSEP answer (if the
- * \c incomingcall event contained an offer) or offer (in case it was an
- * offerless INVITE). In the former case, an \c accepted event will be
- * sent back just to confirm the call can be considered established;
- * in the latter case, instead, an \c accepting event will be sent back
- * instead, and an \c accepted event will only follow later, as soon as
- * a JSEP answer is available in the SIP ACK the caller sent back.
+ * As was the case for \c progress request, an \c accept request must always
+ * be accompanied by a JSEP answer (if the \c incomingcall event contained an
+ * offer) or offer (in case it was an offerless INVITE). In the former case,
+ * an \c accepted event will be sent back just to confirm the call can be
+ * considered established; in the latter case, instead, an \c accepting event
+ * will be sent back instead, and an \c accepted event will only follow later,
+ * as soon as a JSEP answer is available in the SIP ACK the caller sent back.
  *
  * Notice that in case you get an incoming call while you're in another
  * call, you will NOT get an \c incomingcall event, but a \c missed_call
