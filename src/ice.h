@@ -28,6 +28,7 @@
 #include "dtls.h"
 #include "sctp.h"
 #include "rtcp.h"
+#include "bwe.h"
 #include "text2pcap.h"
 #include "utils.h"
 #include "ip-utils.h"
@@ -378,8 +379,8 @@ struct janus_ice_handle {
 	void *static_event_loop;
 	/*! \brief GLib thread for the handle and libnice */
 	GThread *thread;
-	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats (and optionally TWCC) */
-	GSource *rtp_source, *rtcp_source, *stats_source, *twcc_source;
+	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats (and optionally TWCC/BWE/probing) */
+	GSource *rtp_source, *rtcp_source, *stats_source, *twcc_source, *bwe_source;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
@@ -414,6 +415,14 @@ struct janus_ice_handle {
 	gint last_srtp_error, last_srtp_summary;
 	/*! \brief Count of how many seconds passed since the last stats passed to event handlers */
 	gint last_event_stats;
+	/*! \brief Bandwidth estimation target, if any, as asked by the plugin */
+	uint32_t bwe_target;
+	/*! \brief In case offline BWE debugging is enabled, the CSV file to save to */
+	char *bwe_csv;
+	/*! \brief In case live BWE debugging is enabled, the host to send stats to */
+	char *bwe_host;
+	/*! \brief In case live BWE debugging is enabled, the port to send stats to */
+	uint16_t bwe_port;
 	/*! \brief Flag to decide whether or not packets need to be dumped to a text2pcap file */
 	volatile gint dump_packets;
 	/*! \brief In case this session must be saved to text2pcap, the instance to dump packets to */
@@ -531,6 +540,8 @@ struct janus_ice_peerconnection {
 	GHashTable *rtx_payload_types_rev;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gboolean noerrorlog;
+	/*! \brief Bandwidth estimation context */
+	janus_bwe_context *bwe;
 	/*! \brief Mutex to lock/unlock this stream */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
@@ -602,8 +613,12 @@ struct janus_ice_peerconnection_medium {
 	gint64 last_ntp_ts;
 	/*! \brief Last sent RTP timestamp */
 	guint32 last_rtp_ts;
+	/*! \brief Last sent RTP sequence number */
+	guint16 last_rtp_seqnum;
 	/*! \brief Whether we should do NACKs (in or out) for this medium */
 	gboolean do_nacks;
+	/*! \brief Whether we should do Transport Wide CC for this medium */
+	gboolean do_twcc;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
 	GQueue *retransmit_buffer;
 	/*! \brief HashTable of retransmittable sequence numbers, in case we receive NACKs */
@@ -788,6 +803,19 @@ void janus_ice_restart(janus_ice_handle *handle);
 /*! \brief Method to resend all the existing candidates via trickle (e.g., after an ICE restart)
  * @param[in] handle The Janus ICE handle this method refers to */
 void janus_ice_resend_trickles(janus_ice_handle *handle);
+/*! \brief Method to dynamically enable bandwidth estimation for a handle
+ * @param[in] handle The Janus ICE handle this method refers to */
+void janus_ice_handle_enable_bwe(janus_ice_handle *handle);
+/*! \brief Method to dynamically tweak the bandwidth estimation target for a handle (for probing)
+ * @param[in] handle The Janus ICE handle this method refers to
+ * @param[in] bitrate The bitrate to target (will be used to generate probing) */
+void janus_ice_handle_set_bwe_target(janus_ice_handle *handle, uint32_t bitrate);
+/*! \brief Method to dynamically tweak the bandwidth estimation debugging for a handle
+ * @param[in] handle The Janus ICE handle this method refers to */
+void janus_ice_handle_debug_bwe(janus_ice_handle *handle);
+/*! \brief Method to dynamically disable bandwidth estimation for a handle
+ * @param[in] handle The Janus ICE handle this method refers to */
+void janus_ice_handle_disable_bwe(janus_ice_handle *handle);
 ///@}
 
 

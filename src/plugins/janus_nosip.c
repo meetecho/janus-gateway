@@ -1194,7 +1194,7 @@ void janus_nosip_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *
 				session, video ? "video" : "audio",
 				(video ? session->media.video_ssrc : session->media.audio_ssrc),
 				(video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer));
-			janus_rtcp_fix_ssrc(NULL, (char *)buf, len, video,
+			janus_rtcp_fix_ssrc(NULL, NULL, (char *)buf, len, video,
 				(video ? session->media.video_ssrc : session->media.audio_ssrc),
 				(video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer));
 			/* Is SRTP involved? */

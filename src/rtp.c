@@ -1065,7 +1065,9 @@ void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *contex
 	context->rid_ext_id = -1;
 	context->substream = -1;
 	context->substream_target_temp = -1;
+	context->substream_target_bwe = -1;
 	context->templayer = -1;
+	context->templayer_target_bwe = -1;
 }
 
 void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t *ssrcs, char **rids) {
@@ -1123,6 +1125,8 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		janus_videocodec vcodec, janus_rtp_switching_context *sc, janus_mutex *rid_mutex) {
 	if(!context || !buf || len < 1)
 		return FALSE;
+	context->substream_last = -1;
+	context->temporal_last = -1;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	uint32_t ssrc = ntohl(header->ssrc);
 	int substream = -1;
@@ -1161,6 +1165,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 			return FALSE;
 		}
 	}
+	context->substream_last = substream;
 	/* Reset the flags */
 	context->changed_substream = FALSE;
 	context->changed_temporal = FALSE;
@@ -1180,7 +1185,10 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		context->substream_target_temp = -1;
 	}
 	int target = (context->substream_target_temp == -1) ? context->substream_target : context->substream_target_temp;
+	if(context->substream_target_bwe != -1 && context->substream_target_bwe < target)
+		target = context->substream_target_bwe;
 	/* Check what we need to do with the packet */
+	gboolean relay = TRUE;
 	if(context->substream == -1) {
 		if((vcodec == JANUS_VIDEOCODEC_VP8 && janus_vp8_is_keyframe(payload, plen)) ||
 				(vcodec == JANUS_VIDEOCODEC_VP9 && janus_vp9_is_keyframe(payload, plen)) ||
@@ -1193,7 +1201,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 			context->last_relayed = now;
 		} else {
 			/* Don't relay anything until we get a keyframe */
-			return FALSE;
+			relay = FALSE;
 		}
 	} else if(context->substream != target) {
 		/* We're not on the substream we'd like: let's wait for a keyframe on the target */
@@ -1210,21 +1218,30 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 			/* Notify the caller that the substream changed */
 			context->changed_substream = TRUE;
 			context->last_relayed = now;
+		} else if(context->substream_target_bwe != -1 && context->substream > target && substream < context->substream) {
+			/* We need to go down because of BWE, don't wait for a keyframe (hopefully one will follow) */
+			context->substream = substream;
+			/* Notify the caller that the substream changed */
+			context->changed_substream = TRUE;
+			context->last_relayed = now;
+		//~ } else if(context->substream_target_bwe != -1 && context->substream > target) {
+			//~ /* We need to go down because of BWE but don't have a keyframe yet, don't relay anything */
+			//~ relay = FALSE;
 		}
 	}
 	/* If we haven't received our desired substream yet, let's drop temporarily */
-	if(context->last_relayed == 0) {
+	if(relay && context->last_relayed == 0) {
 		/* Let's start slow */
 		context->last_relayed = now;
-	} else if(context->substream > 0) {
+	} else if(relay && context->substream > 0) {
 		/* Check if too much time went by with no packet relayed */
 		if((now - context->last_relayed) > (context->drop_trigger ? context->drop_trigger : 250000)) {
 			context->last_relayed = now;
 			if(context->substream != substream && context->substream_target_temp != 0) {
-				if(context->substream_target > substream) {
+				if(target > substream) {
 					int prev_target = context->substream_target_temp;
 					if(context->substream_target_temp == -1)
-						context->substream_target_temp = context->substream_target - 1;
+						context->substream_target_temp = target - 1;
 					else
 						context->substream_target_temp--;
 					if(context->substream_target_temp < 0)
@@ -1242,13 +1259,19 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 	/* Do we need to drop this? */
 	if(context->substream < 0)
 		return FALSE;
-	if(substream != context->substream) {
+	if(relay && substream != context->substream) {
 		JANUS_LOG(LOG_HUGE, "Dropping packet (it's from SSRC %"SCNu32", but we're only relaying SSRC %"SCNu32" now\n",
 			ssrc, *(ssrcs + context->substream));
-		return FALSE;
+		relay = FALSE;
 	}
-	context->last_relayed = janus_get_monotonic_time();
+	if(relay)
+		context->last_relayed = janus_get_monotonic_time();
 	/* Temporal layers are only easily available for some codecs */
+	int substream_target = target;
+	target = context->templayer_target;
+	if(context->templayer_target_bwe != -1 && context->templayer_target_bwe < target &&
+			substream_target <= context->substream)
+		target = context->templayer_target_bwe;
 	if(vcodec == JANUS_VIDEOCODEC_VP8) {
 		/* Check if there's any temporal scalability to take into account */
 		gboolean m = FALSE;
@@ -1259,9 +1282,14 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		uint8_t keyidx = 0;
 		if(janus_vp8_parse_descriptor(payload, plen, &m, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
 			//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
-			if(context->templayer != context->templayer_target && tid == context->templayer_target) {
+			context->temporal_last = tid;
+			if(!relay)
+				return FALSE;
+			if(context->templayer != target && (tid == target ||
+					(target > tid && context->templayer < tid) ||
+					(target < tid && context->templayer > tid))) {
 				/* FIXME We should be smarter in deciding when to switch */
-				context->templayer = context->templayer_target;
+				context->templayer = tid;
 				/* Notify the caller that the temporal layer changed */
 				context->changed_temporal = TRUE;
 			}
@@ -1279,20 +1307,23 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		gboolean found = FALSE;
 		janus_vp9_svc_info svc_info = { 0 };
 		if(janus_vp9_parse_svc(payload, plen, &found, &svc_info) == 0 && found) {
+			context->temporal_last = svc_info.temporal_layer;
+			if(!relay)
+				return FALSE;
 			int temporal_layer = context->templayer;
-			if(context->templayer_target > context->templayer) {
+			if(target > context->templayer) {
 				/* We need to upscale */
 				if(svc_info.ubit && svc_info.bbit &&
 						svc_info.temporal_layer > context->templayer &&
-						svc_info.temporal_layer <= context->templayer_target) {
+						svc_info.temporal_layer <= target) {
 					context->templayer = svc_info.temporal_layer;
 					temporal_layer = context->templayer;
 					context->changed_temporal = TRUE;
 				}
-			} else if(context->templayer_target < context->templayer) {
+			} else if(target < context->templayer) {
 				/* We need to downscale */
-				if(svc_info.ebit && svc_info.temporal_layer == context->templayer_target) {
-					context->templayer = context->templayer_target;
+				if(svc_info.ebit && svc_info.temporal_layer == target) {
+					context->templayer = target;
 					context->changed_temporal = TRUE;
 				}
 			}
@@ -1315,18 +1346,21 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 			if(janus_av1_svc_context_process_dd(av1ctx, dd_content, dd_len, &template, NULL)) {
 				janus_av1_svc_template *t = g_hash_table_lookup(av1ctx->templates, GUINT_TO_POINTER(template));
 				if(t) {
+					context->temporal_last = t->temporal;
+					if(!relay)
+						return FALSE;
 					int temporal_layer = context->templayer;
-					if(context->templayer_target > context->templayer) {
+					if(target > context->templayer) {
 						/* We need to upscale */
-						if(t->temporal > context->templayer && t->temporal <= context->templayer_target) {
+						if(t->temporal > context->templayer && t->temporal <= target) {
 							context->templayer = t->temporal;
 							temporal_layer = context->templayer;
 							context->changed_temporal = TRUE;
 						}
-					} else if(context->templayer_target < context->templayer) {
+					} else if(target < context->templayer) {
 						/* We need to downscale */
-						if(t->temporal == context->templayer_target) {
-							context->templayer = context->templayer_target;
+						if(t->temporal == target) {
+							context->templayer = target;
 							context->changed_temporal = TRUE;
 						}
 					}
@@ -1343,7 +1377,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		}
 	}
 	/* If we got here, the packet can be relayed */
-	return TRUE;
+	return relay;
 }
 
 /* VP9 SVC */
