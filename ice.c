@@ -642,8 +642,8 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 /* Minimum and maximum value, in milliseconds, for the NACK queue/retransmissions (default=200ms/1000ms) */
 #define DEFAULT_MIN_NACK_QUEUE	200
 #define DEFAULT_MAX_NACK_QUEUE	1000
-/* Maximum ignore count after retransmission (200ms) */
-#define MAX_NACK_IGNORE			200000
+/* Maximum ignore count after retransmission (100ms) */
+#define MAX_NACK_IGNORE			100000
 
 static gboolean nack_optimizations = FALSE;
 void janus_set_nack_optimizations_enabled(gboolean optimize) {
@@ -3290,10 +3290,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 				if(rtcp_ctx && rtcp_ctx->rtt != rtt) {
 					/* Check the current RTT, to see if we need to update the size of the queue: we take
-					 * the highest RTT (audio or video) and add 100ms just to be conservative */
+					 * the highest RTT (audio or video) and add some space just to be conservative */
 					uint32_t audio_rtt = janus_rtcp_context_get_rtt(stream->audio_rtcp_ctx),
 						video_rtt = janus_rtcp_context_get_rtt(stream->video_rtcp_ctx[0]);
-					uint16_t nack_queue_ms = (audio_rtt > video_rtt ? audio_rtt : video_rtt) + 100;
+					uint16_t nack_queue_ms = (audio_rtt > video_rtt ? audio_rtt : video_rtt) + MAX_NACK_IGNORE;
 					if(nack_queue_ms > DEFAULT_MAX_NACK_QUEUE)
 						nack_queue_ms = DEFAULT_MAX_NACK_QUEUE;
 					else if(nack_queue_ms < min_nack_queue)
