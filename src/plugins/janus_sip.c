@@ -36,16 +36,18 @@
  * as events with the same transaction.
  *
  * The supported requests are \c register , \c unregister , \c call ,
- * \c accept, \c decline , \c info , \c message , \c dtmf_info ,
+ * \progress , \c accept , \c decline , \c info , \c message , \c dtmf_info ,
  * \c subscribe , \c unsubscribe , \c transfer , \c recording ,
  * \c hold , \c unhold , \c update and \c hangup . \c register can be used,
  * as the name suggests, to register a username at a SIP registrar to
  * call and be called, while \c unregister unregisters it; \c call is used
- * to send an INVITE to a different SIP URI through the plugin, while
- * \c accept and \c decline are used to accept or reject the call in
- * case one is invited instead of inviting; \c transfer takes care of
- * attended and blind transfers (see \ref siptr for more details);
- * \c hold and \c unhold can be used respectively to put a
+ * to send an INVITE to a different SIP URI through the plugin; in case one
+ * is invited instead of inviting, \c progress, \c accept and \c decline
+ * requests may be used. \c progress request is optional, and it is used to
+ * send 183 Session Progress response back to the caller, while
+ * \c accept and \c decline are used to accept or reject the call respectively;
+ * \c transfer takes care of attended and blind transfers (see \ref siptr for
+ * more details); \c hold and \c unhold can be used respectively to put a
  * call on-hold and to resume it; \c info allows you to send a generic
  * SIP INFO request, while \c dtmf_info is focused on using INFO for DTMF
  * instead; \c message is the method you use to send a SIP message
@@ -299,8 +301,28 @@
 \endverbatim
  *
  * The \c incomingcall may or may not be accompanied by a JSEP offer, depending
- * on whether the caller sent an offerless INVITE or a regular one. Either
- * way, you can accept the incoming call with the \c accept request:
+ * on whether the caller sent an offerless INVITE or a regular one. Optionally,
+ * you can progress the incoming call with the \c progress request:
+ *
+\verbatim
+{
+	"request" : "progress",
+	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
+	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP OK; optional>"
+	"autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
+}
+\endverbatim
+ *
+ * A \c progressing event will be sent back, as this is an asynchronous request.
+ *
+ * This will result in a <code>183 Session Progress</code> to be sent back to the caller.
+ * A \c progress request must always be accompanied by a JSEP answer (if the
+ * \c incomingcall event contained an offer) or offer (in case it was an
+ * offerless INVITE). This request can be used to inform the caller that the early
+ * media is available, such as ringback audio, announcements or other audio streams,
+ * without the call being fully established.
+ *
+ * Furthermore, you can accept the incoming call with the \c accept request:
  *
 \verbatim
 {
@@ -314,13 +336,13 @@
  * An \c accepting event will be sent back, as this is an asynchronous request.
  *
  * This will result in a <code>200 OK</code> to be sent back to the caller.
- * An \c accept request must always be accompanied by a JSEP answer (if the
- * \c incomingcall event contained an offer) or offer (in case it was an
- * offerless INVITE). In the former case, an \c accepted event will be
- * sent back just to confirm the call can be considered established;
- * in the latter case, instead, an \c accepting event will be sent back
- * instead, and an \c accepted event will only follow later, as soon as
- * a JSEP answer is available in the SIP ACK the caller sent back.
+ * As was the case for \c progress request, an \c accept request must always
+ * be accompanied by a JSEP answer (if the \c incomingcall event contained an
+ * offer) or offer (in case it was an offerless INVITE). In the former case,
+ * an \c accepted event will be sent back just to confirm the call can be
+ * considered established; in the latter case, instead, an \c accepting event
+ * will be sent back instead, and an \c accepted event will only follow later,
+ * as soon as a JSEP answer is available in the SIP ACK the caller sent back.
  *
  * Notice that in case you get an incoming call while you're in another
  * call, you will NOT get an \c incomingcall event, but a \c missed_call
@@ -808,6 +830,11 @@ static struct janus_json_parameter accept_parameters[] = {
 	{"headers", JSON_OBJECT, 0},
 	{"autoaccept_reinvites", JANUS_JSON_BOOL, 0}
 };
+static struct janus_json_parameter progress_parameters[] = {
+	{"srtp", JSON_STRING, 0},
+	{"headers", JSON_OBJECT, 0},
+	{"autoaccept_reinvites", JANUS_JSON_BOOL, 0}
+};
 static struct janus_json_parameter decline_parameters[] = {
 	{"code", JANUS_JSON_INTEGER, 0},
 	{"headers", JSON_OBJECT, 0},
@@ -920,6 +947,7 @@ typedef enum {
 	janus_sip_call_status_idle = 0,
 	janus_sip_call_status_inviting,
 	janus_sip_call_status_invited,
+	janus_sip_call_status_progress,
 	janus_sip_call_status_incall,
 	janus_sip_call_status_incall_reinviting,
 	janus_sip_call_status_incall_reinvited,
@@ -934,6 +962,8 @@ static const char *janus_sip_call_status_string(janus_sip_call_status status) {
 			return "inviting";
 		case janus_sip_call_status_invited:
 			return "invited";
+		case janus_sip_call_status_progress:
+			return "progress";
 		case janus_sip_call_status_incall:
 			return "incall";
 		case janus_sip_call_status_incall_reinviting:
@@ -2551,7 +2581,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
-		if(!janus_sip_call_is_established(session))
+		if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_progress)
 			return;
 		gboolean video = packet->video;
 		char *buf = packet->buffer;
@@ -2679,7 +2709,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *pa
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
-		if(!janus_sip_call_is_established(session))
+		if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_progress)
 			return;
 		gboolean video = packet->video;
 		char *buf = packet->buffer;
@@ -3937,11 +3967,18 @@ static void *janus_sip_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "event", json_string("calling"));
 			json_object_set_new(result, "call_id", json_string(session->callid));
-		} else if(!strcasecmp(request_text, "accept")) {
-			if(session->status != janus_sip_call_status_invited) {
+		} else if(!strcasecmp(request_text, "accept") || !strcasecmp(request_text, "progress")) {
+			gboolean progress = !strcasecmp(request_text, "progress");
+			if(progress && session->status != janus_sip_call_status_invited) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (not invited? status=%s)", janus_sip_call_status_string(session->status));
+				goto error;
+			}
+			if(!progress && session->status != janus_sip_call_status_invited && session->status != janus_sip_call_status_progress) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not invited or progress? status=%s)\n", janus_sip_call_status_string(session->status));
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (not invited or progress? status=%s)", janus_sip_call_status_string(session->status));
 				goto error;
 			}
 			janus_mutex_lock(&session->mutex);
@@ -3953,7 +3990,8 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			janus_mutex_unlock(&session->mutex);
-			JANUS_VALIDATE_JSON_OBJECT(root, accept_parameters,
+			struct janus_json_parameter *params = progress ? progress_parameters : accept_parameters;
+			JANUS_VALIDATE_JSON_OBJECT(root, params,
 				error_code, error_cause, TRUE,
 				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
@@ -3982,9 +4020,9 @@ static void *janus_sip_handler(void *data) {
 			if(session->media.has_video)
 				has_srtp = (has_srtp && session->media.has_srtp_remote_video);
 			if(session->media.require_srtp && !has_srtp) {
-				JANUS_LOG(LOG_ERR, "Can't accept the call: SDES-SRTP required, but caller didn't offer it\n");
+				JANUS_LOG(LOG_ERR, "Can't %s the call: SDES-SRTP required, but caller didn't offer it\n", progress ? "progress" : "accept");
 				error_code = JANUS_SIP_ERROR_TOO_STRICT;
-				g_snprintf(error_cause, 512, "Can't accept the call: SDES-SRTP required, but caller didn't offer it");
+				g_snprintf(error_cause, 512, "Can't %s the call: SDES-SRTP required, but caller didn't offer it", progress ? "progress" : "accept");
 				goto error;
 			}
 			answer_srtp = answer_srtp || session->media.has_srtp_remote_audio || session->media.has_srtp_remote_video;
@@ -4006,8 +4044,8 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Media encryption unsupported by this plugin");
 				goto error;
 			}
-			/* Accept a call from another peer */
-			JANUS_LOG(LOG_VERB, "We're accepting the call from %s\n", session->callee);
+			/* Accept/Progress a call from another peer */
+			JANUS_LOG(LOG_VERB, "We're %s the call from %s\n", progress ? "progressing" : "accepting", session->callee);
 			gboolean answer = !strcasecmp(msg_sdp_type, "answer");
 			if(!answer) {
 				JANUS_LOG(LOG_VERB, "This is a response to an offerless INVITE\n");
@@ -4042,7 +4080,7 @@ static void *janus_sip_handler(void *data) {
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
 			janus_mutex_lock(&session->mutex);
-			if(janus_sip_allocate_local_ports(session, FALSE) < 0) {
+			if(janus_sip_allocate_local_ports(session, session->status == janus_sip_call_status_progress ? TRUE : FALSE) < 0) {
 				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
 				janus_sdp_destroy(parsed_sdp);
@@ -4070,7 +4108,7 @@ static void *janus_sip_handler(void *data) {
 			/* Take note of the SDP (may be useful for UPDATEs or re-INVITEs) */
 			janus_sdp_destroy(session->sdp);
 			session->sdp = parsed_sdp;
-			JANUS_LOG(LOG_VERB, "Prepared SDP for 200 OK:\n%s", sdp);
+			JANUS_LOG(LOG_VERB, "Prepared SDP for %s:\n%s", progress ? "183 Session Progress" : "200 OK", sdp);
 			/* If the user negotiated simulcasting, just stick with the base substream */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast) {
@@ -4079,10 +4117,18 @@ static void *janus_sip_handler(void *data) {
 				if(s && json_array_size(s) > 0)
 					session->media.simulcast_ssrc = json_integer_value(json_array_get(s, 0));
 			}
+			const char *event_value;
+			if(progress) {
+				event_value = "progressed";
+			} else if(answer) {
+				event_value = "accepted";
+			} else {
+				event_value = "accepting";
+			}
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				json_object_set_new(info, "event", json_string(answer ? "accepted" : "accepting"));
+				json_object_set_new(info, "event", json_string(event_value));
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				gateway->notify_event(&janus_sip_plugin, session->handle, info);
@@ -4090,19 +4136,20 @@ static void *janus_sip_handler(void *data) {
 			/* Check if the OK needs to be enriched with custom headers */
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
-			/* Send 200 OK */
+			/* Send 200 OK/183 Session progress */
 			if(!answer) {
 				if(session->transaction)
 					g_free(session->transaction);
 				session->transaction = msg->transaction ? g_strdup(msg->transaction) : NULL;
 			}
 			g_atomic_int_set(&session->hangingup, 0);
-			janus_sip_call_update_status(session, janus_sip_call_status_incall);
+			janus_sip_call_update_status(session, progress ? janus_sip_call_status_progress : janus_sip_call_status_incall);
 			if(session->stack->s_nh_i == NULL) {
-				JANUS_LOG(LOG_WARN, "NUA Handle for 200 OK still null??\n");
+				JANUS_LOG(LOG_WARN, "NUA Handle for %s null\n", progress ? "183 Session Progress" : "200 OK");
 			}
+			int sip_response = progress ? 183 : 200;
 			nua_respond(session->stack->s_nh_i,
-				200, sip_status_phrase(200),
+				sip_response, sip_status_phrase(sip_response),
 				SOATAG_USER_SDP_STR(sdp),
 				SOATAG_RTP_SELECT(SOA_RTP_SELECT_COMMON),
 				NUTAG_AUTOANSWER(0),
@@ -4112,7 +4159,7 @@ static void *janus_sip_handler(void *data) {
 			g_free(sdp);
 			/* Send an ack back */
 			result = json_object();
-			json_object_set_new(result, "event", json_string(answer ? "accepted" : "accepting"));
+			json_object_set_new(result, "event", json_string(event_value));
 			if(answer) {
 				/* Start the media */
 				session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
@@ -4349,7 +4396,7 @@ static void *janus_sip_handler(void *data) {
 				}
 			}
 			/* Reject an incoming call */
-			if(session->status != janus_sip_call_status_invited) {
+			if(session->status != janus_sip_call_status_invited && session->status != janus_sip_call_status_progress) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
 				/* Ignore */
 				janus_sip_message_free(msg);
@@ -4593,8 +4640,8 @@ static void *janus_sip_handler(void *data) {
 			json_object_set_new(result, "event", json_string(hold ? "holding" : "resuming"));
 		} else if(!strcasecmp(request_text, "hangup")) {
 			/* Hangup an ongoing call */
-			if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_inviting) {
-				JANUS_LOG(LOG_ERR, "Wrong state (not established/inviting? status=%s)\n",
+			if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_inviting && session->status != janus_sip_call_status_progress) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not established/inviting/progress? status=%s)\n",
 					janus_sip_call_status_string(session->status));
 				/* Ignore */
 				janus_sip_message_free(msg);
@@ -4630,6 +4677,7 @@ static void *janus_sip_handler(void *data) {
 		} else if(!strcasecmp(request_text, "recording")) {
 			/* Start or stop recording */
 			if(!(session->status == janus_sip_call_status_inviting || /* Presume it makes sense to start recording with early media? */
+					session->status == janus_sip_call_status_progress ||
 					janus_sip_call_is_established(session))) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
