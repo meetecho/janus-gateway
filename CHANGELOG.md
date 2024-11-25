@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.3.0] - 2024-11-25
+
+- Refactored logging internals [[PR-3428](https://github.com/meetecho/janus-gateway/pull/3428)]
+- Use strtok to parse SDPs [[PR-3424](https://github.com/meetecho/janus-gateway/pull/3424)]
+- Fixed rare condition that could lead to a deadlock in the VideoRoom [[PR-3446](https://github.com/meetecho/janus-gateway/pull/3446)]
+- Fixed broken switch when using remote publishers in VideoRoom [[PR-3447](https://github.com/meetecho/janus-gateway/pull/3447)]
+- Added SRTP support to VideoRoom remote publishers (thanks @spscream!) [[PR-3449](https://github.com/meetecho/janus-gateway/pull/3449)]
+- Added support for generic JSON metadata to VideoRoom publishers (thanks @spscream!) [[PR-3467](https://github.com/meetecho/janus-gateway/pull/3467)]
+- Fixed deadlock in VideoRoom when failing to open a socket for a new RTP forwarder (thanks @spscream!) [[PR-3468](https://github.com/meetecho/janus-gateway/pull/3468)]
+- Fixed deadlock in VideoRoom caused by reverse ordering of mutex locks [[PR-3474](https://github.com/meetecho/janus-gateway/pull/3474)]
+- Fixed memory leaks when using remote publishers in VideoRoom [[PR-3475](https://github.com/meetecho/janus-gateway/pull/3475)]
+- Diluted frequency of PLI in the VideoRoom (thanks @natikaltura!) [[PR-3423](https://github.com/meetecho/janus-gateway/pull/3423)]
+- Better cleanup after failed mountpoint creations in Streaming plugin [[PR-3465](https://github.com/meetecho/janus-gateway/pull/3465)]
+- Fixed compilation of AudioBridge in case libogg isn't available (thanks @tmatth!) [[PR-3438](https://github.com/meetecho/janus-gateway/pull/3438)]
+- Better management of call cleanup in SIP plugin [[Issue-3430](https://github.com/meetecho/janus-gateway/issues/3430)]
+- Change the way call-IDs are tracked in the SIP plugin (thanks WebTrit!) [[PR-3443](https://github.com/meetecho/janus-gateway/pull/3443)]
+- Increased maximum size of custom SIP headers [[Issue-3459](https://github.com/meetecho/janus-gateway/issues/3459)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.2.4] - 2024-09-10
 
 - Limit number of SDP lines when parsing (workaround for OSS-Fuzz issue) [[PR-3414](https://github.com/meetecho/janus-gateway/pull/3414)]
