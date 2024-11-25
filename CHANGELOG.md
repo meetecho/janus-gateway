@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.15.0] - 2024-11-25
+
+- Refactored logging internals [[PR-3428](https://github.com/meetecho/janus-gateway/pull/3428)]
+- Use strtok to parse SDPs [[PR-3424](https://github.com/meetecho/janus-gateway/pull/3424)]
+- Diluted frequency of PLI in the VideoRoom (thanks @natikaltura!) [[PR-3476](https://github.com/meetecho/janus-gateway/pull/3476)]
+- Fixed compilation of AudioBridge in case libogg isn't available (thanks @tmatth!) [[PR-3438](https://github.com/meetecho/janus-gateway/pull/3438)]
+- Better management of call cleanup in SIP plugin [[Issue-3430](https://github.com/meetecho/janus-gateway/issues/3430)]
+- Change the way call-IDs are tracked in the SIP plugin (thanks WebTrit!) [[PR-3443](https://github.com/meetecho/janus-gateway/pull/3443)]
+- Increased maximum size of custom SIP headers [[Issue-3459](https://github.com/meetecho/janus-gateway/issues/3459)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.14.4] - 2024-09-10
 
 - Limit number of SDP lines when parsing (workaround for OSS-Fuzz issue) [[PR-3414](https://github.com/meetecho/janus-gateway/pull/3414)]
