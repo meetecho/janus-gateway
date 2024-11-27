@@ -2921,7 +2921,7 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 }
 
 /* Function called by libcurl to write the data received */
-static size_t curl_write_callback(void *data, size_t size, size_t nmemb, void *userp) {
+static size_t curl_write_cb(void *data, size_t size, size_t nmemb, void *userp) {
     size_t total_size = size * nmemb;
     struct curl_response_buffer *mem = (struct curl_response_buffer *)userp;
 
@@ -3298,7 +3298,7 @@ static void *janus_sip_handler(void *data) {
 						/* Initialize the memory chunk */
 						struct curl_response_buffer chunk = {0};
 						curl_easy_setopt(curl_handle, CURLOPT_URL, url);
-						curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_write_callback);
+						curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_write_cb);
 						curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&chunk);
 						curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "Janus SIP Plugin/0.0.9");
 						curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
