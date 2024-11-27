@@ -52,4 +52,9 @@ general: {
 	# engine (default 32000 milliseconds)
 	sip_timer_t1x64 = 32000
 
+	# Set password retrieval on private url from web_session_id (Avoiding to expose reusable sip credentials)
+	# if web_session_id is defined, the sip password will be retrieved at $sip_passwd_url/$web_session_id
+	get_sip_passwd_from_url = false
+	#sip_passwd_url = "https://mydomain.com"
+
 }

@@ -118,6 +118,7 @@
 	"username" : "<SIP URI to register; mandatory>",
 	"secret" : "<password to use to register; optional>",
 	"ha1_secret" : "<prehashed password to use to register; optional>",
+	"web_session_id" : "<unique ID of the web session that is registering (used for password retrieval in method get_sip_passwd_from_url); optional>",
 	"authuser" : "<username to use to authenticate (overrides the one in the SIP URI); optional>",
 	"display_name" : "<display name to use when sending SIP REGISTER; optional>",
 	"user_agent" : "<user agent to use when sending SIP REGISTER; optional>",
@@ -195,6 +196,7 @@
 	"secret" : "<password to use to call, only needed in case authentication is needed and no REGISTER was sent; optional>",
 	"ha1_secret" : "<prehashed password to use to call, only needed in case authentication is needed and no REGISTER was sent; optional>",
 	"authuser" : "<username to use to authenticate as to call, only needed in case authentication is needed and no REGISTER was sent; optional>",
+	"web_session_id" : "<unique ID of the web session that is calling (used for password retrieval in method get_sip_passwd_from_url); optional>",
 	"autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the application; optional, TRUE by default>
 }
 \endverbatim
@@ -687,6 +689,7 @@
 
 #include <arpa/inet.h>
 #include <net/if.h>
+#include <curl/curl.h>
 
 #include <jansson.h>
 
@@ -789,6 +792,7 @@ static struct janus_json_parameter register_parameters[] = {
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JSON_STRING, 0},
 	{"ha1_secret", JSON_STRING, 0},
+	{"web_session_id", JSON_STRING, 0},
 	{"authuser", JSON_STRING, 0},
 	{"display_name", JSON_STRING, 0},
 	{"user_agent", JSON_STRING, 0},
@@ -823,6 +827,7 @@ static struct janus_json_parameter call_parameters[] = {
 	 * still need an authenticated INVITE for some reason */
 	{"secret", JSON_STRING, 0},
 	{"ha1_secret", JSON_STRING, 0},
+	{"web_session_id", JSON_STRING, 0},
 	{"authuser", JSON_STRING, 0}
 };
 static struct janus_json_parameter accept_parameters[] = {
@@ -873,6 +878,10 @@ static struct janus_json_parameter sipmessage_parameters[] = {
 	{"headers", JSON_OBJECT, 0},
 	{"call_id", JANUS_JSON_STRING, 0}
 };
+struct curl_response_buffer {
+    char *response;
+    size_t size;
+};
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -884,6 +893,10 @@ static char *local_ip = NULL, *sdp_ip = NULL, *local_media_ip = NULL;
 static janus_network_address janus_network_local_media_ip = { 0 };
 static int keepalive_interval = 120;
 static gboolean behind_nat = FALSE;
+
+static gboolean get_sip_passwd_from_url = FALSE;
+static char *sip_passwd_url = NULL;
+
 static char *user_agent;
 #define JANUS_DEFAULT_REGISTER_TTL	3600
 static int register_ttl = JANUS_DEFAULT_REGISTER_TTL;
@@ -2048,6 +2061,14 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			user_agent = g_strdup("Janus WebRTC Server SIP Plugin "JANUS_SIP_VERSION_STRING);
 		JANUS_LOG(LOG_VERB, "SIP User-Agent set to %s\n", user_agent);
 
+		item = janus_config_get(config, config_general, janus_config_type_item, "get_sip_passwd_from_url");
+		if(item && item->value)
+			get_sip_passwd_from_url = janus_is_true(item->value);
+
+		item = janus_config_get(config, config_general, janus_config_type_item, "sip_passwd_url");
+		if(item && item->value)
+			sip_passwd_url = g_strdup(item->value);
+
 		item = janus_config_get(config, config_general, janus_config_type_item, "rtp_port_range");
 		if(item && item->value) {
 			/* Split in min and max port */
@@ -2203,6 +2224,14 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_SIP_NAME);
 	return 0;
+
+    /* Setup libcurl */
+    CURLcode curl_init = curl_global_init(CURL_GLOBAL_DEFAULT);
+    if(curl_init != CURLE_OK) {
+        JANUS_LOG(LOG_ERR, "libcurl setup failed: %s\n", curl_easy_strerror(curl_init));
+        return -1;
+    }
+
 }
 
 void janus_sip_destroy(void) {
@@ -2234,6 +2263,9 @@ void janus_sip_destroy(void) {
 	messages = NULL;
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
+
+    /* Deinitialize libcurl */
+    curl_global_cleanup();
 
 	/* Deinitialize sofia */
 	su_deinit();
@@ -2888,6 +2920,23 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	g_atomic_int_set(&session->hangingup, 0);
 }
 
+/* Function called by libcurl to write the data received */
+static size_t curl_write_callback(void *data, size_t size, size_t nmemb, void *userp) {
+    size_t total_size = size * nmemb;
+    struct curl_response_buffer *mem = (struct curl_response_buffer *)userp;
+
+    char *ptr = realloc(mem->response, mem->size + total_size + 1);
+    if(ptr == NULL)
+        return 0;
+
+    mem->response = ptr;
+    memcpy(&(mem->response[mem->size]), data, total_size);
+    mem->size += total_size;
+    mem->response[mem->size] = '\0';
+
+    return total_size;
+}
+
 /* Thread to handle incoming messages */
 static void *janus_sip_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining SIP handler thread\n");
@@ -3194,26 +3243,99 @@ static void *janus_sip_handler(void *data) {
 			} else {
 				json_t *secret = json_object_get(root, "secret");
 				json_t *ha1_secret = json_object_get(root, "ha1_secret");
+				json_t *web_session_id = json_object_get(root, "web_session_id");
 				json_t *authuser = json_object_get(root, "authuser");
-				if(!secret && !ha1_secret) {
-					JANUS_LOG(LOG_ERR, "Missing element (secret or ha1_secret)\n");
+
+				if(!secret && !ha1_secret && (!get_sip_passwd_from_url || !web_session_id)) {
+					JANUS_LOG(LOG_ERR, "Missing element (secret or ha1_secret, or web_session_id (in get_sip_passwd_from_url mode) )\n");
 					error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (secret or ha1_secret)");
+					g_snprintf(error_cause, 512, "Missing element (secret or ha1_secret or web_session_id)");
 					goto error;
 				}
-				if(secret && ha1_secret) {
-					JANUS_LOG(LOG_ERR, "Conflicting elements specified (secret and ha1_secret)\n");
+				if( (secret && ha1_secret) || (secret && web_session_id) || (ha1_secret && web_session_id)) {
+					JANUS_LOG(LOG_ERR, "Conflicting elements specified at least both of (secret / ha1_secret / web_session_id)\n");
 					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Conflicting elements specified (secret and ha1_secret)");
+					g_snprintf(error_cause, 512, "Conflicting elements specified at least both of (secret / ha1_secret / web_session_id )");
 					goto error;
 				}
 				if(secret) {
 					secret_text = json_string_value(secret);
 					secret_type = janus_sip_secret_type_plaintext;
-				} else {
+				} else if(ha1_secret) {
 					secret_text = json_string_value(ha1_secret);
 					secret_type = janus_sip_secret_type_hashed;
+				} else if(web_session_id) {
+					if(get_sip_passwd_from_url && sip_passwd_url) {
+						const char *web_session_id_str = json_string_value(web_session_id);
+						if(web_session_id_str == NULL) {
+							JANUS_LOG(LOG_ERR, "Invalid web_session_id (not a string)\n");
+							error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+							g_snprintf(error_cause, 512, "Invalid web_session_id (not a string)");
+							goto error;
+						}
+
+						/* Build the URL */
+						size_t url_len = strlen(sip_passwd_url) + 1 + strlen(web_session_id_str) + 1;
+						char *url = malloc(url_len);
+						if(url == NULL) {
+							JANUS_LOG(LOG_ERR, "Out of memory while constructing URL\n");
+							error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
+							g_snprintf(error_cause, 512, "Out of memory");
+							goto error;
+						}
+						snprintf(url, url_len, "%s/%s", sip_passwd_url, web_session_id_str);
+
+						/* Initialize libcurl */
+						CURL *curl_handle = curl_easy_init();
+						if(!curl_handle) {
+							JANUS_LOG(LOG_ERR, "Failed to initialize libcurl\n");
+							free(url);
+							error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
+							g_snprintf(error_cause, 512, "Failed to initialize libcurl");
+							goto error;
+						}
+
+						/* Initialize the memory chunk */
+						struct curl_response_buffer chunk = {0};
+						curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+						curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_write_callback);
+						curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&chunk);
+						curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "Janus SIP Plugin/0.0.9");
+						curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
+
+						/* Perform the request */
+						CURLcode res = curl_easy_perform(curl_handle);
+						if(res != CURLE_OK) {
+							JANUS_LOG(LOG_ERR, "libcurl error: %s\n", curl_easy_strerror(res));
+							curl_easy_cleanup(curl_handle);
+							free(url);
+							if(chunk.response)
+								free(chunk.response);
+							error_code = JANUS_SIP_ERROR_IO_ERROR;
+							g_snprintf(error_cause, 512, "Failed to retrieve secret from private URL: %s", curl_easy_strerror(res));
+							goto error;
+						}
+
+						/* Cleanup */
+						curl_easy_cleanup(curl_handle);
+						free(url);
+
+						if(chunk.response) {
+							secret_text = g_strdup(chunk.response);
+							free(chunk.response);
+							secret_type = janus_sip_secret_type_plaintext;
+						} else {
+							JANUS_LOG(LOG_ERR, "Empty response from private URL\n");
+							error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+							g_snprintf(error_cause, 512, "Empty response from private URL");
+							goto error;
+						}
+					} else {
+						secret_text = json_string_value(web_session_id);
+						secret_type = janus_sip_secret_type_plaintext;
+					}
 				}
+
 				if(authuser) {
 					authuser_text = json_string_value(authuser);
 				}
