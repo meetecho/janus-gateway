@@ -8808,6 +8808,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						length = 160;
 					}
 					/* Update header */
+					rtph->ssrc = htonl(rf->stream_id);
 					rfm->seq_number++;
 					rtph->seq_number = htons(rfm->seq_number);
 					rfm->timestamp += (rfm->codec == JANUS_AUDIOCODEC_OPUS ? OPUS_SAMPLES : G711_SAMPLES);
