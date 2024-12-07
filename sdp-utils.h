@@ -262,6 +262,12 @@ JANUS_SDP_OA_AUDIO_CODEC,
 JANUS_SDP_OA_VIDEO_CODEC,
 /*! \brief When generating an offer or answer automatically, use this profile for VP9 (depends on value that follows) */
 JANUS_SDP_OA_VP9_PROFILE,
+/*! \brief When generating an offer or answer automatically, use this profile for AV1 (depends on value that follows) */
+JANUS_SDP_OA_AV1_PROFILE,
+/*! \brief When generating an offer or answer automatically, use this level-idx for AV1 (depends on value that follows) */
+JANUS_SDP_OA_AV1_LEVEL_IDX,
+/*! \brief When generating an offer or answer automatically, use this tier for AV1 (depends on value that follows) */
+JANUS_SDP_OA_AV1_TIER,
 /*! \brief When generating an offer or answer automatically, use this profile for H.264 (depends on value that follows) */
 JANUS_SDP_OA_H264_PROFILE,
 /*! \brief When generating an offer (this is ignored for answers), use this payload type for audio (depends on value that follows) */
