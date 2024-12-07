@@ -659,7 +659,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 	if(sdp == NULL || codec == NULL)
 		return -1;
 	/* Check the format string (note that we only parse what browsers can negotiate) */
-	gboolean video = FALSE, vp9 = FALSE, h264 = FALSE;
+	gboolean video = FALSE, vp9 = FALSE, av1 = FALSE, h264 = FALSE;
 	const char *format = NULL, *format2 = NULL;
 	if(!strcasecmp(codec, "opus")) {
 		format = "opus/48000/2";
@@ -787,6 +787,15 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 						if(strstr(a->value, profile_level_id) != NULL) {
 							/* Found */
 							JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
+							g_list_free(pts);
+							return pt;
+						}
+					} else if(av1) {
+						char profile[20];
+						g_snprintf(profile, sizeof(profile), "profile=%s", profile);
+						if(strstr(a->value, profile) != NULL) {
+							/* Found */
+							JANUS_LOG(LOG_VERB, "AV1 profile %s found --> %d\n", profile, pt);
 							g_list_free(pts);
 							return pt;
 						}
@@ -1214,7 +1223,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	gboolean do_audio = TRUE, do_video = TRUE, do_data = TRUE,
 		audio_dtmf = FALSE, video_rtcpfb = TRUE, data_legacy = TRUE;
 	const char *audio_codec = NULL, *video_codec = NULL,
-		*vp9_profile = NULL, *h264_profile = NULL,
+		*vp9_profile = NULL, *av1_profile = NULL, *h264_profile = NULL,
 		*audio_fmtp = NULL, *video_fmtp = NULL;
 	int audio_pt = 111, video_pt = 96, opusred_pt = 0;
 	janus_sdp_mdirection audio_dir = JANUS_SDP_SENDRECV, video_dir = JANUS_SDP_SENDRECV;
@@ -1238,6 +1247,8 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			video_codec = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_VP9_PROFILE) {
 			vp9_profile = va_arg(args, char *);
+		} else if(property == JANUS_SDP_OA_AV1_PROFILE) {
+			av1_profile = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_H264_PROFILE) {
 			h264_profile = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_AUDIO_PT) {
@@ -1430,6 +1441,10 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			/* Add a profile-id fmtp attribute */
 			a = janus_sdp_attribute_create("fmtp", "%d profile-id=%s", video_pt, vp9_profile);
 			m->attributes = g_list_append(m->attributes, a);
+		} else if(!strcasecmp(video_codec, "av1") && av1_profile) {
+			/* Add a profile fmtp attribute */
+			a = janus_sdp_attribute_create("fmtp", "%d profile=%s", video_pt, av1_profile);
+			m->attributes = g_list_append(m->attributes, a);
 		} else if(!strcasecmp(video_codec, "h264") && h264_profile) {
 			/* Add a profile-level-id fmtp attribute */
 			a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=%s;packetization-mode=1", video_pt, h264_profile);
@@ -1484,7 +1499,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	gboolean do_audio = TRUE, do_video = TRUE, do_data = TRUE,
 		audio_dtmf = FALSE, audio_opusred = FALSE, video_rtcpfb = TRUE;
 	const char *audio_codec = NULL, *video_codec = NULL,
-		*vp9_profile = NULL, *h264_profile = NULL,
+		*vp9_profile = NULL, *av1_profile = NULL, *h264_profile = NULL,
 		*audio_fmtp = NULL, *video_fmtp = NULL;
 	char *custom_audio_fmtp = NULL;
 	GList *extmaps = NULL;
@@ -1507,6 +1522,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 			video_codec = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_VP9_PROFILE) {
 			vp9_profile = va_arg(args, char *);
+		} else if(property == JANUS_SDP_OA_AV1_PROFILE) {
+			av1_profile = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_H264_PROFILE) {
 			h264_profile = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_AUDIO_DTMF) {
@@ -1704,6 +1721,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 			const char *video_profile = NULL;
 			if(codec && !strcasecmp(codec, "vp9"))
 				video_profile = vp9_profile;
+			else if(codec && !strcasecmp(codec, "av1"))
+				video_profile = av1_profile;
 			else if(codec && !strcasecmp(codec, "h264"))
 				video_profile = h264_profile;
 			int pt = janus_sdp_get_codec_pt_full(offer, codec, video_profile);
@@ -1802,6 +1821,10 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 					/* Add a profile-id fmtp attribute */
 					a = janus_sdp_attribute_create("fmtp", "%d profile-id=%s", pt, vp9_profile);
 					am->attributes = g_list_append(am->attributes, a);
+				} else if(!strcasecmp(codec, "av1") && av1_profile) {
+					/* Add a profile fmtp attribute */
+					a = janus_sdp_attribute_create("fmtp", "%d profile=%s", pt, av1_profile);
+					am->attributes = g_list_append(am->attributes, a);
 				} else if(!strcasecmp(codec, "h264") && h264_profile) {
 					/* Add a profile-level-id fmtp attribute */
 					a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=%s;packetization-mode=1", pt, h264_profile);
@@ -1856,6 +1879,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 						/* Check if we need to copy the fmtp attribute too */
 						if(((!strcasecmp(codec, "vp8") && video_fmtp == NULL)) ||
 								((!strcasecmp(codec, "vp9") && vp9_profile == NULL && video_fmtp == NULL)) ||
+								((!strcasecmp(codec, "av1") && av1_profile == NULL && video_fmtp == NULL)) ||
 								((!strcasecmp(codec, "h264") && h264_profile == NULL && video_fmtp == NULL))) {
 							/* FIXME Copy the fmtp attribute (we should check if we support it) */
 							a = janus_sdp_attribute_create("fmtp", "%s", a->value);
