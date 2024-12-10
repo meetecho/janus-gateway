@@ -3173,9 +3173,9 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 		if(fmtp != NULL && strcmp(fmtp, "none")) {
 			/* Parse the fmtp string to see what we support (opus only) */
 			if(ps->acodec == JANUS_AUDIOCODEC_OPUS) {
-				if(strstr(fmtp, "useinbandfec=1"))
+				if(strstr(fmtp, "useinbandfec=1") && room->do_opusfec)
 					ps->opusfec = TRUE;
-				if(strstr(fmtp, "usedtx=1"))
+				if(strstr(fmtp, "usedtx=1") && room->do_opusdtx)
 					ps->opusdtx = TRUE;
 				if(strstr(fmtp, "stereo=1"))
 					ps->opusstereo = TRUE;
@@ -7897,8 +7897,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					ps->disabled = TRUE;
 				} else {
 					ps->opusstereo = json_is_true(json_object_get(s, "stereo"));
-					ps->opusfec = json_is_true(json_object_get(s, "fec"));
-					ps->opusdtx = json_is_true(json_object_get(s, "dtx"));
+					ps->opusfec = json_is_true(json_object_get(s, "fec")) && videoroom->do_opusfec;
+					ps->opusdtx = json_is_true(json_object_get(s, "dtx")) && videoroom->do_opusdtx;
 				}
 				int audio_level_extmap_id = json_integer_value(json_object_get(s, "audiolevel_ext_id"));
 				if(audio_level_extmap_id > 0)
@@ -8242,8 +8242,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					ps->disabled = TRUE;
 				} else {
 					ps->opusstereo = json_is_true(json_object_get(s, "stereo"));
-					ps->opusfec = json_is_true(json_object_get(s, "fec"));
-					ps->opusdtx = json_is_true(json_object_get(s, "dtx"));
+					ps->opusfec = json_is_true(json_object_get(s, "fec")) && videoroom->do_opusfec;
+					ps->opusdtx = json_is_true(json_object_get(s, "dtx")) && videoroom->do_opusdtx;
 				}
 				int audio_level_extmap_id = json_integer_value(json_object_get(s, "audiolevel_ext_id"));
 				if(audio_level_extmap_id > 0)
@@ -12799,9 +12799,9 @@ static void *janus_videoroom_handler(void *data) {
 										ps->playout_delay_extmap_id == 0 && strstr(a->value, JANUS_RTP_EXTMAP_PLAYOUT_DELAY)) {
 									ps->playout_delay_extmap_id = atoi(a->value);
 								} else if(videoroom->do_opusfec && m->type == JANUS_SDP_AUDIO && !strcasecmp(a->name, "fmtp")) {
-									if(strstr(a->value, "useinbandfec=1"))
+									if(strstr(a->value, "useinbandfec=1") && videoroom->do_opusfec)
 										ps->opusfec = TRUE;
-									if(strstr(a->value, "usedtx=1"))
+									if(strstr(a->value, "usedtx=1") && videoroom->do_opusdtx)
 										ps->opusdtx = TRUE;
 									if(strstr(a->value, "stereo=1"))
 										ps->opusstereo = TRUE;
