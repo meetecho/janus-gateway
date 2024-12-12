@@ -1887,9 +1887,8 @@ static void janus_ice_component_free(const janus_refcount *component_ref) {
 		g_queue_free(component->video_retransmit_buffer);
 		g_hash_table_destroy(component->video_retransmit_seqs);
 	}
-	if(component->nacks_queue != NULL) {
+	if(component->nacks_queue != NULL)
 		g_queue_free(component->nacks_queue);
-	}
 	if(component->candidates != NULL) {
 		GSList *i = NULL, *candidates = component->candidates;
 		for(i = candidates; i; i = i->next) {
@@ -3316,9 +3315,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				/* Now let's see if there are any NACKs to handle */
 				gint64 now = janus_get_monotonic_time();
-				if(component->nacks_queue == NULL) {
+				if(component->nacks_queue == NULL)
 					component->nacks_queue = g_queue_new();
-				}
 				GQueue *nacks = component->nacks_queue;
 				janus_rtcp_get_nacks(buf, buflen, nacks);
 				guint nacks_count = g_queue_get_length(nacks);

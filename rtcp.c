@@ -1255,9 +1255,8 @@ void janus_rtcp_get_nacks(char *packet, int len, GQueue *nacks_queue) {
 			break;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
-	if (error) {
+	if(error)
 		g_queue_clear(nacks_queue);
-	}
 }
 
 int janus_rtcp_remove_nacks(char *packet, int len) {
