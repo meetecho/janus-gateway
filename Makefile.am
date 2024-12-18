@@ -526,8 +526,8 @@ endif
 if ENABLE_PLUGIN_TEXTROOM
 plugin_LTLIBRARIES += plugins/libjanus_textroom.la
 plugins_libjanus_textroom_la_SOURCES = plugins/janus_textroom.c
-plugins_libjanus_textroom_la_CFLAGS = $(plugins_cflags)
-plugins_libjanus_textroom_la_LDFLAGS = $(plugins_ldflags)
+plugins_libjanus_textroom_la_CFLAGS = $(plugins_cflags) $(LIBCURL_CFLAGS)
+plugins_libjanus_textroom_la_LDFLAGS = $(plugins_ldflags) $(LIBCURL_LDFLAGS) $(LIBCURL_LIBS)
 plugins_libjanus_textroom_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.textroom.jcfg.sample
 EXTRA_DIST += conf/janus.plugin.textroom.jcfg.sample
