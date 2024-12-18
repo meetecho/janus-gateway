@@ -5986,6 +5986,7 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 			json_object_set_new(event, "videoroom", json_string("slow_link"));
 			gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
 			json_decref(event);
+			janus_refcount_decrease(&subscriber->ref);
 		} else {
 			JANUS_LOG(LOG_WARN, "Got a slow downlink on a VideoRoom viewer? Weird, because it doesn't send media...\n");
 		}
