@@ -401,7 +401,21 @@ multistream-test: {
 			"type" : "<audio|video|data>",
 			"mid" : "<unique mid to assign to this stream in negotiated PeerConnections>",
 			"msid" : "<msid to add to the m-line, if needed>",
+			"label", "<optional label to name the track>",
+			"mcast", "<multicast group for receiving packets, if any>",
+			"iface", "<network interface or IP address to bind to, if any (binds to all otherwise)>",
 			"port" : <port to bind to, to receive media to relay>",
+			"rtcpport", <port to bind to for receiving and sending audio RTCP feedback, if any>,
+			"pt", <RTP payload type (audio/video only)>,
+			"codec", "<name of the codec that will be used for this track (audio/video only)>",
+			"fmtp", "<codec specific parameters, if any (audio/video only)>",
+			"skew", <true|false (whether the plugin should perform skew
+				analysis and compensation on incoming RTP streams, EXPERIMENTAL)>
+			"simulcast", <true|false (do|don't enable video simulcasting)>,
+			"port2", <second local port for receiving video frames (only for RTP video, and simulcasting)>,
+			"port3", <third local port for receiving video frames (only for RTP video, and simulcasting)>,
+			"svc", <true|false (whether the RTP video will have SVC support; works only for VP9-SVC, default=false)>,
+			"datatype", "<text|binary (type of data this mountpoint will relay, default=text)>",
 			...
 		}.
 		... other streams, if any ...
