@@ -2606,6 +2606,142 @@ POST /admin/12345678/98765432
 }
 \endverbatim
  *
+ * \section admincli Admin CLI tool
+ * In the source repository, you will find the \c utils/janus-admin-cli tool.
+ * This is a simple shell script able to interact with the admin API. It could
+ * be useful for live-enabling \c locks and \c refcount debugging on production,
+ * or to start a PCAP dump, or live-update the log level, especially when the
+ * admin API is not easily accessible (e.g. janus running in a kubernetes pod).
+ *
+ * \par Usage
+ * Janus admin connection can be configured using CLI parameters or environment
+ * variables:
+ *
+\verbatim
+usage: utils/janus-admin-cli [-h] [options] -r REQUEST
+
+	-h	show this help message
+	-r	janus request (required)
+	-o	janus request optional parameter (can be repeated) (default: none)
+	-a	janus server address (default: localhost, env: JANUS_HOST)
+	-p	janus HTTP admin port (default: 7088, env: JANUS_ADMIN_PORT)
+	-s	janus admin secret (default: janusoverlord, env: JANUS_ADMIN_SECRET)
+	-e	janus admin endpoint (default: /admin, env: JANUS_ADMIN_ENDPOINT)
+	-t	janus response timeout (default: 5, env: JANUS_ADMIN_TIMEOUT)
+\endverbatim
+ *
+ * The \c -r parameter is used to select which \ref adminreq you want to send.
+ * Then you can use the \c -o parameter multiple times to specify arguments for
+ * your request.
+ *
+ * \par Examples
+\verbatim
+user@host:~$ janus-admin-cli -r ping
+{
+  "janus": "pong",
+  "transaction": "aNexVTIgcYbc"
+}
+\endverbatim
+\verbatim
+user@host:~$ janus-admin-cli -r set_log_level -o level=5
+{
+  "janus": "success",
+  "transaction": "D1sGjlV3KLnm",
+  "level": 5
+}
+\endverbatim
+\verbatim
+user@host:~$ janus-admin-cli -r list_sessions
+{
+  "janus": "success",
+  "transaction": "GgaL0xmUbBI4",
+  "sessions": [
+    3236169122271256,
+    295460503767564,
+    5854530659370442,
+    5714856303331417,
+    4512308604273274,
+    3642487421981464,
+    8938575577523615
+  ]
+}
+\endverbatim
+\verbatim
+user@host:~$ janus-admin-cli -r list_handles -o session_id=3236169122271256
+{
+  "janus": "success",
+  "session_id": 3236169122271256,
+  "transaction": "rR4lYK1hZTuB",
+  "handles": [
+    8548304105222430
+  ]
+}
+\endverbatim
+\verbatim
+user@host:~$ janus-admin-cli -r handle_info -o session_id=3236169122271256 -o handle_id=8548304105222430
+{
+  "janus": "success",
+  "session_id": 3236169122271256,
+  "transaction": "nXEemi7vqYzP",
+  "handle_id": 8548304105222430,
+  "info": {
+    "session_id": 3236169122271256,
+    "session_last_activity": 491266556101,
+    "session_timeout": 300,
+    "session_transport": "janus.transport.websockets",
+    "handle_id": 8548304105222430,
+    "opaque_id": "videoroom-2bjwk899v3jwrcleiqhq",
+    "loop-running": true,
+    "created": 426360304549,
+    "current_time": 491278863887,
+    "plugin": "janus.plugin.videoroom",
+    "plugin_specific": {
+      "hangingup": 0,
+      "destroyed": 0
+    },
+    "flags": {
+      "got-offer": false,
+      "got-answer": false,
+      "negotiated": false,
+      "processing-offer": false,
+      "starting": false,
+      "ice-restart": false,
+      "ready": false,
+      "stopped": false,
+      "alert": false,
+      "trickle": false,
+      "all-trickles": false,
+      "resend-trickles": false,
+      "trickle-synced": false,
+      "data-channels": false,
+      "has-audio": false,
+      "has-video": false,
+      "new-datachan-sdp": false,
+      "rfc4588-rtx": false,
+      "cleaning": false,
+      "e2ee": false
+    },
+    "sdps": {},
+    "queued-packets": 0,
+    "streams": []
+  }
+}
+\endverbatim
+\verbatim
+user@host:~$ janus-admin-cli -r start_pcap -o session_id=3236169122271256 -o handle_id=8548304105222430 -o folder=/tmp
+{
+  "janus": "success",
+  "transaction": "ZPPhyQqNfLwp"
+}
+\endverbatim
+\verbatim
+user@host:~$ janus-admin-cli -r stop_pcap -o session_id=3236169122271256 -o handle_id=8548304105222430
+{
+  "janus": "success",
+  "transaction": "mm74LKsRVaKW"
+}
+\endverbatim
+ *
  */
 
 /*! \page deploy Deploying Janus
