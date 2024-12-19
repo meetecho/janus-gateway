@@ -3327,7 +3327,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					GQueue *queue = (retransmit_seqs != NULL ? nacks : NULL);
 					int retransmits_cnt = 0;
 					janus_mutex_lock(&component->mutex);
-					while(g_queue_get_length(queue) > 0) {
+					while(queue != NULL && g_queue_get_length(queue) > 0) {
 						unsigned int seqnr = GPOINTER_TO_UINT(g_queue_pop_tail(queue));
 						JANUS_LOG(LOG_DBG, "[%"SCNu64"]   >> %u\n", handle->handle_id, seqnr);
 						int in_rb = 0;
