@@ -2338,11 +2338,12 @@ var Janus = (function (factory) {
 			let groups = {};
 			for(let track of tracks) {
 				delete track.gumGroup;
-				if(!track.type || !['audio', 'video'].includes(track.type))
+				if(!track.type || !['audio', 'video', 'screen'].includes(track.type))
 					continue;
 				if(!track.capture || track.capture instanceof MediaStreamTrack)
 					continue;
-				let group = track.group ? track.group : 'default';
+				// Avoid assigning regular default group if it is a screen capture
+				let group = track.group ? track.group : (track.type === 'screen' ? 'screendefault' : 'default');
 				if(!groups[group])
 					groups[group] = {};
 				if(groups[group][track.type])
@@ -2353,11 +2354,13 @@ var Janus = (function (factory) {
 			let keys = Object.keys(groups);
 			for(let key of keys) {
 				let group = groups[key];
-				if(!group.audio || !group.video) {
+				if(!group.audio || (!group.video && !group.screen)) {
 					if(group.audio)
 						delete group.audio.gumGroup;
 					if(group.video)
 						delete group.video.gumGroup;
+					if(group.screen)
+						delete group.screen.gumGroup;
 					delete groups[key];
 				}
 			}
@@ -2474,7 +2477,7 @@ var Janus = (function (factory) {
 				}
 				if(track.capture) {
 					if(track.gumGroup && groups[track.gumGroup] && groups[track.gumGroup].stream) {
-						// We did a getUserMedia before already
+						// We did a getUserMedia/getDisplayMedia before already
 						let stream = groups[track.gumGroup].stream;
 						nt = (track.type === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]);
 						delete groups[track.gumGroup].stream;
@@ -2489,26 +2492,35 @@ var Janus = (function (factory) {
 							pluginHandle.consentDialog(true);
 						}
 						let constraints = Janus.trackConstraints(track), stream = null;
-						if(track.type === 'audio' || track.type === 'video') {
-							// Use getUserMedia: check if we need to group audio and video together
+						if(track.type === 'audio' || track.type === 'video' || track.type === 'screen') {
+							// Set if getUserMedia should be used or if it should be getDisplayMedia
+							let captureUserMedia = (track.type !== 'screen');
+							// Check if we need to group audio and video together
 							if(track.gumGroup) {
 								let otherType = (track.type === 'audio' ? 'video' : 'audio');
 								if(groups[track.gumGroup] && groups[track.gumGroup][otherType]) {
 									let otherTrack = groups[track.gumGroup][otherType];
+									if(!otherTrack && otherType === 'video') {
+										// If the other track is not video, then it is screen and should be a getDisplayMedia capture
+										otherType = 'screen'
+										otherTrack = groups[track.gumGroup]['screen'];
+										captureUserMedia = false;
+									}
 									let otherConstraints = Janus.trackConstraints(otherTrack);
 									constraints[otherType] = otherConstraints[otherType];
 								}
 							}
-							stream = await navigator.mediaDevices.getUserMedia(constraints);
+							if(captureUserMedia) {
+								stream = await navigator.mediaDevices.getUserMedia(constraints);
+							} else {
+								stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+							}
 							if(track.gumGroup && constraints.audio && constraints.video) {
 								// We just performed a grouped getUserMedia, keep track of the
 								// stream so that we can immediately assign the track later
 								groups[track.gumGroup].stream = stream;
 								delete track.gumGroup;
 							}
-						} else {
-							// Use getDisplayMedia
-							stream = await navigator.mediaDevices.getDisplayMedia(constraints);
 						}
 						nt = (track.type === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]);
 					}
