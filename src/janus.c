@@ -4407,6 +4407,11 @@ gint main(int argc, char *argv[]) {
 
 	janus_mark_started();
 
+	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
+	signal(SIGINT, janus_handle_signal);
+	signal(SIGTERM, janus_handle_signal);
+	atexit(janus_termination_handler);
+
 	JANUS_PRINT("Janus version: %d (%s)\n", janus_version, janus_version_string);
 	JANUS_PRINT("Janus commit: %s\n", janus_build_git_sha);
 	JANUS_PRINT("Compiled on:  %s\n\n", janus_build_git_time);
@@ -4723,11 +4728,6 @@ gint main(int argc, char *argv[]) {
 	JANUS_PRINT("---------------------------------------------------\n");
 	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Server) v%s\n", janus_version_string);
 	JANUS_PRINT("---------------------------------------------------\n\n");
-
-	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
-	signal(SIGINT, janus_handle_signal);
-	signal(SIGTERM, janus_handle_signal);
-	atexit(janus_termination_handler);
 
 	/* Setup Glib */
 #if !GLIB_CHECK_VERSION(2, 36, 0)
