@@ -4387,7 +4387,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					}
 					if(stream->fd[0] != -1) {
 						if(stream->host)
-							json_object_set_new(ml, "host", json_string(stream->host));
+							json_object_set_new(info, "host", json_string(stream->host));
 						json_object_set_new(info, "port", json_integer(stream->port[0]));
 					}
 					if(stream->rtcp_fd != -1) {
