@@ -4250,6 +4250,11 @@ gint main(int argc, char *argv[])
 	if(cmdline_parser(argc, argv, &args_info) != 0)
 		exit(1);
 
+	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
+	signal(SIGINT, janus_handle_signal);
+	signal(SIGTERM, janus_handle_signal);
+	atexit(janus_termination_handler);
+
 	/* Any configuration to open? */
 	if(args_info.config_given) {
 		config_file = g_strdup(args_info.config_arg);
@@ -4545,11 +4550,6 @@ gint main(int argc, char *argv[])
 	JANUS_PRINT("---------------------------------------------------\n");
 	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Server) v%s\n", janus_version_string);
 	JANUS_PRINT("---------------------------------------------------\n\n");
-
-	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
-	signal(SIGINT, janus_handle_signal);
-	signal(SIGTERM, janus_handle_signal);
-	atexit(janus_termination_handler);
 
 	/* Setup Glib */
 #if !GLIB_CHECK_VERSION(2, 36, 0)
