@@ -597,6 +597,8 @@ struct janus_ice_component {
 	GQueue *audio_retransmit_buffer, *video_retransmit_buffer;
 	/*! \brief HashTable of retransmittable sequence numbers, in case we receive NACKs */
 	GHashTable *audio_retransmit_seqs, *video_retransmit_seqs;
+	/*! \brief Helper queue for storing requested packets from NACKs */
+	GQueue *nacks_queue;
 	/*! \brief Current sequence number for the RFC4588 rtx SSRC session */
 	guint16 rtx_seq_number;
 	/*! \brief Last time a log message about sending retransmits was printed */

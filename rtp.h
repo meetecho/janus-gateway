@@ -62,6 +62,7 @@ typedef struct janus_rtp_packet {
 	gint length;
 	gint64 created;
 	gint64 last_retransmit;
+	gint64 current_backoff;
 	janus_plugin_rtp_extensions extensions;
 } janus_rtp_packet;
 
