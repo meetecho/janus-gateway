@@ -1591,7 +1591,6 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 					janus_request_ice_handle_answer(handle, jsep_sdp);
 					/* Check if the answer does contain the mid/abs-send-time/twcc extmaps */
-					int mindex = 0;
 					gboolean do_mid = FALSE, do_twcc = FALSE, do_dd = FALSE, do_abs_send_time = FALSE, do_abs_capture_time = FALSE;
 					GList *temp = parsed_sdp->m_lines;
 					while(temp) {
@@ -1620,7 +1619,6 @@ int janus_process_incoming_request(janus_request *request) {
 						do_dd = do_dd || have_dd;
 						do_abs_send_time = do_abs_send_time || have_abs_send_time;
 						do_abs_capture_time = do_abs_capture_time || have_abs_capture_time;
-						mindex++;
 						temp = temp->next;
 					}
 					if(!do_mid && handle->pc)
@@ -4407,9 +4405,16 @@ gint main(int argc, char *argv[]) {
 	core_limits.rlim_cur = core_limits.rlim_max = RLIM_INFINITY;
 	setrlimit(RLIMIT_CORE, &core_limits);
 
-	g_print("Janus version: %d (%s)\n", janus_version, janus_version_string);
-	g_print("Janus commit: %s\n", janus_build_git_sha);
-	g_print("Compiled on:  %s\n\n", janus_build_git_time);
+	janus_mark_started();
+
+	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
+	signal(SIGINT, janus_handle_signal);
+	signal(SIGTERM, janus_handle_signal);
+	atexit(janus_termination_handler);
+
+	JANUS_PRINT("Janus version: %d (%s)\n", janus_version, janus_version_string);
+	JANUS_PRINT("Janus commit: %s\n", janus_build_git_sha);
+	JANUS_PRINT("Compiled on:  %s\n\n", janus_build_git_time);
 
 	/* Initialize some command line options defaults */
 	options.debug_level = -1;
@@ -4422,6 +4427,11 @@ gint main(int argc, char *argv[]) {
 	/* Let's call our cmdline parser */
 	if(!janus_options_parse(&options, argc, argv))
 		exit(1);
+
+	if(options.print_version) {
+		janus_options_destroy();
+		exit(0);
+	}
 
 	/* Any configuration to open? */
 	if(options.config_file) {
@@ -4439,7 +4449,7 @@ gint main(int argc, char *argv[]) {
 	}
 	if((config = janus_config_parse(config_file)) == NULL) {
 		/* We failed to load the libconfig configuration file, let's try the INI */
-		g_print("Failed to load %s, trying the INI instead...\n", config_file);
+		JANUS_PRINT("Failed to load %s, trying the INI instead...\n", config_file);
 		g_free(config_file);
 		char file[255];
 		g_snprintf(file, 255, "%s/janus.cfg", configs_folder);
@@ -4447,11 +4457,11 @@ gint main(int argc, char *argv[]) {
 		if((config = janus_config_parse(config_file)) == NULL) {
 			if(options.config_file) {
 				/* We only give up if the configuration file was explicitly provided */
-				g_print("Error reading configuration from %s\n", config_file);
+				JANUS_PRINT("Error reading configuration from %s\n", config_file);
 				janus_options_destroy();
 				exit(1);
 			}
-			g_print("Error reading/parsing the configuration file in %s, going on with the defaults and the command line arguments\n",
+			JANUS_PRINT("Error reading/parsing the configuration file in %s, going on with the defaults and the command line arguments\n",
 				configs_folder);
 			config = janus_config_create("janus.cfg");
 			if(config == NULL) {
@@ -4526,18 +4536,18 @@ gint main(int argc, char *argv[]) {
 	}
 	/* Daemonize now, if we need to */
 	if(daemonize) {
-		g_print("Running Janus as a daemon\n");
+		JANUS_PRINT("Running Janus as a daemon\n");
 
 		/* Create a pipe for parent<->child communication during the startup phase */
 		if(pipe(pipefd) == -1) {
-			g_print("pipe error!\n");
+			JANUS_PRINT("pipe error!\n");
 			exit(1);
 		}
 
 		/* Fork off the parent process */
 		pid_t pid = fork();
 		if(pid < 0) {
-			g_print("Fork error!\n");
+			JANUS_PRINT("Fork error!\n");
 			exit(1);
 		}
 		if(pid > 0) {
@@ -4566,7 +4576,7 @@ gint main(int argc, char *argv[]) {
 
 			/* Leave the parent and return the exit code we received from the child */
 			if(code)
-				g_print("Error launching Janus (error code %d), check the logs for more details\n", code);
+				JANUS_PRINT("Error launching Janus (error code %d), check the logs for more details\n", code);
 			exit(code);
 		}
 		/* Child here */
@@ -4578,13 +4588,13 @@ gint main(int argc, char *argv[]) {
 		/* Create a new SID for the child process */
 		pid_t sid = setsid();
 		if(sid < 0) {
-			g_print("Error setting SID!\n");
+			JANUS_PRINT("Error setting SID!\n");
 			exit(1);
 		}
 		/* Change the current working directory */
 		const char *cwd = options.cwd_path ? options.cwd_path : "/";
 		if((chdir(cwd)) < 0) {
-			g_print("Error changing the current working directory!\n");
+			JANUS_PRINT("Error changing the current working directory!\n");
 			exit(1);
 		}
 		/* We close stdin/stdout/stderr when initializing the logger */
@@ -4602,10 +4612,7 @@ gint main(int argc, char *argv[]) {
 	if(item && item->value && janus_is_true(item->value))
 		exit_on_dl_error = TRUE;
 
-	/* Initialize logger */
-	if(janus_log_init(daemonize, use_stdout, logfile) < 0)
-		exit(1);
-	/* Check if there are external loggers we need to load as well */
+	/* Check if there are external loggers we need to load */
 	const char *path = NULL;
 	DIR *dir = NULL;
 	/* External loggers are usually disabled by default: they need to be enabled in the configuration */
@@ -4660,16 +4667,16 @@ gint main(int argc, char *argv[]) {
 			memset(eventpath, 0, 1024);
 			g_snprintf(eventpath, 1024, "%s/%s", path, eventent->d_name);
 			void *event = dlopen(eventpath, RTLD_NOW | RTLD_GLOBAL);
-			if (!event) {
+			if(!event) {
 				JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load logger plugin '%s': %s\n", eventent->d_name, dlerror());
-				if (exit_on_dl_error)
+				if(exit_on_dl_error)
 					exit(1);
 			} else {
 				create_l *create = (create_l*) dlsym(event, "create");
 				const char *dlsym_error = dlerror();
-				if (dlsym_error) {
+				if(dlsym_error) {
 					JANUS_LOG(exit_on_dl_error ? LOG_FATAL : LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
-					if (exit_on_dl_error)
+					if(exit_on_dl_error)
 						exit(1);
 					continue;
 				}
@@ -4713,16 +4720,14 @@ gint main(int argc, char *argv[]) {
 	if(disabled_loggers != NULL)
 		g_strfreev(disabled_loggers);
 	disabled_loggers = NULL;
-	janus_log_set_loggers(loggers);
+
+	/* Initialize logger */
+	if(janus_log_init(daemonize, use_stdout, logfile, loggers) < 0)
+		exit(1);
 
 	JANUS_PRINT("---------------------------------------------------\n");
 	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Server) v%s\n", janus_version_string);
 	JANUS_PRINT("---------------------------------------------------\n\n");
-
-	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
-	signal(SIGINT, janus_handle_signal);
-	signal(SIGTERM, janus_handle_signal);
-	atexit(janus_termination_handler);
 
 	/* Setup Glib */
 #if !GLIB_CHECK_VERSION(2, 36, 0)
@@ -5963,11 +5968,11 @@ gint main(int argc, char *argv[]) {
 	JANUS_LOG(LOG_INFO, "Closing transport plugins:\n");
 	if(transports != NULL && g_hash_table_size(transports) > 0) {
 		g_hash_table_foreach(transports, janus_transport_close, NULL);
-		g_hash_table_destroy(transports);
+		g_clear_pointer(&transports, g_hash_table_destroy);
 	}
 	if(transports_so != NULL && g_hash_table_size(transports_so) > 0) {
 		g_hash_table_foreach(transports_so, janus_transportso_close, NULL);
-		g_hash_table_destroy(transports_so);
+		g_clear_pointer(&transports_so, g_hash_table_destroy);
 	}
 	/* Get rid of requests tasks and thread too */
 	g_thread_pool_free(tasks, FALSE, FALSE);
@@ -5994,22 +5999,22 @@ gint main(int argc, char *argv[]) {
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
 	if(plugins != NULL && g_hash_table_size(plugins) > 0) {
 		g_hash_table_foreach(plugins, janus_plugin_close, NULL);
-		g_hash_table_destroy(plugins);
+		g_clear_pointer(&plugins, g_hash_table_destroy);
 	}
 	if(plugins_so != NULL && g_hash_table_size(plugins_so) > 0) {
 		g_hash_table_foreach(plugins_so, janus_pluginso_close, NULL);
-		g_hash_table_destroy(plugins_so);
+		g_clear_pointer(&plugins_so, g_hash_table_destroy);
 	}
 
 	JANUS_LOG(LOG_INFO, "Closing event handlers:\n");
 	janus_events_deinit();
 	if(eventhandlers != NULL && g_hash_table_size(eventhandlers) > 0) {
 		g_hash_table_foreach(eventhandlers, janus_eventhandler_close, NULL);
-		g_hash_table_destroy(eventhandlers);
+		g_clear_pointer(&eventhandlers, g_hash_table_destroy);
 	}
 	if(eventhandlers_so != NULL && g_hash_table_size(eventhandlers_so) > 0) {
 		g_hash_table_foreach(eventhandlers_so, janus_eventhandlerso_close, NULL);
-		g_hash_table_destroy(eventhandlers_so);
+		g_clear_pointer(&eventhandlers_so, g_hash_table_destroy);
 	}
 
 	janus_recorder_deinit();
@@ -6018,7 +6023,7 @@ gint main(int argc, char *argv[]) {
 		g_list_free(public_ips);
 	}
 	if (public_ips_table) {
-		g_hash_table_destroy(public_ips_table);
+		g_clear_pointer(&public_ips_table, g_hash_table_destroy);
 	}
 
 	if(janus_ice_get_static_event_loops() > 0)

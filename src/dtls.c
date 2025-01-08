@@ -470,7 +470,7 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 		JANUS_LOG(LOG_FATAL, "Certificate check error (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		return -6;
 	}
-	SSL_CTX_set_read_ahead(ssl_ctx,1);
+	SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_TICKET);
 
 	unsigned int size;
 	unsigned char fingerprint[EVP_MAX_MD_SIZE];

@@ -207,7 +207,7 @@ static char *janus_pp_extensions_string(const char **allowed, char *supported, s
 
 /* Main Code */
 int main(int argc, char *argv[]) {
-	janus_log_init(FALSE, TRUE, NULL);
+	janus_log_init(FALSE, TRUE, NULL, NULL);
 	atexit(janus_log_destroy);
 
 	/* Initialize some command line options defaults */
@@ -1088,7 +1088,7 @@ int main(int argc, char *argv[]) {
 						p->prev = tmp;
 						break;
 					} else if(tmp->seq > p->seq && (abs(tmp->seq - p->seq) > 10000)) {
-						/* The new sequence number (resetted) is greater than the last one we have, append */
+						/* The new sequence number (reset) is greater than the last one we have, append */
 						added = 1;
 						if(tmp->next != NULL) {
 							/* We're inserting */
@@ -1108,7 +1108,7 @@ int main(int argc, char *argv[]) {
 						break;
 					}
 				}
-				/* If either the timestamp ot the sequence number we just got is smaller, keep going back */
+				/* If either the timestamp or the sequence number we just got is smaller, keep going back */
 				tmp = tmp->prev;
 			}
 			if(p->drop) {
@@ -1652,8 +1652,8 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 		exit_status = -1;
 	} else {
 		context->target_ts = 0;
-		/* Do not execute analysis for out of order packets or multi-packets frame */
-		if (context->last_seq == context->prev_seq + 1 && context->last_ts != context->prev_ts) {
+		/* Do not execute analysis for out of order packets or multi-packets frame or if pts < start_time */
+		if (context->last_seq == context->prev_seq + 1 && context->last_ts != context->prev_ts && pts >= context->start_time) {
 			/* Evaluate the local RTP timestamp according to the local clock */
 			guint64 expected_ts = ((pts - context->start_time) * akhz) + context->start_ts;
 			/* Evaluate current delay */

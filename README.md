@@ -17,11 +17,17 @@ If you have questions on Janus, or wish to discuss Janus with us and other users
 ## Dependencies
 To install it, you'll need to satisfy the following dependencies:
 
+* [GLib](https://docs.gtk.org/glib/)
+* [zlib](https://zlib.net/)
+* [pkg-config](https://www.freedesktop.org/wiki/Software/pkg-config/)
 * [Jansson](https://github.com/akheron/jansson)
 * [libconfig](https://hyperrealm.github.io/libconfig/)
 * [libnice](https://libnice.freedesktop.org/) (at least v0.1.16 suggested, v0.1.18 recommended)
 * [OpenSSL](https://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v2.x suggested)
+
+These are optional dependencies, depending on which features you're interested in:
+
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you are interested in Data Channels)
 * [libmicrohttpd](https://www.gnu.org/software/libmicrohttpd/) (at least v0.9.59; only needed if you are interested in REST support for the Janus API)
 * [libwebsockets](https://libwebsockets.org/) (at least v4.x suggested; only needed if you are interested in WebSockets support for the Janus API)
@@ -31,28 +37,22 @@ To install it, you'll need to satisfy the following dependencies:
 * [nanomsg](https://nanomsg.org/) (only needed if you are interested in Nanomsg support for the Janus API)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are interested in the TURN REST API support)
 
-A couple of plugins depend on a few more libraries:
+A couple of plugins depend on a few more libraries (you only need to install the ones for the plugins you need):
 
 * [Sofia-SIP](https://github.com/freeswitch/sofia-sip) (only needed for the SIP plugin)
 * [libopus](https://opus-codec.org/) (only needed for the AudioBridge plugin)
-* [speexdsp](https://www.speex.org/) (only needed for AudioBridge plugin)
-* [libogg](https://xiph.org/ogg/) (needed for the VoiceMail plugin and/or post-processor, and optionally AudioBridge and Streaming plugins)
+* [libogg](https://xiph.org/ogg/) (needed for the recordings post-processor, and optionally AudioBridge and Streaming plugins)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are interested in RTSP support in the Streaming plugin or in the sample Event Handler plugin)
 * [Lua](https://www.lua.org/download.html) (only needed for the Lua plugin)
 * [Duktape](https://duktape.org/) (only needed for the Duktape plugin)
 
-Additionally, you'll need the following libraries and tools:
-
-* [GLib](https://docs.gtk.org/glib/)
-* [zlib](https://zlib.net/)
-* [pkg-config](https://www.freedesktop.org/wiki/Software/pkg-config/)
 
 All of those libraries are usually available on most of the most common distributions. Installing these libraries on a recent Fedora, for instance, is very simple:
 
     yum install libmicrohttpd-devel jansson-devel \
        openssl-devel libsrtp-devel sofia-sip-devel glib2-devel \
        opus-devel libogg-devel libcurl-devel pkgconfig \
-       speexdsp-devel libconfig-devel libtool autoconf automake
+       libconfig-devel libtool autoconf automake
 
 Notice that you may have to `yum install epel-release` as well if you're attempting an installation on a CentOS machine instead.
 
@@ -61,7 +61,7 @@ On Ubuntu or Debian, it would require something like this:
 	apt install libmicrohttpd-dev libjansson-dev \
 		libssl-dev libsofia-sip-ua-dev libglib2.0-dev \
 		libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev \
-		libspeexdsp-dev libconfig-dev pkg-config libtool automake
+		libconfig-dev pkg-config libtool automake
 
 * *Note:* please notice that libopus may not be available out of the box on your distro. In that case, you'll have to [install it manually](https://www.opus-codec.org).
 
@@ -99,17 +99,13 @@ If you want to make use of BoringSSL instead of OpenSSL (e.g., because you want 
 	# Build
 	mkdir -p build
 	cd build
-	cmake -DCMAKE_CXX_FLAGS="-lrt" ..
+	cmake -DCMAKE_INSTALL_PREFIX=/opt/boringssl -DCMAKE_CXX_FLAGS="-lrt" ..
 	make
-	cd ..
-	# Install
-	sudo mkdir -p /opt/boringssl
-	sudo cp -R include /opt/boringssl/
-	sudo mkdir -p /opt/boringssl/lib
-	sudo cp build/ssl/libssl.a /opt/boringssl/lib/
-	sudo cp build/crypto/libcrypto.a /opt/boringssl/lib/
+	sudo make install
 
 Once the library is installed, you'll have to pass an additional `--enable-boringssl` flag to the configure script, as by default Janus will be built assuming OpenSSL will be used. By default, Janus expects BoringSSL to be installed in `/opt/boringssl` -- if it's installed in another location, pass the path to the configure script as such: `--enable-boringssl=/path/to/boringssl` If you were using OpenSSL and want to switch to BoringSSL, make sure you also do a `make clean` in the Janus folder before compiling with the new BoringSSL support. If you enabled BoringSSL support and also want Janus to detect and react to DTLS timeouts with faster retransmissions, then pass `--enable-dtls-settimeout` to the configure script too.
+
+* *Note:* as explained in [this issue](https://github.com/meetecho/janus-gateway/issues/3456), building Janus with more recent versions of BoringSSL may require you to pass a `CCLD=c++` for any `make` command to build Janus itself.
 
 For what concerns usrsctp, which is needed for Data Channels support, it is usually not available in repositories, so if you're interested in them (support is optional) you'll have to install it manually. It is a pretty easy and standard process:
 
@@ -219,7 +215,7 @@ since it is a GNU makefile. `./configure` can be run without arguments since the
 Note that the `configure.ac` is coded to use openssl in base. If you wish to use openssl from ports or any other ssl you must change `configure.ac` accordingly.
 
 	pkg install libsrtp2 libusrsctp jansson libnice libmicrohttpd libwebsockets curl opus sofia-sip libogg jansson libnice libconfig \
-        speexdsp libtool gmake autoconf autoconf-wrapper glib
+        libtool gmake autoconf autoconf-wrapper glib
 
 
 ### Building on MacOS
@@ -229,7 +225,7 @@ First of all, you can use `brew` to install most of the dependencies:
 
 	brew install jansson libnice openssl srtp libusrsctp libmicrohttpd \
 		libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl glib \
-		speexdsp libconfig pkg-config autoconf automake libtool
+		libconfig pkg-config autoconf automake libtool
 
 For what concerns libwebsockets, though, make sure that the installed version is higher than `2.4.1`, or you might encounter the problems described in [this post](https://groups.google.com/forum/#!topic/meetecho-janus/HsFaEXBz4Cg). If `brew` doesn't provide a more recent version, you'll have to install the library manually.
 

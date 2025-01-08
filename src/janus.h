@@ -140,6 +140,7 @@ struct janus_request {
  * @param[in] request_id Opaque pointer to the request ID, if available
  * @param[in] admin Whether this is a Janus API or Admin API request
  * @param[in] message Opaque pointer to the original request, if available
+ * @param[in] error If the transport detected a JSON parsing error, the error content
  * @returns A pointer to a janus_request instance if successful, NULL otherwise */
 janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message, json_error_t *error);
 /*! \brief Helper to destroy a janus_request instance

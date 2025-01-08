@@ -60,6 +60,8 @@ npm/src
 .deps
 .dirstamp
 
+cov-int
+
 # OS X
 .DS_Store
 

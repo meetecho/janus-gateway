@@ -346,18 +346,17 @@ static void janus_websockets_allow_address(const char *ip, gboolean admin) {
 	janus_mutex_unlock(&access_list_mutex);
 }
 static gboolean janus_websockets_is_allowed(const char *ip, gboolean admin) {
-	JANUS_LOG(LOG_VERB, "Checking if %s is allowed to contact %s interface\n", ip, admin ? "admin" : "janus");
 	if(ip == NULL)
 		return FALSE;
+	janus_mutex_lock(&access_list_mutex);
 	if(!admin && janus_websockets_access_list == NULL) {
-		JANUS_LOG(LOG_VERB, "Yep\n");
+		janus_mutex_unlock(&access_list_mutex);
 		return TRUE;
 	}
 	if(admin && janus_websockets_admin_access_list == NULL) {
-		JANUS_LOG(LOG_VERB, "Yeah\n");
+		janus_mutex_unlock(&access_list_mutex);
 		return TRUE;
 	}
-	janus_mutex_lock(&access_list_mutex);
 	GList *temp = admin ? janus_websockets_admin_access_list : janus_websockets_access_list;
 	while(temp) {
 		const char *allowed = (const char *)temp->data;
@@ -368,7 +367,6 @@ static gboolean janus_websockets_is_allowed(const char *ip, gboolean admin) {
 		temp = temp->next;
 	}
 	janus_mutex_unlock(&access_list_mutex);
-	JANUS_LOG(LOG_VERB, "Nope...\n");
 	return FALSE;
 }
 
@@ -1351,12 +1349,14 @@ static int janus_websockets_common_callback(
 					while (incoming_curr < incoming_end && isspace(*incoming_curr))
 						incoming_curr++;
 					if(incoming_curr == incoming_end) {
-						/* Process messages in order */
-						json_t **msg = message_buffer;
-						json_t **msg_end = message_buffer + message_buffer_count;
-						while(msg != msg_end) {
-							/* Notify the core, no error since we know there weren't any */
-							gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, *msg++, NULL);
+						if(message_buffer != NULL) {
+							/* Process messages in order */
+							json_t **msg = message_buffer;
+							json_t **msg_end = message_buffer + message_buffer_count;
+							while(msg != msg_end) {
+								/* Notify the core, no error since we know there weren't any */
+								gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, *msg++, NULL);
+							}
 						}
 						/* Notify the core, no error since we know there weren't any */
 						gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, message, NULL);
@@ -1367,11 +1367,13 @@ static int janus_websockets_common_callback(
 						message_buffer[message_buffer_count++] = message;
 					}
 				} else {
-					/* Release any buffered messages */
-					json_t **msg = message_buffer;
-					json_t **msg_end = message_buffer + message_buffer_count;
-					while(msg != msg_end) {
-						json_decref(*msg++);
+					if(message_buffer != NULL) {
+						/* Release any buffered messages */
+						json_t **msg = message_buffer;
+						json_t **msg_end = message_buffer + message_buffer_count;
+						while(msg != msg_end) {
+							json_decref(*msg++);
+						}
 					}
 					/* Notify the core, passing the error since we have no message */
 					gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, NULL, &error);

@@ -163,12 +163,12 @@ gboolean janus_ice_is_consent_freshness_enabled(void) {
 static gboolean janus_ice_keepalive_connchecks = FALSE;
 void janus_ice_set_keepalive_conncheck_enabled(gboolean enabled) {
 	if(janus_ice_consent_freshness && !enabled) {
-		JANUS_LOG(LOG_WARN, "Can't disable connectivity checks as PeerConnection keep-alives, consent freshness is enabled\n");
+		JANUS_LOG(LOG_WARN, "Can't disable connectivity checks as PeerConnection keep-alive, consent freshness is enabled\n");
 		return;
 	}
 	janus_ice_keepalive_connchecks = enabled;
 	if(janus_ice_keepalive_connchecks) {
-		JANUS_LOG(LOG_INFO, "Using connectivity checks as PeerConnection keep-alives\n");
+		JANUS_LOG(LOG_INFO, "Using connectivity checks as PeerConnection keep-alive\n");
 	}
 }
 gboolean janus_ice_is_keepalive_conncheck_enabled(void) {
@@ -367,20 +367,22 @@ void janus_ice_enforce_interface(const char *ip) {
 	janus_mutex_unlock(&ice_list_mutex);
 }
 gboolean janus_ice_is_enforced(const char *ip) {
-	if(ip == NULL || janus_ice_enforce_list == NULL)
-		return false;
 	janus_mutex_lock(&ice_list_mutex);
+	if(ip == NULL || janus_ice_enforce_list == NULL) {
+		janus_mutex_unlock(&ice_list_mutex);
+		return FALSE;
+	}
 	GList *temp = janus_ice_enforce_list;
 	while(temp) {
 		const char *enforced = (const char *)temp->data;
 		if(enforced != NULL && strstr(ip, enforced) == ip) {
 			janus_mutex_unlock(&ice_list_mutex);
-			return true;
+			return TRUE;
 		}
 		temp = temp->next;
 	}
 	janus_mutex_unlock(&ice_list_mutex);
-	return false;
+	return FALSE;
 }
 
 void janus_ice_ignore_interface(const char *ip) {
@@ -395,20 +397,22 @@ void janus_ice_ignore_interface(const char *ip) {
 	janus_mutex_unlock(&ice_list_mutex);
 }
 gboolean janus_ice_is_ignored(const char *ip) {
-	if(ip == NULL || janus_ice_ignore_list == NULL)
-		return false;
 	janus_mutex_lock(&ice_list_mutex);
+	if(ip == NULL || janus_ice_ignore_list == NULL) {
+		janus_mutex_unlock(&ice_list_mutex);
+		return FALSE;
+	}
 	GList *temp = janus_ice_ignore_list;
 	while(temp) {
 		const char *ignored = (const char *)temp->data;
 		if(ignored != NULL && strstr(ip, ignored) == ip) {
 			janus_mutex_unlock(&ice_list_mutex);
-			return true;
+			return TRUE;
 		}
 		temp = temp->next;
 	}
 	janus_mutex_unlock(&ice_list_mutex);
-	return false;
+	return FALSE;
 }
 
 
@@ -422,7 +426,7 @@ int janus_ice_get_event_stats_period(void) {
 }
 
 /* How to handle media statistic events (one per media or one per peerConnection) */
-static gboolean janus_ice_event_combine_media_stats = false;
+static gboolean janus_ice_event_combine_media_stats = FALSE;
 void janus_ice_event_set_combine_media_stats(gboolean combine_media_stats_to_one_event) {
 	janus_ice_event_combine_media_stats = combine_media_stats_to_one_event;
 }
@@ -1411,6 +1415,7 @@ janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque
 	handle->queued_candidates = g_async_queue_new();
 	handle->queued_packets = g_async_queue_new();
 	janus_mutex_init(&handle->mutex);
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_session_handles_insert(session, handle);
 	return handle;
 }
@@ -2111,7 +2116,7 @@ static void janus_ice_cb_candidate_gathering_done(NiceAgent *agent, guint stream
 		return;
 	}
 	pc->gathered = janus_get_monotonic_time();
-	pc->cdone = 1;
+	pc->cdone = TRUE;
 	/* If we're doing full-trickle, send an event to the user too */
 	if(janus_full_trickle_enabled) {
 		/* Send a "trickle" event with completed:true to the browser */
@@ -2589,8 +2594,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		/* If there's a datachannel medium, update the stats there too */
 		janus_ice_peerconnection_medium *medium = g_hash_table_lookup(pc->media_bytype, GINT_TO_POINTER(JANUS_MEDIA_DATA));
 		if(medium) {
-			medium->out_stats.info[0].packets++;
-			medium->out_stats.info[0].bytes += len;
+			medium->in_stats.info[0].packets++;
+			medium->in_stats.info[0].bytes += len;
 		}
 		return;
 	}
@@ -3261,7 +3266,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				if (janus_rtcp_fix_report_data(buf, buflen, base_ts, base_ts_prev, ssrc_peer, ssrc_local, ssrc_expected, video) < 0) {
 					/* Drop packet in case of parsing error or SSRC different from the one expected. */
 					/* This might happen at the very beginning of the communication or early after */
-					/* a re-negotation has been concluded. */
+					/* a re-negotiation has been concluded. */
 					return;
 				}
 

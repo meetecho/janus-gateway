@@ -1,7 +1,7 @@
 /*! \file    janus-cfgconv.c
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
- * \brief    Simple utility to convert Janus .cfg files to .jcfg and viceversa
+ * \brief    Simple utility to convert Janus .cfg files to .jcfg and vice-versa
  * \details  Historically, Janus has made use of INI .cfg files for the
  * configuration of core and plugins. Recently, support for the libconfig format
  * has been added too. Due to the more expressive nature of libconfig, .jcfg
@@ -40,7 +40,7 @@ int lock_debug = 0;
 /* Main Code */
 int main(int argc, char *argv[])
 {
-	janus_log_init(FALSE, TRUE, NULL);
+	janus_log_init(FALSE, TRUE, NULL, NULL);
 	atexit(janus_log_destroy);
 
 	JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);

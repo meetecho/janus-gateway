@@ -9,6 +9,7 @@ if(window.location.protocol === 'http:')
 	server = "http://" + window.location.hostname + ":7088/admin";
 else
 	server = "https://" + window.location.hostname + ":7889/admin";
+
 // If you don't want the page to prompt you for a password, insert it here
 var secret = "janusoverlord";
 
@@ -286,6 +287,7 @@ function updateServerInfo() {
 				updateTokens();
 			}
 		},
+		// eslint-disable-next-line no-unused-vars
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME
 			if(!prompting && !alerted) {
@@ -501,6 +503,7 @@ function updateSettings() {
 				}
 			}
 		},
+		// eslint-disable-next-line no-unused-vars
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME
 			$('#update-settings').removeClass('fa-spin').click(updateSettings);
@@ -592,6 +595,7 @@ function sendSettingsRequest(request) {
 			}
 			updateSettings();
 		},
+		// eslint-disable-next-line no-unused-vars
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME
 			if(!prompting && !alerted) {
@@ -723,6 +727,7 @@ function sendPluginMessage(plugin, message) {
 			}
 			$('#plugin-response').text(JSON.stringify(json, null, 4));
 		},
+		// eslint-disable-next-line no-unused-vars
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME
 			if(!prompting && !alerted) {
@@ -854,6 +859,7 @@ function sendTransportMessage(transport, message) {
 			}
 			$('#transport-response').text(JSON.stringify(json, null, 4));
 		},
+		// eslint-disable-next-line no-unused-vars
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME
 			if(!prompting && !alerted) {
@@ -959,6 +965,7 @@ function updateSessions() {
 				$('#update-handle').click(updateHandleInfo);
 			}, 1000);
 		},
+		// eslint-disable-next-line no-unused-vars
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME
 			setTimeout(function() {
@@ -1064,6 +1071,7 @@ function updateHandles() {
 				$('#update-handle').click(updateHandleInfo);
 			}, 1000);
 		},
+		// eslint-disable-next-line no-unused-vars
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME
 			$('#update-handles').removeClass('fa-spin').click(updateHandles);
@@ -1159,6 +1167,7 @@ function updateHandleInfo(refresh) {
 				}, 5000);
 			}
 		},
+		// eslint-disable-next-line no-unused-vars
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME
 			$('#update-handles').removeClass('fa-spin').click(updateHandles);
@@ -1447,6 +1456,7 @@ function updateTokens() {
 				});
 			});
 		},
+		// eslint-disable-next-line no-unused-vars
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME
 			$('#update-settings').removeClass('fa-spin').click(updateSettings);
@@ -1498,6 +1508,7 @@ function sendTokenRequest(request) {
 			}
 			updateTokens();
 		},
+		// eslint-disable-next-line no-unused-vars
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME
 			if(!prompting && !alerted) {
@@ -1592,6 +1603,7 @@ function captureTrafficRequest(start, text, folder, filename, truncate) {
 				return;
 			}
 		},
+		// eslint-disable-next-line no-unused-vars
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME
 			if(!prompting && !alerted) {

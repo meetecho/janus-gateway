@@ -168,7 +168,7 @@ typedef struct janus_sdp_mline {
  * @param[in] port Port to advertise
  * @param[in] proto Profile to advertise
  * @param[in] direction Direction of the media as a janus_sdp_direction
- * @returns A pointer to a valid janus_sdp_mline instance, if successfull, NULL otherwise */
+ * @returns A pointer to a valid janus_sdp_mline instance, if successful, NULL otherwise */
 janus_sdp_mline *janus_sdp_mline_create(janus_sdp_mtype type, guint16 port, const char *proto, janus_sdp_mdirection direction);
 /*! \brief Helper method to free a janus_sdp_mline instance
  * @note This method does not remove the m-line from the janus_sdp instance, that's up to the caller
@@ -210,7 +210,7 @@ typedef struct janus_sdp_attribute {
 /*! \brief Helper method to quickly create a janus_sdp_attribute instance
  * @param[in] name Name of the attribute
  * @param[in] value Value of the attribute, as a printf compliant string (variable arguments)
- * @returns A pointer to a valid janus_sdp_attribute instance, if successfull, NULL otherwise */
+ * @returns A pointer to a valid janus_sdp_attribute instance, if successful, NULL otherwise */
 janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *value, ...) G_GNUC_PRINTF(2, 3);
 /*! \brief Helper method to free a janus_sdp_attribute instance
  * @note This method does not remove the attribute from the global or m-line attributes, that's up to the caller
@@ -289,7 +289,7 @@ JANUS_SDP_OA_ACCEPT_OPUSRED,
 JANUS_SDP_OA_VP9_PROFILE,
 /*! \brief When generating an offer or answer automatically, use this profile for H.264 (depends on value that follows) */
 JANUS_SDP_OA_H264_PROFILE,
-/*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb; true by defaukt) */
+/*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb; true by default) */
 JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS,
 /*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (depends on what follows, false by default) */
 JANUS_SDP_OA_DATA_LEGACY,
@@ -333,7 +333,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...);
  * default is to use Opus and payload type 111. For video, the default
  * is VP8 and payload type 96. The default media direction is \c sendrecv.
  * @param[in] offer The Janus SDP offer to add the new m-line to
- * @returns 0 if successful, a negative integer othwerwise */
+ * @returns 0 if successful, a negative integer otherwise */
 int janus_sdp_generate_offer_mline(janus_sdp *offer, ...);
 /*! \brief Method to generate a janus_sdp answer to a provided janus_sdp offer.
  * Notice that this doesn't address the individual m-lines: it will just
@@ -372,7 +372,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer);
  * @param[in] offer The Janus SDP offer
  * @param[in] answer The Janus SDP answer to add the new m-line to
  * @param[in] offered The Janus SDP m-line from the offer to respond to
- * @returns 0 if successful, a negative integer othwerwise */
+ * @returns 0 if successful, a negative integer otherwise */
 int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_sdp_mline *offered, ...);
 
 /*! \brief Helper to get the payload type associated to a specific codec in an m-line
@@ -406,7 +406,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, int index, const char *codec, co
 const char *janus_sdp_get_codec_name(janus_sdp *sdp, int index, int pt);
 
 /*! \brief Helper to get the codec name associated to a specific rtpmap
- * @param codec The rtpmap, as a string (e.g., "VP8/90000")
+ * @param rtpmap The rtpmap, as a string (e.g., "VP8/90000")
  * @returns The codec name, if found (e.g., "vp8"), or NULL otherwise */
 const char *janus_sdp_get_rtpmap_codec(const char *rtpmap);
 

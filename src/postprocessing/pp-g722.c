@@ -119,7 +119,7 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		return -1;
 	janus_pp_frame_packet *tmp = list;
 	long int offset = 0;
-	int bytes = 0, len = 0, steps = 0, last_seq = 0;
+	int bytes = 0, len = 0, last_seq = 0;
 	uint8_t *buffer = g_malloc0(1500);
 	int16_t samples[1500];
 	memset(samples, 0, sizeof(samples));
@@ -172,7 +172,6 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			last_seq = tmp->seq;
 		if(tmp->seq < last_seq) {
 			last_seq = tmp->seq;
-			steps++;
 		}
 		JANUS_LOG(LOG_VERB, "Writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
 			bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/8000);
@@ -212,7 +211,12 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				int data_size = av_get_bytes_per_sample(dec_ctx->sample_fmt);
 				int i=0, ch=0;
 				for(i=0; i<frame->nb_samples; i++) {
-					for(ch=0; ch<dec_ctx->channels; ch++) {
+#ifdef NEW_CHANNEL_LAYOUT
+					int channels = dec_ctx->ch_layout.nb_channels;
+#else
+					int channels = dec_ctx->channels;
+#endif
+					for(ch=0; ch<channels; ch++) {
 						fwrite(frame->data[ch] + data_size*i, 1, data_size, wav_file);
 					}
 				}

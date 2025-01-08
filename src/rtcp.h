@@ -302,12 +302,12 @@ typedef rtcp_transport_wide_cc_stats janus_rtcp_transport_wide_cc_stats;
 uint32_t janus_rtcp_context_get_rtt(janus_rtcp_context *ctx);
 /*! \brief Method to retrieve the total number of lost packets from an existing RTCP context
  * @param[in] ctx The RTCP context to query
- * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
+ * @param[in] remote Whether we're querying the remote (provided by peer) or local (computed by Janus) info
  * @returns The total number of lost packets */
 int32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remote);
 /*! \brief Method to retrieve the jitter from an existing RTCP context
  * @param[in] ctx The RTCP context to query
- * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
+ * @param[in] remote Whether we're querying the remote (provided by peer) or local (computed by Janus) info
  * @returns The computed jitter */
 uint32_t janus_rtcp_context_get_jitter(janus_rtcp_context *ctx, gboolean remote);
 /*! \brief Method to retrieve inbound link quality from an existing RTCP context
@@ -329,8 +329,7 @@ uint32_t janus_rtcp_context_get_out_media_link_quality(janus_rtcp_context *ctx);
 /*! \brief Method to swap Report Blocks and move media RB in first position in case rtx SSRC comes first
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
- * @param[in] rtx_ssrc The rtx SSRC
- * @returns The receiver SSRC, or 0 in case of error */
+ * @param[in] rtx_ssrc The rtx SSRC */
 void janus_rtcp_swap_report_blocks(char *packet, int len, uint32_t rtx_ssrc);
 /*! \brief Method to quickly retrieve the sender SSRC (needed for demuxing RTCP in BUNDLE)
  * @param[in] packet The message data
