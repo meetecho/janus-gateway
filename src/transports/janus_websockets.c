@@ -414,7 +414,11 @@ static struct lws_vhost* janus_websockets_create_ws_server(
 			ipv4_only = 1;
 		char *iface = janus_websockets_get_interface_name(ip);
 		if(iface == NULL) {
-			JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
+			JANUS_LOG(LOG_FATAL, "No interface associated with %s?\n", ip);
+			return NULL;
+		}
+		else {
+			g_free(iface);
 		}
 	}
 
