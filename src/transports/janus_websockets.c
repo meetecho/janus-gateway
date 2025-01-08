@@ -416,7 +416,6 @@ static struct lws_vhost* janus_websockets_create_ws_server(
 		if(iface == NULL) {
 			JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
 		}
-		ip = iface;
 	}
 
 	g_snprintf(item_name, 255, "%s_unix", prefix);
@@ -506,7 +505,6 @@ static struct lws_vhost* janus_websockets_create_ws_server(
 	} else {
 		JANUS_LOG(LOG_INFO, "%s server started (port %d)...\n", name, wsport);
 	}
-	g_free(ip);
 	return vhost;
 }
 
