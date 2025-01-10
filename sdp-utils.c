@@ -1831,6 +1831,14 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 									temp = temp->next;
 									continue;
 								}
+								if(strstr(a->value, JANUS_RTP_EXTMAP_DEPENDENCY_DESC) &&
+										strcasecmp(codec, "av1") && strcasecmp(codec, "vp9")) {
+									/* Don't negotiate the Dependency Descriptor extension,
+									 * unless we're doing AV1 or VP9 for SVC. See for ref:
+									 * https://issues.webrtc.org/issues/42226269 */
+									temp = temp->next;
+									continue;
+								}
 								const char *direction = NULL;
 								switch(a->direction) {
 									case JANUS_SDP_SENDONLY:
