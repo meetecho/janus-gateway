@@ -288,8 +288,11 @@ int janus_rtp_header_extension_set_transport_wide_cc(char *buf, int len, int id,
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
  * @param[in] id The extension ID to look for
+ * @param[out] spatial_layers Variable where the parsed spatial layers value will be stored
+ * @param[out] temporal_layers Variable where the parsed temporal layers value will be stored
  * @returns 0 if found, -1 otherwise */
-int janus_rtp_header_extension_parse_video_layers_allocation(char *buf, int len, int id);
+int janus_rtp_header_extension_parse_video_layers_allocation(char *buf, int len, int id,
+	int8_t *spatial_layers, int8_t *temporal_layers);
 
 /*! \brief Helper to replace the ID of an RTP extension with a different one (e.g.,
  * to turn a repaired-rtp-stream-id into a rtp-stream-id after a successful rtx)

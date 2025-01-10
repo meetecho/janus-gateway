@@ -2909,10 +2909,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					}
 				}
 				if(pc->videolayers_ext_id != -1) {
-					/* TODO */
+					int8_t spatial_layers = -1, temporal_layers = -1;
 					if(janus_rtp_header_extension_parse_video_layers_allocation(buf, buflen,
-							pc->videolayers_ext_id) == 0) {
-						/* TODO */
+							pc->videolayers_ext_id, &spatial_layers, &temporal_layers) == 0) {
+						/* We copy the VLA bytes as they are: it's up to plugins to parse it, if needed */
+						rtp.extensions.spatial_layers = spatial_layers;
+						rtp.extensions.temporal_layers = temporal_layers;
 					}
 				}
 				/* Pass the packet to the plugin */
