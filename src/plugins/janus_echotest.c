@@ -279,6 +279,7 @@ static void janus_echotest_session_free(const janus_refcount *session_ref) {
 	janus_mutex_destroy(&session->rid_mutex);
 	janus_mutex_destroy(&session->rec_mutex);
 	janus_rtp_simulcasting_cleanup(NULL, NULL, session->rid, NULL);
+	janus_rtp_svc_context_reset(&session->svc_context);
 	g_free(session);
 }
 

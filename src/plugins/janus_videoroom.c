@@ -2680,6 +2680,7 @@ static void janus_videoroom_subscriber_stream_free(const janus_refcount *s_ref) 
 	g_free(s->crossrefid);
 	g_free(s->h264_profile);
 	g_free(s->vp9_profile);
+	janus_rtp_svc_context_reset(&s->svc_context);
 	g_free(s);
 }
 
