@@ -115,6 +115,8 @@ const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id) {
 						return JANUS_RTP_EXTMAP_REPAIRED_RID;
 					if(strstr(extension, JANUS_RTP_EXTMAP_DEPENDENCY_DESC))
 						return JANUS_RTP_EXTMAP_DEPENDENCY_DESC;
+					if(strstr(extension, JANUS_RTP_EXTMAP_VIDEO_LAYERS))
+						return JANUS_RTP_EXTMAP_VIDEO_LAYERS;
 					JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
 					return NULL;
 				}
@@ -427,6 +429,18 @@ int janus_rtp_header_extension_set_transport_wide_cc(char *buf, int len, int id,
 		return -3;
 	transSeqNum = htons(transSeqNum);
 	memcpy(ext, &transSeqNum, sizeof(uint16_t));
+	return 0;
+}
+
+int janus_rtp_header_extension_parse_video_layers_allocation(char *buf, int len, int id) {
+	char *ext = NULL;
+	uint8_t idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
+		return -1;
+	/* a=extmap:9 http://www.webrtc.org/experiments/rtp-hdrext/video-layers-allocation00 */
+	if(ext == NULL || idlen < 1)
+		return -2;
+	/* TODO */
 	return 0;
 }
 

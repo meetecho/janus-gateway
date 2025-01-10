@@ -1591,12 +1591,14 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 					janus_request_ice_handle_answer(handle, jsep_sdp);
 					/* Check if the answer does contain the mid/abs-send-time/twcc extmaps */
-					gboolean do_mid = FALSE, do_twcc = FALSE, do_dd = FALSE, do_abs_send_time = FALSE, do_abs_capture_time = FALSE;
+					gboolean do_mid = FALSE, do_twcc = FALSE, do_dd = FALSE, do_abs_send_time = FALSE,
+						do_abs_capture_time = FALSE, do_video_layers_alloc = FALSE;
 					GList *temp = parsed_sdp->m_lines;
 					while(temp) {
 						janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 						gboolean have_mid = FALSE, have_twcc = FALSE, have_dd = FALSE,
-							have_abs_send_time = FALSE, have_abs_capture_time = FALSE;
+							have_abs_send_time = FALSE, have_abs_capture_time = FALSE,
+							have_video_layers_alloc = FALSE;
 						GList *tempA = m->attributes;
 						while(tempA) {
 							janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
@@ -1611,6 +1613,8 @@ int janus_process_incoming_request(janus_request *request) {
 									have_abs_send_time = TRUE;
 								else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME))
 									have_abs_capture_time = TRUE;
+								else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_LAYERS))
+									have_video_layers_alloc = TRUE;
 							}
 							tempA = tempA->next;
 						}
@@ -1619,6 +1623,7 @@ int janus_process_incoming_request(janus_request *request) {
 						do_dd = do_dd || have_dd;
 						do_abs_send_time = do_abs_send_time || have_abs_send_time;
 						do_abs_capture_time = do_abs_capture_time || have_abs_capture_time;
+						do_video_layers_alloc = do_video_layers_alloc || have_video_layers_alloc;
 						temp = temp->next;
 					}
 					if(!do_mid && handle->pc)
@@ -1633,6 +1638,8 @@ int janus_process_incoming_request(janus_request *request) {
 						handle->pc->abs_send_time_ext_id = 0;
 					if(!do_abs_capture_time && handle->pc)
 						handle->pc->abs_capture_time_ext_id = 0;
+					if(!do_video_layers_alloc && handle->pc)
+						handle->pc->videolayers_ext_id = 0;
 				} else {
 					/* Check if the mid RTP extension is being negotiated */
 					handle->pc->mid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_MID);
@@ -1649,6 +1656,8 @@ int janus_process_incoming_request(janus_request *request) {
 					handle->pc->abs_send_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
 					/* Check if the abs-capture-time ID extension is being negotiated */
 					handle->pc->abs_capture_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME);
+					/* Check if the video-layers-allocation ID extension is being negotiated */
+					handle->pc->videolayers_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_LAYERS);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->pc->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -1717,6 +1726,8 @@ int janus_process_incoming_request(janus_request *request) {
 					handle->pc->abs_send_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
 					/* Check if the abs-capture-time ID extension is being negotiated */
 					handle->pc->abs_capture_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME);
+					/* Check if the video-layers-alloc ID extension is being negotiated */
+					handle->pc->videolayers_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_LAYERS);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->pc->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -3277,6 +3288,8 @@ json_t *janus_admin_peerconnection_summary(janus_ice_peerconnection *pc) {
 		json_object_set_new(se, JANUS_RTP_EXTMAP_PLAYOUT_DELAY, json_integer(pc->playoutdelay_ext_id));
 	if(pc->dependencydesc_ext_id > 0)
 		json_object_set_new(se, JANUS_RTP_EXTMAP_DEPENDENCY_DESC, json_integer(pc->dependencydesc_ext_id));
+	if(pc->videolayers_ext_id > 0)
+		json_object_set_new(se, JANUS_RTP_EXTMAP_VIDEO_LAYERS, json_integer(pc->videolayers_ext_id));
 	json_object_set_new(w, "extensions", se);
 	json_t *bwe = json_object();
 	json_object_set_new(bwe, "twcc", pc->do_transport_wide_cc ? json_true() : json_false());
@@ -3835,8 +3848,9 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		}
 		/* Make sure we don't send the rid/repaired-rid attributes when offering ourselves */
 		int mindex = 0;
-		int mid_ext_id = 0, transport_wide_cc_ext_id = 0, abs_send_time_ext_id = 0, abs_capture_time_ext_id = 0,
-			audiolevel_ext_id = 0, videoorientation_ext_id = 0, playoutdelay_ext_id = 0, dependencydesc_ext_id = 0;
+		int mid_ext_id = 0, transport_wide_cc_ext_id = 0, abs_send_time_ext_id = 0,
+			abs_capture_time_ext_id = 0, audiolevel_ext_id = 0, videoorientation_ext_id = 0,
+			playoutdelay_ext_id = 0, dependencydesc_ext_id = 0, videolayers_ext_id = 0;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -3863,6 +3877,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 							playoutdelay_ext_id = atoi(a->value);
 						else if(strstr(a->value, JANUS_RTP_EXTMAP_DEPENDENCY_DESC))
 							dependencydesc_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_LAYERS))
+							videolayers_ext_id = atoi(a->value);
 						else if(strstr(a->value, JANUS_RTP_EXTMAP_RID) ||
 								strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID)) {
 							m->attributes = g_list_remove(m->attributes, a);
@@ -3901,12 +3917,15 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->pc->playoutdelay_ext_id = playoutdelay_ext_id;
 		if(ice_handle->pc && ice_handle->pc->dependencydesc_ext_id != dependencydesc_ext_id)
 			ice_handle->pc->dependencydesc_ext_id = dependencydesc_ext_id;
+		if(ice_handle->pc && ice_handle->pc->videolayers_ext_id != videolayers_ext_id)
+			ice_handle->pc->videolayers_ext_id = videolayers_ext_id;
 		janus_mutex_unlock(&ice_handle->mutex);
 	} else {
 		/* Check if the answer does contain the mid/rid/repaired-rid/abs-send-time/twcc extmaps */
 		int mindex = 0;
 		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE,
-			do_dd = FALSE, do_twcc = FALSE, do_abs_send_time = FALSE, do_abs_capture_time = FALSE;
+			do_dd = FALSE, do_twcc = FALSE, do_abs_send_time = FALSE,
+			do_abs_capture_time = FALSE, do_video_layers_alloc = FALSE;
 		GList *temp = parsed_sdp->m_lines;
 		janus_mutex_lock(&ice_handle->mutex);
 		while(temp) {
@@ -3915,7 +3934,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				g_hash_table_lookup(ice_handle->pc->media, GUINT_TO_POINTER(mindex)) : NULL;
 			gboolean have_mid = FALSE, have_rid = FALSE, have_repaired_rid = FALSE,
 				have_twcc = FALSE, have_dd = FALSE, have_abs_send_time = FALSE,
-				have_abs_capture_time = FALSE, have_msid = FALSE;
+				have_abs_capture_time = FALSE, have_video_layers_alloc = FALSE, have_msid = FALSE;
 			int opusred_pt = -1;
 			GList *tempA = m->attributes;
 			while(tempA) {
@@ -3963,6 +3982,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						have_abs_send_time = TRUE;
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME))
 						have_abs_capture_time = TRUE;
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_LAYERS))
+						have_video_layers_alloc = TRUE;
 				} else if(m->type == JANUS_SDP_AUDIO && medium != NULL && medium->opusred_pt > 0 &&
 						a->name && a->value && !strcasecmp(a->name, "rtpmap") && strstr(a->value, "red/48000/2")) {
 					opusred_pt = atoi(a->value);
@@ -3998,6 +4019,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			do_dd = do_dd || have_dd;
 			do_abs_send_time = do_abs_send_time || have_abs_send_time;
 			do_abs_capture_time = do_abs_capture_time || have_abs_capture_time;
+			do_video_layers_alloc = do_video_layers_alloc || have_video_layers_alloc;
 			mindex++;
 			temp = temp->next;
 		}
@@ -4019,6 +4041,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->pc->abs_send_time_ext_id = 0;
 		if(!do_abs_capture_time && ice_handle->pc)
 			ice_handle->pc->abs_capture_time_ext_id = 0;
+		if(!do_video_layers_alloc && ice_handle->pc)
+			ice_handle->pc->videolayers_ext_id = 0;
 		janus_mutex_unlock(&ice_handle->mutex);
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {

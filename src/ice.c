@@ -2908,6 +2908,13 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						rtp.extensions.abs_capture_ts = abs_ts;
 					}
 				}
+				if(pc->videolayers_ext_id != -1) {
+					/* TODO */
+					if(janus_rtp_header_extension_parse_video_layers_allocation(buf, buflen,
+							pc->videolayers_ext_id) == 0) {
+						/* TODO */
+					}
+				}
 				/* Pass the packet to the plugin */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtp && handle->app_handle &&
