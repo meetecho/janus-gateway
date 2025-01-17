@@ -529,6 +529,8 @@ struct janus_ice_peerconnection {
 	GHashTable *rtx_payload_types;
 	/*! \brief Reverse mapping of rtx payload types to actual media-related packet types */
 	GHashTable *rtx_payload_types_rev;
+	/*! \brief Helper queue for storing requested packets from NACKs */
+	GQueue *nacks_queue;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this stream */
