@@ -327,8 +327,7 @@ uint32_t janus_rtcp_context_get_out_media_link_quality(janus_rtcp_context *ctx);
 /*! \brief Method to swap Report Blocks and move media RB in first position in case rtx SSRC comes first
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
- * @param[in] rtx_ssrc The rtx SSRC
- * @returns The receiver SSRC, or 0 in case of error */
+ * @param[in] rtx_ssrc The rtx SSRC */
 void janus_rtcp_swap_report_blocks(char *packet, int len, uint32_t rtx_ssrc);
 /*! \brief Method to quickly retrieve the sender SSRC (needed for demuxing RTCP in BUNDLE)
  * @param[in] packet The message data
@@ -451,8 +450,8 @@ gboolean janus_rtcp_has_pli(char *packet, int len);
 /*! \brief Method to parse an RTCP NACK message
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
- * @returns A list of janus_nack elements containing the sequence numbers to send again */
-GSList *janus_rtcp_get_nacks(char *packet, int len);
+ * @param[in,out] nacks_queue The queue containing the sequence numbers to send again */
+void janus_rtcp_get_nacks(char *packet, int len, GQueue *nacks_queue);
 
 /*! \brief Method to remove an RTCP NACK message
  * @param[in] packet The message data

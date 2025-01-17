@@ -642,8 +642,9 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 /* Minimum and maximum value, in milliseconds, for the NACK queue/retransmissions (default=200ms/1000ms) */
 #define DEFAULT_MIN_NACK_QUEUE	200
 #define DEFAULT_MAX_NACK_QUEUE	1000
-/* Maximum ignore count after retransmission (200ms) */
-#define MAX_NACK_IGNORE			200000
+/* Min/Max time to rate limit retransmissions of the same packet */
+#define MAX_NACK_IGNORE			DEFAULT_MAX_NACK_QUEUE*1000
+#define MIN_NACK_IGNORE			40000
 
 static gboolean nack_optimizations = FALSE;
 void janus_set_nack_optimizations_enabled(gboolean optimize) {
@@ -1743,13 +1744,15 @@ void janus_ice_stream_destroy(janus_ice_stream *stream) {
 		janus_ice_component_destroy(stream->component);
 		stream->component = NULL;
 	}
-	if(stream->pending_nacked_cleanup && g_hash_table_size(stream->pending_nacked_cleanup) > 0) {
-		GHashTableIter iter;
-		gpointer val;
-		g_hash_table_iter_init(&iter, stream->pending_nacked_cleanup);
-		while(g_hash_table_iter_next(&iter, NULL, &val)) {
-			GSource *source = val;
-			g_source_destroy(source);
+	if(stream->pending_nacked_cleanup != NULL) {
+		if(g_hash_table_size(stream->pending_nacked_cleanup) > 0) {
+			GHashTableIter iter;
+			gpointer val;
+			g_hash_table_iter_init(&iter, stream->pending_nacked_cleanup);
+			while(g_hash_table_iter_next(&iter, NULL, &val)) {
+				GSource *source = val;
+				g_source_destroy(source);
+			}
 		}
 		g_hash_table_destroy(stream->pending_nacked_cleanup);
 	}
@@ -1884,6 +1887,8 @@ static void janus_ice_component_free(const janus_refcount *component_ref) {
 		g_queue_free(component->video_retransmit_buffer);
 		g_hash_table_destroy(component->video_retransmit_seqs);
 	}
+	if(component->nacks_queue != NULL)
+		g_queue_free(component->nacks_queue);
 	if(component->candidates != NULL) {
 		GSList *i = NULL, *candidates = component->candidates;
 		for(i = candidates; i; i = i->next) {
@@ -3310,17 +3315,20 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				/* Now let's see if there are any NACKs to handle */
 				gint64 now = janus_get_monotonic_time();
-				GSList *nacks = janus_rtcp_get_nacks(buf, buflen);
-				guint nacks_count = g_slist_length(nacks);
+				if(component->nacks_queue == NULL)
+					component->nacks_queue = g_queue_new();
+				GQueue *nacks = component->nacks_queue;
+				janus_rtcp_get_nacks(buf, buflen, nacks);
+				guint nacks_count = g_queue_get_length(nacks);
 				if(nacks_count && ((!video && component->do_audio_nacks) || (video && component->do_video_nacks))) {
 					/* Handle NACK */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Just got some NACKS (%d) we should handle...\n", handle->handle_id, nacks_count);
 					GHashTable *retransmit_seqs = (video ? component->video_retransmit_seqs : component->audio_retransmit_seqs);
-					GSList *list = (retransmit_seqs != NULL ? nacks : NULL);
+					GQueue *queue = (retransmit_seqs != NULL ? nacks : NULL);
 					int retransmits_cnt = 0;
 					janus_mutex_lock(&component->mutex);
-					while(list) {
-						unsigned int seqnr = GPOINTER_TO_UINT(list->data);
+					while(queue != NULL && g_queue_get_length(queue) > 0) {
+						unsigned int seqnr = GPOINTER_TO_UINT(g_queue_pop_tail(queue));
 						JANUS_LOG(LOG_DBG, "[%"SCNu64"]   >> %u\n", handle->handle_id, seqnr);
 						int in_rb = 0;
 						/* Check if we have the packet */
@@ -3329,14 +3337,21 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Can't retransmit packet %u, we don't have it...\n", handle->handle_id, seqnr);
 						} else {
 							/* Should we retransmit this packet? */
-							if((p->last_retransmit > 0) && (now-p->last_retransmit < MAX_NACK_IGNORE)) {
-								JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Packet %u was retransmitted just %"SCNi64"ms ago, skipping\n", handle->handle_id, seqnr, now-p->last_retransmit);
-								list = list->next;
+							if((p->last_retransmit > 0) && (now-p->last_retransmit < p->current_backoff)) {
+								JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Packet %u was retransmitted just %"SCNi64"us ago, skipping\n", handle->handle_id, seqnr, now-p->last_retransmit);
+								g_queue_pop_tail(queue);
 								continue;
 							}
 							in_rb = 1;
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Scheduling %u for retransmission due to NACK\n", handle->handle_id, seqnr);
 							p->last_retransmit = now;
+							if(p->current_backoff == 0) {
+								p->current_backoff = MIN_NACK_IGNORE;
+							} else {
+								p->current_backoff *= 2;
+								if(p->current_backoff > MAX_NACK_IGNORE)
+									p->current_backoff = MAX_NACK_IGNORE;
+							}
 							retransmits_cnt++;
 							/* Enqueue it */
 							janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
@@ -3377,7 +3392,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						if(rtcp_ctx != NULL && in_rb) {
 							g_atomic_int_inc(&rtcp_ctx->nack_count);
 						}
-						list = list->next;
+						g_queue_pop_tail(queue);
 					}
 					component->retransmit_recent_cnt += retransmits_cnt;
 					/* FIXME Remove the NACK compound packet, we've handled it */
@@ -3389,8 +3404,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						component->in_stats.audio.nacks += nacks_count;
 					}
 					janus_mutex_unlock(&component->mutex);
-					g_slist_free(nacks);
-					nacks = NULL;
 				}
 				if(component->retransmit_recent_cnt &&
 						now - component->retransmit_log_ts > 5*G_USEC_PER_SEC) {
@@ -5254,6 +5267,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 						}
 						p->created = janus_get_monotonic_time();
 						p->last_retransmit = 0;
+						p->current_backoff = 0;
 						janus_rtp_header *header = (janus_rtp_header *)pkt->data;
 						guint16 seq = ntohs(header->seq_number);
 						if(!video) {
