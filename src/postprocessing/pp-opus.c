@@ -107,7 +107,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, gboolean rest
 	janus_pp_frame_packet *tmp = list;
 	long int offset = 0;
 	int bytes = 0, len = 0, last_seq = 0;
-	uint64_t pos = 0, nextPos = 0;
+	uint64_t pos = 0;
 	double ts = 0.0;
 	uint8_t *buffer = g_malloc0(1500);
 
@@ -251,21 +251,37 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, gboolean rest
 	AVRational timebase = {1, 48000};
 
 	while(*working && tmp != NULL) {
-		/* if restamping is being used, do not evaluate the sequence number jump */
-		if(tmp->prev != NULL && ((tmp->ts - tmp->prev->ts)/48/20 > 1) && (restamping || (tmp->seq != tmp->prev->seq+1))) {
-			JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
-				tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000);
+		if(tmp->prev != NULL && ((tmp->ts - tmp->prev->ts)/48 > 20)) {
+			int silence_count = 0;
+			if(tmp->seq != tmp->prev->seq+1) {
+				/* Packet Lost */
+				JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
+					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000);
+				/* insert 20ms silence packets before the current packet */
+				silence_count = (tmp->ts - tmp->prev->ts)/48/20 - 1;
+			} else if(restamping && tmp->restamped == 1) {
+				/* Packet restamped due to RTP clock issues */
+				JANUS_LOG(LOG_WARN, "Restamped packet detected (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
+					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000);
+				/* insert 20ms silence packets before the current packet */
+				silence_count = (tmp->ts - tmp->prev->ts)/48/20 - 1;
+			} else {
+				/* plen > 20 ms, DTX ?*/
+				JANUS_LOG(LOG_WARN, "DTX packet detected (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
+					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000);
+				/* insert 20ms silence packets for the whole DTX duration */
+				silence_count = (tmp->ts - tmp->prev->ts)/48/20;
+				/* drop this packet since it's DTX silence */
+				tmp->drop = 1;
+			}
 			/* use ts differ to insert silence packet */
-			int silence_count = (tmp->ts - tmp->prev->ts)/48/20 - 1;
 			pos = (tmp->prev->ts - list->ts) / 48 / 20 + 1;
 			JANUS_LOG(LOG_WARN, "[FILL] pos: %06"SCNu64", writing silences (count=%d)\n", pos, silence_count);
 			int i=0;
 			pos = tmp->prev->ts - list->ts;
 			for(i=0; i<silence_count; i++) {
 				pos += OPUS_PACKET_DURATION;
-				if(tmp->next != NULL)
-					nextPos = tmp->next->ts - list->ts;
-				if(pos >= nextPos) {
+				if(tmp->next != NULL && pos >= (tmp->next->ts - list->ts)) {
 					JANUS_LOG(LOG_WARN, "[SKIP] pos: %06" SCNu64 ", skipping remaining silence\n", pos / 48 / 20 + 1);
 					break;
 				}
@@ -280,7 +296,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, gboolean rest
 
 				int res = av_write_frame(fctx, pkt);
 				if(res < 0) {
-					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d, %s)\n",
+					JANUS_LOG(LOG_ERR, "Error writing audio frame to file... (error %d, %s)\n",
 						res, av_err2str(res));
 				}
 			}
@@ -321,6 +337,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, gboolean rest
 		if(tmp->seq < last_seq) {
 			last_seq = tmp->seq;
 		}
+		pos = tmp->prev != NULL ? ((tmp->prev->ts - list->ts) / 48 / 20 + 1) : 0;
 		JANUS_LOG(LOG_VERB, "pos: %06"SCNu64", writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
 			pos, bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/48000);
 #ifdef FF_API_INIT_PACKET
