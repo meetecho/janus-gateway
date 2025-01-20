@@ -13769,7 +13769,7 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 
 	/* Loop */
 	int num = 0, i = 0;
-	while(!g_atomic_int_get(&publisher->remote_leaving) && !g_atomic_int_get(&publisher->destroyed)) {
+	while(!g_atomic_int_get(&publisher->remote_leaving) && !g_atomic_int_get(&publisher->destroyed) && !g_atomic_int_get(&videoroom->destroyed)) {
 		/* Prepare poll */
 		num = 0;
 		if(publisher->remote_fd != -1) {
