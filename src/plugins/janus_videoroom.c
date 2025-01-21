@@ -7991,6 +7991,22 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			g_snprintf(error_cause, 512, "Could not spawn thread for remote publisher");
 			goto prepare_response;
 		}
+
+		janus_mutex_lock(&publisher->rec_mutex);
+		janus_mutex_lock(&publisher->streams_mutex);
+		/* Check if we need to start recording */
+		if((publisher->room && publisher->room->record) || publisher->recording_active) {
+			GList *temp = publisher->streams;
+			while(temp) {
+				janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+				janus_videoroom_recorder_create(ps);
+				temp = temp->next;
+			}
+			publisher->recording_active = TRUE;
+		}
+		janus_mutex_unlock(&publisher->streams_mutex);
+		janus_mutex_unlock(&publisher->rec_mutex);
+
 		/* Done */
 		janus_mutex_unlock(&videoroom->mutex);
 		janus_refcount_decrease(&videoroom->ref);
@@ -8315,6 +8331,22 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_videoroom_notify_about_publisher(publisher, TRUE);
 		}
 		janus_mutex_unlock(&publisher->streams_mutex);
+
+		janus_mutex_lock(&publisher->rec_mutex);
+		janus_mutex_lock(&publisher->streams_mutex);
+		/* Check if we need to start recording */
+		if((publisher->room && publisher->room->record) || publisher->recording_active) {
+			GList *temp = publisher->streams;
+			while(temp) {
+				janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+				janus_videoroom_recorder_create(ps);
+				temp = temp->next;
+			}
+			publisher->recording_active = TRUE;
+		}
+		janus_mutex_unlock(&publisher->streams_mutex);
+		janus_mutex_unlock(&publisher->rec_mutex);
+
 		janus_mutex_unlock(&videoroom->mutex);
 		/* Done */
 		janus_refcount_decrease(&publisher->ref);
