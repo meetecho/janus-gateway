@@ -14,7 +14,7 @@ logger = require('janus-logger')
 
 -- Example details
 name = "videoroom.lua"
-logger.prefix(colors.blue .. name .. colors.reset)
+logger.prefix("[" .. colors.blue .. name .. colors.reset .. "]")
 logger.print("Loading...")
 
 -- State and properties
