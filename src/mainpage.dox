@@ -3873,7 +3873,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Server © 2014-2024 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2025 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
