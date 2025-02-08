@@ -685,6 +685,8 @@
 
 #include "plugin.h"
 
+#include <openssl/evp.h>
+#include <openssl/err.h>
 #include <arpa/inet.h>
 #include <net/if.h>
 
@@ -724,6 +726,9 @@
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
 #define JANUS_SIP_PACKAGE			"janus.plugin.sip"
+
+#define AES_KEY_LENGTH 32  /* AES-256 = 32 bytes */
+#define BUFFER_SIZE 1024   /* Maximum size for the encrypted text */
 
 /* Plugin methods */
 janus_plugin *create(void);
@@ -897,12 +902,15 @@ static char *sips_certs_dir = NULL;
 #define JANUS_DEFAULT_SIP_TIMER_T1X64 32000
 static int sip_timer_t1x64 = JANUS_DEFAULT_SIP_TIMER_T1X64;
 static uint16_t dtmf_keys[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '#', 'A', 'B', 'C', 'D'};
+static char *secret_encryption_key = NULL;
 
 static gboolean query_contact_header = FALSE;
 
 static GThread *handler_thread;
 static void *janus_sip_handler(void *data);
 static void janus_sip_hangup_media_internal(janus_plugin_session *handle);
+static void hex_to_bytes(const char *hex, unsigned char *bytes, size_t len);
+static char *decrypt_aes_secret(const char *key_hex, const char *ciphertext_hex);
 
 typedef struct janus_sip_message {
 	janus_plugin_session *handle;
@@ -2106,6 +2114,14 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			JANUS_LOG(LOG_VERB, "Sofia SIP certificates folder: %s\n", sips_certs_dir);
 		}
 
+		item = janus_config_get(config, config_general, janus_config_type_item, "secret_encryption_key");
+		if(item && item->value) {
+			secret_encryption_key = g_strdup(item->value);
+			if (strlen(secret_encryption_key) != 64) {
+				JANUS_LOG(LOG_ERR, "Invalid secret_encryption_key length: %zu (must be 64 characters)\n", strlen(secret_encryption_key));
+				return -1;
+			}
+		}
 		janus_config_destroy(config);
 	}
 	config = NULL;
@@ -2888,6 +2904,63 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	g_atomic_int_set(&session->hangingup, 0);
 }
 
+/* Function to convert a hexadecimal string to a byte array */
+static void hex_to_bytes(const char *hex, unsigned char *bytes, size_t len) {
+	for (size_t i = 0; i < len; i++) {
+		sscanf(hex + 2 * i, "%2hhx", &bytes[i]);
+	}
+}
+
+/* Main function to decrypt a hexadecimal string using AES-256-ECB */
+static char *decrypt_aes_secret(const char *key_hex, const char *ciphertext_hex) {
+	/* AES-256 uses a 32-byte key */
+	unsigned char key[32];
+	size_t ciphertext_len = strlen(ciphertext_hex) / 2;
+
+	/* Buffer for ciphertext */
+	unsigned char ciphertext[1024]; // Maximum size for ciphertext
+
+	hex_to_bytes(key_hex, key, sizeof(key));
+	hex_to_bytes(ciphertext_hex, ciphertext, ciphertext_len);
+
+	/* Initialize decryption */
+	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+	if (!ctx) {
+		JANUS_LOG(LOG_WARN, "[SIP-decrypt_aes_secret] Failed to create EVP context\n");
+		return NULL;
+	}
+
+	unsigned char plaintext[1024]; // Buffer for plaintext
+	int len = 0, plaintext_len = 0;
+
+	if (EVP_DecryptInit_ex(ctx, EVP_aes_256_ecb(), NULL, key, NULL) != 1) {
+		JANUS_LOG(LOG_WARN, "[SIP-decrypt_aes_secret] Failed to initialize decryption\n");
+		EVP_CIPHER_CTX_free(ctx);
+		return NULL;
+	}
+
+	if (EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len) != 1) {
+		JANUS_LOG(LOG_WARN, "[SIP-decrypt_aes_secret] Failed to decrypt data\n");
+		EVP_CIPHER_CTX_free(ctx);
+		return NULL;
+	}
+	plaintext_len = len;
+
+	if (EVP_DecryptFinal_ex(ctx, plaintext + len, &len) != 1) {
+		JANUS_LOG(LOG_WARN, "[SIP-decrypt_aes_secret] Failed to finalize decryption\n");
+		EVP_CIPHER_CTX_free(ctx);
+		return NULL;
+	}
+	plaintext_len += len;
+
+	/* Free the context */
+	EVP_CIPHER_CTX_free(ctx);
+
+	/* Convert to string and return */
+	plaintext[plaintext_len] = '\0';
+	return g_strdup((char *)plaintext);
+}
+
 /* Thread to handle incoming messages */
 static void *janus_sip_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining SIP handler thread\n");
@@ -3208,7 +3281,17 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 				if(secret) {
-					secret_text = json_string_value(secret);
+					if(secret_encryption_key) {
+						secret_text = decrypt_aes_secret(secret_encryption_key, json_string_value(secret));
+						if(secret_text == NULL) {
+							JANUS_LOG(LOG_ERR, "Failed to decrypt secret\n");
+							error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+							g_snprintf(error_cause, 512, "Failed to decrypt secret");
+							goto error;
+						}
+					} else {
+						secret_text = json_string_value(secret);
+					}
 					secret_type = janus_sip_secret_type_plaintext;
 				} else {
 					secret_text = json_string_value(ha1_secret);
@@ -3904,13 +3987,25 @@ static void *janus_sip_handler(void *data) {
 			}
 			if(secret) {
 				JANUS_LOG(LOG_VERB, "Updating credentials (secret) for authenticating the INVITE\n");
+				const char *secret_text = NULL;
+				if(secret_encryption_key) {
+					secret_text = decrypt_aes_secret(secret_encryption_key, json_string_value(secret));
+					if(secret_text == NULL) {
+						JANUS_LOG(LOG_ERR, "Error decrypting secret\n");
+						error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Error decrypting secret");
+						goto error;
+					}
+				} else {
+					secret_text = g_strdup(json_string_value(secret));
+				}
 				if(!session->helper) {
 					g_free(session->account.secret);
-					session->account.secret = g_strdup(json_string_value(secret));
+					session->account.secret = g_strdup(secret_text);
 					session->account.secret_type = janus_sip_secret_type_plaintext;
 				} else if(session->master != NULL) {
 					g_free(session->master->account.secret);
-					session->master->account.secret = g_strdup(json_string_value(secret));
+					session->master->account.secret = g_strdup(secret_text);
 					session->master->account.secret_type = janus_sip_secret_type_plaintext;
 				}
 			} else if(ha1_secret) {
@@ -4439,8 +4534,8 @@ static void *janus_sip_handler(void *data) {
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 			nua_respond(session->stack->s_nh_i, response_code, sip_status_phrase(response_code),
-				    TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
-				    TAG_END());
+					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
+					TAG_END());
 			janus_mutex_lock(&session->mutex);
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
