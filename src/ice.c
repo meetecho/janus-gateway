@@ -475,7 +475,7 @@ typedef struct janus_ice_queued_packet {
 	janus_plugin_rtp_extensions extensions;
 	gint length;
 	gint type;
-	gboolean control;
+	gboolean control, control_ext;
 	gboolean retransmission;
 	gboolean encrypted;
 	gint64 added;
@@ -3221,6 +3221,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
 							pkt->extensions = p->extensions;
 							pkt->control = FALSE;
+							pkt->control_ext = FALSE;
 							pkt->retransmission = TRUE;
 							pkt->label = NULL;
 							pkt->protocol = NULL;
@@ -4728,6 +4729,36 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			}
 		} else {
 			/* Check if there's anything we need to do before sending */
+			if(pkt->control_ext) {
+				/* Fix all SSRCs before enqueueing, as we need to use the ones for this media
+				 * leg. Note that this is only needed for RTCP packets coming from plugins: the
+				 * ones created by the core already have the right SSRCs in the right place */
+				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id,
+					medium->ssrc, medium->ssrc_peer[0]);
+				janus_rtcp_fix_ssrc(NULL, pkt->data, pkt->length, 1,
+					medium->ssrc, medium->ssrc_peer[0]);
+				/* If this is a PLI and we're simulcasting, send a PLI on other layers as well */
+				if(video && janus_rtcp_has_pli(pkt->data, pkt->length)) {
+					if(medium->ssrc_peer[1]) {
+						char plibuf[12];
+						memset(plibuf, 0, 12);
+						janus_rtcp_pli((char *)&plibuf, 12);
+						janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
+							medium->ssrc, medium->ssrc_peer[1]);
+						janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = TRUE, .buffer = plibuf, .length = sizeof(plibuf) };
+						janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
+					}
+					if(medium->ssrc_peer[2]) {
+						char plibuf[12];
+						memset(plibuf, 0, 12);
+						janus_rtcp_pli((char *)&plibuf, 12);
+						janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
+							medium->ssrc, medium->ssrc_peer[2]);
+						janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = TRUE, .buffer = plibuf, .length = sizeof(plibuf) };
+						janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
+					}
+				}
+			}
 			uint32_t bitrate = janus_rtcp_get_remb(pkt->data, pkt->length);
 			if(bitrate > 0) {
 				/* There's a REMB, prepend a RR as it won't work otherwise */
@@ -5053,6 +5084,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 	pkt->type = packet->video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
 	pkt->extensions = packet->extensions;
 	pkt->control = FALSE;
+	pkt->control_ext = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
 	pkt->label = NULL;
@@ -5095,6 +5127,7 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_ice_peerconne
 	pkt->type = packet->video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
 	memset(&pkt->extensions, 0, sizeof(pkt->extensions));
 	pkt->control = TRUE;
+	pkt->control_ext = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
 	pkt->label = NULL;
@@ -5108,47 +5141,34 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_ice_peerconne
 }
 
 void janus_ice_relay_rtcp(janus_ice_handle *handle, janus_plugin_rtcp *packet) {
-	if(!handle || packet == NULL || packet->buffer == NULL)
+	if(!handle || !handle->pc || handle->queued_packets == NULL || packet == NULL || packet->buffer == NULL ||
+			!janus_is_rtcp(packet->buffer, packet->length))
 		return;
-	/* Find the right medium instance */
-	janus_mutex_lock(&handle->mutex);
-	if(!handle->pc || !handle->pc->media || !handle->pc->media_bytype) {
-		janus_mutex_unlock(&handle->mutex);
-		return;
-	}
-	janus_ice_peerconnection_medium *medium = (packet->mindex != -1 ?
-			g_hash_table_lookup(handle->pc->media, GINT_TO_POINTER(packet->mindex)) :
-			g_hash_table_lookup(handle->pc->media_bytype,
-				GINT_TO_POINTER(packet->video ? JANUS_MEDIA_VIDEO : JANUS_MEDIA_AUDIO)));
-	if(!medium) {
-		janus_mutex_unlock(&handle->mutex);
+	/* Strip RR/SR/SDES/NACKs/etc. */
+	int rtcp_len = 0;
+	char *rtcp_buf = janus_rtcp_filter(packet->buffer, packet->length, &rtcp_len);
+	if(rtcp_buf == NULL || rtcp_len < 1) {
+		/* Nothing left, we're done */
+		g_free(rtcp_buf);
 		return;
 	}
-	janus_refcount_increase(&medium->ref);
-	janus_mutex_unlock(&handle->mutex);
-	janus_ice_relay_rtcp_internal(handle, medium, packet, TRUE);
-	/* If this is a PLI and we're simulcasting, send a PLI on other layers as well */
-	if(packet->video && janus_rtcp_has_pli(packet->buffer, packet->length)) {
-		if(medium->ssrc_peer[1]) {
-			char plibuf[12];
-			memset(plibuf, 0, 12);
-			janus_rtcp_pli((char *)&plibuf, 12);
-			janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
-				medium->ssrc, medium->ssrc_peer[1]);
-			janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = TRUE, .buffer = plibuf, .length = sizeof(plibuf) };
-			janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
-		}
-		if(medium->ssrc_peer[2]) {
-			char plibuf[12];
-			memset(plibuf, 0, 12);
-			janus_rtcp_pli((char *)&plibuf, 12);
-			janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
-				medium->ssrc, medium->ssrc_peer[2]);
-			janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = TRUE, .buffer = plibuf, .length = sizeof(plibuf) };
-			janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
-		}
-	}
-	janus_refcount_decrease(&medium->ref);
+	/* Queue this packet */
+	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
+	pkt->mindex = packet->mindex;
+	pkt->data = g_malloc(rtcp_len+SRTP_MAX_TAG_LEN+4);
+	memcpy(pkt->data, rtcp_buf, rtcp_len);
+	pkt->length = rtcp_len;
+	pkt->type = packet->video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
+	memset(&pkt->extensions, 0, sizeof(pkt->extensions));
+	pkt->control = TRUE;
+	pkt->control_ext = TRUE;	/* We'll do further prpcessing for this packet in the loop */
+	pkt->encrypted = FALSE;
+	pkt->retransmission = FALSE;
+	pkt->label = NULL;
+	pkt->protocol = NULL;
+	pkt->added = janus_get_monotonic_time();
+	janus_ice_queue_packet(handle, pkt);
+	g_free(rtcp_buf);
 }
 
 void janus_ice_send_pli(janus_ice_handle *handle) {
@@ -5194,6 +5214,7 @@ void janus_ice_relay_data(janus_ice_handle *handle, janus_plugin_data *packet) {
 	pkt->type = packet->binary ? JANUS_ICE_PACKET_BINARY : JANUS_ICE_PACKET_TEXT;
 	memset(&pkt->extensions, 0, sizeof(pkt->extensions));
 	pkt->control = FALSE;
+	pkt->control_ext = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
 	pkt->label = packet->label ? g_strdup(packet->label) : NULL;
@@ -5221,6 +5242,7 @@ void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length) {
 	pkt->type = JANUS_ICE_PACKET_SCTP;
 	memset(&pkt->extensions, 0, sizeof(pkt->extensions));
 	pkt->control = FALSE;
+	pkt->control_ext = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
 	pkt->label = NULL;
