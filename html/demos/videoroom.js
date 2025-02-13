@@ -64,8 +64,8 @@ $(document).ready(function() {
 									Janus.log("Plugin attached! (" + sfutest.getPlugin() + ", id=" + sfutest.getId() + ")");
 									Janus.log("  -- This is a publisher/manager");
 									// Prepare the username registration
-									$('#videojoin').removeClass('hide').removeClass('hide');
-									$('#registernow').removeClass('hide').removeClass('hide');
+									$('#videojoin').removeClass('hide');
+									$('#registernow').removeClass('hide');
 									$('#register').click(registerUsername);
 									$('#username').focus();
 									$('#start').removeAttr('disabled').html("Stop")
@@ -111,7 +111,7 @@ $(document).ready(function() {
 										return;
 									$('#publish').remove();
 									// This controls allows us to override the global room bitrate cap
-									$('#bitrate').parent().parent().removeClass('hide').removeClass('hide');
+									$('#bitrate').parent().parent().removeClass('hide');
 									$('#bitrate a').click(function() {
 										$('.dropdown-toggle').dropdown('hide');
 										let id = $(this).attr("id");
@@ -142,7 +142,7 @@ $(document).ready(function() {
 											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
 											if(subscriber_mode) {
 												$('#videojoin').addClass('hide');
-												$('#videos').removeClass('hide').removeClass('hide');
+												$('#videos').removeClass('hide');
 											} else {
 												publishOwnFeed(true);
 											}
@@ -323,7 +323,7 @@ $(document).ready(function() {
 										// We've been here already
 										return;
 									}
-									$('#videos').removeClass('hide').removeClass('hide');
+									$('#videos').removeClass('hide');
 									if($('#mute').length === 0) {
 										// Add a 'mute' button
 										$('#videolocal').append('<button class="btn btn-warning btn-sm bottom-left m-2" id="mute">Mute</button>');
@@ -731,7 +731,7 @@ function newRemoteFeed(id, display, streams) {
 					Janus.attachMediaStream($('#remotevideo' + remoteFeed.rfindex + '-' + mid).get(0), stream);
 					// Note: we'll need this for additional videos too
 					if(!bitrateTimer[remoteFeed.rfindex]) {
-						$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').removeClass('hide');
+						$('#curbitrate'+remoteFeed.rfindex).removeClass('hide');
 						bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
 							if(!$("#videoremote" + remoteFeed.rfindex + ' video').get(0))
 								return;
