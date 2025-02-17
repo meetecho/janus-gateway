@@ -5095,7 +5095,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 
 void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_ice_peerconnection_medium *medium,
 		janus_plugin_rtcp *packet, gboolean filter_rtcp) {
-	if(!handle || !handle->pc || handle->queued_packets == NULL || medium == NULL || packet == NULL || packet->buffer == NULL ||
+	if(!handle || !handle->pc || handle->queued_packets == NULL || packet == NULL || packet->buffer == NULL ||
 			!janus_is_rtcp(packet->buffer, packet->length))
 		return;
 	/* We use this internal method to check whether we need to filter RTCP (e.g., to make
@@ -5103,31 +5103,34 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_ice_peerconne
 	 * already been done, and so this is actually a packet added by the ICE send thread */
 	char *rtcp_buf = packet->buffer;
 	int rtcp_len = packet->length;
+	gboolean has_medium = (medium != NULL);
 	if(filter_rtcp) {
-		/* FIXME Strip RR/SR/SDES/NACKs/etc. */
+		/* Strip RR/SR/SDES/NACKs/etc. */
 		rtcp_buf = janus_rtcp_filter(packet->buffer, packet->length, &rtcp_len);
 		if(rtcp_buf == NULL || rtcp_len < 1) {
 			g_free(rtcp_buf);
 			return;
 		}
-		/* Fix all SSRCs before enqueueing, as we need to use the ones for this media
-		 * leg. Note that this is only needed for RTCP packets coming from plugins: the
-		 * ones created by the core already have the right SSRCs in the right place */
-		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id,
-			medium->ssrc, medium->ssrc_peer[0]);
-		janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1,
-			medium->ssrc, medium->ssrc_peer[0]);
+		if(has_medium) {
+			/* Fix all SSRCs before enqueueing, as we need to use the ones for this media
+			* leg. Note that this is only needed for RTCP packets coming from plugins: the
+			* ones created by the core already have the right SSRCs in the right place */
+			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id,
+				medium->ssrc, medium->ssrc_peer[0]);
+			janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1,
+				medium->ssrc, medium->ssrc_peer[0]);
+		}
 	}
 	/* Queue this packet */
 	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
-	pkt->mindex = medium->mindex;
+	pkt->mindex = (has_medium) ? medium->mindex : packet->mindex;
 	pkt->data = g_malloc(rtcp_len+SRTP_MAX_TAG_LEN+4);
 	memcpy(pkt->data, rtcp_buf, rtcp_len);
 	pkt->length = rtcp_len;
 	pkt->type = packet->video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
 	memset(&pkt->extensions, 0, sizeof(pkt->extensions));
 	pkt->control = TRUE;
-	pkt->control_ext = FALSE;
+	pkt->control_ext = !has_medium;	/* We could do further processing for this packet in the loop */
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
 	pkt->label = NULL;
@@ -5141,34 +5144,7 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_ice_peerconne
 }
 
 void janus_ice_relay_rtcp(janus_ice_handle *handle, janus_plugin_rtcp *packet) {
-	if(!handle || !handle->pc || handle->queued_packets == NULL || packet == NULL || packet->buffer == NULL ||
-			!janus_is_rtcp(packet->buffer, packet->length))
-		return;
-	/* Strip RR/SR/SDES/NACKs/etc. */
-	int rtcp_len = 0;
-	char *rtcp_buf = janus_rtcp_filter(packet->buffer, packet->length, &rtcp_len);
-	if(rtcp_buf == NULL || rtcp_len < 1) {
-		/* Nothing left, we're done */
-		g_free(rtcp_buf);
-		return;
-	}
-	/* Queue this packet */
-	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
-	pkt->mindex = packet->mindex;
-	pkt->data = g_malloc(rtcp_len+SRTP_MAX_TAG_LEN+4);
-	memcpy(pkt->data, rtcp_buf, rtcp_len);
-	pkt->length = rtcp_len;
-	pkt->type = packet->video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
-	memset(&pkt->extensions, 0, sizeof(pkt->extensions));
-	pkt->control = TRUE;
-	pkt->control_ext = TRUE;	/* We'll do further prpcessing for this packet in the loop */
-	pkt->encrypted = FALSE;
-	pkt->retransmission = FALSE;
-	pkt->label = NULL;
-	pkt->protocol = NULL;
-	pkt->added = janus_get_monotonic_time();
-	janus_ice_queue_packet(handle, pkt);
-	g_free(rtcp_buf);
+	janus_ice_relay_rtcp_internal(handle, NULL, packet, TRUE);
 }
 
 void janus_ice_send_pli(janus_ice_handle *handle) {
