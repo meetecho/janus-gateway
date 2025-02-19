@@ -496,7 +496,7 @@ int janus_rtp_header_extension_parse_video_layers_allocation(char *buf, int len,
 			streams[i].sl[j].id = j;
 			streams[i].sl[j].tls = (ext[offset] >> boff) & 0x03;
 			tl = streams[i].sl[j].tls + 1;
-			if(tl > *temporal_layers)
+			if(temporal_layers && tl > *temporal_layers)
 				*temporal_layers = tl;
 			if(boff == 0) {
 				boff = 8;
@@ -505,7 +505,7 @@ int janus_rtp_header_extension_parse_video_layers_allocation(char *buf, int len,
 					return -3;
 			}
 		}
-		if(sl > *spatial_layers)
+		if(spatial_layers && sl > *spatial_layers)
 			*spatial_layers = sl;
 	}
 	/* Done, we don't care about bitrates and resolutions for now */
