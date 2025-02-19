@@ -37,7 +37,7 @@
  *
  * The supported requests are \c register , \c unregister , \c call ,
  * \progress , \c accept , \c decline , \c info , \c message , \c dtmf_info ,
- * \c subscribe , \c unsubscribe , \c transfer , \c recording ,
+ * \c subscribe , \c unsubscribe , \c transfer , \c recording , \c keyframe ,
  * \c hold , \c unhold , \c update and \c hangup . \c register can be used,
  * as the name suggests, to register a username at a SIP registrar to
  * call and be called, while \c unregister unregisters it; \c call is used
@@ -566,6 +566,28 @@
  *
  * A \c recordingupdated event is sent back in case the request is successful.
  *
+ * To programmatically send a video keyframe request to either the WebRTC user
+ * or the SIP peer (or both), the \c keyframe request can be used. This
+ * request is particularly useful when the SIP peer doesn't support RTCP PLI,
+ * and so may use other mechanisms (e.g., via signalling) to ask for a keyframe
+ * to get video working. By using this request, the WebRTC user can ask Janus
+ * to originate a PLI programmatically. The direction of the keyframe request
+ * can be provided by using the \c user and \c peer properties: if \c user
+ * is \c TRUE a keyframe request will be sent by Janus to the WebRTC user;
+ * if \c peer is \c TRUE a keyframe request will be sent by Janus to the
+ * SIP peer. In both cases an RTCP PLI message will be sent. The syntax of
+ * the message is the following:
+ *
+\verbatim
+{
+	"request" : "keyframe",
+	"user" : <true|false; whether or not to send a keyframe request to the WebRTC user>,
+	"peer" : <true|false; whether or not to send a keyframe request to the SIP peer>
+}
+\endverbatim
+ *
+ * A \c keyframesent event is sent back in case the request is successful.
+ *
  * \section sipmc Simultaneous SIP calls using the same account
  *
  * As anticipated in the previous sections, attaching to the SIP plugin
@@ -872,6 +894,10 @@ static struct janus_json_parameter sipmessage_parameters[] = {
 	{"uri", JSON_STRING, 0},
 	{"headers", JSON_OBJECT, 0},
 	{"call_id", JANUS_JSON_STRING, 0}
+};
+static struct janus_json_parameter keyframe_parameters[] = {
+	{"user", JANUS_JSON_BOOL, 0},
+	{"peer", JANUS_JSON_BOOL, 0}
 };
 
 /* Useful stuff */
@@ -5088,6 +5114,42 @@ static void *janus_sip_handler(void *data) {
 			/* Notify the result */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("dtmfsent"));
+		} else if(!strcasecmp(request_text, "keyframe")) {
+			/* Programmatically send a keyframe request via RTCP PLI to
+			 * either the WebRTC user, the SIP peer, or both of them */
+			if(!janus_sip_call_is_established(session)) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not established? status=%s)\n", janus_sip_call_status_string(session->status));
+				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+				goto error;
+			}
+			janus_mutex_lock(&session->mutex);
+			if(session->callee == NULL) {
+				janus_mutex_unlock(&session->mutex);
+				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
+				goto error;
+			}
+			janus_mutex_unlock(&session->mutex);
+			JANUS_VALIDATE_JSON_OBJECT(root, keyframe_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			gboolean user = json_is_true(json_object_get(root, "user"));
+			gboolean peer = json_is_true(json_object_get(root, "peer"));
+			if(user) {
+				/* Send a PLI to the WebRTC user */
+				gateway->send_pli(session->handle);
+			}
+			if(peer) {
+				/* Send a PLI to the SIP peer (but only if they negotiated it) */
+				if(session->media.video_pli_supported)
+					janus_sip_rtcp_pli_send(session);
+			}
+			/* Notify the result */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("keyframesent"));
 		} else if(!strcasecmp(request_text, "reset")) {
 			/* Apparently, under some particular circumstances that we haven't
 			 * managed to replicate ourselves yet, it can sometimes happen that
@@ -7677,8 +7739,8 @@ static void janus_sip_rtcp_pli_send(janus_sip_session *session) {
 	int rtcp_len = 12;
 	janus_rtcp_pli((char *)&rtcp_buf, rtcp_len);
 	/* Fix SSRCs as the Janus core does */
-	JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
-		session->media.video_ssrc, session->media.video_ssrc_peer);
+	JANUS_LOG(LOG_HUGE, "[SIP-%s] Fixing SSRCs (local %u, peer %u)\n",
+		session->account.username, session->media.video_ssrc, session->media.video_ssrc_peer);
 	janus_rtcp_fix_ssrc(NULL, (char *)rtcp_buf, rtcp_len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
 	/* Is SRTP involved? */
 	if(session->media.has_srtp_local_video) {
