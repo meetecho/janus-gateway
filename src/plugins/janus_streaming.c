@@ -7120,6 +7120,14 @@ done:
 			janus_mutex_unlock(&sessions_mutex);
 			if(g_atomic_int_get(&session->stopping) || !g_atomic_int_get(&session->started)) {
 				/* Been there, done that: ignore */
+				json_t *event = json_object();
+				json_object_set_new(event, "streaming", json_string("event"));
+				result = json_object();
+				json_object_set_new(result, "status", json_string("idle"));
+				json_object_set_new(event, "result", result);
+				int ret = gateway->push_event(msg->handle, &janus_streaming_plugin, msg->transaction, event, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
+				json_decref(event);
 				janus_streaming_message_free(msg);
 				continue;
 			}
