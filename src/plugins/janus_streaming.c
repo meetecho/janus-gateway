@@ -5382,7 +5382,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			if (stop_rec) {
 				stop_recording = json_is_true(stop_rec);
 			}
-			JANUS_LOG(LOG_INFO, "[%s] Stream disabled (stop_recording=%s)\n", mp->name, stop_recording ? "yes" : "no");
+			JANUS_LOG(LOG_INFO, "[%s] Stream disabled (stop_recording=%s)\n", mp->name, stop_recording ? "true" : "false");
 			/* Any recording to close? */
 			if(mp->streaming_source == janus_streaming_source_rtp && stop_recording) {
 				janus_streaming_rtp_source *source = mp->source;

@@ -5204,19 +5204,19 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			/* Now for the values */
 			janus_config_add(config, c, janus_config_item_create("description", videoroom->room_name));
 			if(videoroom->is_private)
-				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
+				janus_config_add(config, c, janus_config_item_create("is_private", "true"));
 			if(videoroom->require_pvtid)
-				janus_config_add(config, c, janus_config_item_create("require_pvtid", "yes"));
+				janus_config_add(config, c, janus_config_item_create("require_pvtid", "true"));
 			if(videoroom->signed_tokens)
-				janus_config_add(config, c, janus_config_item_create("signed_tokens", "yes"));
+				janus_config_add(config, c, janus_config_item_create("signed_tokens", "true"));
 			if(videoroom->require_e2ee)
-				janus_config_add(config, c, janus_config_item_create("require_e2ee", "yes"));
+				janus_config_add(config, c, janus_config_item_create("require_e2ee", "true"));
 			if(videoroom->dummy_publisher)
-				janus_config_add(config, c, janus_config_item_create("dummy_publisher", "yes"));
+				janus_config_add(config, c, janus_config_item_create("dummy_publisher", "true"));
 			g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->bitrate);
 			janus_config_add(config, c, janus_config_item_create("bitrate", value));
 			if(videoroom->bitrate_cap)
-				janus_config_add(config, c, janus_config_item_create("bitrate_cap", "yes"));
+				janus_config_add(config, c, janus_config_item_create("bitrate_cap", "true"));
 			g_snprintf(value, BUFSIZ, "%d", videoroom->max_publishers);
 			janus_config_add(config, c, janus_config_item_create("publishers", value));
 			if(videoroom->fir_freq) {
@@ -5233,17 +5233,17 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(videoroom->h264_profile)
 				janus_config_add(config, c, janus_config_item_create("h264_profile", videoroom->h264_profile));
 			if(videoroom->do_opusfec)
-				janus_config_add(config, c, janus_config_item_create("opus_fec", "yes"));
+				janus_config_add(config, c, janus_config_item_create("opus_fec", "true"));
 			if(videoroom->do_opusdtx)
-				janus_config_add(config, c, janus_config_item_create("opus_dtx", "yes"));
+				janus_config_add(config, c, janus_config_item_create("opus_dtx", "true"));
 			if(videoroom->room_secret)
 				janus_config_add(config, c, janus_config_item_create("secret", videoroom->room_secret));
 			if(videoroom->room_pin)
 				janus_config_add(config, c, janus_config_item_create("pin", videoroom->room_pin));
 			if(videoroom->audiolevel_ext) {
-				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "yes"));
+				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "true"));
 				if(videoroom->audiolevel_event)
-					janus_config_add(config, c, janus_config_item_create("audiolevel_event", "yes"));
+					janus_config_add(config, c, janus_config_item_create("audiolevel_event", "true"));
 				if(videoroom->audio_active_packets > 0) {
 					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_active_packets);
 					janus_config_add(config, c, janus_config_item_create("audio_active_packets", value));
@@ -5255,17 +5255,17 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			} else {
 				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "no"));
 			}
-			janus_config_add(config, c, janus_config_item_create("videoorient_ext", videoroom->videoorient_ext ? "yes" : "no"));
-			janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", videoroom->playoutdelay_ext ? "yes" : "no"));
-			janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", videoroom->transport_wide_cc_ext ? "yes" : "no"));
+			janus_config_add(config, c, janus_config_item_create("videoorient_ext", videoroom->videoorient_ext ? "true" : "false"));
+			janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", videoroom->playoutdelay_ext ? "true" : "false"));
+			janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", videoroom->transport_wide_cc_ext ? "true" : "false"));
 			if(videoroom->notify_joining)
-				janus_config_add(config, c, janus_config_item_create("notify_joining", "yes"));
+				janus_config_add(config, c, janus_config_item_create("notify_joining", "true"));
 			if(videoroom->record)
-				janus_config_add(config, c, janus_config_item_create("record", "yes"));
+				janus_config_add(config, c, janus_config_item_create("record", "true"));
 			if(videoroom->rec_dir)
 				janus_config_add(config, c, janus_config_item_create("rec_dir", videoroom->rec_dir));
 			if(videoroom->lock_record)
-				janus_config_add(config, c, janus_config_item_create("lock_record", "yes"));
+				janus_config_add(config, c, janus_config_item_create("lock_record", "true"));
 			if(videoroom->helper_threads > 0) {
 				g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->helper_threads);
 				janus_config_add(config, c, janus_config_item_create("threads", value));
@@ -5401,19 +5401,19 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
 			janus_config_add(config, c, janus_config_item_create("description", videoroom->room_name));
 			if(videoroom->is_private)
-				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
+				janus_config_add(config, c, janus_config_item_create("is_private", "true"));
 			if(videoroom->require_pvtid)
-				janus_config_add(config, c, janus_config_item_create("require_pvtid", "yes"));
+				janus_config_add(config, c, janus_config_item_create("require_pvtid", "true"));
 			if(videoroom->signed_tokens)
-				janus_config_add(config, c, janus_config_item_create("signed_tokens", "yes"));
+				janus_config_add(config, c, janus_config_item_create("signed_tokens", "true"));
 			if(videoroom->require_e2ee)
-				janus_config_add(config, c, janus_config_item_create("require_e2ee", "yes"));
+				janus_config_add(config, c, janus_config_item_create("require_e2ee", "true"));
 			if(videoroom->dummy_publisher)
-				janus_config_add(config, c, janus_config_item_create("dummy_publisher", "yes"));
+				janus_config_add(config, c, janus_config_item_create("dummy_publisher", "true"));
 			g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->bitrate);
 			janus_config_add(config, c, janus_config_item_create("bitrate", value));
 			if(videoroom->bitrate_cap)
-				janus_config_add(config, c, janus_config_item_create("bitrate_cap", "yes"));
+				janus_config_add(config, c, janus_config_item_create("bitrate_cap", "true"));
 			g_snprintf(value, BUFSIZ, "%d", videoroom->max_publishers);
 			janus_config_add(config, c, janus_config_item_create("publishers", value));
 			if(videoroom->fir_freq) {
@@ -5430,17 +5430,17 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(videoroom->h264_profile)
 				janus_config_add(config, c, janus_config_item_create("h264_profile", videoroom->h264_profile));
 			if(videoroom->do_opusfec)
-				janus_config_add(config, c, janus_config_item_create("opus_fec", "yes"));
+				janus_config_add(config, c, janus_config_item_create("opus_fec", "true"));
 			if(videoroom->do_opusdtx)
-				janus_config_add(config, c, janus_config_item_create("opus_dtx", "yes"));
+				janus_config_add(config, c, janus_config_item_create("opus_dtx", "true"));
 			if(videoroom->room_secret)
 				janus_config_add(config, c, janus_config_item_create("secret", videoroom->room_secret));
 			if(videoroom->room_pin)
 				janus_config_add(config, c, janus_config_item_create("pin", videoroom->room_pin));
 			if(videoroom->audiolevel_ext) {
-				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "yes"));
+				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "true"));
 				if(videoroom->audiolevel_event)
-					janus_config_add(config, c, janus_config_item_create("audiolevel_event", "yes"));
+					janus_config_add(config, c, janus_config_item_create("audiolevel_event", "true"));
 				if(videoroom->audio_active_packets > 0) {
 					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_active_packets);
 					janus_config_add(config, c, janus_config_item_create("audio_active_packets", value));
@@ -5452,17 +5452,17 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			} else {
 				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "no"));
 			}
-			janus_config_add(config, c, janus_config_item_create("videoorient_ext", videoroom->videoorient_ext ? "yes" : "no"));
-			janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", videoroom->playoutdelay_ext ? "yes" : "no"));
-			janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", videoroom->transport_wide_cc_ext ? "yes" : "no"));
+			janus_config_add(config, c, janus_config_item_create("videoorient_ext", videoroom->videoorient_ext ? "true" : "false"));
+			janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", videoroom->playoutdelay_ext ? "true" : "false"));
+			janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", videoroom->transport_wide_cc_ext ? "true" : "false"));
 			if(videoroom->notify_joining)
-				janus_config_add(config, c, janus_config_item_create("notify_joining", "yes"));
+				janus_config_add(config, c, janus_config_item_create("notify_joining", "true"));
 			if(videoroom->record)
-				janus_config_add(config, c, janus_config_item_create("record", "yes"));
+				janus_config_add(config, c, janus_config_item_create("record", "true"));
 			if(videoroom->rec_dir)
 				janus_config_add(config, c, janus_config_item_create("rec_dir", videoroom->rec_dir));
 			if(videoroom->lock_record)
-				janus_config_add(config, c, janus_config_item_create("lock_record", "yes"));
+				janus_config_add(config, c, janus_config_item_create("lock_record", "true"));
 			if(videoroom->helper_threads > 0) {
 				g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->helper_threads);
 				janus_config_add(config, c, janus_config_item_create("threads", value));

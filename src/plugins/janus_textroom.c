@@ -2601,7 +2601,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			/* Now for the values */
 			janus_config_add(config, c, janus_config_item_create("description", textroom->room_name));
 			if(textroom->is_private)
-				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
+				janus_config_add(config, c, janus_config_item_create("is_private", "true"));
 			if(textroom->room_secret)
 				janus_config_add(config, c, janus_config_item_create("secret", textroom->room_secret));
 			if(textroom->room_pin)
@@ -2776,7 +2776,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
 			janus_config_add(config, c, janus_config_item_create("description", textroom->room_name));
 			if(textroom->is_private)
-				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
+				janus_config_add(config, c, janus_config_item_create("is_private", "true"));
 			if(textroom->room_secret)
 				janus_config_add(config, c, janus_config_item_create("secret", textroom->room_secret));
 			if(textroom->room_pin)
