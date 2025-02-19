@@ -3930,6 +3930,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid msid on m-line #%d\n",
 							ice_handle->handle_id, m->index);
 						janus_sdp_destroy(parsed_sdp);
+						janus_mutex_unlock(&ice_handle->mutex);
 						return NULL;
 					}
 					if(medium != NULL && (medium->msid == NULL || strcasecmp(medium->msid, msid))) {
