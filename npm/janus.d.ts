@@ -36,7 +36,7 @@ declare namespace JanusJS {
 		init: () => void;
 	}
 
-	type GetScreenCallback = (error?, sourceId?) => void
+	type GetScreenCallback = (error:string, sourceId:string) => void
 
 	type HttpApiCallOption = {
 		async: boolean,

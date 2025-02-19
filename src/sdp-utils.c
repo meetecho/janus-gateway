@@ -2247,7 +2247,16 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 								int id = atoi(a->value);
 								if(id < 0) {
 									JANUS_LOG(LOG_ERR, "Invalid extension ID (%d)\n", id);
-									temp = temp->next;
+									emtemp = emtemp->next;
+									continue;
+								}
+
+								if(strstr(a->value, JANUS_RTP_EXTMAP_DEPENDENCY_DESC) &&
+										strcasecmp(codec, "av1") && strcasecmp(codec, "vp9")) {
+									/* Don't negotiate the Dependency Descriptor extension,
+									 * unless we're doing AV1 or VP9 for SVC. See for ref:
+									 * https://issues.webrtc.org/issues/42226269 */
+									emtemp = emtemp->next;
 									continue;
 								}
 								const char *direction = NULL;
