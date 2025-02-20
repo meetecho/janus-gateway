@@ -9,6 +9,8 @@ var janus = null;
 var recordplay = null;
 var opaqueId = "recordplaytest-"+Janus.randomString(12);
 
+var private_recordings = undefined;		// Set to true if you want recordings to be private
+
 var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
 var bandwidth = 1024 * 1024;
@@ -147,18 +149,28 @@ $(document).ready(function() {
 												}
 											} else if(event === 'playing') {
 												Janus.log("Playout has started!");
-											} else if(event === 'stopped') {
+											} else if(event === 'done' || event === 'stopped') {
 												Janus.log("Session has stopped!");
 												let id = result["id"];
 												if(recordingId) {
 													if(recordingId !== id) {
-														Janus.warn("Not a stop to our recording?");
+														Janus.warn("Not a stop to our recording? (" + recordingId + ", " + id + ")");
 														return;
 													}
-													bootbox.alert("Recording completed! Check the list of recordings to replay it.");
-												}
-												if(selectedRecording) {
-													if(selectedRecording !== id) {
+													// Show a prompt to replay the recording immediately
+													let text = 'Do you want to replay your recording right now?';
+													if(result['is_private'])
+														text += ' This is a private recording, so if you don\'t play it now you won\'t be able to replay it later.';
+													bootbox.confirm(text, function(res) {
+														if(res) {
+															selectedRecording = '' + id;
+															selectedRecordingInfo = escapeXmlTags(myname);
+															startPlayout();
+														}
+													});
+													recordingId = null;
+												} else if(selectedRecording) {
+													if(parseInt(selectedRecording) !== id) {
 														Janus.warn("Not a stop to our playout?");
 														return;
 													}
@@ -166,7 +178,6 @@ $(document).ready(function() {
 												// FIXME Reset status
 												$('#videobox').empty();
 												$('#video').addClass('invisible');
-												recordingId = null;
 												recording = false;
 												playing = false;
 												recordplay.hangup();
@@ -178,7 +189,7 @@ $(document).ready(function() {
 												updateRecsList();
 											}
 										}
-									} else {
+									} else if(msg["error"]) {
 										// FIXME Error?
 										let error = msg["error"];
 										bootbox.alert(error);
@@ -443,6 +454,10 @@ function updateRecsList() {
 	$('#list').unbind('click');
 	$('#update-list').addClass('fa-spin');
 	let body = { request: "list" };
+	// A list request will only obtain the list of recordings that were
+	// not marked as private. To return the list of private recordings
+	// as well, you need to provide the plugin admin key too, e.g.:
+	//     body['admin_key'] = 'supersecret';
 	Janus.debug("Sending message:", body);
 	recordplay.send({ message: body, success: function(result) {
 		setTimeout(function() {
@@ -518,7 +533,7 @@ function startRecording() {
 				],
 				success: function(jsep) {
 					Janus.debug("Got SDP!", jsep);
-					let body = { request: "record", name: myname };
+					let body = { request: "record", name: myname, is_private: private_recordings };
 					// We can try and force a specific codec, by telling the plugin what we'd prefer
 					// For simplicity, you can set it via a query string (e.g., ?vcodec=vp9)
 					if(acodec)
