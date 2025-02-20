@@ -80,6 +80,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	janus_rtp_header_extension_parse_abs_capture_time((char *)data, size, 1, NULL);
 	janus_rtp_header_extension_parse_video_orientation((char * )data, size, 1, &c, &f, &r1, &r0);
 	janus_rtp_header_extension_parse_dependency_desc((char *)data, size, 1, (uint8_t *)&dd, &sizedd);
+	janus_rtp_header_extension_parse_video_layers_allocation((char *)data, size, 1, NULL, NULL);
 
 	/* Extract codec payload */
 	int plen = 0;
