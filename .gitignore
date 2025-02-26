@@ -70,3 +70,4 @@ cov-int
 
 .vscode
 node_modules
+.venv
