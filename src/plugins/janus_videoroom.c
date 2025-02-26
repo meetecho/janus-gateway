@@ -1744,7 +1744,7 @@ room-<unique room ID>: {
  * one remote Janus/VideoRoom instance. This is why \c remote_id is needed
  * to be able to individually address each specific remotization, in case
  * you want to, e.g., stop making a specific publisher available on a
- * specigic Janus instance, but keep it available on others.
+ * specific Janus instance, but keep it available on others.
  *
  * To disable a specific remotization of a local publisher, the \c unpublish_remotely
  * request is used, which must be formatted as follows:
