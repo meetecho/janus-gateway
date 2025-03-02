@@ -480,6 +480,8 @@ struct janus_ice_peerconnection {
 	gint abs_send_time_ext_id;
 	/*! \brief Absolute Capture Time ext ID */
 	gint abs_capture_time_ext_id;
+	/*! \brief Video Layers Allocation ext ID */
+	gint videolayers_ext_id;
 	/*! \brief Whether we do transport wide cc */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
