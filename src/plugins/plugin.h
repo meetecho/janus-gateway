@@ -159,7 +159,7 @@ janus_plugin *create(void) {
 
 #include <glib.h>
 
-#include "refcount.h"
+#include "../refcount.h"
 
 
 /*! \brief Version of the API, to match the one plugins were compiled against
