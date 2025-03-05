@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.15.1] - 2025-03-05
+
+- Make ip-utils aware of 0.0.0.0 and :: [[Issue-3470](https://github.com/meetecho/janus-gateway/issues/3470)]
+- Optimize NACKs handling [[PR-3471](https://github.com/meetecho/janus-gateway/pull/3471)]
+- Fixed memory leak in VideoRoom (thanks @m08pvv!) [[PR-3493](https://github.com/meetecho/janus-gateway/pull/3493)]
+- Check if IPv6 is disabled when loading the Streaming plugin [[PR-3519](https://github.com/meetecho/janus-gateway/pull/3519)]
+- Add support for "progress" request on SIP Plugin (thanks @adnan-mujagic!) [[PR-3466](https://github.com/meetecho/janus-gateway/pull/3466)]
+- New programmatic API to ask for keyframes in SIP and NoSIP plugins [[PR-3517](https://github.com/meetecho/janus-gateway/pull/3517)]
+- Fixed missing libcurl linking in TextRoom plugin
+- Added support for private recordings in Record&Play [[PR-3518](https://github.com/meetecho/janus-gateway/pull/3518)]
+- Fixed WebSocket transport binding to the wrong IP address in particular setups [[Issue-3500](https://github.com/meetecho/janus-gateway/issues/3550)]
+- Improve DTX detection in janus-pp-rec [[PR-3488](https://github.com/meetecho/janus-gateway/pull/3488)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.15.0] - 2024-11-25
 
 - Refactored logging internals [[PR-3428](https://github.com/meetecho/janus-gateway/pull/3428)]
