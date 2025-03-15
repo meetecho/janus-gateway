@@ -1149,6 +1149,12 @@ gboolean janus_rtcp_has_fir(char *packet, int len) {
 		switch(rtcp->type) {
 			case RTCP_FIR:
 				return TRUE;
+			case RTCP_PSFB: {
+				gint fmt = rtcp->rc;
+				if(fmt == 4)
+					return TRUE;
+				break;
+			}
 			default:
 				break;
 		}
