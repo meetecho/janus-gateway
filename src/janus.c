@@ -718,8 +718,8 @@ static gboolean janus_check_sessions(gpointer user_data) {
 					if(janus_events_is_enabled())
 						janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, JANUS_EVENT_SUBTYPE_NONE,
 							session->session_id, "timeout", NULL);
-					/* FIXME Is this safe? apparently it causes hash table errors on the console */
 					g_hash_table_iter_remove(&iter);
+					g_atomic_int_dec_and_test(&sessions_num);
 					janus_session_destroy(session);
 				}
 			}
