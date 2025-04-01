@@ -3495,6 +3495,7 @@ void janus_transport_gone(janus_transport *plugin, janus_transport_session *tran
 				if(reclaim_session_timeout < 1) { /* Reclaim session timeouts are disabled */
 					/* Mark the session as destroyed */
 					janus_session_destroy(session);
+					g_atomic_int_dec_and_test(&sessions_num);
 					g_hash_table_iter_remove(&iter);
 				} else {
 					/* Set flag for transport_gone. The Janus sessions watchdog will clean this up if not reclaimed */
