@@ -40,6 +40,7 @@ jobs:
         autoconf
         automake
         build-essential
+        cmake
         duktape-dev
         g++
         gcc
@@ -67,11 +68,6 @@ jobs:
         ninja-build
         openssl
         pkg-config
-    - name: install cmake v3.27
-      run: |
-        wget https://github.com/Kitware/CMake/releases/download/v3.27.9/cmake-3.27.9-linux-x86_64.tar.gz
-        tar -xzf cmake-3.27.9-linux-x86_64.tar.gz
-        sudo cp -r cmake-3.27.9-linux-x86_64/* /usr/
     - name: setup additional dependencies from apt
       if: ${{ matrix.deps_from_src == 'no' }}
       run: >
