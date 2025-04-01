@@ -124,10 +124,11 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: warmcat/libwebsockets
-        ref: v4.3.5
+        ref: v4.3-stable
     - name: setup lws from sources
       if: ${{ matrix.deps_from_src == 'yes' }}
       run: |
+        sed -i -e 's/VERSION 2.8.12/VERSION 3.5/g' CMakeLists.txt
         mkdir build
         cd build
         cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DLWS_WITH_STATIC=OFF -DLWS_WITHOUT_CLIENT=ON -DLWS_WITHOUT_TESTAPPS=ON -DLWS_WITHOUT_TEST_SERVER=ON -DLWS_WITH_HTTP2=OFF ..
