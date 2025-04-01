@@ -3493,6 +3493,10 @@ void janus_transport_gone(janus_transport *plugin, janus_transport_session *tran
 				JANUS_LOG(LOG_VERB, "  -- Session %"SCNu64" will be over if not reclaimed\n", session->session_id);
 				JANUS_LOG(LOG_VERB, "  -- Marking Session %"SCNu64" as over\n", session->session_id);
 				if(reclaim_session_timeout < 1) { /* Reclaim session timeouts are disabled */
+					/* Notify event handlers, if needed */
+					if(janus_events_is_enabled())
+						janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, JANUS_EVENT_SUBTYPE_NONE,
+							session->session_id, "destroyed", NULL);
 					/* Mark the session as destroyed */
 					janus_session_destroy(session);
 					g_atomic_int_dec_and_test(&sessions_num);
