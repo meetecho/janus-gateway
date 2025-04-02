@@ -40,13 +40,7 @@ jobs:
       - name: install janus apt dependencies
         run: >
           sudo apt-get update && sudo apt-get --no-install-recommends -y install
-          autoconf
-          automake
-          build-essential
           duktape-dev
-          g++
-          gcc
-          git
           libavcodec-dev
           libavformat-dev
           libavutil-dev
@@ -68,8 +62,6 @@ jobs:
           libtool
           meson
           ninja-build
-          openssl
-          pkg-config
       - name: setup additional dependencies from apt
         if: ${{ matrix.deps_from_src == 'no' }}
         run: >
@@ -92,12 +84,17 @@ jobs:
         with:
           python-version: "3.13"
           architecture: "x64"
+      - name: checkout libnice source
+        if: ${{ matrix.deps_from_src == 'yes' }}
+        uses: actions/checkout@v4
+        with:
+          repository: libnice/libnice
+          ref: master
       - name: setup libnice from sources
         if: ${{ matrix.deps_from_src == 'yes' }}
         run: |
-          git clone --depth 1 --quiet -b master https://gitlab.freedesktop.org/libnice/libnice.git libnice
-          cd libnice
-          if [ $CC = clang ]; then LNICE_CFLAGS="-Wno-cast-align"; fi;
+          LNICE_CFLAGS="-O0"
+          if [ $CC = clang ]; then LNICE_CFLAGS="$LNICE_CFLAGS -Wno-cast-align"; fi;
           meson setup -Dprefix=/usr -Dlibdir=lib -Dc_args="$LNICE_CFLAGS" -Ddebug=false -Doptimization=0 -Dexamples=disabled -Dgtk_doc=disabled -Dgupnp=disabled -Dgstreamer=disabled -Dtests=disabled build
           ninja -C build
           sudo ninja -C build install
@@ -110,7 +107,7 @@ jobs:
       - name: setup libsrtp from sources
         if: ${{ matrix.deps_from_src == 'yes' }}
         run: |
-          ./configure --prefix=/usr --enable-openssl
+          ./configure --prefix=/usr --enable-openssl CFLAGS="-O0"
           make -j$(nproc) shared_library
           sudo make install
       - name: checkout usrsctp source
@@ -123,7 +120,7 @@ jobs:
         if: ${{ matrix.datachannels == 'enable-datachannels' && matrix.deps_from_src == 'yes' }}
         run: |
           ./bootstrap
-          ./configure --prefix=/usr --disable-static --disable-debug --disable-programs --disable-inet --disable-inet6
+          ./configure --prefix=/usr --disable-static --disable-debug --disable-programs --disable-inet --disable-inet6 CFLAGS="-O0"
           make -j$(nproc)
           sudo make install
       - name: checkout lws source
@@ -137,7 +134,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DLWS_WITH_STATIC=OFF -DLWS_WITHOUT_CLIENT=ON -DLWS_WITHOUT_TESTAPPS=ON -DLWS_WITHOUT_TEST_SERVER=ON -DLWS_WITH_HTTP2=OFF ..
+          cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-O0" -DLWS_WITH_STATIC=OFF -DLWS_WITHOUT_CLIENT=ON -DLWS_WITHOUT_TESTAPPS=ON -DLWS_WITHOUT_TEST_SERVER=ON -DLWS_WITH_HTTP2=OFF ..
           make -j$(nproc)
           sudo make install
       - name: checkout paho-mqtt source
@@ -162,7 +159,7 @@ jobs:
           JANUS_CONFIG_OPTS: ${{ matrix.janus_config_opts }}
         run: |
           ./autogen.sh
-          ./configure $JANUS_CONFIG_COMMON $JANUS_CONFIG_OPTS
+          ./configure $JANUS_CONFIG_COMMON $JANUS_CONFIG_OPTS CFLAGS="-O0"
           make -j$(nproc)
           make check-fuzzers
   javascript-lint:
