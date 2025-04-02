@@ -2,7 +2,7 @@ name: janus-ci
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master test-ci ]
   pull_request:
     branches: [ master ]
 permissions:
