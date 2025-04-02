@@ -942,9 +942,10 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
- * Notice that, after a plain RTP session has been established, the
- * AudioBridge plugin will only start sending media via RTP after it
- * has received at least a valid RTP packet from the remote endpoint.
+ * Notice that if no ip/port are provided, it means this participant will
+ * only send media, and will not receive any (e.g., for injecting audio).
+ * This means the AudioBridge plugin will only start sending media via RTP
+ * if it received a valid ip/port from the remote paricipant endpoint.
  * If you're interested in supporting scenarios where the AudioBridge
  * "dials out" (e.g., for outgoing INVITES to SIP endpoints) check the
  * \ref aboffer section.
@@ -1721,6 +1722,7 @@ typedef struct janus_audiobridge_plainrtp_media {
 	janus_rtp_switching_context context;
 	int pipefd[2];
 	GThread *thread;
+	volatile int initialized;
 } janus_audiobridge_plainrtp_media;
 static void janus_audiobridge_plainrtp_media_cleanup(janus_audiobridge_plainrtp_media *media);
 static int janus_audiobridge_plainrtp_allocate_port(janus_audiobridge_plainrtp_media *media);
@@ -7098,6 +7100,11 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			if(user_id_allocated)
 				g_free(user_id_str);
+			if(participant->plainrtp && participant->plainrtp_media.audio_send &&
+					g_atomic_int_compare_and_exchange(&participant->plainrtp_media.initialized, 0, 1)) {
+				/* Plain RTP participant, simulate a setup_media event */
+				janus_audiobridge_setup_media(session->handle);
+			}
 		} else if(!strcasecmp(request_text, "configure")) {
 			janus_mutex_unlock(&sessions_mutex);
 			/* Handle this participant */
@@ -7176,6 +7183,10 @@ static void *janus_audiobridge_handler(void *data) {
 							JANUS_LOG(LOG_ERR, "[AudioBridge-%p]   -- %d (%s)\n", session, errno, g_strerror(errno));
 						} else {
 							participant->plainrtp_media.audio_send = TRUE;
+							if(g_atomic_int_compare_and_exchange(&participant->plainrtp_media.initialized, 0, 1)) {
+								/* Simulate a setup_media event */
+								janus_audiobridge_setup_media(session->handle);
+							}
 						}
 					}
 				}
@@ -9343,7 +9354,7 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 	memset(buffer, 0, 1500);
 	/* Loop */
 	int num = 0;
-	gboolean first = TRUE, goon = TRUE;
+	gboolean goon = TRUE;
 
 	/* Fake RTP packet */
 	janus_plugin_rtp packet = { .video = FALSE, .buffer = buffer, .length = 0 };
@@ -9421,11 +9432,6 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 				if(!janus_is_rtp(buffer, bytes)) {
 					/* Not an RTP packet? */
 					continue;
-				}
-				/* If this is the first packet we receive, simulate a setup_media event */
-				if(first) {
-					first = FALSE;
-					janus_audiobridge_setup_media(session->handle);
 				}
 				/* Handle the packet */
 				pollerrs = 0;
