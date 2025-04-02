@@ -16,24 +16,24 @@ jobs:
     strategy:
       matrix:
         compiler: [gcc, clang]
-        datachannels: ["yes", "no"]
-        libcurl: ["yes", "no"]
+        datachannels: ["enable-datachannels", "disable-datachannels"]
+        libcurl: ["enable-libcurl", "disable-libcurl"]
         include:
-          - datachannels: "yes"
-            libcurl: "yes"
+          - datachannels: "enable-datachannels"
+            libcurl: "enable-libcurl"
             deps_from_src: "yes"
             janus_config_opts: ""
-          - datachannels: "yes"
-            libcurl: "no"
+          - datachannels: "enable-datachannels"
+            libcurl: "disable-libcurl"
             deps_from_src: "no"
             janus_config_opts: "--disable-aes-gcm -disable-mqtt --disable-mqtt-event-handler --disable-turn-rest-api --disable-sample-event-handler"
-          - datachannels: "no"
-            libcurl: "yes"
+          - datachannels: "disable-datachannels"
+            libcurl: "enable-libcurl"
             deps_from_src: "no"
             janus_config_opts: "--disable-aes-gcm -disable-mqtt --disable-mqtt-event-handler --disable-data-channels"
         exclude:
-          - datachannels: "no"
-            libcurl: "no"
+          - datachannels: "disable-datachannels"
+            libcurl: "disable-libcurl"
     env:
       CC: ${{ matrix.compiler }}
     steps:
@@ -84,7 +84,7 @@ jobs:
         with:
           cmake-version: "3.31.6"
       - name: install libcurl from apt
-        if: ${{ matrix.libcurl == 'yes' }}
+        if: ${{ matrix.libcurl == 'enable-libcurl' }}
         run: sudo apt-get --no-install-recommends -y install libcurl4-openssl-dev
       - name: setup python
         if: ${{ matrix.deps_from_src == 'yes' }}
@@ -114,13 +114,13 @@ jobs:
           make -j$(nproc) shared_library
           sudo make install
       - name: checkout usrsctp source
-        if: ${{ matrix.datachannels == 'yes' && matrix.deps_from_src == 'yes' }}
+        if: ${{ matrix.datachannels == 'enable-datachannels' && matrix.deps_from_src == 'yes' }}
         uses: actions/checkout@v4
         with:
           repository: sctplab/usrsctp
           ref: master
       - name: setup usrsctp from sources
-        if: ${{ matrix.datachannels == 'yes' && matrix.deps_from_src == 'yes' }}
+        if: ${{ matrix.datachannels == 'enable-datachannels' && matrix.deps_from_src == 'yes' }}
         run: |
           ./bootstrap
           ./configure --prefix=/usr --disable-static --disable-debug --disable-programs --disable-inet --disable-inet6
