@@ -1826,7 +1826,7 @@ static void janus_sip_sofia_logger_siptrace_callback(void *stream, char const *f
 	/* Since the fmt format string in the current Sofia SIP tport_log_msg function implementation is just "%s\n",
 	 * it's more efficient to directly work with the siptrace buffer. */
 	char *buffer = va_arg(ap, char *);
-	g_print(" >>> %s\n", buffer);
+	JANUS_LOG(LOG_HUGE, " >>> %s\n", buffer);
 
 	/* Check if this is a message we need */
 	if(strstr(buffer, "send ") == buffer) {
