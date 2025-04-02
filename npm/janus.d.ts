@@ -286,7 +286,7 @@ declare namespace JanusJS {
 		remove?: boolean;
 		type: 'video' | 'screen' | 'audio' | 'data';
 		mid?: string;
-		capture: boolean | MediaStreamTrack;
+		capture: boolean | MediaTrackConstraints;
 		recv?: boolean;
 		group?: 'default' | string;
 		gumGroup?: TrackOption['group'];
