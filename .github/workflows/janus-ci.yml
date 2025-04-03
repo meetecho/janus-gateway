@@ -93,9 +93,13 @@ jobs:
       - name: setup libnice from sources
         if: ${{ matrix.deps_from_src == 'yes' }}
         run: |
-          LNICE_CFLAGS="-O0"
-          if [ $CC = clang ]; then LNICE_CFLAGS="$LNICE_CFLAGS -Wno-cast-align"; fi;
-          meson setup -Dprefix=/usr -Dlibdir=lib -Dc_args="$LNICE_CFLAGS" -Ddebug=false -Doptimization=0 -Dexamples=disabled -Dgtk_doc=disabled -Dgupnp=disabled -Dgstreamer=disabled -Dtests=disabled build
+          meson setup -Dprefix=/usr -Dlibdir=lib -Dc_args="-O0 -Wno-cast-align" \
+            -Dexamples=disabled \
+            -Dgtk_doc=disabled \
+            -Dgstreamer=disabled \
+            -Dgupnp=disabled \
+            -Dtests=disabled \
+            build
           ninja -C build
           sudo ninja -C build install
       - name: checkout libsrtp source
@@ -107,7 +111,9 @@ jobs:
       - name: setup libsrtp from sources
         if: ${{ matrix.deps_from_src == 'yes' }}
         run: |
-          ./configure --prefix=/usr --enable-openssl CFLAGS="-O0"
+          ./configure --prefix=/usr CFLAGS="-O0" \
+            --disable-pcap \
+            --enable-openssl
           make -j$(nproc) shared_library
           sudo make install
       - name: checkout usrsctp source
@@ -120,7 +126,13 @@ jobs:
         if: ${{ matrix.datachannels == 'enable-datachannels' && matrix.deps_from_src == 'yes' }}
         run: |
           ./bootstrap
-          ./configure --prefix=/usr --disable-static --disable-debug --disable-programs --disable-inet --disable-inet6 CFLAGS="-O0"
+          ./configure --prefix=/usr CFLAGS="-O0" \
+            --disable-debug \
+            --disable-inet \
+            --disable-inet6 \
+            --disable-programs \
+            --disable-static \
+            --enable-shared
           make -j$(nproc)
           sudo make install
       - name: checkout lws source
@@ -132,9 +144,17 @@ jobs:
       - name: setup lws from sources
         if: ${{ matrix.deps_from_src == 'yes' }}
         run: |
-          mkdir build
-          cd build
-          cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-O0" -DLWS_WITH_STATIC=OFF -DLWS_WITHOUT_CLIENT=ON -DLWS_WITHOUT_TESTAPPS=ON -DLWS_WITHOUT_TEST_SERVER=ON -DLWS_WITH_HTTP2=OFF ..
+          mkdir build && cd build
+          cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_C_FLAGS="-O0" \
+            -DLWS_ROLE_RAW_FILE=OFF \
+            -DLWS_WITH_HTTP2=OFF \
+            -DLWS_WITHOUT_EXTENSIONS=OFF \
+            -DLWS_WITHOUT_TESTAPPS=ON \
+            -DLWS_WITHOUT_TEST_CLIENT=ON \
+            -DLWS_WITHOUT_TEST_PING=ON \
+            -DLWS_WITHOUT_TEST_SERVER=ON \
+            -DLWS_WITH_STATIC=OFF \
+            ..
           make -j$(nproc)
           sudo make install
       - name: checkout paho-mqtt source
@@ -146,9 +166,16 @@ jobs:
       - name: setup paho-mqtt from sources
         if: ${{ matrix.deps_from_src == 'yes' }}
         run: |
-          mkdir build.paho
-          cd build.paho
-          cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DPAHO_BUILD_STATIC=FALSE -DPAHO_BUILD_SHARED=TRUE -DCMAKE_BUILD_TYPE=Release -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_DOCUMENTATION=FALSE -DPAHO_BUILD_SAMPLES=FALSE ..
+          mkdir build.paho && cd build.paho
+          cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_C_FLAGS="-O0" \
+            -DPAHO_HIGH_PERFORMANCE=TRUE \
+            -DPAHO_BUILD_DOCUMENTATION=FALSE \
+            -DPAHO_BUILD_SAMPLES=FALSE \
+            -DPAHO_BUILD_SHARED=TRUE \
+            -DPAHO_BUILD_STATIC=FALSE \
+            -DPAHO_ENABLE_TESTING=FALSE \
+            -DPAHO_WITH_SSL=TRUE \
+            ..
           make -j$(nproc)
           sudo make install
       - name: checkout janus source
