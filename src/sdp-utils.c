@@ -312,7 +312,6 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 	gboolean success = TRUE;
 	janus_sdp_mline *mline = NULL;
 	int mlines = 0;
-	int index = 0;
 	char *line = NULL, *cr = NULL, *rest = NULL;
 	char *sdp_copy = g_strdup(sdp);
 	gboolean first = TRUE, mline_ended = FALSE;
@@ -326,7 +325,6 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 		if(*line == '\0') {
 			if(cr != NULL)
 				*cr = '\r';
-			index++;
 			continue;
 		}
 		if(strnlen(line, 3) < 3) {
@@ -578,7 +576,6 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						JANUS_LOG(LOG_WARN, "Ignoring extra m-line b= line: %s\n", line);
 						if(cr != NULL)
 							*cr = '\r';
-						index++;
 						continue;
 					}
 					line += 2;
@@ -652,7 +649,6 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 		}
 		if(cr != NULL)
 			*cr = '\r';
-		index++;
 	}
 	if(cr != NULL)
 		*cr = '\r';
