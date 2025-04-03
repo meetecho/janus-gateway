@@ -7100,7 +7100,7 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			if(user_id_allocated)
 				g_free(user_id_str);
-			if(participant->plainrtp && participant->plainrtp_media.audio_send &&
+			if(participant->plainrtp && (!session->plugin_offer || participant->plainrtp_media.audio_send) &&
 					g_atomic_int_compare_and_exchange(&participant->plainrtp_media.initialized, 0, 1)) {
 				/* Plain RTP participant, simulate a setup_media event */
 				janus_audiobridge_setup_media(session->handle);
