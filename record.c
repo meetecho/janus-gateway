@@ -21,6 +21,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <libgen.h>
+#include <fcntl.h>
 
 #include <glib.h>
 #include <jansson.h>
@@ -465,6 +466,19 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		header->seq_number = htons(seq);
 		header->timestamp = htonl(timestamp);
 	}
+
+	/* Mark the file as POSIX_FADV_DONTNEED, since we won't be reading from it at all. This
+	 * prevents polution of the page cache, but also fixes a nasty bug where CGroupsV2
+	 * considers the page cache to be used kernel memory, and won't allocate new UDP
+	 * buffer space if it's full, leading to dropped packets. Can't just do this once
+	 * at the start unfortunately, so we do it every ~100 packets.
+	 */
+	recorder->unflushed_count++;
+	if (recorder->unflushed_count == 100) {
+		posix_fadvise(fileno(recorder->file), 0, 0, POSIX_FADV_DONTNEED);
+		recorder->unflushed_count = 0;
+	}
+
 	/* Done */
 	janus_mutex_unlock_nodebug(&recorder->mutex);
 	return 0;
