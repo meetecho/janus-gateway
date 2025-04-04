@@ -258,6 +258,7 @@ typedef struct janus_echotest_session {
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	guint16 slowlink_count;
 	int16_t min_delay, max_delay;
+	int8_t spatial_layers, temporal_layers;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -612,6 +613,17 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 			packet->extensions.min_delay = session->min_delay;
 			packet->extensions.max_delay = session->max_delay;
 		}
+		gboolean new_vla = FALSE;
+		if(packet->extensions.spatial_layers > -1 || packet->extensions.temporal_layers > -1) {
+			/* We have info from the video-layers-allocation RTP extension */
+			if(packet->extensions.spatial_layers != session->spatial_layers ||
+					packet->extensions.temporal_layers != session->temporal_layers) {
+				/* It's new information, keep track of it */
+				new_vla = TRUE;
+				session->spatial_layers = packet->extensions.spatial_layers;
+				session->temporal_layers = packet->extensions.temporal_layers;
+			}
+		}
 		gboolean simulcast = (session->ssrc[0] != 0 || session->rid[0] != NULL);
 		if(video && session->video_active && (simulcast || session->svc)) {
 			/* Handle simulcast or SVC: backup the header information first */
@@ -638,39 +650,29 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 			if(!relay)
 				return;
 			/* Any event we should notify? */
-			if(simulcast && session->sim_context.changed_substream) {
+			if(simulcast && (new_vla || session->sim_context.changed_substream || session->sim_context.changed_temporal)) {
 				/* Notify the user about the substream change */
 				json_t *event = json_object();
 				json_object_set_new(event, "echotest", json_string("event"));
 				json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
 				json_object_set_new(event, "substream", json_integer(session->sim_context.substream));
-				gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
-				json_decref(event);
-			}
-			if(simulcast && session->sim_context.changed_temporal) {
-				/* Notify the user about the temporal layer change */
-				json_t *event = json_object();
-				json_object_set_new(event, "echotest", json_string("event"));
-				json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
 				json_object_set_new(event, "temporal", json_integer(session->sim_context.templayer));
+				if(session->temporal_layers > -1)
+					json_object_set_new(event, "tot_temporal_layers", json_integer(session->temporal_layers));
 				gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
 				json_decref(event);
 			}
-			if(session->svc && session->svc_context.changed_spatial) {
+			if(session->svc && (new_vla || session->svc_context.changed_spatial || session->svc_context.changed_temporal)) {
 				/* Notify the user about the spatial layer change */
 				json_t *event = json_object();
 				json_object_set_new(event, "echotest", json_string("event"));
 				json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
 				json_object_set_new(event, "spatial_layer", json_integer(session->svc_context.spatial));
-				gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
-				json_decref(event);
-			}
-			if(session->svc && session->svc_context.changed_temporal) {
-				/* Notify the user about the temporal layer change */
-				json_t *event = json_object();
-				json_object_set_new(event, "echotest", json_string("event"));
-				json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
 				json_object_set_new(event, "temporal_layer", json_integer(session->svc_context.temporal));
+				if(session->spatial_layers > -1)
+					json_object_set_new(event, "tot_spatial_layers", json_integer(session->spatial_layers));
+				if(session->temporal_layers > -1)
+					json_object_set_new(event, "tot_temporal_layers", json_integer(session->temporal_layers));
 				gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
 				json_decref(event);
 			}
@@ -904,6 +906,8 @@ static void janus_echotest_hangup_media_internal(janus_plugin_session *handle) {
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
 	session->min_delay = -1;
 	session->max_delay = -1;
+	session->spatial_layers = -1;
+	session->temporal_layers = -1;
 	g_atomic_int_set(&session->hangingup, 0);
 }
 
@@ -1262,6 +1266,7 @@ static void *janus_echotest_handler(void *data) {
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_DEPENDENCY_DESC,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_ABS_SEND_TIME,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME,
+					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_VIDEO_LAYERS,
 					JANUS_SDP_OA_DONE);
 				temp = temp->next;
 			}
