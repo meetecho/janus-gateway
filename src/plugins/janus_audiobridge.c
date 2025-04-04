@@ -829,7 +829,7 @@ room-<unique room ID>: {
 	"audiobridge" : "success",
 	"room" : <unique numeric ID, same as request>,
 	"file_id_list" : [
-		// Array of file_Id: "<unique string ID of the now interrupted announcement>""
+		// Array of file_id identifiers, as strings
 	]
 }
 \endverbatim
