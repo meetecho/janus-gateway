@@ -946,7 +946,8 @@ room-<unique room ID>: {
 		"port" : <port you want media to be sent to>,
 		"payload_type" : <payload type to use for RTP packets (optional; only needed in case Opus is used, automatic for G.711)>,
 		"audiolevel_ext" : <ID of the audiolevel RTP extension, if used (optional)>,
-		"fec" : <true|false, whether FEC from Janus to the user should be enabled for the Opus stream (optional; only needed in case Opus is used)>
+		"fec" : <true|false, whether FEC from Janus to the user should be enabled for the Opus stream (optional; only needed in case Opus is used)>,
+		"dtmf_pt" : <RFC2833 RTP payload type that dtmf signal will be received (optional)>
 	}
 }
 \endverbatim
@@ -974,6 +975,19 @@ room-<unique room ID>: {
  * If you're interested in supporting scenarios where the AudioBridge
  * "dials out" (e.g., for outgoing INVITES to SIP endpoints) check the
  * \ref aboffer section.
+ * if a maching rtp with rfc2833 payload type is received the fallowing dtmf event is published.
+\verbatim
+{
+	"audiobridge" : "event",
+	"room" : <numeric ID of the room>,
+	"id" : <unique ID assigned to the participant>,
+	"result" : {
+		"event" : "dtmf",
+		"signal" : "<dtmf signal received, values: 1-9, *, #, A-D>",
+		"duration" : <duration of the dtmf signal>
+	}
+}
+\endverbatim
  *
  * At this point, whether the participant will be interacting via WebRTC
  * or plain RTP, the media-related settings of the participant can be
@@ -995,6 +1009,14 @@ room-<unique room ID>: {
 	"record": <true|false, whether to record this user's contribution to a .mjr file (mixer not involved),
 	"filename": "<basename of the file to record to, -audio.mjr will be added by the plugin; will be relative to mjrs_dir, if configured in the room>",
 	"group" : "<new group to assign to this participant, if enabled in the room (for forwarding purposes)>"
+	"rtp" : {
+		"ip" : "<IP address you want media to be sent to>",
+		"port" : <port you want media to be sent to>,
+		"payload_type" : <payload type to use for RTP packets (optional; only needed in case Opus is used, automatic for G.711)>,
+		"audiolevel_ext" : <ID of the audiolevel RTP extension, if used (optional)>,
+		"fec" : <true|false, whether FEC should be enabled for the Opus stream (optional; only needed in case Opus is used)>,
+		"dtmf_pt": <RFC2833 RTP payload type that dtmf signal will be received (optional)>
+	}
 }
 \endverbatim
  *
@@ -1004,7 +1026,9 @@ room-<unique room ID>: {
  * to a Janus .mjr file, and \c filename to provide a basename for the path to
  * save the file to (notice that this is different from the recording of a whole
  * room: this feature only records the packets this user is sending, and is not
- * related to the mixer stuff). A successful request will result in a \c ok event:
+ * related to the mixer stuff). \c rtp is used in case of plain RTP participant
+ * to set/update remote rtp information while keeping local rtp which is already
+ * been provided with joined event. A successful request will result in a \c ok event:
  *
 \verbatim
 {
@@ -1736,6 +1760,12 @@ static void janus_audiobridge_file_free(janus_audiobridge_file *ctx) {
 #endif
 
 /* In case we need to support plain RTP participants, this struct helps with that */
+typedef struct janus_plainrtp_dtmf {
+	uint16_t dtmf_event_id;
+	uint32_t timestamp;
+} janus_plainrtp_dtmf;
+
+/* In case we need to support plain RTP participants, this struct helps with that */
 typedef struct janus_audiobridge_plainrtp_media {
 	char *remote_audio_ip;
 	int ready:1;
@@ -1748,6 +1778,8 @@ typedef struct janus_audiobridge_plainrtp_media {
 	int pipefd[2];
 	GThread *thread;
 	volatile int initialized;
+	int dtmf_pt;
+	janus_plainrtp_dtmf latest_dtmf;
 } janus_audiobridge_plainrtp_media;
 static void janus_audiobridge_plainrtp_media_cleanup(janus_audiobridge_plainrtp_media *media);
 static int janus_audiobridge_plainrtp_allocate_port(janus_audiobridge_plainrtp_media *media);
@@ -2351,6 +2383,54 @@ static int janus_audiobridge_create_opus_encoder_if_needed(janus_audiobridge_roo
 		opus_encoder_ctl(audiobridge->rtp_encoder, OPUS_SET_BITRATE(audiobridge->default_bitrate));
 
 	return 0;
+}
+
+static uint16_t dtmf_keys[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '#', 'A', 'B', 'C', 'D'};
+/* Check peer RTP has RFC2833 and push event */
+static void janus_send_rfc2833_event(janus_audiobridge_participant *participant, char *buffer, int len) {
+	if(participant->plainrtp_media.dtmf_pt <= 0)
+		return;
+	janus_rtp_header *rtp_header = (janus_rtp_header *)buffer;
+	if(rtp_header->type != participant->plainrtp_media.dtmf_pt)
+		return;
+	int plen = 0;
+	char *payload_buffer = janus_rtp_payload(buffer, len, &plen);
+	if(plen < 0 || (size_t)plen < sizeof(janus_rtp_rfc2833_payload))
+		return;
+	janus_rtp_rfc2833_payload *rfc2833_payload = (janus_rtp_rfc2833_payload *)payload_buffer;
+	uint16_t duration = ntohs(rfc2833_payload->duration);
+	if(rfc2833_payload->end == 0)
+		return;
+
+	/* Set up last dtmf to avoid duplication */
+	if(participant->plainrtp_media.latest_dtmf.dtmf_event_id == rfc2833_payload->event && participant->plainrtp_media.latest_dtmf.timestamp == rtp_header->timestamp)
+		return;
+	participant->plainrtp_media.latest_dtmf.dtmf_event_id = rfc2833_payload->event;
+	participant->plainrtp_media.latest_dtmf.timestamp = rtp_header->timestamp;
+
+	/* Parse dtmf key */
+	uint16_t dtmf_key;
+	if(rfc2833_payload->event > 15)
+		return;
+  	dtmf_key = dtmf_keys[rfc2833_payload->event];
+	char dtmf_key_str[2];
+	dtmf_key_str[0] = dtmf_key;
+	dtmf_key_str[1] = '\0';
+
+	/* Notify the application */
+	json_t *info = json_object();
+	json_object_set_new(info, "audiobridge", json_string("event"));
+	json_object_set_new(info, "room", string_ids ? json_string(participant->room->room_id_str) : json_integer(participant->room->room_id));
+	json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+	json_t *result = json_object();
+	json_object_set_new(result, "event", json_string("dtmf"));
+	json_object_set_new(result, "signal", json_string(dtmf_key_str));
+	json_object_set_new(result, "duration", json_integer(duration));
+	json_object_set_new(info, "result", result);
+	int ret = gateway->push_event(participant->session->handle, &janus_audiobridge_plugin, NULL, info, NULL);
+	JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+	json_decref(info);
+	return;
 }
 
 static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *cat, janus_audiobridge_room *audiobridge) {
@@ -7036,6 +7116,15 @@ static void *janus_audiobridge_handler(void *data) {
 					opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
 					opus_encoder_ctl(participant->encoder, OPUS_SET_PACKET_LOSS_PERC(participant->expected_loss));
 				}
+				/* rfc2833 payload type is set */
+				int dtmf_pt = json_integer_value(json_object_get(rtp, "dtmf_pt"));
+				if(janus_is_rfc2833_payload_type(dtmf_pt)) {
+					participant->plainrtp_media.dtmf_pt = dtmf_pt;
+				}
+				else {
+					participant->plainrtp_media.dtmf_pt = -1;
+					JANUS_LOG(LOG_WARN, "Invalid dtmf_pt %"SCNi32",\n", dtmf_pt);
+				}
 				/* Create the socket */
 				janus_mutex_lock(&participant->pmutex);
 				janus_audiobridge_plainrtp_media_cleanup(&participant->plainrtp_media);
@@ -7292,6 +7381,18 @@ static void *janus_audiobridge_handler(void *data) {
 				const char *ip = json_string_value(json_object_get(rtp, "ip"));
 				uint16_t port = json_integer_value(json_object_get(rtp, "port"));
 				janus_mutex_lock(&participant->pmutex);
+				/* rfc2833 payload type is set */
+				json_t *dtmf_pt_json =json_object_get(rtp, "dtmf_pt");
+				if(dtmf_pt_json) {
+					int dtmf_pt = json_integer_value(dtmf_pt_json);
+					if(janus_is_rfc2833_payload_type(dtmf_pt)) {
+						participant->plainrtp_media.dtmf_pt = dtmf_pt;
+					}
+					else {
+						participant->plainrtp_media.dtmf_pt = -1;
+						JANUS_LOG(LOG_WARN, "Invalid dtmf_pt %"SCNi32",\n", dtmf_pt);
+					}
+				}
 				if(ip == NULL || port == 0) {
 					JANUS_LOG(LOG_ERR, "[AudioBridge-%p] Can't connect socket, no remote address provided\n", session);
 				} else {
@@ -9586,6 +9687,10 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 				/* Handle as a WebRTC RTP packet */
 				packet.length = bytes;
 				janus_audiobridge_incoming_rtp(session->handle, &packet);
+				/* Handle rtp if rfc2833 event*/
+				if(janus_is_rfc2833_payload_type(header->type) && header->type==participant->plainrtp_media.dtmf_pt) {
+					janus_send_rfc2833_event(participant, buffer, bytes);
+				}
 				continue;
 			}
 		}

@@ -154,6 +154,10 @@ int janus_videocodec_pt(janus_videocodec vcodec);
  * @param[in] len Length of the buffer to inspect */
 gboolean janus_is_rtp(char *buf, guint len);
 
+/*! \brief Helper method to validate if payload type might be a RFC2833 (dtmf) between 96 and 127
+ * @param[in] int Payload_Type */
+gboolean janus_is_rfc2833_payload_type(int payload_type);
+
 /*! \brief Helper to quickly access the RTP payload, skipping header and extensions
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
