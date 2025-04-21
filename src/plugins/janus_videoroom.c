@@ -3166,7 +3166,6 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 		g_snprintf(mid, sizeof(mid), "%d", mindex);
 		ps->mid = g_strdup(mid);
 		ps->publisher = publisher;
-		janus_refcount_increase(&publisher->ref);	/* Add a reference to the publisher */
 		ps->active = TRUE;
 		ps->acodec = room->acodec[i];
 		ps->vcodec = JANUS_VIDEOCODEC_NONE;
@@ -3212,7 +3211,6 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 		g_snprintf(mid, sizeof(mid), "%d", mindex);
 		ps->mid = g_strdup(mid);
 		ps->publisher = publisher;
-		janus_refcount_increase(&publisher->ref);	/* Add a reference to the publisher */
 		ps->active = TRUE;
 		ps->acodec = JANUS_AUDIOCODEC_NONE;
 		ps->vcodec = room->vcodec[i];
@@ -7874,7 +7872,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			g_snprintf(mid, sizeof(mid), "%d", mindex);
 			ps->mid = g_strdup(mid);
 			ps->publisher = publisher;
-			janus_refcount_increase(&publisher->ref);	/* Add a reference to the publisher */
 			ps->description = desc ? g_strdup(desc) : NULL;
 			ps->active = TRUE;
 			ps->disabled = disabled;
@@ -8235,7 +8232,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			g_snprintf(pmid, sizeof(pmid), "%d", mindex);
 			ps->mid = g_strdup(pmid);
 			ps->publisher = publisher;
-			janus_refcount_increase(&publisher->ref);	/* Add a reference to the publisher */
 			ps->description = desc ? g_strdup(desc) : NULL;
 			ps->active = TRUE;
 			ps->disabled = disabled;
