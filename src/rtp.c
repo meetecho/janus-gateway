@@ -35,8 +35,8 @@ gboolean janus_is_rtp(char *buf, guint len) {
 	return ((header->type < 64) || (header->type >= 96));
 }
 
-gboolean janus_is_rfc2833_payload_type(int payload_type){
-	if( 96 > payload_type || 127 < payload_type) {
+gboolean janus_is_dynamic_payload_type(int payload_type){
+	if (96 >= payload_type || 127 <= payload_type) {
 		return FALSE;
 	}
 	return TRUE;
