@@ -4548,7 +4548,12 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		NiceCandidate *c = NULL;
 		while((c = g_async_queue_try_pop(handle->queued_candidates)) != NULL) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Processing candidate %p\n", handle->handle_id, c);
-			candidates = g_slist_append(candidates, c);
+			if(c->priority > 0) {
+				candidates = g_slist_append(candidates, c);
+			} else {
+				/* Workaround for https://gitlab.freedesktop.org/libnice/libnice/-/issues/181 */
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Candidate %p has priority 0, ignoring it\n", handle->handle_id, c);
+			}
 		}
 		guint count = g_slist_length(candidates);
 		if(pc != NULL && count > 0) {
