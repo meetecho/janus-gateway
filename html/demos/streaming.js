@@ -355,13 +355,9 @@ function updateStreamsList() {
 				// Keep track of all the available streams
 				streamsList[list[mp]["id"]] = list[mp];
 			}
-			$('#streamslist a').unbind('click').click(function() {
-				$('.dropdown-toggle').dropdown('hide');
+			$('#streamslist a').on("click", function() {
 				selectedStream = $(this).attr("id");
-				$('#streamset').html($(this).html()).parent().removeClass('open');
-				$('#list .dropdown-backdrop').remove();
-				return false;
-
+				$('#streamset').html($(this).html());
 			});
 			$('#watch').removeAttr('disabled').unbind('click').click(startStream);
 		}
