@@ -248,7 +248,16 @@ $(document).ready(function() {
 										}
 									});
 									Janus.attachMediaStream($('#remotevideo' + mid).get(0), stream);
-									$('#remotevideo' + mid).get(0).play();
+									var playPromise = $('#remotevideo' + mid).get(0).play();
+									if (playPromise !== undefined) {
+										playPromise
+											.then(_ => {
+												console.log('start playing')
+											})
+											.catch(error => {
+												console.log('failed to play', error)
+											});
+									}
 									$('#remotevideo' + mid).get(0).volume = 1;
 								},
 								// eslint-disable-next-line no-unused-vars
