@@ -248,14 +248,14 @@ $(document).ready(function() {
 										}
 									});
 									Janus.attachMediaStream($('#remotevideo' + mid).get(0), stream);
-									var playPromise = $('#remotevideo' + mid).get(0).play();
+									let playPromise = $('#remotevideo' + mid).get(0).play();
 									if (playPromise !== undefined) {
 										playPromise
-											.then(_ => {
-												console.log('start playing')
+											.then(function() {
+												Janus.log('start playing')
 											})
-											.catch(error => {
-												console.log('failed to play', error)
+											.catch(function(error) => {
+												Janus.log('failed to play', error)
 											});
 									}
 									$('#remotevideo' + mid).get(0).volume = 1;
