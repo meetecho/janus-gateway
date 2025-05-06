@@ -255,7 +255,7 @@ $(document).ready(function() {
 												Janus.log('start playing')
 											})
 											.catch(function(error) => {
-												Janus.log('failed to play', error)
+												Janus.error('failed to play', error)
 											});
 									}
 									$('#remotevideo' + mid).get(0).volume = 1;
