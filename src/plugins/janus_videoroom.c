@@ -2746,6 +2746,17 @@ static void janus_videoroom_publisher_dereference(janus_videoroom_publisher *p) 
 	 * if that was inserted into the hash table. Notice that this also
 	 * dereferences the session the participant is associated with, since
 	 * we add an extra ref to the session to when inserting in the table */
+	if(p->dummy) {
+		/* Dummy publisher, free streams */
+		janus_mutex_lock(&p->streams_mutex);
+		if(p->streams != NULL) {
+			g_list_free_full(p->streams, (GDestroyNotify)(janus_videoroom_publisher_stream_unref));
+			p->streams = NULL;
+			g_hash_table_remove_all(p->streams_byid);
+			g_hash_table_remove_all(p->streams_bymid);
+		}
+		janus_mutex_unlock(&p->streams_mutex);
+	}
 	if(p->session)
 		janus_refcount_decrease(&p->session->ref);
 	janus_refcount_decrease(&p->ref);
@@ -3123,7 +3134,6 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 	publisher->room_id = room->room_id;
 	publisher->room_id_str = room->room_id_str ? g_strdup(room->room_id_str) : NULL;
 	publisher->room = room;
-	janus_refcount_increase(&room->ref);
 	publisher->user_id = janus_random_uint64();
 	char user_id_num[30];
 	g_snprintf(user_id_num, sizeof(user_id_num), "%"SCNu64, publisher->user_id);
@@ -3245,7 +3255,6 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 		mindex++;
 	}
 	/* Done: add the dummy publisher to the list */
-	janus_refcount_increase(&publisher->ref);
 	janus_refcount_increase(&publisher->session->ref);
 	g_hash_table_insert(room->participants,
 		string_ids ? (gpointer)g_strdup(publisher->user_id_str) : (gpointer)janus_uint64_dup(publisher->user_id),
@@ -4282,7 +4291,7 @@ static void janus_videoroom_notify_participants(janus_videoroom_publisher *parti
 	g_hash_table_iter_init(&iter, participant->room->participants);
 	while (participant->room && !g_atomic_int_get(&participant->room->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_videoroom_publisher *p = value;
-		if(p && !g_atomic_int_get(&p->destroyed) && p->session && (p != participant || notify_source_participant)) {
+		if(p && !g_atomic_int_get(&p->destroyed) && p->session && (p != participant || notify_source_participant) && !participant->dummy) {
 			JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", p->user_id_str, p->display ? p->display : "??");
 			int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, msg, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
@@ -4433,8 +4442,8 @@ static void janus_videoroom_participant_joining(janus_videoroom_publisher *p) {
 }
 
 static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *participant, gboolean is_leaving, gboolean kicked) {
-	/* we need to check if the room still exists, may have been destroyed already */
-	if(participant->room == NULL)
+	/* We need to check if the room still exists, may have been destroyed already */
+	if(participant->room == NULL || participant->dummy)
 		return;
 	janus_mutex_lock(&rooms_mutex);
 	if(!g_hash_table_lookup(rooms, string_ids ? (gpointer)participant->room_id_str : (gpointer)&participant->room_id)) {
@@ -5543,7 +5552,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		g_hash_table_iter_init(&iter, videoroom->participants);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_videoroom_publisher *p = value;
-			if(p && !g_atomic_int_get(&p->destroyed) && p->session && p->room) {
+			if(p && !g_atomic_int_get(&p->destroyed) && p->session && p->room && !p->dummy) {
 				janus_mutex_lock(&p->mutex);
 				g_clear_pointer(&p->room, janus_videoroom_room_dereference);
 				janus_mutex_unlock(&p->mutex);
@@ -6675,6 +6684,14 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			JANUS_LOG(LOG_ERR, "No such user %s in room %s\n", user_id_str, room_id_str);
 			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
 			g_snprintf(error_cause, 512, "No such user %s in room %s", user_id_str, room_id_str);
+			goto prepare_response;
+		}
+		if(participant->dummy) {
+			janus_mutex_unlock(&videoroom->mutex);
+			janus_refcount_decrease(&videoroom->ref);
+			JANUS_LOG(LOG_ERR, "Can't kick dummy users\n");
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+			g_snprintf(error_cause, 512, "Can't kick dummy users");
 			goto prepare_response;
 		}
 		janus_refcount_increase(&participant->ref);
