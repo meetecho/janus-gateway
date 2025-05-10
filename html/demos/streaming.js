@@ -355,7 +355,7 @@ function updateStreamsList() {
 				// Keep track of all the available streams
 				streamsList[list[mp]["id"]] = list[mp];
 			}
-			$('#streamslist a').on("click", function() {
+			$('#streamslist a').off('click').on('click', function() {
 				selectedStream = $(this).attr("id");
 				$('#streamset').html($(this).html());
 			});
