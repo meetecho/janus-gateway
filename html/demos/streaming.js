@@ -252,10 +252,10 @@ $(document).ready(function() {
 									if (playPromise !== undefined) {
 										playPromise
 											.then(function() {
-												Janus.log('start playing')
+												Janus.log('Start playing')
 											})
 											.catch(function(error) => {
-												Janus.error('failed to play', error)
+												Janus.error('Failed to play', error)
 											});
 									}
 									$('#remotevideo' + mid).get(0).volume = 1;
