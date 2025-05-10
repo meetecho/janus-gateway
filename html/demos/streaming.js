@@ -252,7 +252,7 @@ $(document).ready(function() {
 									if (playPromise !== undefined) {
 										playPromise
 											.then(function() {
-												Janus.log('Start playing')
+												Janus.log('Started playing')
 											})
 											.catch(function(error) => {
 												Janus.error('Failed to play', error)
