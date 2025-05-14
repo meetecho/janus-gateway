@@ -360,9 +360,9 @@ static void janus_lua_session_free(const janus_refcount *session_ref) {
 	janus_recorder_destroy(session->arc);
 	janus_recorder_destroy(session->vrc);
 	janus_recorder_destroy(session->drc);
-	janus_mutex_destroy(&session->rid_mutex);
-	janus_mutex_destroy(&session->recipients_mutex);
 	janus_mutex_destroy(&session->rec_mutex);
+	janus_mutex_destroy(&session->recipients_mutex);
+	janus_mutex_destroy(&session->rid_mutex);
 	janus_rtp_simulcasting_cleanup(NULL, NULL, session->rid, NULL);
 	g_free(session);
 }
@@ -1784,6 +1784,8 @@ void janus_lua_create_session(janus_plugin_session *handle, int *error) {
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
 	session->rid_extmap_id = -1;
 	janus_mutex_init(&session->rid_mutex);
+	janus_mutex_init(&session->recipients_mutex);
+	janus_mutex_init(&session->rec_mutex);
 	session->vcodec = JANUS_VIDEOCODEC_NONE;
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
