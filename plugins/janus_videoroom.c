@@ -1858,7 +1858,9 @@ static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 	p->srtp_contexts = NULL;
 	g_slist_free(p->subscribers);
 
+	janus_mutex_destroy(&p->rec_mutex);
 	janus_mutex_destroy(&p->subscribers_mutex);
+	janus_mutex_destroy(&p->own_subscriptions_mutex);
 	janus_mutex_destroy(&p->rtp_forwarders_mutex);
 	g_free(p);
 }
