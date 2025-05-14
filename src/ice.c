@@ -319,33 +319,6 @@ void janus_ice_stop_static_event_loops(void) {
 	janus_mutex_unlock(&event_loops_mutex);
 }
 
-/* libnice debugging */
-static gboolean janus_ice_debugging_enabled;
-gboolean janus_ice_is_ice_debugging_enabled(void) {
-	return janus_ice_debugging_enabled;
-}
-void janus_ice_debugging_enable(void) {
-	JANUS_LOG(LOG_VERB, "Enabling libnice debugging...\n");
-	if(g_getenv("NICE_DEBUG") == NULL) {
-		JANUS_LOG(LOG_WARN, "No NICE_DEBUG environment variable set, setting maximum debug\n");
-		g_setenv("NICE_DEBUG", "all", TRUE);
-	}
-	if(g_getenv("G_MESSAGES_DEBUG") == NULL) {
-		JANUS_LOG(LOG_WARN, "No G_MESSAGES_DEBUG environment variable set, setting maximum debug\n");
-		g_setenv("G_MESSAGES_DEBUG", "all", TRUE);
-	}
-	JANUS_LOG(LOG_VERB, "Debugging NICE_DEBUG=%s G_MESSAGES_DEBUG=%s\n",
-		g_getenv("NICE_DEBUG"), g_getenv("G_MESSAGES_DEBUG"));
-	janus_ice_debugging_enabled = TRUE;
-	nice_debug_enable(strstr(g_getenv("NICE_DEBUG"), "all") || strstr(g_getenv("NICE_DEBUG"), "stun"));
-}
-void janus_ice_debugging_disable(void) {
-	JANUS_LOG(LOG_VERB, "Disabling libnice debugging...\n");
-	janus_ice_debugging_enabled = FALSE;
-	nice_debug_disable(TRUE);
-}
-
-
 /* NAT 1:1 stuff */
 static gboolean nat_1_1_enabled = FALSE;
 static gboolean keep_private_host = FALSE;
@@ -1062,9 +1035,6 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, 
 		}
 #endif
 	}
-	/* libnice debugging is disabled unless explicitly stated */
-	nice_debug_disable(TRUE);
-
 	/*! \note The RTP/RTCP port range configuration may be just a placeholder: for
 	 * instance, libnice supports this since 0.1.0, but the 0.1.3 on Fedora fails
 	 * when linking with an undefined reference to \c nice_agent_set_port_range

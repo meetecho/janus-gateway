@@ -2196,7 +2196,6 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(status, "log_colors", janus_log_colors ? json_true() : json_false());
 			json_object_set_new(status, "locking_debug", lock_debug ? json_true() : json_false());
 			json_object_set_new(status, "refcount_debug", refcount_debug ? json_true() : json_false());
-			json_object_set_new(status, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "min_nack_queue", json_integer(janus_get_min_nack_queue()));
 			json_object_set_new(status, "nack-optimizations", janus_is_nack_optimizations_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "no_media_timer", json_integer(janus_get_no_media_timer()));
@@ -2323,27 +2322,6 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "log_colors", janus_log_colors ? json_true() : json_false());
-			/* Send the success reply */
-			ret = janus_process_success(request, reply);
-			goto jsondone;
-		} else if(!strcasecmp(message_text, "set_libnice_debug")) {
-			/* Enable/disable the libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
-			JANUS_VALIDATE_JSON_OBJECT(root, debug_parameters,
-				error_code, error_cause, FALSE,
-				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
-			if(error_code != 0) {
-				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
-				goto jsondone;
-			}
-			json_t *debug = json_object_get(root, "debug");
-			if(json_is_true(debug)) {
-				janus_ice_debugging_enable();
-			} else {
-				janus_ice_debugging_disable();
-			}
-			/* Prepare JSON reply */
-			json_t *reply = janus_create_message("success", 0, transaction_text);
-			json_object_set_new(reply, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -4871,8 +4849,6 @@ gint main(int argc, char *argv[]) {
 		janus_config_add(config, config_nat, janus_config_item_create("ice_enforce_list", options.ice_enforce_list));
 	if(options.ice_ignore_list)
 		janus_config_add(config, config_nat, janus_config_item_create("ice_ignore_list", options.ice_ignore_list));
-	if(options.libnice_debug)
-		janus_config_add(config, config_nat, janus_config_item_create("nice_debug", "true"));
 	if(options.full_trickle)
 		janus_config_add(config, config_nat, janus_config_item_create("full_trickle", "true"));
 	if(options.ice_lite)
@@ -5292,8 +5268,9 @@ gint main(int argc, char *argv[]) {
 	item = janus_config_get(config, config_nat, janus_config_type_item, "nice_debug");
 	if(item && item->value && janus_is_true(item->value)) {
 		/* Enable libnice debugging */
-		janus_ice_debugging_enable();
+		JANUS_LOG(LOG_WARN,"nice_debug option is NOT SUPPORTED ANYMORE! Please set NICE_DEBUG and G_MESSAGES_DEBUG env vars when starting Janus\n");
 	}
+
 	if(stun_server == NULL && turn_server == NULL) {
 		/* No STUN and TURN server provided for Janus: make sure it isn't on a private address */
 		int num_ips = janus_get_public_ip_count();

@@ -35,7 +35,6 @@ typedef struct janus_options {
 	const char *ice_ignore_list;
 	gboolean ipv6_candidates;
 	gboolean ipv6_link_local;
-	gboolean libnice_debug;
 	gboolean full_trickle;
 	gboolean ice_lite;
 	gboolean ice_tcp;
