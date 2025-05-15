@@ -1864,8 +1864,8 @@ static void janus_ice_peerconnection_free(const janus_refcount *pc_ref) {
 	pc->rtx_payload_types_rev = NULL;
 	if(pc->nacks_queue != NULL)
 		g_queue_free(pc->nacks_queue);
+	janus_mutex_destroy(&pc->mutex);
 	g_free(pc);
-	pc = NULL;
 }
 
 janus_ice_peerconnection_medium *janus_ice_peerconnection_medium_create(janus_ice_handle *handle, janus_media_type type) {
@@ -1998,8 +1998,8 @@ static void janus_ice_peerconnection_medium_free(const janus_refcount *medium_re
 		janus_seq_list_free(&medium->last_seqs[1]);
 	if(medium->last_seqs[2])
 		janus_seq_list_free(&medium->last_seqs[2]);
+	janus_mutex_destroy(&medium->mutex);
 	g_free(medium);
-	//~ janus_mutex_unlock(&handle->mutex);
 }
 
 /* Call plugin slow_link callback if a minimum of lost packets are detected within a second */
