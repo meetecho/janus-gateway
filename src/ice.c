@@ -789,7 +789,7 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_ice_peerconne
 
 /* Map of active plugin sessions */
 static GHashTable *plugin_sessions;
-static janus_mutex plugin_sessions_mutex;
+static janus_mutex plugin_sessions_mutex = JANUS_MUTEX_INITIALIZER;
 gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
 	if(plugin_session == NULL || plugin_session < (janus_plugin_session *)0x1000 ||
 			g_atomic_int_get(&plugin_session->stopped))
@@ -1085,7 +1085,6 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, 
 
 	/* We keep track of plugin sessions to avoid problems */
 	plugin_sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_plugin_session_dereference);
-	janus_mutex_init(&plugin_sessions_mutex);
 
 #ifdef HAVE_TURNRESTAPI
 	/* Initialize the TURN REST API client stack, whether we're going to use it or not */
@@ -1628,6 +1627,7 @@ static void janus_ice_handle_free(const janus_refcount *handle_ref) {
 	}
 	g_free(handle->opaque_id);
 	g_free(handle->token);
+	janus_mutex_destroy(&handle->mutex);
 	g_free(handle);
 }
 
