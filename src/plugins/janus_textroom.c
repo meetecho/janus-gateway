@@ -732,6 +732,7 @@ static void janus_textroom_room_free(const janus_refcount *textroom_ref) {
 	g_hash_table_destroy(textroom->allowed);
 	if(textroom->history)
 		g_queue_free_full(textroom->history, (GDestroyNotify)g_free);
+	janus_mutex_destroy(&textroom->mutex);
 	g_free(textroom);
 }
 
@@ -745,6 +746,7 @@ static void janus_textroom_session_free(const janus_refcount *session_ref) {
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_hash_table_destroy(session->rooms);
+	janus_mutex_destroy(&session->mutex);
 	g_free(session);
 }
 
@@ -762,6 +764,7 @@ static void janus_textroom_participant_free(const janus_refcount *participant_re
 	/* This participant can be destroyed, free all the resources */
 	g_free(participant->username);
 	g_free(participant->display);
+	janus_mutex_destroy(&participant->mutex);
 	g_free(participant);
 }
 

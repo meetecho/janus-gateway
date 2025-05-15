@@ -415,6 +415,7 @@ static void janus_videocall_session_free(const janus_refcount *session_ref) {
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_free(session->username);
+	janus_mutex_destroy(&session->mutex);
 	janus_mutex_destroy(&session->rid_mutex);
 	janus_mutex_destroy(&session->rec_mutex);
 	janus_rtp_simulcasting_cleanup(NULL, NULL, session->rid, NULL);

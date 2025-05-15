@@ -1222,6 +1222,7 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 		su_home_deinit(session->stack->s_home);
 		su_home_unref(session->stack->s_home);
 		g_free(session->stack->contact_header);
+		janus_mutex_destroy(&session->stack->smutex);
 		g_free(session->stack);
 		session->stack = NULL;
 	}
@@ -1298,6 +1299,8 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 		session->incoming_header_prefixes = NULL;
 	}
 	janus_sip_srtp_cleanup(session);
+	janus_mutex_destroy(&session->mutex);
+	janus_mutex_destroy(&session->rec_mutex);
 	g_free(session);
 }
 

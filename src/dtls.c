@@ -560,6 +560,8 @@ void janus_dtls_srtp_cleanup(void) {
 		ssl_ctx = NULL;
 	}
 #if JANUS_USE_OPENSSL_PRE_1_1_API && !defined(HAVE_BORINGSSL)
+	for(l = 0; l < CRYPTO_num_locks(); l++) {
+		pthread_mutex_destroy(&janus_dtls_locks[l]);
 	g_free(janus_dtls_locks);
 #endif
 }

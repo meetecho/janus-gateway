@@ -109,7 +109,7 @@ static amqp_connection_state_t rmq_conn;
 static amqp_channel_t rmq_channel = 0;
 static amqp_bytes_t rmq_exchange;
 
-static janus_mutex mutex;
+static janus_mutex mutex = JANUS_MUTEX_INITIALIZER;
 
 static char *rmqhost = NULL;
 static char *vhost = NULL, *username = NULL, *password = NULL;
@@ -298,8 +298,6 @@ int janus_rabbitmqevh_init(const char *config_path) {
 		goto error;
 	}
 
-	janus_mutex_init(&mutex);
-
 	/* Initialize the events queue */
 	events = g_async_queue_new_full((GDestroyNotify) janus_rabbitmqevh_event_free);
 	g_atomic_int_set(&initialized, 1);
@@ -460,7 +458,6 @@ void janus_rabbitmqevh_destroy(void) {
 	g_free(ssl_cert_file);
 	g_free(ssl_key_file);
 
-	janus_mutex_destroy(&mutex);
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_RABBITMQEVH_NAME);

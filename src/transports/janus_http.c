@@ -214,6 +214,7 @@ static void janus_http_session_free(const janus_refcount *session_ref) {
 			json_decref(event);
 		g_async_queue_unref(session->events);
 	}
+	janus_mutex_destroy(&session->mutex);
 	g_free(session);
 }
 
@@ -306,7 +307,7 @@ static gboolean enforce_cors = FALSE;
 /* REST and Admin/Monitor ACL list */
 static GList *janus_http_access_list = NULL, *janus_http_admin_access_list = NULL;
 static gboolean janus_http_check_xff = FALSE, janus_http_admin_check_xff = FALSE;
-static janus_mutex access_list_mutex;
+static janus_mutex access_list_mutex = JANUS_MUTEX_INITIALIZER;
 static void janus_http_allow_address(const char *ip, gboolean admin) {
 	if(ip == NULL)
 		return;

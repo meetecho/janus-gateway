@@ -76,7 +76,7 @@ janus_eventhandler *create(void) {
 static volatile gint initialized = 0, stopping = 0;
 static GThread *handler_thread;
 static void *janus_sampleevh_handler(void *data);
-static janus_mutex evh_mutex;
+static janus_mutex evh_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
@@ -252,7 +252,6 @@ int janus_sampleevh_init(const char *config_path) {
 
 	/* Initialize the events queue */
 	events = g_async_queue_new_full((GDestroyNotify) janus_sampleevh_event_free);
-	janus_mutex_init(&evh_mutex);
 
 	g_atomic_int_set(&initialized, 1);
 

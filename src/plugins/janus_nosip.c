@@ -393,6 +393,8 @@ static void janus_nosip_session_free(const janus_refcount *session_ref) {
 	session->media.remote_video_ip = NULL;
 	janus_nosip_srtp_cleanup(session);
 	session->handle = NULL;
+	janus_mutex_destroy(&session->mutex);
+	janus_mutex_destroy(&session->rec_mutex);
 	g_free(session);
 	session = NULL;
 }
