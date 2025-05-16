@@ -509,6 +509,7 @@ int janus_log_level = LOG_INFO;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
 char *janus_log_global_prefix = NULL;
+int janus_log_rotate_sig = 0;
 int lock_debug = 0;
 #ifdef REFCOUNT_DEBUG
 int refcount_debug = 1;
@@ -517,8 +518,16 @@ int refcount_debug = 0;
 #endif
 
 
-/*! \brief Signal handler (just used to intercept CTRL+C and SIGTERM) */
+/*! \brief Signal handler (just used to intercept CTRL+C, SIGTERM and SIGUSR1) */
 static void janus_handle_signal(int signum) {
+	if(signum == janus_log_rotate_sig && janus_log_rotate_sig > 0) {
+		if(stop_signal > 0)
+			/* Skip log rotation while stopping */
+			return;
+		janus_log_reload();
+		return;
+	}
+	/* If we got here it's either a SIGINT or a SIGTERM */
 	stop_signal = signum;
 	switch(g_atomic_int_get(&stop)) {
 		case 0:
@@ -2194,6 +2203,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
 			json_object_set_new(status, "log_timestamps", janus_log_timestamps ? json_true() : json_false());
 			json_object_set_new(status, "log_colors", janus_log_colors ? json_true() : json_false());
+			json_object_set_new(status, "log_rotate_sig", json_integer(janus_log_rotate_sig));
 			json_object_set_new(status, "locking_debug", lock_debug ? json_true() : json_false());
 			json_object_set_new(status, "refcount_debug", refcount_debug ? json_true() : json_false());
 			json_object_set_new(status, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
@@ -4548,6 +4558,30 @@ gint main(int argc, char *argv[]) {
 		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "log_to_file");
 		if(item && item->value)
 			logfile = item->value;
+	}
+
+	/* Set an optional signal handler for log rotation */
+	const char *log_rotate_sig = NULL;
+	if(options.log_rotate_sig) {
+		log_rotate_sig = options.log_rotate_sig;
+		janus_config_add(config, config_general, janus_config_item_create("log_rotate_sig", log_rotate_sig));
+	} else {
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "log_rotate_sig");
+		if(item && item->value)
+			log_rotate_sig = item->value;
+	}
+	if(log_rotate_sig != NULL) {
+		if(!strcasecmp(log_rotate_sig, "SIGUSR1")) {
+			janus_log_rotate_sig = SIGUSR1;
+		} else if(!strcasecmp(log_rotate_sig, "SIGHUP")) {
+			janus_log_rotate_sig = SIGHUP;
+		} else {
+			JANUS_LOG(LOG_WARN, "Unsupported signal for log rotation: %s\n", log_rotate_sig);
+		}
+		if(janus_log_rotate_sig > 0) {
+			JANUS_LOG(LOG_INFO, "Setting signal for log rotation: %s (%d)\n", log_rotate_sig, janus_log_rotate_sig);
+			signal(janus_log_rotate_sig, janus_handle_signal);
+		}
 	}
 
 	/* Check if we're going to daemonize Janus */
