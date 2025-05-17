@@ -254,7 +254,7 @@ $(document).ready(function() {
 											.then(function() {
 												Janus.log('Started playing')
 											})
-											.catch(function(error) => {
+											.catch(function(error) {
 												Janus.error('Failed to play', error)
 											});
 									}
