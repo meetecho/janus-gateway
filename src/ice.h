@@ -231,13 +231,6 @@ void janus_ice_event_set_combine_media_stats(gboolean combine_media_stats_to_one
  * @returns true to combine events */
 gboolean janus_ice_event_get_combine_media_stats(void);
 
-/*! \brief Method to check whether libnice debugging has been enabled (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html)
- * @returns True if libnice debugging is enabled, FALSE otherwise */
-gboolean janus_ice_is_ice_debugging_enabled(void);
-/*! \brief Method to enable libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
-void janus_ice_debugging_enable(void);
-/*! \brief Method to disable libnice debugging (the default) */
-void janus_ice_debugging_disable(void);
 /*! \brief Method to enable opaque ID in Janus API responses/events */
 void janus_enable_opaqueid_in_api(void);
 /*! \brief Method to check whether opaque ID have to be added to Janus API responses/events
