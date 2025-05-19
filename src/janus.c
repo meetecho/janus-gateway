@@ -509,7 +509,7 @@ int janus_log_level = LOG_INFO;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
 char *janus_log_global_prefix = NULL;
-int janus_log_rotate_sig = 0;
+static int janus_log_rotate_sig = 0;
 int lock_debug = 0;
 #ifdef REFCOUNT_DEBUG
 int refcount_debug = 1;
