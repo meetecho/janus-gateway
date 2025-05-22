@@ -20,6 +20,7 @@ typedef struct janus_options {
 	gboolean disable_stdout;
 	gboolean log_stdout;
 	const char *log_file;
+	const char *log_rotate_sig;
 	const char *cwd_path;
 	const char *interface;
 	const char *plugins_folder;
