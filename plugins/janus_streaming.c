@@ -1211,6 +1211,7 @@ static void janus_streaming_helper_free(const janus_refcount *helper_ref) {
 	g_async_queue_unref(helper->queued_packets);
 	if(helper->viewers != NULL)
 		g_list_free(helper->viewers);
+	janus_mutex_destroy(&helper->mutex);
 	g_free(helper);
 }
 static void *janus_streaming_helper_thread(void *data);
@@ -1293,6 +1294,7 @@ static void janus_streaming_session_free(const janus_refcount *session_ref) {
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
+	janus_mutex_destroy(&session->mutex);
 	g_free(session);
 }
 
@@ -1364,6 +1366,7 @@ static void janus_streaming_mountpoint_free(const janus_refcount *mp_ref) {
 	g_free(mp->codecs.video_rtpmap);
 	g_free(mp->codecs.video_fmtp);
 
+	janus_mutex_destroy(&mp->mutex);
 	g_free(mp);
 }
 
@@ -6179,7 +6182,9 @@ static void janus_streaming_rtp_source_free(gpointer data) {
 	g_free(source->rtsp_ahost);
 	g_free(source->rtsp_vhost);
 	janus_mutex_unlock(&source->rtsp_mutex);
+	janus_mutex_destroy(&source->rtsp_mutex);
 #endif
+	janus_mutex_destroy(&source->rec_mutex);
 	g_free(source);
 }
 

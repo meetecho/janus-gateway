@@ -113,7 +113,7 @@ static gboolean notify_events = TRUE;
 #if (LWS_LIBRARY_VERSION_MAJOR >= 3)
 static GHashTable *clients = NULL, *writable_clients = NULL;
 #endif
-static janus_mutex writable_mutex;
+static janus_mutex writable_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
@@ -333,7 +333,7 @@ static gboolean enforce_cors = FALSE;
 /* WebSockets ACL list for both Janus and Admin API */
 static GList *janus_websockets_access_list = NULL, *janus_websockets_admin_access_list = NULL;
 static gboolean janus_websockets_check_xff = FALSE, janus_websockets_admin_check_xff = FALSE;
-static janus_mutex access_list_mutex;
+static janus_mutex access_list_mutex = JANUS_MUTEX_INITIALIZER;
 static void janus_websockets_allow_address(const char *ip, gboolean admin) {
 	if(ip == NULL)
 		return;
@@ -774,7 +774,6 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	clients = g_hash_table_new(NULL, NULL);
 	writable_clients = g_hash_table_new(NULL, NULL);
 #endif
-	janus_mutex_init(&writable_mutex);
 
 	g_atomic_int_set(&initialized, 1);
 

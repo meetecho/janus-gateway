@@ -328,5 +328,6 @@ void janus_text2pcap_free(janus_text2pcap *instance) {
 		return;
 	janus_text2pcap_close(instance);
 	g_free(instance->filename);
+	janus_mutex_destroy(&instance->mutex);
 	g_free(instance);
 }

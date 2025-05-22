@@ -109,7 +109,7 @@ static amqp_connection_state_t rmq_conn;
 static amqp_channel_t rmq_channel = 0;
 static amqp_bytes_t rmq_exchange;
 
-static janus_mutex mutex;
+static janus_mutex mutex = JANUS_MUTEX_INITIALIZER;
 
 static char *rmqhost = NULL;
 static char *vhost = NULL, *username = NULL, *password = NULL;
@@ -297,8 +297,6 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	if(result < 0) {
 		goto error;
 	}
-
-	janus_mutex_init(&mutex);
 
 	/* Initialize the events queue */
 	events = g_async_queue_new_full((GDestroyNotify) janus_rabbitmqevh_event_free);

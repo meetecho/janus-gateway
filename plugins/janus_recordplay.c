@@ -526,6 +526,7 @@ static void janus_recordplay_session_free(const janus_refcount *session_ref) {
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_free(session->video_profile);
+	janus_mutex_destroy(&session->rec_mutex);
 	g_free(session);
 }
 
@@ -546,6 +547,7 @@ static void janus_recordplay_recording_free(const janus_refcount *recording_ref)
 	g_free(recording->afmtp);
 	g_free(recording->vfmtp);
 	g_free(recording->offer);
+	janus_mutex_destroy(&recording->mutex);
 	g_free(recording);
 }
 

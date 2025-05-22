@@ -1901,6 +1901,7 @@ static void janus_videoroom_room_free(const janus_refcount *room_ref) {
 	g_hash_table_destroy(room->participants);
 	g_hash_table_destroy(room->private_ids);
 	g_hash_table_destroy(room->allowed);
+	janus_mutex_destroy(&room->mutex);
 	g_free(room);
 }
 

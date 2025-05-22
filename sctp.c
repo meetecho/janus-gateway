@@ -123,7 +123,7 @@ void janus_sctp_handle_notification(janus_sctp_association *sctp, union sctp_not
 
 /* We need to keep a map of associations with random IDs, as usrsctp will
  * use the pointer to our structures in the actual messages instead */
-static janus_mutex sctp_mutex;
+static janus_mutex sctp_mutex = JANUS_MUTEX_INITIALIZER;
 static GHashTable *sctp_ids = NULL;
 static void janus_sctp_association_unref(janus_sctp_association *sctp);
 
@@ -142,7 +142,6 @@ int janus_sctp_init(void) {
 #endif
 
 	/* Create a map of local IDs too, to map them to our SCTP associations */
-	janus_mutex_init(&sctp_mutex);
 	sctp_ids = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sctp_association_unref);
 
 	return 0;

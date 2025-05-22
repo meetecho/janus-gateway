@@ -36,7 +36,7 @@
 /* Hash table to contain the tokens to match */
 static GHashTable *tokens = NULL, *allowed_plugins = NULL;
 static gboolean auth_enabled = FALSE;
-static janus_mutex mutex;
+static janus_mutex mutex = JANUS_MUTEX_INITIALIZER;
 static char *auth_secret = NULL;
 
 static void janus_auth_free_token(char *token) {
@@ -59,7 +59,6 @@ void janus_auth_init(gboolean enabled, const char *secret) {
 	} else {
 		JANUS_LOG(LOG_INFO, "Token based authentication disabled\n");
 	}
-	janus_mutex_init(&mutex);
 }
 
 gboolean janus_auth_is_enabled(void) {

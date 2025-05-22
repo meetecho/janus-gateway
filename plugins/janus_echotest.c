@@ -267,6 +267,7 @@ static void janus_echotest_session_free(const janus_refcount *session_ref) {
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_free(session->vfmtp);
+	janus_mutex_destroy(&session->rec_mutex);
 	g_free(session);
 }
 

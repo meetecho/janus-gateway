@@ -1892,6 +1892,9 @@ static void janus_audiobridge_participant_free(const janus_refcount *participant
 	janus_mutex_lock(&participant->pmutex);
 	janus_audiobridge_plainrtp_media_cleanup(&participant->plainrtp_media);
 	janus_mutex_unlock(&participant->pmutex);
+	janus_mutex_destroy(&participant->pmutex);
+	janus_mutex_destroy(&participant->qmutex);
+	janus_mutex_destroy(&participant->rec_mutex);
 	g_free(participant);
 }
 
@@ -1947,6 +1950,8 @@ static void janus_audiobridge_room_free(const janus_refcount *audiobridge_ref) {
 		g_hash_table_destroy(audiobridge->groups);
 	if(audiobridge->groups_byid)
 		g_hash_table_destroy(audiobridge->groups_byid);
+	janus_mutex_destroy(&audiobridge->mutex);
+	janus_mutex_destroy(&audiobridge->rtp_mutex);
 	g_free(audiobridge);
 }
 
