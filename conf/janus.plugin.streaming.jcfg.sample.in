@@ -217,7 +217,8 @@ multistream-test: {
 file-live-sample: {
 	type = "live"
 	id = 2
-	description = "a-law file source (radio broadcast)"
+	description = "Pseudo-live radio broadcast (a-law file source)"
+	metadata = "This is a pseudo-live stream, whose source is actually a static Opus file on the disk: the Streaming plugin goes through the file in real-time, and sends the frames via RTP. It's pseudo-live because it progresses even when there are no subscribers, and all subscribers get the same audio."
 	filename = "@streamdir@/radio.alaw"
 	audio = true
 	video = false
@@ -227,17 +228,21 @@ file-live-sample: {
 #
 # This is another sample of the file-based streaming support, but using
 # the "ondemand" type instead. In this case, the file we're streaming
-# contains raw mu-Law (still G.711) frames. Since this is "ondemand",
+# is an Opus file containing stereo opus frames. Since this is "ondemand",
 # anyone subscribing to this mountpoint will listen to their own version
 # of the stream, meaning that it will start from the beginning and then
-# loop when it's over. On-demand streaming supports Opus files as well.
+# loop when it's over. On-demand streaming supports G.711 files as well.
 #
 file-ondemand-sample: {
 	type = "ondemand"
 	id = 3
-	description = "mu-law file source (music)"
-	filename = "@streamdir@/music.mulaw"
+	description = "Remembrance, by Lorenzo Miniero (stereo music, Opus)"
+	metadata = "This is an on-demand stream, whose source is actually a static Opus file on the disk: when a subscriber opens it, the Streaming plugin starts from the beginning and goes through the file in real-time, and sends the frames via RTP. Unlike the pseudo-live sample, each subscriber opening it will experience a personal playout."
+	filename = "@streamdir@/remembrance.opus"
 	audio = true
+	audiopt = 100
+	audiortpmap = "opus/48000/2"
+	audiofmtp = "stereo=1"
 	video = false
 	secret = "adminpwd"
 }
