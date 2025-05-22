@@ -648,7 +648,7 @@ static janus_callbacks janus_handler_plugin =
 
 
 /* Core Sessions */
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 static GHashTable *sessions = NULL;
 static GMainContext *sessions_watchdog_context = NULL;
 
@@ -672,6 +672,7 @@ static void janus_session_free(const janus_refcount *session_ref) {
 		janus_request_destroy(session->source);
 		session->source = NULL;
 	}
+	janus_mutex_destroy(&session->mutex);
 	g_free(session);
 }
 
@@ -5483,7 +5484,6 @@ gint main(int argc, char *argv[]) {
 
 	/* Sessions */
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
-	janus_mutex_init(&sessions_mutex);
 	/* Start the sessions timeout watchdog */
 	sessions_watchdog_context = g_main_context_new();
 	GMainLoop *watchdog_loop = g_main_loop_new(sessions_watchdog_context, FALSE);
