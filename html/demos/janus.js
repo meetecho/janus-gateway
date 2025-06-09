@@ -1526,8 +1526,9 @@ var Janus = (function (factory) {
 							let tr = transceivers[mindex];
 							if(tr && tr.sender && tr.sender.track && tr.sender.track.kind === 'video') {
 								let params = tr.sender.getParameters();
-								if(params && params.encodings && params.encodings[0] &&
-									params.encodings[0].scalabilityMode) {
+								Janus.warn(params);
+								if(params && params.encodings && params.encodings.length === 1 &&
+										params.encodings[0] && params.encodings[0].scalabilityMode) {
 									// This video stream uses SVC
 									if(!svc)
 										svc = [];
