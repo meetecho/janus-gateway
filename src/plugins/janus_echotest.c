@@ -451,6 +451,8 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	janus_mutex_init(&session->rid_mutex);
 	session->min_delay = -1;
 	session->max_delay = -1;
+	session->spatial_layers = -1;
+	session->temporal_layers = -1;
 	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
