@@ -182,6 +182,7 @@ post = <optional backend to contact via HTTP post for all incoming messages>
  *
 \verbatim
 {
+	"textroom" : "success",
 	"room" : <unique numeric ID of the room>,
 	"participants" : [		// Array of participant objects
 		{	// Participant #1
@@ -2119,6 +2120,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		if(!internal) {
 			/* Send response back */
 			reply = json_object();
+			json_object_set_new(reply, "textroom", json_string("success"));
 			json_object_set_new(reply, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 			json_object_set_new(reply, "participants", list);
 		}
