@@ -18,13 +18,15 @@
  * broadcasting (e.g., chatrooms, but not only).
  *
  * The only message that is typically sent to the plugin through the Janus API is
- * a "setup" message, by which the user initializes the PeerConnection
+ * a \c setup message, by which the user initializes the PeerConnection
  * itself. Apart from that, all other messages can be exchanged directly
  * via Data Channels. For room management purposes, though, requests like
- * "create", "edit", "destroy", "list", "listparticipants" and "exists"
- * and "announcement" are available through the
- * Janus API as well: notice that in this case you'll have to use "request"
- * and not "textroom" as the name of the request.
+ * \c create , \c edit , \c destroy , \c list , \c listparticipants , \c exists
+ * and \c announcement are available through the
+ * Janus API as well: notice that in this case you'll have to use \c request
+ * and not \c textroom as the name of the request. You cannot join a room
+ * or send/receive messages via Janus API: that's only possible through
+ * the datachannel interface.
  *
  * Each room can also be configured with an HTTP backend to contact for
  * incoming messages. If configured, messages addressed to that room will
@@ -85,6 +87,7 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 \verbatim
 {
 	"textroom" : "list",
+	"admin_key" : "<plugin administrator key; optional>"
 }
 \endverbatim
  *
@@ -98,7 +101,8 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 			"room" : <unique numeric ID>,
 			"description" : "<Name of the room>",
 			"pin_required" : <true|false, depending on whether the room is PIN-protected>,
-			"num_participants" : <count of the participants>
+			"num_participants" : <count of the participants>,
+			"history" : <size of history, if any>
 		},
 		// Other rooms
 	]
