@@ -19,7 +19,8 @@
  *
  * The only message that is typically sent to the plugin through the Janus API is
  * a \c setup message, by which the user initializes the PeerConnection
- * itself. Apart from that, all other messages can be exchanged directly
+ * itself, as explained in the \ref textroomsetup section.
+ * Apart from that, all other messages can be exchanged directly
  * via Data Channels. For room management purposes, though, requests like
  * \c create , \c edit , \c destroy , \c list , \c listparticipants , \c exists
  * and \c announcement are available through the
@@ -68,11 +69,67 @@ history = <number of messages to store as a history, and send back to new partic
 post = <optional backend to contact via HTTP post for all incoming messages>
 \endverbatim
  *
- * As explained in the next section, you can also create rooms programmatically.
+ * As explained in the next sections, you can also create rooms programmatically.
+ *
+ * \section textroomsetup Establishing a connection
+ *
+ * While some requests to the plugin can be sent via Janus API, the actual
+ * chatroom functionality is only available via datachannel. This means
+ * that you need to establish a WebRTC PeerConnection first, if you want
+ * to take full advantage of the functionality provided by the TextRoom plugin.
+ *
+ * To do that, you use the \c setup request, which doesn't require any
+ * argument:
+ *
+\verbatim
+{
+	"request" : "setup"
+}
+\endverbatim
+ *
+ * Assuming a datachannel wasn't established already, the plugin will
+ * react to that request with a basic event, which will contain a JSEP
+ * offer too:
+ *
+\verbatim
+{
+	"textroom" : "event",
+	"result" : "ok"
+}
+\endverbatim
+ *
+ * To complete the negotiation process and establish a WebRTC PeerConnection,
+ * you need to send an empty \c ack request with your JSEP answer:
+ *
+\verbatim
+{
+	"request" : "ack"
+}
+\endverbatim
+ *
+ * Should you need to perform an ICE restart, e.g., to keep the datachannel
+ * alive during a connection migration, you can use an empty \c restart
+ * request:
+ *
+\verbatim
+{
+	"request" : "restart"
+}
+\endverbatim
+ *
+ * Just as in the \c setup request, this will result in the plugin sending
+ * a new JSEP offer with an attempt to restart ICE. You can use the
+ * \c ack request to provide your JSEP answer in this case too.
+ *
+ * Once the datachannel is active, you can start exchanging messages
+ * there, referring to the \ref textroomapi for the syntax. As explained
+ * in the intro, some request described there can be sent over Janus API
+ * too, but you'll need to use \c request instead of \c textroom as the
+ * name of the request.
  *
  * \section textroomapi Text Room API
  *
- * All TextRoom API requests are addressed by a \c textroom named property,
+ * All TextRoom API requests sent via datachannels are addressed by a \c textroom named property,
  * and must contain a \c transaction string property as well, which will
  * be returned in the response. Notice that, for the sake of brevity, the
  * \c transaction property will not be displayed in the documentation,
