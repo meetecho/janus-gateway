@@ -2354,7 +2354,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		if(!internal) {
 			/* Send response back */
 			reply = json_object();
-			json_object_set_new(reply, "textbridge", json_string("success"));
+			json_object_set_new(reply, "textroom", json_string("success"));
 		}
 	} else if(!strcasecmp(request_text, "announcement")) {
 		JANUS_LOG(LOG_VERB, "Attempt to send a TextRoom announcement\n");
