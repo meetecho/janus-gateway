@@ -153,7 +153,7 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 \verbatim
 {
 	"textroom" : "success",
-	"rooms" : [		// Array of room objects
+	"list" : [		// Array of room objects
 		{	// Room #1
 			"room" : <unique numeric ID>,
 			"description" : "<Name of the room>",
