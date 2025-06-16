@@ -9204,7 +9204,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							participant->codec == JANUS_AUDIOCODEC_OPUS ? "Opus" : "G.711");
 						g_atomic_int_set(&participant->decoding, 0);
 						janus_audiobridge_buffer_packet_destroy(bpkt);
-						break;
+						continue;
 					}
 					rtp = (janus_rtp_header *)buffer;
 					first = FALSE;
@@ -9230,7 +9230,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							janus_audiobridge_buffer_packet_destroy(bpkt);
 							g_free(pkt->data);
 							g_free(pkt);
-							break;
+							continue;
 						}
 						int i = 0;
 						uint16_t *samples = (uint16_t *)pkt->data;
@@ -9264,7 +9264,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						}
 						g_free(pkt->data);
 						g_free(pkt);
-						break;
+						continue;
 					}
 					/* Queue the decoded packet for the mixer */
 					janus_mutex_lock(&participant->qmutex);
