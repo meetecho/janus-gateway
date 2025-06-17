@@ -8154,8 +8154,13 @@ static void *janus_audiobridge_handler(void *data) {
 				answer->s_name = g_strdup(s_name);
 				/* Add an fmtp attribute if this is Opus */
 				if(participant->codec == JANUS_AUDIOCODEC_OPUS) {
-					janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%s", fmtp);
-					janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_AUDIO), a);
+					janus_sdp_mline *m = janus_sdp_mline_find(answer, JANUS_SDP_AUDIO);
+					if(m != NULL) {
+						janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%s", fmtp);
+						janus_sdp_attribute_add_to_mline(m, a);
+					} else {
+						JANUS_LOG(LOG_ERR, "No audio m-line found in SDP answer\n");
+					}
 				}
 				/* Let's overwrite a couple o= fields, in case this is a renegotiation */
 				answer->o_sessid = session->sdp_sessid;
