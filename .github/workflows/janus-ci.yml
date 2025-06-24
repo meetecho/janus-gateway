@@ -44,9 +44,7 @@ jobs:
           libavcodec-dev
           libavformat-dev
           libavutil-dev
-          libcollection-dev
           libconfig-dev
-          libevent-dev
           libglib2.0-dev
           libgirepository1.0-dev
           liblua5.3-dev
