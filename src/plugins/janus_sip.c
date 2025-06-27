@@ -4920,7 +4920,7 @@ static void *janus_sip_handler(void *data) {
 			} else if(!strcasecmp(action_text, "send_ringing")) {
 				if(session->status != janus_sip_call_status_invited
 					&& session->status != janus_sip_call_status_progress) {
-					JANUS_LOG(LOG_ERR, "Wrong state (not established? status=%s)\n", janus_sip_call_status_string(session->status));
+					JANUS_LOG(LOG_ERR, "Wrong state (not invited or progress? status=%s)\n", janus_sip_call_status_string(session->status));
 					g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 					goto error;
 				}
