@@ -4917,27 +4917,6 @@ static void *janus_sip_handler(void *data) {
 					janus_recorder_resume(session->arc_peer);
 				if(record_peer_video)
 					janus_recorder_resume(session->vrc_peer);
-			} else if(!strcasecmp(action_text, "send_ringing")) {
-				if(session->status != janus_sip_call_status_invited
-					&& session->status != janus_sip_call_status_progress) {
-					JANUS_LOG(LOG_ERR, "Wrong state (not invited or progress? status=%s)\n", janus_sip_call_status_string(session->status));
-					g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
-					goto error;
-				}
-				json_t *ringing = json_object();
-				json_object_set_new(ringing, "sip", json_string("event"));
-				json_t *result = json_object();
-				json_object_set_new(result, "event", json_string("ringing"));
-				json_object_set_new(ringing, "result", result);
-				json_object_set_new(ringing, "call_id", json_string(session->callid));
-				/* Any headers to forward? */
-				json_t *headers = json_object_get(root, "headers");
-				if(headers && json_object_size(headers) > 0) {
-					json_object_set_new(result, "event", headers);
-				}
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, ringing, NULL);
-				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
-				json_decref(ringing);
 			} else {
 				/* Stop recording something: notice that this never returns an error, even when we were not recording anything */
 				janus_sip_recorder_close(session, record_audio, record_peer_audio, record_video, record_peer_video);
@@ -4979,6 +4958,27 @@ static void *janus_sip_handler(void *data) {
 			/* Notify the operation */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("infosent"));
+		} else if(!strcasecmp(request_text, "send_ringing")) {
+			if(session->status != janus_sip_call_status_invited
+				&& session->status != janus_sip_call_status_progress) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not invited or progress? status=%s)\n", janus_sip_call_status_string(session->status));
+				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+				goto error;
+			}
+			json_t *ringing = json_object();
+			json_object_set_new(ringing, "sip", json_string("event"));
+			json_t *result = json_object();
+			json_object_set_new(result, "event", json_string("ringing"));
+			json_object_set_new(ringing, "result", result);
+			json_object_set_new(ringing, "call_id", json_string(session->callid));
+			/* Any headers to forward? */
+			json_t *headers = json_object_get(root, "headers");
+			if(headers && json_object_size(headers) > 0) {
+				json_object_set_new(result, "event", headers);
+			}
+			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, ringing, NULL);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+			json_decref(ringing);
 		} else if(!strcasecmp(request_text, "message")) {
 			/* Send a SIP MESSAGE request: we'll only need the content and optional payload type */
 			JANUS_VALIDATE_JSON_OBJECT(root, sipmessage_parameters,
