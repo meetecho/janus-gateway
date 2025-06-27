@@ -4922,10 +4922,6 @@ static void *janus_sip_handler(void *data) {
 				json_object_set_new(ringing, "sip", json_string("event"));
 				json_t *result = json_object();
 				json_object_set_new(result, "event", json_string("ringing"));
-				if(session->incoming_header_prefixes) {
-					json_t *headers = janus_sip_get_incoming_headers(sip, session);
-					json_object_set_new(result, "headers", headers);
-				}
 				json_object_set_new(ringing, "result", result);
 				json_object_set_new(ringing, "call_id", json_string(session->callid));
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, ringing, NULL);
