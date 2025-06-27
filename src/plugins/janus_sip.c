@@ -4930,6 +4930,11 @@ static void *janus_sip_handler(void *data) {
 				json_object_set_new(result, "event", json_string("ringing"));
 				json_object_set_new(ringing, "result", result);
 				json_object_set_new(ringing, "call_id", json_string(session->callid));
+				/* Any headers to forward? */
+				json_t *headers = json_object_get(root, "headers");
+				if(headers && json_object_size(headers) > 0) {
+					json_object_set_new(result, "event", headers);
+				}
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, ringing, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(ringing);
