@@ -115,6 +115,7 @@
 	"force_tcp" : <true|false; if true, forces TCP for the SIP messaging; optional>,
 	"sips" : <true|false; if true, configures a SIPS URI too when registering; optional>,
 	"rfc2543_cancel" : <true|false; if true, configures sip client to CANCEL pending INVITEs without having received a provisional response first; optional>,
+	"automatic_ringing" : <true|false; if false, don't generate ringing automatically as soon as we receive a 180/183 reply for INVITE; optional>,
 	"username" : "<SIP URI to register; mandatory>",
 	"secret" : "<password to use to register; optional>",
 	"ha1_secret" : "<prehashed password to use to register; optional>",
@@ -808,6 +809,7 @@ static struct janus_json_parameter register_parameters[] = {
 	{"force_tcp", JANUS_JSON_BOOL, 0},
 	{"sips", JANUS_JSON_BOOL, 0},
 	{"rfc2543_cancel", JANUS_JSON_BOOL, 0},
+	{"automatic_ringing", JANUS_JSON_BOOL, 0},
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JSON_STRING, 0},
 	{"ha1_secret", JSON_STRING, 0},
@@ -1047,6 +1049,7 @@ typedef struct janus_sip_account {
 	gboolean force_tcp;
 	gboolean sips;
 	gboolean rfc2543_cancel;
+	gboolean automatic_ringing;
 	char *username;
 	char *display_name;		/* Used for outgoing calls in the From header */
 	char *authuser;			/**< username to use for authentication */
@@ -2323,6 +2326,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.force_tcp = FALSE;
 	session->account.sips = FALSE;
 	session->account.rfc2543_cancel = FALSE;
+	session->account.automatic_ringing = TRUE;
 	session->account.username = NULL;
 	session->account.display_name = NULL;
 	session->account.user_agent = NULL;
@@ -3133,6 +3137,11 @@ static void *janus_sip_handler(void *data) {
 			if(do_rfc2543_cancel != NULL) {
 				rfc2543_cancel = json_is_true(do_rfc2543_cancel);
 			}
+			gboolean automatic_ringing = FALSE;
+			json_t *do_automatic_ringing = json_object_get(root, "automatic_ringing");
+			if(do_automatic_ringing != NULL) {
+				automatic_ringing = json_is_true(do_automatic_ringing);
+			}
 
 			/* Parse addresses */
 			json_t *proxy = json_object_get(root, "proxy");
@@ -3290,6 +3299,7 @@ static void *janus_sip_handler(void *data) {
 				session->account.force_tcp = FALSE;
 				session->account.sips = FALSE;
 				session->account.rfc2543_cancel = FALSE;
+				session->account.automatic_ringing = TRUE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
 				session->account.username = NULL;
@@ -3322,6 +3332,7 @@ static void *janus_sip_handler(void *data) {
 			session->account.force_tcp = force_tcp;
 			session->account.sips = sips;
 			session->account.rfc2543_cancel = rfc2543_cancel;
+			session->account.automatic_ringing = automatic_ringing;
 			session->account.username = g_strdup(user_id);
 			session->account.authuser = g_strdup(authuser_text ? authuser_text : user_id);
 			session->account.secret = secret_text ? g_strdup(secret_text) : NULL;
@@ -4906,6 +4917,20 @@ static void *janus_sip_handler(void *data) {
 					janus_recorder_resume(session->arc_peer);
 				if(record_peer_video)
 					janus_recorder_resume(session->vrc_peer);
+			} else if(!strcasecmp(action_text, "send_ringing")) {
+				json_t *ringing = json_object();
+				json_object_set_new(ringing, "sip", json_string("event"));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("ringing"));
+				if(session->incoming_header_prefixes) {
+					json_t *headers = janus_sip_get_incoming_headers(sip, session);
+					json_object_set_new(result, "headers", headers);
+				}
+				json_object_set_new(ringing, "result", result);
+				json_object_set_new(ringing, "call_id", json_string(session->callid));
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, ringing, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				json_decref(ringing);
 			} else {
 				/* Stop recording something: notice that this never returns an error, even when we were not recording anything */
 				janus_sip_recorder_close(session, record_audio, record_peer_audio, record_video, record_peer_video);
@@ -6028,7 +6053,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					/* If's a Session Progress: check if there's an SDP, and if so, treat it like a 200 */
 					if(sip->sip_payload && sip->sip_payload->pl_data) {
 						in_progress = TRUE;
-					} else {
+					} else if (!session->account.automatic_ringing) {
 						/* Ringing, notify the application */
 						json_t *ringing = json_object();
 						json_object_set_new(ringing, "sip", json_string("event"));
@@ -6044,6 +6069,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 						JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 						json_decref(ringing);
 						break;
+					} else {
+						JANUS_LOG(LOG_VERB, "[%s][%s]: %s\n", session->account.username, nua_event_name(event), "Not generating ringing since automatic ringing is disabled.");
 					}
 				} else {
 					/* Nothing to do, let's wait for a 200 OK */
@@ -6404,6 +6431,7 @@ auth_failed:
 				session->account.force_tcp = FALSE;
 				session->account.sips = FALSE;
 				session->account.rfc2543_cancel = FALSE;
+				session->account.automatic_ringing = TRUE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
 				session->account.username = NULL;
