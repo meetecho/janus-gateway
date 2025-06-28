@@ -115,6 +115,7 @@
 	"force_tcp" : <true|false; if true, forces TCP for the SIP messaging; optional>,
 	"sips" : <true|false; if true, configures a SIPS URI too when registering; optional>,
 	"rfc2543_cancel" : <true|false; if true, configures sip client to CANCEL pending INVITEs without having received a provisional response first; optional>,
+	"automatic_ringing" : <true|false; if false, don't generate ringing automatically as soon as an INVITE; optional>,
 	"username" : "<SIP URI to register; mandatory>",
 	"secret" : "<password to use to register; optional>",
 	"ha1_secret" : "<prehashed password to use to register; optional>",
@@ -808,6 +809,7 @@ static struct janus_json_parameter register_parameters[] = {
 	{"force_tcp", JANUS_JSON_BOOL, 0},
 	{"sips", JANUS_JSON_BOOL, 0},
 	{"rfc2543_cancel", JANUS_JSON_BOOL, 0},
+	{"automatic_ringing", JANUS_JSON_BOOL, 0},
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JSON_STRING, 0},
 	{"ha1_secret", JSON_STRING, 0},
@@ -1047,6 +1049,7 @@ typedef struct janus_sip_account {
 	gboolean force_tcp;
 	gboolean sips;
 	gboolean rfc2543_cancel;
+	gboolean automatic_ringing;
 	char *username;
 	char *display_name;		/* Used for outgoing calls in the From header */
 	char *authuser;			/**< username to use for authentication */
@@ -2323,6 +2326,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.force_tcp = FALSE;
 	session->account.sips = FALSE;
 	session->account.rfc2543_cancel = FALSE;
+	session->account.automatic_ringing = TRUE;
 	session->account.username = NULL;
 	session->account.display_name = NULL;
 	session->account.user_agent = NULL;
@@ -3133,6 +3137,11 @@ static void *janus_sip_handler(void *data) {
 			if(do_rfc2543_cancel != NULL) {
 				rfc2543_cancel = json_is_true(do_rfc2543_cancel);
 			}
+			gboolean automatic_ringing = TRUE;
+			json_t *do_automatic_ringing = json_object_get(root, "automatic_ringing");
+			if(do_automatic_ringing != NULL) {
+				automatic_ringing = json_is_true(do_automatic_ringing);
+			}
 
 			/* Parse addresses */
 			json_t *proxy = json_object_get(root, "proxy");
@@ -3290,6 +3299,7 @@ static void *janus_sip_handler(void *data) {
 				session->account.force_tcp = FALSE;
 				session->account.sips = FALSE;
 				session->account.rfc2543_cancel = FALSE;
+				session->account.automatic_ringing = TRUE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
 				session->account.username = NULL;
@@ -3322,6 +3332,7 @@ static void *janus_sip_handler(void *data) {
 			session->account.force_tcp = force_tcp;
 			session->account.sips = sips;
 			session->account.rfc2543_cancel = rfc2543_cancel;
+			session->account.automatic_ringing = automatic_ringing;
 			session->account.username = g_strdup(user_id);
 			session->account.authuser = g_strdup(authuser_text ? authuser_text : user_id);
 			session->account.secret = secret_text ? g_strdup(secret_text) : NULL;
@@ -4947,6 +4958,16 @@ static void *janus_sip_handler(void *data) {
 			/* Notify the operation */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("infosent"));
+		} else if(!strcasecmp(request_text, "send_ringing")) {
+			if(session->status != janus_sip_call_status_invited
+				&& session->status != janus_sip_call_status_progress) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not invited or progress? status=%s)\n", janus_sip_call_status_string(session->status));
+				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+				goto error;
+			}
+			if (session->stack->s_nh_i) {
+				nua_respond(session->stack->s_nh_i, 180, sip_status_phrase(180), TAG_END());
+			}
 		} else if(!strcasecmp(request_text, "message")) {
 			/* Send a SIP MESSAGE request: we'll only need the content and optional payload type */
 			JANUS_VALIDATE_JSON_OBJECT(root, sipmessage_parameters,
@@ -5644,8 +5665,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			su_free(session->stack->s_home, callee_text);
 			g_free(referred_by);
 			if(!reinvite) {
-				/* Send a Ringing back */
-				nua_respond(nh, 180, sip_status_phrase(180), TAG_END());
+				if (session->account.automatic_ringing) {
+					/* Send a Ringing back */
+					nua_respond(nh, 180, sip_status_phrase(180), TAG_END());
+				}
 				session->stack->s_nh_i = nh;
 			}
 			break;
@@ -6404,6 +6427,7 @@ auth_failed:
 				session->account.force_tcp = FALSE;
 				session->account.sips = FALSE;
 				session->account.rfc2543_cancel = FALSE;
+				session->account.automatic_ringing = TRUE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
 				session->account.username = NULL;
