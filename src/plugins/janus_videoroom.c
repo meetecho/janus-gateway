@@ -1936,6 +1936,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"require_e2ee", JANUS_JSON_BOOL, 0},
 	{"dummy_publisher", JANUS_JSON_BOOL, 0},
 	{"dummy_streams", JANUS_JSON_ARRAY, 0},
+	{"dummy_e2ee", JANUS_JSON_BOOL, 0},
 	{"threads", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 };
 static struct janus_json_parameter edit_parameters[] = {
@@ -2530,7 +2531,7 @@ static janus_rtp_forwarder *janus_videoroom_rtp_forwarder_add_helper(janus_video
 	int substream, gboolean is_video, gboolean is_data);
 static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_rtp_forwarder *rf, char *buffer, int len);
 static json_t *janus_videoroom_rtp_forwarder_summary(janus_rtp_forwarder *f);
-static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashTable *streams);
+static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, gboolean e2ee, GHashTable *streams);
 
 /* We support remote publishers as well, for which we use plain RTP,
  * which means we need to create and work with generic file descriptors */
@@ -3119,7 +3120,7 @@ static json_t *janus_videoroom_rtp_forwarder_summary(janus_rtp_forwarder *f) {
 }
 
 /* Helper to create a dummy publisher, with placeholder streams for each supported codec */
-static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashTable *streams) {
+static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, gboolean e2ee, GHashTable *streams) {
 	if(room == NULL || !room->dummy_publisher)
 		return;
 	/* We create a dummy session first, that's not actually bound to anything */
@@ -3144,6 +3145,7 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 	publisher->acodec = JANUS_AUDIOCODEC_NONE;
 	publisher->vcodec = JANUS_VIDEOCODEC_NONE;
 	publisher->dummy = TRUE;
+	publisher->e2ee = room->require_e2ee || e2ee;
 	janus_mutex_init(&publisher->subscribers_mutex);
 	janus_mutex_init(&publisher->own_subscriptions_mutex);
 	publisher->streams_byid = g_hash_table_new_full(NULL, NULL,
@@ -3787,6 +3789,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *req_e2ee = janus_config_get(config, cat, janus_config_type_item, "require_e2ee");
 			janus_config_item *dummy_pub = janus_config_get(config, cat, janus_config_type_item, "dummy_publisher");
 			janus_config_item *dummy_str = janus_config_get(config, cat, janus_config_type_array, "dummy_streams");
+			janus_config_item *dummy_e2ee = janus_config_get(config, cat, janus_config_type_item, "dummy_e2ee");
 			janus_config_item *record = janus_config_get(config, cat, janus_config_type_item, "record");
 			janus_config_item *rec_dir = janus_config_get(config, cat, janus_config_type_item, "rec_dir");
 			janus_config_item *lock_record = janus_config_get(config, cat, janus_config_type_item, "lock_record");
@@ -4037,7 +4040,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 					}
 				}
 				/* Create the dummy publisher */
-				janus_videoroom_create_dummy_publisher(videoroom, dummy_streams);
+				gboolean e2ee = dummy_e2ee && dummy_e2ee->value && janus_is_true(dummy_e2ee->value);
+				janus_videoroom_create_dummy_publisher(videoroom, e2ee, dummy_streams);
 				if(dummy_streams != NULL)
 					g_hash_table_destroy(dummy_streams);
 			}
@@ -4794,6 +4798,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_t *req_e2ee = json_object_get(root, "require_e2ee");
 		json_t *dummy_pub = json_object_get(root, "dummy_publisher");
 		json_t *dummy_str = json_object_get(root, "dummy_streams");
+		json_t *dummy_e2ee = json_object_get(root, "dummy_e2ee");
 		json_t *threads = json_object_get(root, "threads");
 		json_t *secret = json_object_get(root, "secret");
 		json_t *pin = json_object_get(root, "pin");
@@ -5180,7 +5185,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				}
 			}
 			/* Create the dummy publisher */
-			janus_videoroom_create_dummy_publisher(videoroom, dummy_streams);
+			gboolean e2ee = dummy_e2ee && json_is_true(dummy_e2ee);
+			janus_videoroom_create_dummy_publisher(videoroom, e2ee, dummy_streams);
 			if(dummy_streams != NULL)
 				g_hash_table_destroy(dummy_streams);
 		}
