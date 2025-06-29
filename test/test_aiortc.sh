@@ -11,9 +11,14 @@ JANUS_SRC="$( dirname $SCRIPTPATH )"
 TEST=${1-"$SCRIPTPATH/echo.py"}
 URL=${2-"ws://localhost:8188/"}
 
-echo "Starting Janus binary from $JANUS_SRC ..."
-$JANUS_SRC/src/janus >/dev/null 2>&1 &
-JANUS_PID=$!
+JANUS_RUNNING=$(pgrep -xc janus || true)
+if [ $JANUS_RUNNING -gt 0 ]; then
+    echo "Not starting Janus, already running ..."
+else
+    echo "Starting Janus binary from $JANUS_SRC ..."
+    $JANUS_SRC/src/janus >/dev/null 2>&1 &
+    JANUS_PID=$!
+fi
 
 echo "Waiting for some seconds before launching the test ..."
 sleep 5
@@ -22,7 +27,9 @@ echo "Launching test $TEST ..."
 $VENVPATH/bin/python3 $TEST $URL
 RES=$?
 
-kill $JANUS_PID 2>/dev/null
+if [ $JANUS_RUNNING -eq 0 ]; then
+    kill $JANUS_PID 2>/dev/null
+fi
 
 if [ $RES -eq 0 ]; then
     echo "TEST SUCCEEDED"
