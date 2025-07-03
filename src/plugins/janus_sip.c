@@ -4959,15 +4959,13 @@ static void *janus_sip_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "event", json_string("infosent"));
 		} else if(!strcasecmp(request_text, "send_ringing")) {
-			if(session->status != janus_sip_call_status_invited
-				&& session->status != janus_sip_call_status_progress) {
+			if(session->status != janus_sip_call_status_invited && session->status != janus_sip_call_status_progress) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not invited or progress? status=%s)\n", janus_sip_call_status_string(session->status));
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				goto error;
 			}
-			if (session->stack->s_nh_i) {
+			if(session->stack->s_nh_i)
 				nua_respond(session->stack->s_nh_i, 180, sip_status_phrase(180), TAG_END());
-			}
 		} else if(!strcasecmp(request_text, "message")) {
 			/* Send a SIP MESSAGE request: we'll only need the content and optional payload type */
 			JANUS_VALIDATE_JSON_OBJECT(root, sipmessage_parameters,
@@ -5665,7 +5663,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			su_free(session->stack->s_home, callee_text);
 			g_free(referred_by);
 			if(!reinvite) {
-				if (session->account.automatic_ringing) {
+				if(session->account.automatic_ringing) {
 					/* Send a Ringing back */
 					nua_respond(nh, 180, sip_status_phrase(180), TAG_END());
 				}
