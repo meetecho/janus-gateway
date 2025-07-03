@@ -5362,7 +5362,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				g_free(session->hangup_reason_header);
 				g_free(session->hangup_reason_header_protocol);
 				g_free(session->hangup_reason_header_cause);
-				json_decref(session->hangup_custom_headers);
 				session->hangup_reason_header = NULL;
 				session->hangup_reason_header_protocol = NULL;
 				session->hangup_reason_header_cause = NULL;
@@ -6595,8 +6594,10 @@ void janus_sip_save_reason(sip_t const *sip, janus_sip_session *session) {
 		session->hangup_reason_header_cause = g_strdup(sip->sip_reason->re_cause);
 	}
 	if(session->incoming_header_prefixes) {
+		if(session->hangup_custom_headers) {
+			json_decref(session->hangup_custom_headers);
+		}
 		json_t *headers = janus_sip_get_incoming_headers(sip, session);
-		json_decref(session->hangup_custom_headers);
 		session->hangup_custom_headers = headers;
 	}
 }
