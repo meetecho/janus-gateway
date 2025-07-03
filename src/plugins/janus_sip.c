@@ -6594,7 +6594,6 @@ void janus_sip_save_reason(sip_t const *sip, janus_sip_session *session) {
 		g_free(session->hangup_reason_header_cause);
 		session->hangup_reason_header_cause = g_strdup(sip->sip_reason->re_cause);
 	}
-
 	if(session->incoming_header_prefixes) {
 		json_t *headers = janus_sip_get_incoming_headers(sip, session);
 		json_decref(session->hangup_custom_headers);
