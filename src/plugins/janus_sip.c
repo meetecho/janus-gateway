@@ -5316,7 +5316,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(session->hangup_reason_header_cause)
 					json_object_set_new(calling, "reason_header_cause", json_string(session->hangup_reason_header_cause));
 				if(session->hangup_custom_headers)
-                	json_object_set_new(calling, "headers", session->hangup_custom_headers);
+					json_object_set_new(calling, "headers", session->hangup_custom_headers);
 				json_object_set_new(call, "result", calling);
 				json_object_set_new(call, "call_id", json_string(session->callid));
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
@@ -5338,7 +5338,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					if(session->hangup_reason_header_cause)
 						json_object_set_new(info, "reason_header_cause", json_string(session->hangup_reason_header_cause));
 					if(session->hangup_custom_headers)
-                    	json_object_set_new(info, "headers", session->hangup_custom_headers);
+						json_object_set_new(info, "headers", session->hangup_custom_headers);
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 				/* Get rid of any PeerConnection that may have been set up */
@@ -6123,11 +6123,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				JANUS_LOG(LOG_VERB, "Handling SDP answer in ACK\n");
 			} else if(status >= 400 && status != 700) {
 				janus_sip_save_reason(sip, session);
-				if(session && session->incoming_header_prefixes) {
-					json_t *headers = janus_sip_get_incoming_headers(sip, session);
-					json_decref(session->hangup_custom_headers);
-					session->hangup_custom_headers = headers;
-				}
 				break;
 			}
 			if(ssip == NULL) {
@@ -6598,6 +6593,12 @@ void janus_sip_save_reason(sip_t const *sip, janus_sip_session *session) {
 	if(sip->sip_reason && sip->sip_reason->re_cause) {
 		g_free(session->hangup_reason_header_cause);
 		session->hangup_reason_header_cause = g_strdup(sip->sip_reason->re_cause);
+	}
+
+	if(session->incoming_header_prefixes) {
+		json_t *headers = janus_sip_get_incoming_headers(sip, session);
+		json_decref(session->hangup_custom_headers);
+		session->hangup_custom_headers = headers;
 	}
 }
 
