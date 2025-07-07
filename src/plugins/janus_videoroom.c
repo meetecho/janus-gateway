@@ -2969,10 +2969,10 @@ static void janus_videoroom_codecstr(janus_videoroom *videoroom, char *audio_cod
 static void janus_videoroom_reqpli(janus_videoroom_publisher_stream *ps, const char *reason) {
 	if(ps == NULL || g_atomic_int_get(&ps->destroyed))
 		return;
+	if(ps->publisher == NULL || g_atomic_int_get(&ps->publisher->destroyed))
+		return;
 	janus_videoroom_publisher *remote_publisher = NULL;
 	if(ps->publisher->remote) {
-		if(ps->publisher == NULL || g_atomic_int_get(&ps->publisher->destroyed))
-			return;
 		remote_publisher = ps->publisher;
 		if(remote_publisher->remote_rtcp_fd < 0 || remote_publisher->rtcp_addr.ss_family == 0)
 			return;
@@ -2993,8 +2993,10 @@ static void janus_videoroom_reqpli(janus_videoroom_publisher_stream *ps, const c
 	/* Update the time of when we last sent a keyframe request */
 	ps->fir_latest = ps->pli_latest;
 	if(remote_publisher == NULL) {
-		/* Local publisher so we ask the Janus core to send a PLI */
-		gateway->send_pli_stream(ps->publisher->session->handle, ps->mindex);
+		if(ps->publisher->session && !g_atomic_int_get(&ps->publisher->session->destroyed) && ps->publisher->session->handle) {
+			/* Local publisher so we ask the Janus core to send a PLI */
+			gateway->send_pli_stream(ps->publisher->session->handle, ps->mindex);
+		}
 	} else {
 		/* Generate a PLI */
 		char rtcp_buf[12];
@@ -13199,6 +13201,12 @@ static void *janus_videoroom_handler(void *data) {
 							if(ps->svc)
 								json_object_set_new(info, "svc", json_true());
 						}
+						if(ps->audio_level_extmap_id > 0)
+							json_object_set_new(info, "audiolevel_ext_id", json_integer(ps->audio_level_extmap_id));
+						if(ps->video_orient_extmap_id > 0)
+							json_object_set_new(info, "videoorient_ext_id", json_integer(ps->video_orient_extmap_id));
+						if(ps->playout_delay_extmap_id > 0)
+							json_object_set_new(info, "playoutdelay_ext_id", json_integer(ps->playout_delay_extmap_id));
 					}
 					json_array_append_new(media, info);
 				}
@@ -14041,7 +14049,7 @@ cleanup:
 	publisher->e2ee = FALSE;
 	/* Get rid of streams */
 	janus_mutex_lock(&publisher->streams_mutex);
-	GList *subscribers = NULL;
+	GList *subscribers = NULL, *mappings = NULL;
 	temp = publisher->streams;
 	while(temp) {
 		janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
@@ -14058,8 +14066,16 @@ cleanup:
 					janus_refcount_increase(&ss->subscriber->session->ref);
 					subscribers = g_list_append(subscribers, ss->subscriber);
 				}
-				/* Remove the subscription (turns the m-line to inactive) */
-				janus_videoroom_subscriber_stream_remove(ss, ps, FALSE);
+				/* Take note of the subscription to remove */
+				janus_videoroom_stream_mapping *m = g_malloc(sizeof(janus_videoroom_stream_mapping));
+				janus_refcount_increase(&ps->ref);
+				janus_refcount_increase(&ss->ref);
+				janus_refcount_increase(&ss->subscriber->ref);
+				m->ps = ps;
+				m->ss = ss;
+				m->unref_ss = (g_slist_find(ps->subscribers, ss) != NULL);
+				m->subscriber = ss->subscriber;
+				mappings = g_list_append(mappings, m);
 			}
 		}
 		g_slist_free(ps->subscribers);
@@ -14075,6 +14091,28 @@ cleanup:
 		ps->fmtp = NULL;
 		janus_mutex_unlock(&ps->subscribers_mutex);
 		temp = temp->next;
+	}
+	if(mappings) {
+		temp = mappings;
+		while(temp) {
+			janus_videoroom_stream_mapping *m = (janus_videoroom_stream_mapping *)temp->data;
+			/* Remove the subscription (turns the m-line to inactive) */
+			janus_videoroom_publisher_stream *ps = m->ps;
+			janus_videoroom_subscriber *subscriber = m->subscriber;
+			janus_videoroom_subscriber_stream *ss = m->ss;
+			if(subscriber) {
+				janus_mutex_lock(&subscriber->streams_mutex);
+				janus_videoroom_subscriber_stream_remove(ss, ps, TRUE);
+				janus_mutex_unlock(&subscriber->streams_mutex);
+				if(m->unref_ss)
+					janus_refcount_decrease(&ss->ref);
+				janus_refcount_decrease(&subscriber->ref);
+			}
+			janus_refcount_decrease(&ss->ref);
+			janus_refcount_decrease(&ps->ref);
+			temp = temp->next;
+		}
+		g_list_free_full(mappings, (GDestroyNotify)g_free);
 	}
 	/* Any subscriber session to update? */
 	if(subscribers != NULL) {
