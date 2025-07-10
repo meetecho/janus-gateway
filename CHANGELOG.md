@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.15.2] - 2025-07-10
+
+- Added workaround to potential libnice issue
+- Deprecated nice_debug option (libnice debugging can be enabled via env variables) [[PR-3546](https://github.com/meetecho/janus-gateway/pull/3546)]
+- Fixed broken session count in case of timeouts [[Issue-3526](https://github.com/meetecho/janus-gateway/issues/3526)]
+- Fixed broken session count in case of API disconnections [[Issue-3532](https://github.com/meetecho/janus-gateway/issues/3532)]
+- Fixed broken multiopus demo
+- Added request to stop all AudioBridge announcements in a room (thanks @keremcadirci!) [[PR-3403](https://github.com/meetecho/janus-gateway/pull/3403)]
+- Allow plain RTP participants in AudioBridge to use generate_offer too [[PR-3534](https://github.com/meetecho/janus-gateway/pull/3534)]
+- Fixed breaking condition in AudioBridge
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.15.1] - 2025-03-05
 
 - Make ip-utils aware of 0.0.0.0 and :: [[Issue-3470](https://github.com/meetecho/janus-gateway/issues/3470)]
