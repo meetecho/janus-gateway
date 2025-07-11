@@ -724,7 +724,7 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 		}
 		if(context->v_ts_reset) {
 			/* Video timestamp was paused for a while */
-			JANUS_LOG(LOG_HUGE, "Video RTP timestamp reset requested");
+			JANUS_LOG(LOG_HUGE, "Video RTP timestamp reset requested\n");
 			context->v_ts_reset = FALSE;
 			context->v_base_ts_prev = context->v_last_ts;
 			context->v_base_ts = timestamp;
@@ -741,7 +741,7 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 		}
 		if(context->v_seq_reset) {
 			/* Video sequence number was paused for a while */
-			JANUS_LOG(LOG_HUGE, "Video RTP sequence number reset requested");
+			JANUS_LOG(LOG_HUGE, "Video RTP sequence number reset requested\n");
 			context->v_seq_reset = FALSE;
 			context->v_base_seq_prev = context->v_last_seq;
 			context->v_base_seq = seq;
@@ -769,7 +769,7 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 		}
 		if(context->a_ts_reset) {
 			/* Audio timestamp was paused for a while */
-			JANUS_LOG(LOG_HUGE, "Audio RTP timestamp reset requested");
+			JANUS_LOG(LOG_HUGE, "Audio RTP timestamp reset requested\n");
 			context->a_ts_reset = FALSE;
 			context->a_base_ts_prev = context->a_last_ts;
 			context->a_base_ts = timestamp;
@@ -790,7 +790,7 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 		}
 		if(context->a_seq_reset) {
 			/* Audio sequence number was paused for a while */
-			JANUS_LOG(LOG_HUGE, "Audio RTP sequence number reset requested");
+			JANUS_LOG(LOG_HUGE, "Audio RTP sequence number reset requested\n");
 			context->a_seq_reset = FALSE;
 			context->a_base_seq_prev = context->a_last_seq;
 			context->a_base_seq = seq;
