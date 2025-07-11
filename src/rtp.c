@@ -862,8 +862,8 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 		context->new_ssrc = TRUE;
 	}
 	if(context->ts_reset) {
-		/* Video timestamp was paused for a while */
-		JANUS_LOG(LOG_HUGE, "Video RTP timestamp reset requested");
+		/* RTP timestamp was paused for a while */
+		JANUS_LOG(LOG_HUGE, "RTP timestamp reset requested\n");
 		context->ts_reset = FALSE;
 		context->base_ts_prev = context->last_ts;
 		context->base_ts = timestamp;
