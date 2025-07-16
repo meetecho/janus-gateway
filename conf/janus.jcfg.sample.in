@@ -440,12 +440,12 @@ loggers: {
 
 # Event handlers allow you to receive live events from Janus happening
 # in core and/or plugins. Since this can require some more resources,
-# the feature is disabled by default. Setting broadcast to yes will
+# the feature is disabled by default. Setting 'broadcast' to 'true' will
 # enable them. You can then choose which of the available event handlers
 # should be loaded or not. Use the 'disable' directive to prevent Janus
 # from loading one or more event handlers: use a comma separated list of
 # file names to identify the event handlers to disable. By default, if
-# broadcast is set to yes all available event handlers are enabled and
+# broadcast is set to 'true' all available event handlers are enabled and
 # loaded at startup. Finally, you can choose how often media statistics
 # (packets sent/received, losses, etc.) should be sent: by default it's
 # once per second (audio and video statistics sent separately), but may
@@ -456,7 +456,7 @@ loggers: {
 # not other media-related events). By default Janus sends single media
 # statistic events per media (audio, video and simulcast layers as separate
 # events): if you'd rather receive a single containing all media stats in a
-# single array, set 'combine_media_stats' to true.
+# single array, set 'combine_media_stats' to 'true'.
 events: {
 	#broadcast = true
 	#combine_media_stats = true

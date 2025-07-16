@@ -5315,8 +5315,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_object_set_new(calling, "reason_header_protocol", json_string(session->hangup_reason_header_protocol));
 				if(session->hangup_reason_header_cause)
 					json_object_set_new(calling, "reason_header_cause", json_string(session->hangup_reason_header_cause));
-				if(session->hangup_custom_headers)
-					json_object_set_new(calling, "headers", session->hangup_custom_headers);
+				if(session->hangup_custom_headers) {
+                	json_t *custom_headers_copy = json_deep_copy(session->hangup_custom_headers);
+                	json_object_set_new(calling, "headers", custom_headers_copy);
+                }
 				json_object_set_new(call, "result", calling);
 				json_object_set_new(call, "call_id", json_string(session->callid));
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
@@ -5337,8 +5339,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 						json_object_set_new(info, "reason_header_protocol", json_string(session->hangup_reason_header_protocol));
 					if(session->hangup_reason_header_cause)
 						json_object_set_new(info, "reason_header_cause", json_string(session->hangup_reason_header_cause));
-					if(session->hangup_custom_headers)
-						json_object_set_new(info, "headers", session->hangup_custom_headers);
+					if(session->hangup_custom_headers) {
+						json_t *custom_headers_notify_copy = json_deep_copy(session->hangup_custom_headers);
+						json_object_set_new(info, "headers", custom_headers_notify_copy);
+					}
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 				/* Get rid of any PeerConnection that may have been set up */
@@ -5365,7 +5369,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->hangup_reason_header = NULL;
 				session->hangup_reason_header_protocol = NULL;
 				session->hangup_reason_header_cause = NULL;
-				session->hangup_custom_headers = NULL;
+				if(session->hangup_custom_headers) {
+					json_decref(session->hangup_custom_headers);
+					session->hangup_custom_headers = NULL;
+				}
 				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established)) {
 					/* Get rid of the PeerConnection in the core */
 					gateway->close_pc(session->handle);
