@@ -5318,7 +5318,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(session->hangup_custom_headers) {
 					json_t *custom_headers_copy = json_deep_copy(session->hangup_custom_headers);
 					json_object_set_new(calling, "headers", custom_headers_copy);
-                }
+				}
 				json_object_set_new(call, "result", calling);
 				json_object_set_new(call, "call_id", json_string(session->callid));
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
