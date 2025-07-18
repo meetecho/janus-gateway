@@ -12,6 +12,8 @@
  * \ref loggers
  */
 
+#include <errno.h>
+
 #include "logger.h"
 
 #include "../debug.h"
