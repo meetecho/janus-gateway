@@ -36,7 +36,7 @@
  * as events with the same transaction.
  *
  * The supported requests are \c register , \c unregister , \c call ,
- * \progress , \c accept , \c decline , \c info , \c message , \c dtmf_info ,
+ * \c progress , \c accept , \c decline , \c info , \c message , \c dtmf_info ,
  * \c subscribe , \c unsubscribe , \c transfer , \c recording , \c keyframe ,
  * \c hold , \c unhold , \c update and \c hangup . \c register can be used,
  * as the name suggests, to register a username at a SIP registrar to
