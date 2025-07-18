@@ -85,7 +85,8 @@
 		"reason" : "<SIP error reason>",
 		"reason_header" : "<Reason header text; optional>",
 		"reason_header_protocol" : "<Reason header protocol; optional>",
-		"reason_header_cause" : "<Reason header cause code; optional>"
+		"reason_header_cause" : "<Reason header cause code; optional>",
+		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
 }
 \endverbatim
@@ -1141,6 +1142,7 @@ typedef struct janus_sip_session {
 	char *hangup_reason_header_protocol;
 	char *hangup_reason_header_cause;
 	GList *incoming_header_prefixes;
+	json_t *hangup_custom_headers;
 	GList *active_calls;
 	janus_refcount ref;
 	janus_sip_dtmf latest_dtmf;
@@ -1297,6 +1299,10 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 	if(session->incoming_header_prefixes) {
 		g_list_free_full(session->incoming_header_prefixes, g_free);
 		session->incoming_header_prefixes = NULL;
+	}
+	if(session->hangup_custom_headers) {
+		json_decref(session->hangup_custom_headers);
+		session->hangup_custom_headers = NULL;
 	}
 	janus_sip_srtp_cleanup(session);
 	janus_mutex_destroy(&session->mutex);
@@ -2341,6 +2347,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->hangup_reason_header = NULL;
 	session->hangup_reason_header_protocol = NULL;
 	session->hangup_reason_header_cause = NULL;
+	session->hangup_custom_headers = NULL;
 	session->media.remote_audio_ip = NULL;
 	session->media.remote_video_ip = NULL;
 	session->media.earlymedia = FALSE;
@@ -5300,6 +5307,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_object_set_new(calling, "reason_header_protocol", json_string(session->hangup_reason_header_protocol));
 				if(session->hangup_reason_header_cause)
 					json_object_set_new(calling, "reason_header_cause", json_string(session->hangup_reason_header_cause));
+				if(session->hangup_custom_headers) {
+					json_t *custom_headers_copy = json_deep_copy(session->hangup_custom_headers);
+					json_object_set_new(calling, "headers", custom_headers_copy);
+				}
 				json_object_set_new(call, "result", calling);
 				json_object_set_new(call, "call_id", json_string(session->callid));
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
@@ -5320,6 +5331,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 						json_object_set_new(info, "reason_header_protocol", json_string(session->hangup_reason_header_protocol));
 					if(session->hangup_reason_header_cause)
 						json_object_set_new(info, "reason_header_cause", json_string(session->hangup_reason_header_cause));
+					if(session->hangup_custom_headers) {
+						json_t *custom_headers_notify_copy = json_deep_copy(session->hangup_custom_headers);
+						json_object_set_new(info, "headers", custom_headers_notify_copy);
+					}
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 				/* Get rid of any PeerConnection that may have been set up */
@@ -5346,6 +5361,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->hangup_reason_header = NULL;
 				session->hangup_reason_header_protocol = NULL;
 				session->hangup_reason_header_cause = NULL;
+				if(session->hangup_custom_headers) {
+					json_decref(session->hangup_custom_headers);
+					session->hangup_custom_headers = NULL;
+				}
 				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established)) {
 					/* Get rid of the PeerConnection in the core */
 					gateway->close_pc(session->handle);
@@ -6572,6 +6591,13 @@ void janus_sip_save_reason(sip_t const *sip, janus_sip_session *session) {
 	if(sip->sip_reason && sip->sip_reason->re_cause) {
 		g_free(session->hangup_reason_header_cause);
 		session->hangup_reason_header_cause = g_strdup(sip->sip_reason->re_cause);
+	}
+	if(session->incoming_header_prefixes) {
+		if(session->hangup_custom_headers) {
+			json_decref(session->hangup_custom_headers);
+		}
+		json_t *headers = janus_sip_get_incoming_headers(sip, session);
+		session->hangup_custom_headers = headers;
 	}
 }
 
