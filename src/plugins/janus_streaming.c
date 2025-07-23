@@ -10006,8 +10006,11 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* First of all, let's check if this is (part of) a keyframe that we may need to save it for future reference */
 					if(index == 0 && stream->keyframe.enabled) {
 						/* Check how we should process this packet */
+						int plen = 0;
+						char *payload = janus_rtp_payload(buffer, bytes, &plen);
+						gboolean keyframe = janus_is_keyframe(stream->codecs.video_codec, payload, plen);
 						janus_mutex_lock(&stream->keyframe.mutex);
-						if(stream->keyframe.latest_keyframe != NULL && ntohl(rtp->timestamp) == stream->keyframe.kf_ts) {
+						if(!keyframe && stream->keyframe.latest_keyframe != NULL && ntohl(rtp->timestamp) == stream->keyframe.kf_ts) {
 							/* New fragment of the latest frame we received (keyframe or not),
 							 * re-use the same SSRC we allocated before for this specific frame */
 							JANUS_LOG(LOG_INFO, "[kf]   -- Updating frame (ts=%"SCNu32", ssrc=%"SCNu32")\n",
@@ -10019,9 +10022,7 @@ static void *janus_streaming_relay_thread(void *data) {
 							 * previous (and now old) one, if we had one; if it's a delta,
 							 * we append it to the list if it exists, and drop it if it
 							 * doesn't (as it makes no sense to start from a delta) */
-							int plen = 0;
-							char *payload = janus_rtp_payload(buffer, bytes, &plen);
-							if(janus_is_keyframe(stream->codecs.video_codec, payload, plen)) {
+							if(keyframe) {
 								/* This is a keyframe: remove the old list, if
 								 * we had one, and start a new one from scratch */
 								if(stream->keyframe.latest_keyframe != NULL)
