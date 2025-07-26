@@ -1662,8 +1662,7 @@ static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_
 			char *header_prefix = (char *)temp->data;
 			if(header_prefix != NULL && unknown_header->un_name != NULL) {
 				if(strncasecmp(unknown_header->un_name, header_prefix, strlen(header_prefix)) == 0) {
-					const char *header_name = g_strdup(unknown_header->un_name);
-					json_object_set(headers, header_name, json_string(unknown_header->un_value));
+					json_object_set(headers, unknown_header->un_name, json_string(unknown_header->un_value));
 					break;
 				}
 			}
