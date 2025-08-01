@@ -6184,6 +6184,18 @@ static void janus_streaming_rtp_source_free(gpointer data) {
 	janus_mutex_unlock(&source->rtsp_mutex);
 	janus_mutex_destroy(&source->rtsp_mutex);
 #endif
+	if(source->arc != NULL) {
+		janus_recorder_close(source->arc);
+		janus_recorder_destroy(source->arc);
+	}
+	if(source->vrc != NULL) {
+		janus_recorder_close(source->vrc);
+		janus_recorder_destroy(source->vrc);
+	}
+	if(source->drc != NULL) {
+		janus_recorder_close(source->drc);
+		janus_recorder_destroy(source->drc);
+	}
 	janus_mutex_destroy(&source->rec_mutex);
 	g_free(source);
 }
