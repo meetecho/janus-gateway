@@ -7465,6 +7465,10 @@ static void janus_streaming_rtp_source_stream_free(const janus_refcount *st_ref)
 	g_free(stream->mstid);
 	g_free(stream->mcast_str);
 	g_free(stream->iface_str);
+	if(stream->rc != NULL) {
+		janus_recorder_close(stream->rc);
+		janus_recorder_destroy(stream->rc);
+	}
 	g_free(stream);
 }
 
