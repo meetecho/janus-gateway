@@ -10013,7 +10013,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						if(!keyframe && stream->keyframe.latest_keyframe != NULL && ntohl(rtp->timestamp) == stream->keyframe.kf_ts) {
 							/* New fragment of the latest frame we received (keyframe or not),
 							 * re-use the same SSRC we allocated before for this specific frame */
-							JANUS_LOG(LOG_INFO, "[kf]   -- Updating frame (ts=%"SCNu32", ssrc=%"SCNu32")\n",
+							JANUS_LOG(LOG_HUGE, "[kf]   -- Updating frame (ts=%"SCNu32", ssrc=%"SCNu32")\n",
 								stream->keyframe.kf_ts, stream->keyframe.kf_ssrc);
 							janus_streaming_buffer_keyframe_data(stream, buffer, bytes);
 						} else {
@@ -10033,7 +10033,7 @@ static void *janus_streaming_relay_thread(void *data) {
 								stream->keyframe.kf_bytes = 0;
 								stream->keyframe.kf_start = janus_get_monotonic_time() / 1000;
 								stream->keyframe.first_ts = TRUE;
-								JANUS_LOG(LOG_INFO, "[kf] New keyframe (ts=%"SCNu32", ssrc=%"SCNu32")\n",
+								JANUS_LOG(LOG_HUGE, "[kf] New keyframe (ts=%"SCNu32", ssrc=%"SCNu32")\n",
 									stream->keyframe.kf_ts, stream->keyframe.kf_ssrc);
 								janus_streaming_buffer_keyframe_data(stream, buffer, bytes);
 							} else if(stream->keyframe.latest_keyframe != NULL) {
@@ -10042,7 +10042,7 @@ static void *janus_streaming_relay_thread(void *data) {
 								stream->keyframe.kf_ssrc = janus_random_uint32();
 								stream->keyframe.kf_ts = ntohl(rtp->timestamp);
 								stream->keyframe.first_ts = FALSE;
-								JANUS_LOG(LOG_INFO, "[kf] New delta (ts=%"SCNu32", ssrc=%"SCNu32")\n",
+								JANUS_LOG(LOG_HUGE, "[kf] New delta (ts=%"SCNu32", ssrc=%"SCNu32")\n",
 									stream->keyframe.kf_ts, stream->keyframe.kf_ssrc);
 								janus_streaming_buffer_keyframe_data(stream, buffer, bytes);
 							} else {
