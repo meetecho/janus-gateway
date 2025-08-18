@@ -9930,6 +9930,8 @@ static void *janus_videoroom_handler(void *data) {
 							json_object_set_new(al, "id", string_ids ? json_string(p->user_id_str) : json_integer(p->user_id));
 							if(p->display)
 								json_object_set_new(al, "display", json_string(p->display));
+							if(p->metadata)
+								json_object_set_new(al, "metadata", json_deep_copy(p->metadata));
 							json_array_append_new(attendees, al);
 						}
 						continue;
