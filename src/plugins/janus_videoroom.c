@@ -10041,6 +10041,8 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					if(display_text != NULL)
 						json_object_set_new(info, "display", json_string(display_text));
+					if(publisher->metadata)
+						json_object_set_new(info, "metadata", json_deep_copy(publisher->metadata));
 					if(publisher->user_audio_active_packets)
 						json_object_set_new(info, "audio_active_packets", json_integer(publisher->user_audio_active_packets));
 					if(publisher->user_audio_level_average)
