@@ -9235,7 +9235,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
-		gboolean quirk, gboolean doaudio, int apt, char *audiocodec, char *audiofmtp,
+		gboolean quirk, gboolean notify_changes,
+		gboolean doaudio, int apt, char *audiocodec, char *audiofmtp,
 		gboolean dovideo, int vpt, char *videocodec, char *videofmtp,
 		uint16_t bufferkf_ms, uint32_t bufferkf_bytes,
 		const janus_network_address *iface, int threads,
