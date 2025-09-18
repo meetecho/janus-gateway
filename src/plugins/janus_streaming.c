@@ -9610,7 +9610,7 @@ static void *janus_streaming_relay_thread(void *data) {
 	janus_streaming_rtp_source_stream *stream = NULL;
 	GList *temp = source->media;
 	while(temp) {
-		janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
+		stream = (janus_streaming_rtp_source_stream *)temp->data;
 		if(stream->fd[0] != -1)
 			num++;
 		if(stream->fd[1] != -1)
@@ -9622,6 +9622,8 @@ static void *janus_streaming_relay_thread(void *data) {
 		temp = temp->next;
 	}
 	num++;	/* There's the pipe too */
+	/* Keep track of how many sockets we're monitoring, as with RTSP that may change later */
+	int numtot = num;
 
 	/* Add a reference to the helper threads, if needed */
 	if(mountpoint->helper_threads > 0) {
@@ -9640,7 +9642,7 @@ static void *janus_streaming_relay_thread(void *data) {
 	socklen_t addrlen;
 	struct sockaddr_storage remote;
 	int resfd = 0, bytes = 0;
-	struct pollfd *fds = g_malloc(num * sizeof(struct pollfd));
+	struct pollfd *fds = g_malloc(numtot * sizeof(struct pollfd));
 	char buffer[1500];
 	memset(buffer, 0, 1500);
 	/* We'll have a dynamic number of streams */
@@ -9671,7 +9673,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					name, (now - source->reconnect_timer)/G_USEC_PER_SEC);
 				temp = source->media;
 				while(temp) {
-					janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
+					stream = (janus_streaming_rtp_source_stream *)temp->data;
 					if(stream->fd[0] > -1) {
 						g_hash_table_remove(source->media_byfd, GINT_TO_POINTER(stream->fd[0]));
 						close(stream->fd[0]);
@@ -9722,6 +9724,27 @@ static void *janus_streaming_relay_thread(void *data) {
 						JANUS_LOG(LOG_INFO, "[%s] Reconnected to the RTSP server, streaming again\n", name);
 						ka_timeout = source->ka_timeout;
 						connected = TRUE;
+						/* Check if the number of sockets to monitor changed */
+						num = 0;
+						temp = source->media;
+						while(temp) {
+							stream = (janus_streaming_rtp_source_stream *)temp->data;
+							if(stream->fd[0] != -1)
+								num++;
+							if(stream->fd[1] != -1)
+								num++;
+							if(stream->fd[2] != -1)
+								num++;
+							if(stream->rtcp_fd != -1)
+								num++;
+							temp = temp->next;
+						}
+						num++;	/* There's the pipe too */
+						if(num > numtot) {
+							/* Reallocate the poll list */
+							numtot = num;
+							fds = g_realloc(fds, numtot * sizeof(struct pollfd));
+						}
 					}
 				}
 				source->reconnect_timer = janus_get_monotonic_time();
