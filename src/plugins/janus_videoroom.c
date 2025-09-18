@@ -2993,7 +2993,7 @@ static void janus_videoroom_reqpli(janus_videoroom_publisher_stream *ps, const c
 	/* Update the time of when we last sent a keyframe request */
 	ps->fir_latest = ps->pli_latest;
 	if(remote_publisher == NULL) {
-		if(ps->publisher->session && !g_atomic_int_get(&ps->publisher->session->destroyed) && ps->publisher->session->handle) {
+		if(ps->publisher && ps->publisher->session && !g_atomic_int_get(&ps->publisher->session->destroyed) && ps->publisher->session->handle) {
 			/* Local publisher so we ask the Janus core to send a PLI */
 			gateway->send_pli_stream(ps->publisher->session->handle, ps->mindex);
 		}
