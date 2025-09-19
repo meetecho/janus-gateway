@@ -74,6 +74,8 @@ static void janus_recorder_free(const janus_refcount *recorder_ref) {
 	recorder->codec = NULL;
 	g_free(recorder->fmtp);
 	recorder->fmtp = NULL;
+	g_free(recorder->description);
+	recorder->description = NULL;
 	if(recorder->extensions != NULL)
 		g_hash_table_destroy(recorder->extensions);
 	janus_mutex_destroy(&recorder->mutex);

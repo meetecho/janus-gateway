@@ -248,7 +248,16 @@ $(document).ready(function() {
 										}
 									});
 									Janus.attachMediaStream($('#remotevideo' + mid).get(0), stream);
-									$('#remotevideo' + mid).get(0).play();
+									let playPromise = $('#remotevideo' + mid).get(0).play();
+									if (playPromise !== undefined) {
+										playPromise
+											.then(function() {
+												Janus.log('Started playing')
+											})
+											.catch(function(error) {
+												Janus.error('Failed to play', error)
+											});
+									}
 									$('#remotevideo' + mid).get(0).volume = 1;
 								},
 								// eslint-disable-next-line no-unused-vars
@@ -346,13 +355,9 @@ function updateStreamsList() {
 				// Keep track of all the available streams
 				streamsList[list[mp]["id"]] = list[mp];
 			}
-			$('#streamslist a').unbind('click').click(function() {
-				$('.dropdown-toggle').dropdown('hide');
+			$('#streamslist a').off('click').on('click', function() {
 				selectedStream = $(this).attr("id");
-				$('#streamset').html($(this).html()).parent().removeClass('open');
-				$('#list .dropdown-backdrop').remove();
-				return false;
-
+				$('#streamset').html($(this).html());
 			});
 			$('#watch').removeAttr('disabled').unbind('click').click(startStream);
 		}

@@ -1310,6 +1310,7 @@ int main(int argc, char *argv[]) {
 
 					/* Update current packet ts with new ts */
 					tmp->ts = new_ts;
+					tmp->restamped = 1;
 
 					JANUS_LOG(LOG_WARN, "Timestamp gap detected. Restamping packets from here. Seq: %d\n", tmp->seq);
 					JANUS_LOG(LOG_INFO, "latency=%.2f mavg=%.2f original_ts=%.ld new_ts=%.ld offset=%.ld\n", current_latency, moving_avg_latency, original_ts, tmp->ts, restamping_offset);

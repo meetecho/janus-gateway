@@ -159,7 +159,7 @@ janus_plugin *create(void) {
 
 #include <glib.h>
 
-#include "refcount.h"
+#include "../refcount.h"
 
 
 /*! \brief Version of the API, to match the one plugins were compiled against
@@ -171,7 +171,7 @@ janus_plugin *create(void) {
  * Janus instance or it will crash.
  *
  */
-#define JANUS_PLUGIN_API_VERSION	105
+#define JANUS_PLUGIN_API_VERSION	106
 
 /*! \brief Initialization of all plugin properties to NULL
  *
@@ -581,6 +581,8 @@ struct janus_plugin_rtp_extensions {
 	uint8_t dd_content[256];
 	/*! \brief Absolute Capture Time timestamp */
 	uint64_t abs_capture_ts;
+	/*! \brief Spatial and temporal layers, if available in a video-layers-allocation; -1 means no extension */
+	int8_t spatial_layers, temporal_layers;
 };
 /*! \brief Helper method to initialise/reset the RTP extensions field
  * @note This is important because each of the supported extensions may

@@ -231,13 +231,6 @@ void janus_ice_event_set_combine_media_stats(gboolean combine_media_stats_to_one
  * @returns true to combine events */
 gboolean janus_ice_event_get_combine_media_stats(void);
 
-/*! \brief Method to check whether libnice debugging has been enabled (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html)
- * @returns True if libnice debugging is enabled, FALSE otherwise */
-gboolean janus_ice_is_ice_debugging_enabled(void);
-/*! \brief Method to enable libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
-void janus_ice_debugging_enable(void);
-/*! \brief Method to disable libnice debugging (the default) */
-void janus_ice_debugging_disable(void);
 /*! \brief Method to enable opaque ID in Janus API responses/events */
 void janus_enable_opaqueid_in_api(void);
 /*! \brief Method to check whether opaque ID have to be added to Janus API responses/events
@@ -480,6 +473,8 @@ struct janus_ice_peerconnection {
 	gint abs_send_time_ext_id;
 	/*! \brief Absolute Capture Time ext ID */
 	gint abs_capture_time_ext_id;
+	/*! \brief Video Layers Allocation ext ID */
+	gint videolayers_ext_id;
 	/*! \brief Whether we do transport wide cc */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
@@ -529,6 +524,8 @@ struct janus_ice_peerconnection {
 	GHashTable *rtx_payload_types;
 	/*! \brief Reverse mapping of rtx payload types to actual media-related packet types */
 	GHashTable *rtx_payload_types_rev;
+	/*! \brief Helper queue for storing requested packets from NACKs */
+	GQueue *nacks_queue;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this stream */

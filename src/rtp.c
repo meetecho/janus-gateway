@@ -15,6 +15,19 @@
 #include "rtpsrtp.h"
 #include "debug.h"
 
+/* Local, private, structures for parsing video-layers-allocation extensions */
+typedef struct janus_rtp_vla_spatial_layer {
+	uint8_t id;
+	uint8_t tls;
+} janus_rtp_vla_spatial_layer;
+
+typedef struct janus_rtp_vla_rtp_stream {
+	uint8_t rid;
+	uint8_t sl_bm;
+	janus_rtp_vla_spatial_layer sl[4];
+} janus_rtp_vla_rtp_stream;
+
+/* Public methods */
 gboolean janus_is_rtp(char *buf, guint len) {
 	if (len < 12)
 		return FALSE;
@@ -115,6 +128,8 @@ const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id) {
 						return JANUS_RTP_EXTMAP_REPAIRED_RID;
 					if(strstr(extension, JANUS_RTP_EXTMAP_DEPENDENCY_DESC))
 						return JANUS_RTP_EXTMAP_DEPENDENCY_DESC;
+					if(strstr(extension, JANUS_RTP_EXTMAP_VIDEO_LAYERS))
+						return JANUS_RTP_EXTMAP_VIDEO_LAYERS;
 					JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
 					return NULL;
 				}
@@ -278,10 +293,10 @@ int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
 	if(ext == NULL || idlen < 1)
 		return -2;
 	if(idlen > (sdes_len-1)) {
-		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d > %d), MID will be cut\n", idlen, sdes_len);
+		JANUS_LOG(LOG_WARN, "Buffer is too small (%d > %d), MID will be cut\n", idlen, sdes_len);
 		idlen = sdes_len-1;
 	}
-	if(idlen > len-(ext-buf)-1 ) {
+	if(idlen > len-(ext-buf)-1) {
 		return -3;
 	}
 	memcpy(sdes_item, ext, idlen);
@@ -300,10 +315,10 @@ int janus_rtp_header_extension_parse_rid(char *buf, int len, int id,
 	if(ext == NULL || idlen < 1)
 		return -2;
 	if(idlen > (sdes_len-1)) {
-		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d > %d), RTP stream ID will be cut\n", idlen, sdes_len);
+		JANUS_LOG(LOG_WARN, "Buffer is too small (%d > %d), RTP stream ID will be cut\n", idlen, sdes_len);
 		idlen = sdes_len-1;
 	}
-	if(idlen > len-(ext-buf)-1 ) {
+	if(idlen > len-(ext-buf)-1) {
 		return -3;
 	}
 	memcpy(sdes_item, ext, idlen);
@@ -323,10 +338,10 @@ int janus_rtp_header_extension_parse_dependency_desc(char *buf, int len, int id,
 	if(ext == NULL || idlen < 1)
 		return -2;
 	if(idlen > buflen) {
-		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d > %d), dependency descriptor will be cut\n", idlen, buflen);
+		JANUS_LOG(LOG_WARN, "Buffer is too small (%d > %d), dependency descriptor will be cut\n", idlen, buflen);
 		idlen = buflen;
 	}
-	if(idlen > len-(ext-buf)-1 ) {
+	if(idlen > len-(ext-buf)-1) {
 		return -3;
 	}
 	memcpy(dd_item, ext, idlen);
@@ -427,6 +442,73 @@ int janus_rtp_header_extension_set_transport_wide_cc(char *buf, int len, int id,
 		return -3;
 	transSeqNum = htons(transSeqNum);
 	memcpy(ext, &transSeqNum, sizeof(uint16_t));
+	return 0;
+}
+
+int janus_rtp_header_extension_parse_video_layers_allocation(char *buf, int len, int id,
+		int8_t *spatial_layers, int8_t *temporal_layers) {
+	char *ext = NULL;
+	uint8_t idlen = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext, &idlen) < 0)
+		return -1;
+	/* a=extmap:9 http://www.webrtc.org/experiments/rtp-hdrext/video-layers-allocation00 */
+	if(ext == NULL || idlen < 2)
+		return -2;
+	/* Parse the extension to reconstruct the layers topology */
+	janus_rtp_vla_rtp_stream streams[4] = { 0 };
+	/* First byte */
+	uint8_t offset = 0;
+	uint8_t ns = (ext[offset] & 0x30) >> 4;
+	uint8_t sl_bm = ext[offset] & 0x0F;
+	offset++;
+	/* Spatial layer bitmasks (up to two bytes) */
+	uint8_t i = 0;
+	for(i=0; i<=ns; i++) {
+		if(sl_bm > 0) {
+			/* Copy the shared value */
+			streams[i].sl_bm = sl_bm;
+		} else {
+			if(i == 2) {
+				offset++;
+				if(offset == idlen)
+					return -3;
+			}
+			if(i % 2 == 0) {
+				streams[i].sl_bm = (ext[offset] & 0xF0) >> 4;
+			} else {
+				streams[i].sl_bm = ext[offset] & 0x0F;
+			}
+		}
+	}
+	if(sl_bm == 0)
+		offset++;
+	if(offset == idlen)
+		return -3;
+	/* Temporal layers (one byte) */
+	uint8_t j = 0, boff = 8, sl = 0, tl = 0;
+	for(i=0; i<=ns; i++) {
+		sl = 0;
+		for(j=0; j<4; j++) {
+			if((streams[i].sl_bm & (1 << j)) == 0)
+				continue;
+			sl++;
+			boff -= 2;
+			streams[i].sl[j].id = j;
+			streams[i].sl[j].tls = (ext[offset] >> boff) & 0x03;
+			tl = streams[i].sl[j].tls + 1;
+			if(temporal_layers && tl > *temporal_layers)
+				*temporal_layers = tl;
+			if(boff == 0) {
+				boff = 8;
+				offset++;
+				if(offset == idlen)
+					return -3;
+			}
+		}
+		if(spatial_layers && sl > *spatial_layers)
+			*spatial_layers = sl;
+	}
+	/* Done, we don't care about bitrates and resolutions for now */
 	return 0;
 }
 
@@ -780,8 +862,8 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 		context->new_ssrc = TRUE;
 	}
 	if(context->ts_reset) {
-		/* Video timestamp was paused for a while */
-		JANUS_LOG(LOG_HUGE, "Video RTP timestamp reset requested");
+		/* RTP timestamp was paused for a while */
+		JANUS_LOG(LOG_HUGE, "RTP timestamp reset requested\n");
 		context->ts_reset = FALSE;
 		context->base_ts_prev = context->last_ts;
 		context->base_ts = timestamp;
@@ -1218,7 +1300,8 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		context->last_relayed = now;
 	} else if(context->substream > 0) {
 		/* Check if too much time went by with no packet relayed */
-		if((now - context->last_relayed) > (context->drop_trigger ? context->drop_trigger : 250000)) {
+		gint64 delay_us = (now - context->last_relayed);
+		if(delay_us > (context->drop_trigger ? context->drop_trigger : 250000)) {
 			context->last_relayed = now;
 			if(context->substream != substream && context->substream_target_temp != 0) {
 				if(context->substream_target > substream) {
@@ -1230,8 +1313,8 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 					if(context->substream_target_temp < 0)
 						context->substream_target_temp = 0;
 					if(context->substream_target_temp != prev_target) {
-						JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
-							context->substream, context->substream_target_temp);
+						JANUS_LOG(LOG_WARN, "No packet received on substream %d for %"SCNi64"ms, falling back to %d\n",
+							context->substream, (delay_us / 1000), context->substream_target_temp);
 						/* Notify the caller that we (still) need a PLI */
 						context->need_pli = TRUE;
 					}

@@ -75,7 +75,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Server © 2014-2024 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2025 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -2341,7 +2341,6 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']);
  * - \c set_refcount_debug: selectively enable/disable a live debugging of
  * the reference counters in Janus on the fly (useful if you're experiencing
  * memory leaks in the Janus structures and want to investigate them);
- * - \c set_libnice_debug: selectively enable/disable libnice debugging;
  * - \c set_min_nack_queue: change the value of the min NACK queue window;
  * - \c set_no_media_timer: change the value of the no-media timer property;
  * - \c set_slowlink_threshold: change the value of the slowlink-threshold property.
@@ -3873,7 +3872,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Server © 2014-2024 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2025 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -4089,7 +4088,9 @@ ldd janus | grep asan
  *    - Presentation on AV1/SVC support in Janus at <a href="https://fosdem.org/2024/schedule/event/fosdem-2024-3000-getting-av1-svc-to-work-in-the-janus-webrtc-server/">FOSDEM 2024</a>;
  *    - Presentation on experimental application protocols support in the SIP plugin at <a href="https://www.youtube.com/watch?v=Cho556qHRaE">OpenSIPS Summit 2024</a>;
  *    - Presentation on experimental SIP trunking support in the SIP plugin at <a href="https://www.youtube.com/watch?v=_e0fWnWWOeY&t=3855s">Kamailio World 2024</a>;
- *    - Presentation on prototyping an interaction between WebRTC and QUIC (RTP Over QUIC, Media Over QUIC) <a href="https://www.youtube.com/watch?v=bq9LRCfxz_E">RTC.ON 2024</a>. \n\n
+ *    - Presentation on prototyping an interaction between WebRTC and QUIC (RTP Over QUIC, Media Over QUIC) at <a href="https://www.youtube.com/watch?v=bq9LRCfxz_E">RTC.ON 2024</a>;
+ *    - Presentation on RTP Over QUIC at <a href="https://www.youtube.com/watch?v=J0_4nO5a4ZI">Kamailio World 2025</a>;
+ *    - Presentation on multistream support in the SIP and NoSIP plugins at <a href="https://www.youtube.com/live/lN96vOjhhhI?si=wiwS0KbyFBYRF9ez&t=1751">OpenSIPS Summit 2025</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
  *    and presentations from <a href="https://januscon.it">JanusCon</a> (including the
  *    <a href="https://januscon.it/2019">2019 edition</a>),

@@ -33,6 +33,8 @@ void janus_vprintf(const char *format, ...) G_GNUC_PRINTF(1, 2);
 * @param loggers Hash table of external loggers registered in the core, if any
 * @returns 0 in case of success, a negative integer otherwise */
 int janus_log_init(gboolean daemon, gboolean console, const char *logfile, GHashTable *loggers);
+/*! \brief Reopen log file (log rotation) */
+void janus_log_reload(void);
 /*! \brief Log destruction */
 void janus_log_destroy(void);
 

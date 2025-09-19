@@ -120,11 +120,11 @@
  *
  * An \c hangingup event will be sent back, as this is an asynchronous request.
  *
- * Finally, just as in the SIP and SIPre plugins, the multimedia session
+ * Finally, just as in the SIP plugin, the multimedia session
  * can be recorded. Considering the NoSIP plugin also assumes two peers
  * are in a call with each other (although it makes no assumptions on
  * the signalling that ties them together), it works exactly the same
- * way as the SIP and SIPre plugin do when it comes to recording.
+ * way as the SIP plugin dooes when it comes to recording.
  * Specifically, you make use of the \c recording request to either start
  * or stop a recording, using the following syntax:
  *
@@ -147,6 +147,28 @@
  * that will be used for the up-to-four recordings that may need to be enabled.
  *
  * A \c recordingupdated event is sent back in case the request is successful.
+ *
+ * To programmatically send a video keyframe request to either the WebRTC user
+ * or the SIP peer (or both), the \c keyframe request can be used. This
+ * request is particularly useful when the SIP peer doesn't support RTCP PLI,
+ * and so may use other mechanisms (e.g., via signalling) to ask for a keyframe
+ * to get video working. By using this request, the WebRTC user can ask Janus
+ * to originate a PLI programmatically. The direction of the keyframe request
+ * can be provided by using the \c user and \c peer properties: if \c user
+ * is \c TRUE a keyframe request will be sent by Janus to the WebRTC user;
+ * if \c peer is \c TRUE a keyframe request will be sent by Janus to the
+ * SIP peer. In both cases an RTCP PLI message will be sent. The syntax of
+ * the message is the following:
+ *
+\verbatim
+{
+	"request" : "keyframe",
+	"user" : <true|false; whether or not to send a keyframe request to the WebRTC user>,
+	"peer" : <true|false; whether or not to send a keyframe request to the SIP peer>
+}
+\endverbatim
+ *
+ * A \c keyframesent event is sent back in case the request is successful.
  */
 
 #include "plugin.h"
@@ -256,6 +278,10 @@ static struct janus_json_parameter recording_parameters[] = {
 	{"peer_video", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0}
 };
+static struct janus_json_parameter keyframe_parameters[] = {
+	{"user", JANUS_JSON_BOOL, 0},
+	{"peer", JANUS_JSON_BOOL, 0}
+};
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -318,6 +344,7 @@ typedef struct janus_nosip_media {
 	srtp_policy_t video_remote_policy, video_local_policy;
 	char *video_srtp_local_profile, *video_srtp_local_crypto;
 	gboolean video_send;
+	gboolean video_pli_supported;
 	janus_rtp_switching_context acontext, vcontext;
 	int pipefd[2];
 	gboolean updated;
@@ -345,8 +372,8 @@ static GHashTable *sessions;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_nosip_srtp_cleanup(janus_nosip_session *session);
-
 static void janus_nosip_media_reset(janus_nosip_session *session);
+static void janus_nosip_rtcp_pli_send(janus_nosip_session *session);
 
 static void janus_nosip_session_destroy(janus_nosip_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
@@ -366,6 +393,8 @@ static void janus_nosip_session_free(const janus_refcount *session_ref) {
 	session->media.remote_video_ip = NULL;
 	janus_nosip_srtp_cleanup(session);
 	session->handle = NULL;
+	janus_mutex_destroy(&session->mutex);
+	janus_mutex_destroy(&session->rec_mutex);
 	g_free(session);
 	session = NULL;
 }
@@ -631,6 +660,7 @@ void janus_nosip_media_reset(janus_nosip_session *session) {
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;	/* Immutable string, no need to free*/
 	session->media.video_send = TRUE;
+	session->media.video_pli_supported = FALSE;
 	session->media.video_orientation_extension_id = -1;
 	session->media.audio_level_extension_id = -1;
 	janus_rtp_switching_context_reset(&session->media.acontext);
@@ -965,6 +995,7 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;
 	session->media.video_send = TRUE;
+	session->media.video_pli_supported = FALSE;
 	session->media.video_orientation_extension_id = -1;
 	session->media.audio_level_extension_id = -1;
 	/* Initialize the RTP context */
@@ -1764,6 +1795,28 @@ static void *janus_nosip_handler(void *data) {
 			/* Notify the result */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("recordingupdated"));
+		} else if(!strcasecmp(request_text, "keyframe")) {
+			/* Programmatically send a keyframe request via RTCP PLI to
+			 * either the WebRTC user, the SIP peer, or both of them */
+			JANUS_VALIDATE_JSON_OBJECT(root, keyframe_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			gboolean user = json_is_true(json_object_get(root, "user"));
+			gboolean peer = json_is_true(json_object_get(root, "peer"));
+			if(user) {
+				/* Send a PLI to the WebRTC user */
+				gateway->send_pli(session->handle);
+			}
+			if(peer) {
+				/* Send a PLI to the SIP peer (but only if they negotiated it) */
+				if(session->media.video_pli_supported)
+					janus_nosip_rtcp_pli_send(session);
+			}
+			/* Notify the result */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("keyframesent"));
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request (%s)\n", request_text);
 			error_code = JANUS_NOSIP_ERROR_INVALID_REQUEST;
@@ -1922,6 +1975,9 @@ void janus_nosip_sdp_process(janus_nosip_session *session, janus_sdp *sdp, gbool
 							session->media.has_srtp_remote = TRUE;
 						}
 					}
+				} else if(m->type == JANUS_SDP_VIDEO && !strcasecmp(a->name, "rtcp-fb") && a->value) {
+					if(strstr(a->value, " pli"))
+						session->media.video_pli_supported = TRUE;
 				}
 			}
 			tempA = tempA->next;
@@ -2651,3 +2707,43 @@ static void *janus_nosip_relay_thread(void *data) {
 	return NULL;
 }
 
+/* Helper method to send an RTCP PLI to the peer */
+static void janus_nosip_rtcp_pli_send(janus_nosip_session *session) {
+	if(!session || g_atomic_int_get(&session->destroyed)) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return;
+	}
+	if(!session->media.has_video || session->media.video_rtcp_fd == -1)
+		return;
+	/* Generate a PLI */
+	char rtcp_buf[12];
+	int rtcp_len = 12;
+	janus_rtcp_pli((char *)&rtcp_buf, rtcp_len);
+	/* Fix SSRCs as the Janus core does */
+	JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Fixing SSRCs (local %u, peer %u)\n",
+		session, session->media.video_ssrc, session->media.video_ssrc_peer);
+	janus_rtcp_fix_ssrc(NULL, (char *)rtcp_buf, rtcp_len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
+	/* Is SRTP involved? */
+	if(session->media.has_srtp_local) {
+		char sbuf[50];
+		memcpy(&sbuf, rtcp_buf, rtcp_len);
+		int protected = rtcp_len;
+		int res = srtp_protect_rtcp(session->media.video_srtp_out, &sbuf, &protected);
+		if(res != srtp_err_status_ok) {
+			JANUS_LOG(LOG_ERR, "[NoSIP-%p] Video SRTCP protect error... %s (len=%d-->%d)...\n",
+				session, janus_srtp_error_str(res), rtcp_len, protected);
+		} else {
+			/* Forward the message to the peer */
+			if(send(session->media.video_rtcp_fd, sbuf, protected, 0) < 0) {
+				JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Error sending SRTCP video packet... %s (len=%d)...\n",
+					session, g_strerror(errno), protected);
+			}
+		}
+	} else {
+		/* Forward the message to the peer */
+		if(send(session->media.video_rtcp_fd, rtcp_buf, rtcp_len, 0) < 0) {
+			JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Error sending RTCP video packet... %s (len=%d)...\n",
+				session, g_strerror(errno), rtcp_len);
+		}
+	}
+}

@@ -3,6 +3,62 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.3.2] - 2025-07-10
+
+- Added workaround to potential libnice issue
+- Deprecated nice_debug option (libnice debugging can be enabled via env variables) [[PR-3546](https://github.com/meetecho/janus-gateway/pull/3546)]
+- Fixed broken session count in case of timeouts [[Issue-3526](https://github.com/meetecho/janus-gateway/issues/3526)]
+- Fixed broken session count in case of API disconnections [[Issue-3532](https://github.com/meetecho/janus-gateway/issues/3532)]
+- Added experimental support for the video-layers-allocation extension [PR-3504](https://github.com/meetecho/janus-gateway/pull/3504)]
+- Added optional signal handler for log rotation [[PR-3550](https://github.com/meetecho/janus-gateway/pull/3550)]
+- Fixed memory leaks when using dummy publishers [[PR-3541](https://github.com/meetecho/janus-gateway/pull/3541)]
+- New options to advertise VideoRoom dummy publishers as e2ee [[PR-3553](https://github.com/meetecho/janus-gateway/pull/3553)]
+- Fixed rare crash when using remote publishers in VideoRoom [[PR-3557](https://github.com/meetecho/janus-gateway/pull/3557)]
+- Added request to stop all AudioBridge announcements in a room (thanks @keremcadirci!) [[PR-3403](https://github.com/meetecho/janus-gateway/pull/3403)]
+- Allow plain RTP participants in AudioBridge to use generate_offer too [[PR-3534](https://github.com/meetecho/janus-gateway/pull/3534)]
+- Fixed breaking condition in AudioBridge
+- Fixed broken canvas demo [[Issue-3527](https://github.com/meetecho/janus-gateway/issues/3527)]
+- Fixed broken multiopus demo
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+## [v1.3.1] - 2025-03-05
+
+- Make ip-utils aware of 0.0.0.0 and :: [[Issue-3470](https://github.com/meetecho/janus-gateway/issues/3470)]
+- Optimize NACKs handling [[PR-3491](https://github.com/meetecho/janus-gateway/pull/3491)]
+- Skip medium lookup when relaying RTCP by plugins to fix rare deadlock [[PR-3515](https://github.com/meetecho/janus-gateway/pull/3515)]
+- Fixed FEC and DTX negotiated in VideoRoom also when not enabled in the room settings
+- Fixed memory leak in VideoRoom (thanks @m08pvv!) [[PR-3493](https://github.com/meetecho/janus-gateway/pull/3493)]
+- Fixed broken recordings when using remote publishers in the VideoRoom [[PR-3509](https://github.com/meetecho/janus-gateway/pull/3509)]
+- Check if IPv6 is disabled when loading the Streaming plugin [[PR-3519](https://github.com/meetecho/janus-gateway/pull/3519)]
+- Fixed SSRC not being set to a default value in AudioBridge forwarders when not explicitly set in the request
+- Add support for "progress" request on SIP Plugin (thanks @adnan-mujagic!) [[PR-3466](https://github.com/meetecho/janus-gateway/pull/3466)]
+- New programmatic API to ask for keyframes in SIP and NoSIP plugins [[PR-3517](https://github.com/meetecho/janus-gateway/pull/3517)]
+- Fixed missing libcurl linking in TextRoom plugin
+- Added support for private recordings in Record&Play [[PR-3518](https://github.com/meetecho/janus-gateway/pull/3518)]
+- Fixed leak in recorder when adding descriptions (thanks @m08pvv!) [[PR-3487](https://github.com/meetecho/janus-gateway/pull/3487)]
+- Fixed WebSocket transport binding to the wrong IP address in particular setups [[Issue-3500](https://github.com/meetecho/janus-gateway/issues/3550)]
+- Improve DTX detection in janus-pp-rec [[PR-3488](#3488)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+## [v1.3.0] - 2024-11-25
+
+- Refactored logging internals [[PR-3428](https://github.com/meetecho/janus-gateway/pull/3428)]
+- Use strtok to parse SDPs [[PR-3424](https://github.com/meetecho/janus-gateway/pull/3424)]
+- Fixed rare condition that could lead to a deadlock in the VideoRoom [[PR-3446](https://github.com/meetecho/janus-gateway/pull/3446)]
+- Fixed broken switch when using remote publishers in VideoRoom [[PR-3447](https://github.com/meetecho/janus-gateway/pull/3447)]
+- Added SRTP support to VideoRoom remote publishers (thanks @spscream!) [[PR-3449](https://github.com/meetecho/janus-gateway/pull/3449)]
+- Added support for generic JSON metadata to VideoRoom publishers (thanks @spscream!) [[PR-3467](https://github.com/meetecho/janus-gateway/pull/3467)]
+- Fixed deadlock in VideoRoom when failing to open a socket for a new RTP forwarder (thanks @spscream!) [[PR-3468](https://github.com/meetecho/janus-gateway/pull/3468)]
+- Fixed deadlock in VideoRoom caused by reverse ordering of mutex locks [[PR-3474](https://github.com/meetecho/janus-gateway/pull/3474)]
+- Fixed memory leaks when using remote publishers in VideoRoom [[PR-3475](https://github.com/meetecho/janus-gateway/pull/3475)]
+- Diluted frequency of PLI in the VideoRoom (thanks @natikaltura!) [[PR-3423](https://github.com/meetecho/janus-gateway/pull/3423)]
+- Better cleanup after failed mountpoint creations in Streaming plugin [[PR-3465](https://github.com/meetecho/janus-gateway/pull/3465)]
+- Fixed compilation of AudioBridge in case libogg isn't available (thanks @tmatth!) [[PR-3438](https://github.com/meetecho/janus-gateway/pull/3438)]
+- Better management of call cleanup in SIP plugin [[Issue-3430](https://github.com/meetecho/janus-gateway/issues/3430)]
+- Change the way call-IDs are tracked in the SIP plugin (thanks WebTrit!) [[PR-3443](https://github.com/meetecho/janus-gateway/pull/3443)]
+- Increased maximum size of custom SIP headers [[Issue-3459](https://github.com/meetecho/janus-gateway/issues/3459)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.2.4] - 2024-09-10
 
 - Limit number of SDP lines when parsing (workaround for OSS-Fuzz issue) [[PR-3414](https://github.com/meetecho/janus-gateway/pull/3414)]

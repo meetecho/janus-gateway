@@ -113,7 +113,7 @@ static gboolean notify_events = TRUE;
 #if (LWS_LIBRARY_VERSION_MAJOR >= 3)
 static GHashTable *clients = NULL, *writable_clients = NULL;
 #endif
-static janus_mutex writable_mutex;
+static janus_mutex writable_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
@@ -414,9 +414,12 @@ static struct lws_vhost* janus_websockets_create_ws_server(
 			ipv4_only = 1;
 		char *iface = janus_websockets_get_interface_name(ip);
 		if(iface == NULL) {
-			JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
+			JANUS_LOG(LOG_FATAL, "No interface associated with %s?\n", ip);
+			return NULL;
 		}
-		ip = iface;
+		else {
+			g_free(iface);
+		}
 	}
 
 	g_snprintf(item_name, 255, "%s_unix", prefix);
@@ -506,7 +509,6 @@ static struct lws_vhost* janus_websockets_create_ws_server(
 	} else {
 		JANUS_LOG(LOG_INFO, "%s server started (port %d)...\n", name, wsport);
 	}
-	g_free(ip);
 	return vhost;
 }
 
@@ -771,7 +773,6 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	clients = g_hash_table_new(NULL, NULL);
 	writable_clients = g_hash_table_new(NULL, NULL);
 #endif
-	janus_mutex_init(&writable_mutex);
 
 	g_atomic_int_set(&initialized, 1);
 

@@ -2,187 +2,216 @@ name: janus-ci
 
 on:
   push:
-    branches: [ master ]
+    branches:
+      - master
+      - test-ci
   pull_request:
-    branches: [ master ]
+    branches:
+      - master
 permissions:
   contents: read
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         compiler: [gcc, clang]
-        datachannels: ["yes", "no"]
-        libcurl: ["yes", "no"]
+        datachannels: ["enable-datachannels", "disable-datachannels"]
+        libcurl: ["enable-libcurl", "disable-libcurl"]
         include:
-          - datachannels: "yes"
-            libcurl: "yes"
+          - datachannels: "enable-datachannels"
+            libcurl: "enable-libcurl"
             deps_from_src: "yes"
             janus_config_opts: ""
-          - datachannels: "yes"
-            libcurl: "no"
+          - datachannels: "enable-datachannels"
+            libcurl: "disable-libcurl"
             deps_from_src: "no"
             janus_config_opts: "--disable-aes-gcm -disable-mqtt --disable-mqtt-event-handler --disable-turn-rest-api --disable-sample-event-handler"
-          - datachannels: "no"
-            libcurl: "yes"
+          - datachannels: "disable-datachannels"
+            libcurl: "enable-libcurl"
             deps_from_src: "no"
             janus_config_opts: "--disable-aes-gcm -disable-mqtt --disable-mqtt-event-handler --disable-data-channels"
         exclude:
-          - datachannels: "no"
-            libcurl: "no"
+          - datachannels: "disable-datachannels"
+            libcurl: "disable-libcurl"
     env:
-        CC: ${{ matrix.compiler }}
+      CC: ${{ matrix.compiler }}
     steps:
-    - name: install janus apt dependencies
-      run: >
-        sudo apt-get update && sudo apt-get --no-install-recommends -y install
-        autoconf
-        cmake
-        duktape-dev
-        gtk-doc-tools
-        libavcodec-dev
-        libavformat-dev
-        libavutil-dev
-        libcollection-dev
-        libconfig-dev
-        libevent-dev
-        libglib2.0-dev
-        libgirepository1.0-dev
-        liblua5.3-dev
-        libjansson-dev
-        libmicrohttpd-dev
-        libmount-dev
-        libnanomsg-dev
-        libogg-dev
-        libopus-dev
-        librabbitmq-dev
-        libsofia-sip-ua-dev
-        libssl-dev
-        libtool
-        libvorbis-dev
-        ninja-build
-        openssl
-    - name: setup additional dependencies from apt
-      if: ${{ matrix.deps_from_src == 'no' }}
-      run: >
-        sudo apt-get --no-install-recommends -y install
-        libnice-dev
-        libsrtp2-dev
-        libusrsctp-dev
-        libwebsockets-dev
-    - name: install libcurl from apt
-      if: ${{ matrix.libcurl == 'yes' }}
-      run: sudo apt-get --no-install-recommends -y install libcurl4-openssl-dev
-    - name: setup python
-      if: ${{ matrix.deps_from_src == 'yes' }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-        architecture: 'x64'
-    - name: install python packages
-      if: ${{ matrix.deps_from_src == 'yes' }}
-      run: pip install wheel meson
-    - name: setup libnice from sources
-      if: ${{ matrix.deps_from_src == 'yes' }}
-      run: |
-        git clone --depth 1 --quiet -b master https://gitlab.freedesktop.org/libnice/libnice.git libnice
-        pushd libnice
-        if [ $CC = clang ]; then LNICE_CFLAGS="-Wno-cast-align"; fi;
-        meson setup -Dprefix=/usr -Dlibdir=lib -Dc_args="$LNICE_CFLAGS" -Ddebug=false -Doptimization=0 -Dexamples=disabled -Dgtk_doc=disabled -Dgupnp=disabled -Dgstreamer=disabled -Dtests=disabled build
-        ninja -C build
-        sudo ninja -C build install
-    - name: checkout libsrtp source
-      if: ${{ matrix.deps_from_src == 'yes' }}
-      uses: actions/checkout@v3
-      with:
-        repository: cisco/libsrtp
-        ref: v2.6.0
-    - name: setup libsrtp from sources
-      if: ${{ matrix.deps_from_src == 'yes' }}
-      run: |
-        ./configure --prefix=/usr --enable-openssl
-        make -j$(nproc) shared_library
-        sudo make install
-    - name: checkout usrsctp source
-      if: ${{ matrix.datachannels == 'yes' && matrix.deps_from_src == 'yes' }}
-      uses: actions/checkout@v3
-      with:
-        repository: sctplab/usrsctp
-        ref: master
-    - name: setup usrsctp from sources
-      if: ${{ matrix.datachannels == 'yes' && matrix.deps_from_src == 'yes' }}
-      run: |
-        ./bootstrap
-        ./configure --prefix=/usr --disable-static --disable-debug --disable-programs --disable-inet --disable-inet6
-        make -j$(nproc)
-        sudo make install
-    - name: checkout lws source
-      if: ${{ matrix.deps_from_src == 'yes' }}
-      uses: actions/checkout@v3
-      with:
-        repository: warmcat/libwebsockets
-        ref: v4.3.2
-    - name: setup lws from sources
-      if: ${{ matrix.deps_from_src == 'yes' }}
-      run: |
-        mkdir -p build
-        pushd build
-        cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DLWS_WITH_STATIC=OFF -DLWS_WITHOUT_CLIENT=ON -DLWS_WITHOUT_TESTAPPS=ON -DLWS_WITHOUT_TEST_SERVER=ON -DLWS_WITH_HTTP2=OFF ..
-        make -j$(nproc)
-        sudo make install
-    - name: checkout paho-mqtt source
-      if: ${{ matrix.deps_from_src == 'yes' }}
-      uses: actions/checkout@v3
-      with:
-        repository: eclipse/paho.mqtt.c
-        ref: v1.3.12
-    - name: setup paho-mqtt from sources
-      if: ${{ matrix.deps_from_src == 'yes' }}
-      run: |
-        cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_SAMPLES=FALSE -DPAHO_BUILD_DOCUMENTATION=FALSE .
-        make -j$(nproc)
-        sudo make install
-    - name: checkout janus source
-      uses: actions/checkout@v3
-    - name: build janus from sources
-      env:
-        JANUS_CONFIG_COMMON: "--disable-docs --enable-post-processing --enable-plugin-lua --enable-plugin-duktape --enable-json-logger"
-        JANUS_CONFIG_OPTS: ${{ matrix.janus_config_opts }}
-      # Asan in llvm 14 provided in ubuntu 22.04 is incompatible with
-      # high-entropy ASLR in much newer kernels that GitHub runners are
-      # using leading to random crashes: https://reviews.llvm.org/D148280
-      run: |
-        sudo sysctl vm.mmap_rnd_bits=28
-        ./autogen.sh
-        ./configure $JANUS_CONFIG_COMMON $JANUS_CONFIG_OPTS
-        make -j$(nproc)
-        make check-fuzzers
+      - name: install janus apt dependencies
+        run: >
+          sudo apt-get update && sudo apt-get --no-install-recommends -y install
+          duktape-dev
+          libavcodec-dev
+          libavformat-dev
+          libavutil-dev
+          libconfig-dev
+          libglib2.0-dev
+          libgirepository1.0-dev
+          liblua5.3-dev
+          libjansson-dev
+          libmicrohttpd-dev
+          libnanomsg-dev
+          libogg-dev
+          libopus-dev
+          libpcap-dev
+          librabbitmq-dev
+          libsofia-sip-ua-dev
+          libssl-dev
+          libtool
+          meson
+          ninja-build
+      - name: setup additional dependencies from apt
+        if: ${{ matrix.deps_from_src == 'no' }}
+        run: >
+          sudo apt-get --no-install-recommends -y install
+          libnice-dev
+          libsrtp2-dev
+          libusrsctp-dev
+          libwebsockets-dev
+      # Workaround for https://github.com/actions/runner-images/issues/11926
+      - name: install cmake v3.31
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: "3.31.6"
+      - name: install libcurl from apt
+        if: ${{ matrix.libcurl == 'enable-libcurl' }}
+        run: sudo apt-get --no-install-recommends -y install libcurl4-openssl-dev
+      - name: setup python
+        if: ${{ matrix.deps_from_src == 'yes' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          architecture: "x64"
+      - name: checkout libnice source
+        if: ${{ matrix.deps_from_src == 'yes' }}
+        uses: actions/checkout@v4
+        with:
+          repository: libnice/libnice
+          ref: master
+      - name: setup libnice from sources
+        if: ${{ matrix.deps_from_src == 'yes' }}
+        run: |
+          meson setup -Dprefix=/usr -Dlibdir=lib -Dc_args="-O0 -Wno-cast-align" \
+            -Dexamples=disabled \
+            -Dgtk_doc=disabled \
+            -Dgstreamer=disabled \
+            -Dgupnp=disabled \
+            -Dtests=disabled \
+            build
+          ninja -C build
+          sudo ninja -C build install
+      - name: checkout libsrtp source
+        if: ${{ matrix.deps_from_src == 'yes' }}
+        uses: actions/checkout@v4
+        with:
+          repository: cisco/libsrtp
+          ref: v2.7.0
+      - name: setup libsrtp from sources
+        if: ${{ matrix.deps_from_src == 'yes' }}
+        run: |
+          ./configure --prefix=/usr CFLAGS="-O0" \
+            --disable-pcap \
+            --enable-openssl
+          make -j$(nproc) shared_library
+          sudo make install
+      - name: checkout usrsctp source
+        if: ${{ matrix.datachannels == 'enable-datachannels' && matrix.deps_from_src == 'yes' }}
+        uses: actions/checkout@v4
+        with:
+          repository: sctplab/usrsctp
+          ref: master
+      - name: setup usrsctp from sources
+        if: ${{ matrix.datachannels == 'enable-datachannels' && matrix.deps_from_src == 'yes' }}
+        run: |
+          ./bootstrap
+          ./configure --prefix=/usr CFLAGS="-O0" \
+            --disable-debug \
+            --disable-inet \
+            --disable-inet6 \
+            --disable-programs \
+            --disable-static \
+            --enable-shared
+          make -j$(nproc)
+          sudo make install
+      - name: checkout lws source
+        if: ${{ matrix.deps_from_src == 'yes' }}
+        uses: actions/checkout@v4
+        with:
+          repository: warmcat/libwebsockets
+          ref: v4.3-stable
+      - name: setup lws from sources
+        if: ${{ matrix.deps_from_src == 'yes' }}
+        run: |
+          mkdir build && cd build
+          cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_C_FLAGS="-O0" \
+            -DLWS_ROLE_RAW_FILE=OFF \
+            -DLWS_WITH_HTTP2=OFF \
+            -DLWS_WITHOUT_EXTENSIONS=OFF \
+            -DLWS_WITHOUT_TESTAPPS=ON \
+            -DLWS_WITHOUT_TEST_CLIENT=ON \
+            -DLWS_WITHOUT_TEST_PING=ON \
+            -DLWS_WITHOUT_TEST_SERVER=ON \
+            -DLWS_WITH_STATIC=OFF \
+            ..
+          make -j$(nproc)
+          sudo make install
+      - name: checkout paho-mqtt source
+        if: ${{ matrix.deps_from_src == 'yes' }}
+        uses: actions/checkout@v4
+        with:
+          repository: eclipse/paho.mqtt.c
+          ref: v1.3.14
+      - name: setup paho-mqtt from sources
+        if: ${{ matrix.deps_from_src == 'yes' }}
+        run: |
+          mkdir build.paho && cd build.paho
+          cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_C_FLAGS="-O0" \
+            -DPAHO_HIGH_PERFORMANCE=TRUE \
+            -DPAHO_BUILD_DOCUMENTATION=FALSE \
+            -DPAHO_BUILD_SAMPLES=FALSE \
+            -DPAHO_BUILD_SHARED=TRUE \
+            -DPAHO_BUILD_STATIC=FALSE \
+            -DPAHO_ENABLE_TESTING=FALSE \
+            -DPAHO_WITH_SSL=TRUE \
+            ..
+          make -j$(nproc)
+          sudo make install
+      - name: checkout janus source
+        uses: actions/checkout@v4
+      - name: build janus from sources
+        env:
+          JANUS_CONFIG_COMMON: "--disable-docs --enable-post-processing --enable-plugin-lua --enable-plugin-duktape --enable-json-logger"
+          JANUS_CONFIG_OPTS: ${{ matrix.janus_config_opts }}
+        run: |
+          ./autogen.sh
+          ./configure $JANUS_CONFIG_COMMON $JANUS_CONFIG_OPTS CFLAGS="-O0"
+          make -j$(nproc)
+          make check-fuzzers
   javascript-lint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v4
-    - name: Install modules
-      run: |
-        cd npm
-        npm install
-    - name: Run ESLint
-      run: |
-        cd npm
-        npm run lint
+      - uses: actions/checkout@v4
+      - name: Install modules
+        run: |
+          cd npm
+          npm install
+      - name: Run ESLint
+        run: |
+          cd npm
+          npm run lint
   javascript-dist:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v4
-    - name: Install modules
-      run: |
-        cd npm
-        npm install
-    - name: Make dist files
-      run: |
-        cd npm
-        npm run prerelease
-    - uses: actions/upload-artifact@v4
-      with:
-        name: janus.es.js
-        path: npm/dist/janus.es.js
+      - uses: actions/checkout@v4
+      - name: Install modules
+        run: |
+          cd npm
+          npm install
+      - name: Make dist files
+        run: |
+          cd npm
+          npm run prerelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: janus.es.js
+          path: npm/dist/janus.es.js

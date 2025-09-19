@@ -75,8 +75,8 @@ else
 // used to gather both server reflexive and relay candidates.
 //
 //		var iceServers = [{urls: "turn:yourturnserver.com:3478", username: "janususer", credential: "januspwd"}]
-//		var iceServers: [{urls: "turn:yourturnserver.com:443?transport=tcp", username: "janususer", credential: "januspwd"}]
-//		var iceServers: [{urls: "turns:yourturnserver.com:443?transport=tcp", username: "janususer", credential: "januspwd"}]
+//		var iceServers = [{urls: "turn:yourturnserver.com:443?transport=tcp", username: "janususer", credential: "januspwd"}]
+//		var iceServers = [{urls: "turns:yourturnserver.com:443?transport=tcp", username: "janususer", credential: "januspwd"}]
 //
 // By default we leave the iceServers variable empty, which again means
 // janus.js will fallback to the Google STUN server by default:

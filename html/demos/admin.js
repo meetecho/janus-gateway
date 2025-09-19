@@ -486,20 +486,6 @@ function updateSettings() {
 								setLogColors(!settings["log_colors"]);
 						});
 					});
-				} else if(k === 'libnice_debug') {
-					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
-					$('#'+k + "_button")
-						.addClass(!settings[k] ? "btn-success" : "btn-danger")
-						.html(!settings[k] ? "Enable libnice debug" : "Disable libnice debug");
-					$('#'+k + "_button").click(function() {
-						let text = (!settings["libnice_debug"] ?
-							"Are you sure you want to enable the libnice debug?<br/>This will print the a very verbose debug of every libnice-related operation on the console"
-							: "Are you sure you want to disable the libnice debug?");
-						bootbox.confirm(text, function(result) {
-							if(result)
-								setLibniceDebug(!settings["libnice_debug"]);
-						});
-					});
 				}
 			}
 		},
@@ -546,11 +532,6 @@ function setLogTimestamps(enable) {
 
 function setLogColors(enable) {
 	let request = { "janus": "set_log_colors", "colors": enable, "transaction": randomString(12), "admin_secret": secret };
-	sendSettingsRequest(request);
-}
-
-function setLibniceDebug(enable) {
-	let request = { "janus": "set_libnice_debug", "debug": enable, "transaction": randomString(12), "admin_secret": secret };
 	sendSettingsRequest(request);
 }
 
