@@ -205,6 +205,8 @@ rtsp_session_timeout = by default the streaming plugin will check the RTSP conne
 	formula: timeout = min(session_timeout, rtsp_session_timeout / 2). (default=0s)
 rtsp_timeout = communication timeout (CURLOPT_TIMEOUT) for cURL call gathering the RTSP information (default=10s)
 rtsp_conn_timeout = connection timeout for cURL (CURLOPT_CONNECTTIMEOUT) call gathering the RTSP information (default=5s)
+rtsp_notify_changes = if set to true, will send an event to connected users when the RTSP session
+	gets disconnected, and when it's reconnected (default=false)
 \endverbatim
  *
  * Notice that attributes like \c audioport or \c videopt only make sense
@@ -1133,10 +1135,14 @@ static struct janus_json_parameter rtsp_parameters[] = {
 	{"url", JSON_STRING, 0},
 	{"rtsp_user", JSON_STRING, 0},
 	{"rtsp_pwd", JSON_STRING, 0},
+	{"rtsp_quirk", JANUS_JSON_BOOL, 0},
+	{"rtsp_failcheck", JANUS_JSON_BOOL, 0},
+	{"rtspiface", JSON_STRING, 0},
 	{"rtsp_reconnect_delay", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"rtsp_session_timeout", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"rtsp_timeout", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"rtsp_conn_timeout", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"rtsp_notify_changes", JANUS_JSON_BOOL, 0},
 	{"audiocodec", JSON_STRING, 0},
 	{"audiortpmap", JSON_STRING, 0},	/* Deprecated */
 	{"audiofmtp", JSON_STRING, 0},
@@ -1149,8 +1155,6 @@ static struct janus_json_parameter rtsp_parameters[] = {
 	{"bufferkf_ms", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"bufferkf_bytes", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"threads", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"rtspiface", JSON_STRING, 0},
-	{"rtsp_failcheck", JANUS_JSON_BOOL, 0}
 };
 #endif
 static struct janus_json_parameter rtp_media_parameters[] = {
@@ -1389,6 +1393,7 @@ typedef struct janus_streaming_rtp_source {
 	char *rtsp_username, *rtsp_password;
 	char *rtsp_stream_uri;
 	gboolean rtsp_quirk;
+	gboolean rtsp_notify_changes;
 	gint64 ka_timeout;
 	char *rtsp_ahost, *rtsp_vhost;
 	janus_streaming_codecs rtsp_acodecs, rtsp_vcodecs;
@@ -1575,7 +1580,8 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
-		gboolean quirk, gboolean doaudio, int audiopt, char *acodec, char *afmtp,
+		gboolean quirk, gboolean notify_changes,
+		gboolean doaudio, int audiopt, char *acodec, char *afmtp,
 		gboolean dovideo, int videopt, char *vcodec, char *vfmtp,
 		uint16_t bufferkf_ms, uint32_t bufferkf_bytes,
 		const janus_network_address *iface, int threads,
@@ -1737,6 +1743,25 @@ static void janus_streaming_message_free(janus_streaming_message *msg) {
 	msg->jsep = NULL;
 
 	g_free(msg);
+}
+
+/* Helper to notify mountpoint subscribers about events */
+static void janus_streaming_notify_subscribers(janus_streaming_mountpoint *mountpoint, json_t *info) {
+	/* mountpoint->mutex has to be locked. */
+	if(mountpoint == NULL || info == NULL)
+		return;
+	GList *subscriber = g_list_first(mountpoint->viewers);
+	while(subscriber) {
+		janus_streaming_session *s = (janus_streaming_session *)subscriber->data;
+		if(s == NULL || g_atomic_int_get(&s->destroyed)) {
+			subscriber = g_list_next(subscriber);
+			continue;
+		}
+		janus_mutex_lock(&s->mutex);
+		gateway->push_event(s->handle, &janus_streaming_plugin, NULL, info, NULL);
+		janus_mutex_unlock(&s->mutex);
+		subscriber = g_list_next(subscriber);
+	}
 }
 
 #ifdef HAVE_LIBOGG
@@ -2831,6 +2856,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *session_timeout = janus_config_get(config, cat, janus_config_type_item, "rtsp_session_timeout");
 				janus_config_item *rtsp_timeout = janus_config_get(config, cat, janus_config_type_item, "rtsp_timeout");
 				janus_config_item *rtsp_conn_timeout = janus_config_get(config, cat, janus_config_type_item, "rtsp_conn_timeout");
+				janus_config_item *rtsp_notify_changes = janus_config_get(config, cat, janus_config_type_item, "rtsp_notify_changes");
 				janus_network_address iface_value;
 				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtsp' mountpoint '%s', missing mandatory information...\n", cat->name);
@@ -2839,6 +2865,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				}
 				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
 				gboolean rtsp_quirk = quirk && quirk->value && janus_is_true(quirk->value);
+				gboolean notify_changes = rtsp_notify_changes && rtsp_notify_changes->value && janus_is_true(rtsp_notify_changes->value);
 				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
 				gboolean dovideo = video && video->value && janus_is_true(video->value);
 				if(video && vkf && vkf->value && janus_is_true(vkf->value)) {
@@ -2900,7 +2927,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(char *)file->value,
 						username ? (char *)username->value : NULL,
 						password ? (char *)password->value : NULL,
-						rtsp_quirk,
+						rtsp_quirk, notify_changes,
 						doaudio,
 						(apt && apt->value) ? atoi(apt->value) : -1,
 						(char *)audiocodec,
@@ -4272,11 +4299,13 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_t *session_timeout = json_object_get(root, "rtsp_session_timeout");
 			json_t *rtsp_timeout = json_object_get(root, "rtsp_timeout");
 			json_t *rtsp_conn_timeout = json_object_get(root, "rtsp_conn_timeout");
+			json_t *rtsp_notify_changes = json_object_get(root, "rtsp_notify_changes");
 			if(failerr == NULL)	/* For an old typo, we support the legacy syntax too */
 				failerr = json_object_get(root, "rtsp_check");
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE;
 			gboolean doquirk = quirk ? json_is_true(quirk) : FALSE;
+			gboolean notify_changes = rtsp_notify_changes ? json_is_true(rtsp_notify_changes) : FALSE;
 			gboolean error_on_failure = failerr ? json_is_true(failerr) : TRUE;
 			if(json_is_true(vkf)) {
 				JANUS_LOG(LOG_WARN, "The videobufferkf property has been deprecated, please refer to bufferkf_ms and/or bufferkf_bytes\n");
@@ -4343,7 +4372,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					(char *)json_string_value(url),
 					username ? (char *)json_string_value(username) : NULL,
 					password ? (char *)json_string_value(password) : NULL,
-					doquirk,
+					doquirk, notify_changes,
 					doaudio, (audiopt ? json_integer_value(audiopt) : -1), acodec, (char *)json_string_value(audiofmtp),
 					dovideo, (videopt ? json_integer_value(videopt) : -1), vcodec, (char *)json_string_value(videofmtp),
 					bufferkf_ms, bufferkf_bytes,
@@ -4938,19 +4967,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_object_set_new(info, "id", string_ids ? json_string(mp->id_str) : json_integer(mp->id));
 			if(mp->metadata)
 				json_object_set_new(info, "metadata", json_string(mp->metadata));
-			GList *viewer = g_list_first(mp->viewers);
-			while(viewer) {
-				janus_streaming_session *s = (janus_streaming_session *)viewer->data;
-				if(s == NULL) {
-					viewer = g_list_next(viewer);
-					continue;
-				}
-				janus_mutex_lock(&s->mutex);
-				JANUS_LOG(LOG_VERB, "Notifying mountpoint %s (%s) viewer\n", mp->id_str, mp->name);
-				gateway->push_event(s->handle, &janus_streaming_plugin, NULL, info, NULL);
-				janus_mutex_unlock(&s->mutex);
-				viewer = g_list_next(viewer);
-			}
+			janus_streaming_notify_subscribers(mp, info);
 			json_decref(info);
 		}
 
@@ -9032,7 +9049,8 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
-		gboolean quirk, gboolean doaudio, int apt, char *acodec, char *afmtp,
+		gboolean quirk, gboolean notify_changes,
+		gboolean doaudio, int apt, char *acodec, char *afmtp,
 		gboolean dovideo, int vpt, char *vcodec, char *vfmtp,
 		uint16_t bufferkf_ms, uint32_t bufferkf_bytes,
 		const janus_network_address *iface, int threads,
@@ -9110,6 +9128,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp_source->rtsp_password = password ? g_strdup(password) : NULL;
 	live_rtsp_source->rtsp_stream_uri = NULL;
 	live_rtsp_source->rtsp_quirk = quirk;
+	live_rtsp_source->rtsp_notify_changes = notify_changes;
 	live_rtsp_source->media = NULL;		/* We'll prepare this later */
 	live_rtsp_source->media_byid = g_hash_table_new(NULL, NULL);
 	live_rtsp_source->media_byfd = g_hash_table_new(NULL, NULL);
@@ -9216,7 +9235,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
-		gboolean quirk, gboolean doaudio, int apt, char *audiocodec, char *audiofmtp,
+		gboolean quirk, gboolean notify_changes,
+		gboolean doaudio, int apt, char *audiocodec, char *audiofmtp,
 		gboolean dovideo, int vpt, char *videocodec, char *videofmtp,
 		uint16_t bufferkf_ms, uint32_t bufferkf_bytes,
 		const janus_network_address *iface, int threads,
@@ -9696,9 +9716,6 @@ static void *janus_streaming_relay_thread(void *data) {
 					stream->rtcp_fd = -1;
 					temp = temp->next;
 				}
-				source->reconnect_timer = now;
-				connected = FALSE;
-				source->reconnecting = TRUE;
 				/* Let's clean up the source first */
 				curl_easy_cleanup(source->curl);
 				source->curl = NULL;
@@ -9710,7 +9727,28 @@ static void *janus_streaming_relay_thread(void *data) {
 				source->curldata = NULL;
 				if(g_atomic_int_get(&mountpoint->destroyed))
 					break;
+				if(connected) {
+					/* Notify users and/or event handlers about this disconnection */
+					if(notify_events && gateway->events_is_enabled()) {
+						json_t *info = json_object();
+						json_object_set_new(info, "event", json_string("rtsp-disconnected"));
+						json_object_set_new(info, "id", string_ids ? json_string(mountpoint->id_str) : json_integer(mountpoint->id));
+						gateway->notify_event(&janus_streaming_plugin, NULL, info);
+					}
+					if(source->rtsp_notify_changes) {
+						json_t *info = json_object();
+						json_object_set_new(info, "event", json_string("rtsp-disconnected"));
+						json_object_set_new(info, "id", string_ids ? json_string(mountpoint->id_str) : json_integer(mountpoint->id));
+						janus_mutex_lock(&mountpoint->mutex);
+						janus_streaming_notify_subscribers(mountpoint, info);
+						janus_mutex_unlock(&mountpoint->mutex);
+						json_decref(info);
+					}
+				}
 				/* Now let's try to reconnect */
+				source->reconnect_timer = now;
+				connected = FALSE;
+				source->reconnecting = TRUE;
 				if(janus_streaming_rtsp_connect_to_server(mountpoint) < 0) {
 					/* Reconnection failed? Let's try again later */
 					JANUS_LOG(LOG_WARN, "[%s] Reconnection of the RTSP stream failed, trying again in a few seconds...\n", name);
@@ -9744,6 +9782,22 @@ static void *janus_streaming_relay_thread(void *data) {
 							/* Reallocate the poll list */
 							numtot = num;
 							fds = g_realloc(fds, numtot * sizeof(struct pollfd));
+						}
+						/* Notify users and/or event handlers about this reconnection */
+						if(notify_events && gateway->events_is_enabled()) {
+							json_t *info = json_object();
+							json_object_set_new(info, "event", json_string("rtsp-reconnected"));
+							json_object_set_new(info, "id", string_ids ? json_string(mountpoint->id_str) : json_integer(mountpoint->id));
+							gateway->notify_event(&janus_streaming_plugin, NULL, info);
+						}
+						if(source->rtsp_notify_changes) {
+							json_t *info = json_object();
+							json_object_set_new(info, "event", json_string("rtsp-reconnected"));
+							json_object_set_new(info, "id", string_ids ? json_string(mountpoint->id_str) : json_integer(mountpoint->id));
+							janus_mutex_lock(&mountpoint->mutex);
+							janus_streaming_notify_subscribers(mountpoint, info);
+							janus_mutex_unlock(&mountpoint->mutex);
+							json_decref(info);
 						}
 					}
 				}
