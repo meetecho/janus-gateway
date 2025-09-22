@@ -133,6 +133,8 @@
 # 		formula: timeout = min(session_timeout, rtsp_session_timeout / 2). (default=0s)
 # rtsp_timeout = communication timeout (CURLOPT_TIMEOUT) for cURL call gathering the RTSP information (default=10s)
 # rtsp_conn_timeout = connection timeout for cURL (CURLOPT_CONNECTTIMEOUT) call gathering the RTSP information (default=5s)
+# rtsp_notify_changes = if set to true, will send an event to connected users when the RTSP session
+#		gets disconnected, and when it's reconnected (default=false)
 #
 # Notice that, for 'rtsp' mountpoints, normally the plugin uses the exact
 # SDP rtpmap and fmtp attributes the remote camera or RTSP server sent.
