@@ -1829,9 +1829,11 @@ static void janus_audiobridge_participant_clear_inbuf(janus_audiobridge_particip
 
 static void janus_audiobridge_participant_clear_outbuf(janus_audiobridge_participant *participant) {
 	while(participant->outbuf && g_async_queue_length(participant->outbuf) > 0) {
-		janus_audiobridge_rtp_relay_packet *pkt = g_async_queue_pop(participant->outbuf);
-		g_free(pkt->data);
-		g_free(pkt);
+		janus_audiobridge_rtp_relay_packet *pkt = g_async_queue_try_pop(participant->outbuf);
+		if(pkt) {
+			g_free(pkt->data);
+			g_free(pkt);
+		}
 	}
 }
 
