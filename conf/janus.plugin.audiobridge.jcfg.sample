@@ -18,6 +18,7 @@
 # record_dir = "/path/to/" (path to save the recording to, makes record_file a relative path if provided)
 # mjrs = true|false (whether all participants in the room should be individually recorded to mjr files, default=false)
 # mjrs_dir = "/path/to/" (path to save the mjr files to)
+# mjrs_autoresume = true|false (whether suspended participants on resume will automatically restart mjr recording if mjrs is true, default=false)
 # allow_rtp_participants = true|false (whether participants should be allowed to join
 #		via plain RTP as well, rather than just WebRTC, default=false)
 # groups = optional, non-hierarchical, array of groups to tag participants, for external forwarding purposes only
