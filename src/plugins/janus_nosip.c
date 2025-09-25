@@ -176,7 +176,7 @@
  *
  * A \c keyframesent event is sent back in case the request is successful.
  *
- * \subsection siprtpfwd RTP forwarders in the NoSIP plugin
+ * \subsection nosiprtpfwd RTP forwarders in the NoSIP plugin
  *
  * RTP forwarders are a quite useful functionality that a few plugins
  * in Janus can take advantage of. As the name suggests, their main
