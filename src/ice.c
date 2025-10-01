@@ -4278,7 +4278,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	int srlen = 28;
 	int sdeslen = 16;
 	int rrlen = 32;
-	int rtcpbuf_size = 1350;
+	int rtcpbuf_size = 1356;
 	char rtcpbuf[rtcpbuf_size];
 	memset(rtcpbuf, 0, rtcpbuf_size);
 
