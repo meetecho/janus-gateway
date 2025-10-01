@@ -4273,27 +4273,36 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	/* Iterate on all media */
 	janus_ice_peerconnection_medium *medium = NULL;
 	uint mi=0;
+
+	int offset = 0;
+	int srlen = 28;
+	int sdeslen = 16;
+	int rrlen = 32;
+	int rtcpbuf_size = 1350;
+	char rtcpbuf[rtcpbuf_size];
+	memset(rtcpbuf, 0, rtcpbuf_size);
+
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	uint32_t s = tv.tv_sec + 2208988800u;
+	uint32_t u = tv.tv_usec;
+	uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
+	int64_t ntp = ((int64_t)tv.tv_sec)*G_USEC_PER_SEC + tv.tv_usec;
+
 	for(mi=0; mi<g_hash_table_size(pc->media); mi++) {
 		medium = g_hash_table_lookup(pc->media, GUINT_TO_POINTER(mi));
 		if(!medium || (medium->type != JANUS_MEDIA_AUDIO && medium->type != JANUS_MEDIA_VIDEO))
 			continue;
+
+		uint32_t ssrc = htonl(medium->ssrc);
 		if(medium->out_stats.info[0].packets > 0) {
 			/* Create a SR/SDES compound */
-			int srlen = 28;
-			int sdeslen = 16;
-			char rtcpbuf[sizeof(janus_rtcp_sr)+sdeslen];
-			memset(rtcpbuf, 0, sizeof(rtcpbuf));
-			rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
+			rtcp_sr *sr = (rtcp_sr *) &rtcpbuf[offset];
 			sr->header.version = 2;
 			sr->header.type = RTCP_SR;
 			sr->header.rc = 0;
 			sr->header.length = htons((srlen/4)-1);
-			sr->ssrc = htonl(medium->ssrc);
-			struct timeval tv;
-			gettimeofday(&tv, NULL);
-			uint32_t s = tv.tv_sec + 2208988800u;
-			uint32_t u = tv.tv_usec;
-			uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
+			sr->ssrc = ssrc;
 			sr->si.ntp_ts_msw = htonl(s);
 			sr->si.ntp_ts_lsw = htonl(f);
 			/* Compute an RTP timestamp coherent with the NTP one */
@@ -4301,23 +4310,31 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 			if(rtcp_ctx == NULL) {
 				sr->si.rtp_ts = htonl(medium->last_rtp_ts);	/* FIXME */
 			} else {
-				int64_t ntp = ((int64_t)tv.tv_sec)*G_USEC_PER_SEC + tv.tv_usec;
 				uint32_t rtp_ts = ((ntp-medium->last_ntp_ts)*(rtcp_ctx->tb))/1000000 + medium->last_rtp_ts;
 				sr->si.rtp_ts = htonl(rtp_ts);
 			}
 			sr->si.s_packets = htonl(medium->out_stats.info[0].packets);
 			sr->si.s_octets = htonl(medium->out_stats.info[0].bytes);
-			rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[srlen];
+			rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[offset + srlen];
 			janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janus", 5);
-			sdes->chunk.ssrc = htonl(medium->ssrc);
+			sdes->chunk.ssrc = ssrc;
+
+			offset += srlen + sdeslen;
+			if(offset < rtcpbuf_size)
+				continue;
+
 			/* Enqueue it, we'll send it later */
 			janus_plugin_rtcp rtcp = { .mindex = medium->mindex,
-				.video = (medium->type == JANUS_MEDIA_VIDEO), .buffer = rtcpbuf, .length = srlen+sdeslen };
+				.video = (medium->type == JANUS_MEDIA_VIDEO), .buffer = rtcpbuf, .length = offset };
 			janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
+
 			/* Check if we detected too many losses, and send a slowlink event in case */
 			gint lost = janus_rtcp_context_get_lost_all(rtcp_ctx, TRUE);
 			lost = lost > 0 ? lost : 0;
 			janus_slow_link_update(medium, handle, TRUE, lost);
+
+			offset = 0;
+			memset(rtcpbuf, 0, rtcpbuf_size);
 		}
 		if(medium->recv) {
 			/* Create a RR too (for each SSRC, if we're simulcasting) */
@@ -4325,31 +4342,45 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 			for(vindex=0; vindex<3; vindex++) {
 				if(medium->rtcp_ctx[vindex] && medium->rtcp_ctx[vindex]->rtp_recvd) {
 					/* Create a RR */
-					int rrlen = 32;
-					char rtcpbuf[32];
-					memset(rtcpbuf, 0, sizeof(rtcpbuf));
-					rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
+					rtcp_rr *rr = (rtcp_rr *) &rtcpbuf[offset];
 					rr->header.version = 2;
 					rr->header.type = RTCP_RR;
 					rr->header.rc = 1;
 					rr->header.length = htons((rrlen/4)-1);
-					rr->ssrc = htonl(medium->ssrc);
+					rr->ssrc = ssrc;
 					janus_rtcp_report_block(medium->rtcp_ctx[vindex], &rr->rb[0]);
 					rr->rb[0].ssrc = htonl(medium->ssrc_peer[vindex]);
+
+					offset += rrlen;
+					if(offset < rtcpbuf_size)
+						continue;
+
 					/* Enqueue it, we'll send it later */
 					janus_plugin_rtcp rtcp = { .mindex = medium->mindex,
-						.video = (medium->type == JANUS_MEDIA_VIDEO), .buffer = rtcpbuf, .length = 32 };
+						.video = (medium->type == JANUS_MEDIA_VIDEO), .buffer = rtcpbuf, .length = offset };
 					janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
+
 					if(vindex == 0) {
 						/* Check if we detected too many losses, and send a slowlink event in case */
 						gint lost = janus_rtcp_context_get_lost_all(medium->rtcp_ctx[vindex], FALSE);
 						lost = lost > 0 ? lost : 0;
 						janus_slow_link_update(medium, handle, FALSE, lost);
 					}
+
+					offset = 0;
+					memset(rtcpbuf, 0, rtcpbuf_size);
 				}
 			}
 		}
 	}
+
+	if(offset > 0) {
+		/* Enqueue it, we'll send it later */
+		janus_plugin_rtcp rtcp = { .mindex = medium->mindex,
+			.video = (medium->type == JANUS_MEDIA_VIDEO), .buffer = rtcpbuf, .length = offset };
+		janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
+	}
+
 	if(twcc_period == 1000) {
 		/* The Transport Wide CC feedback period is 1s as well, send it here */
 		janus_ice_outgoing_transport_wide_cc_feedback(handle);
