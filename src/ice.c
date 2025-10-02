@@ -4278,7 +4278,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	int srlen = 28;
 	int sdeslen = 16;
 	int rrlen = 32;
-	int rtcpbuf_size = 1350;
+	int rtcpbuf_size = 1324;
 	char rtcpbuf[rtcpbuf_size];
 	memset(rtcpbuf, 0, rtcpbuf_size);
 
@@ -4319,22 +4319,12 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 			janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janus", 5);
 			sdes->chunk.ssrc = ssrc;
 
-			offset += srlen + sdeslen;
-			if(offset < rtcpbuf_size)
-				continue;
-
-			/* Enqueue it, we'll send it later */
-			janus_plugin_rtcp rtcp = { .mindex = medium->mindex,
-				.video = (medium->type == JANUS_MEDIA_VIDEO), .buffer = rtcpbuf, .length = offset };
-			janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
-
 			/* Check if we detected too many losses, and send a slowlink event in case */
 			gint lost = janus_rtcp_context_get_lost_all(rtcp_ctx, TRUE);
 			lost = lost > 0 ? lost : 0;
 			janus_slow_link_update(medium, handle, TRUE, lost);
 
-			offset = 0;
-			memset(rtcpbuf, 0, rtcpbuf_size);
+			offset += srlen + sdeslen;
 		}
 		if(medium->recv) {
 			/* Create a RR too (for each SSRC, if we're simulcasting) */
@@ -4351,15 +4341,6 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 					janus_rtcp_report_block(medium->rtcp_ctx[vindex], &rr->rb[0]);
 					rr->rb[0].ssrc = htonl(medium->ssrc_peer[vindex]);
 
-					offset += rrlen;
-					if(offset < rtcpbuf_size)
-						continue;
-
-					/* Enqueue it, we'll send it later */
-					janus_plugin_rtcp rtcp = { .mindex = medium->mindex,
-						.video = (medium->type == JANUS_MEDIA_VIDEO), .buffer = rtcpbuf, .length = offset };
-					janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
-
 					if(vindex == 0) {
 						/* Check if we detected too many losses, and send a slowlink event in case */
 						gint lost = janus_rtcp_context_get_lost_all(medium->rtcp_ctx[vindex], FALSE);
@@ -4367,11 +4348,21 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 						janus_slow_link_update(medium, handle, FALSE, lost);
 					}
 
-					offset = 0;
-					memset(rtcpbuf, 0, rtcpbuf_size);
+					offset += rrlen;
 				}
 			}
 		}
+
+		if(offset < rtcpbuf_size)
+			continue;
+
+		/* Enqueue it, we'll send it later */
+		janus_plugin_rtcp rtcp = { .mindex = medium->mindex,
+			.video = (medium->type == JANUS_MEDIA_VIDEO), .buffer = rtcpbuf, .length = offset };
+		janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
+
+		offset = 0;
+		memset(rtcpbuf, 0, rtcpbuf_size);
 	}
 
 	if(offset > 0) {
