@@ -4267,6 +4267,17 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 	return G_SOURCE_CONTINUE;
 }
 
+static inline void janus_ice_send_compound_rtcp(janus_ice_handle *handle,
+		janus_ice_peerconnection_medium *medium, char *rtcpbuf, int rtcpbuf_size, int *offset) {
+	/* Enqueue the RTCP message(s) */
+	janus_plugin_rtcp rtcp = { .mindex = medium->mindex,
+		.video = (medium->type == JANUS_MEDIA_VIDEO), .buffer = rtcpbuf, .length = *offset };
+	janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
+	/* Reset the buffer */
+	memset(rtcpbuf, 0, rtcpbuf_size);
+	*offset = 0;
+}
+
 static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	janus_ice_peerconnection *pc = handle->pc;
@@ -4278,7 +4289,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	int srlen = 28;
 	int sdeslen = 16;
 	int rrlen = 32;
-	int rtcpbuf_size = 1324;
+	int rtcpbuf_size = 1200;
 	char rtcpbuf[rtcpbuf_size];
 	memset(rtcpbuf, 0, rtcpbuf_size);
 
@@ -4296,6 +4307,11 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 
 		uint32_t ssrc = htonl(medium->ssrc);
 		if(medium->out_stats.info[0].packets > 0) {
+			if((offset + srlen + sdeslen) >= rtcpbuf_size) {
+				/* Our RTCP buffer is either full, or full enough: send the
+				 * messages we prepared so far first, and reset the buffer */
+				janus_ice_send_compound_rtcp(handle, medium, rtcpbuf, rtcpbuf_size, &offset);
+			}
 			/* Create a SR/SDES compound */
 			rtcp_sr *sr = (rtcp_sr *) &rtcpbuf[offset];
 			sr->header.version = 2;
@@ -4331,6 +4347,11 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 			int vindex=0;
 			for(vindex=0; vindex<3; vindex++) {
 				if(medium->rtcp_ctx[vindex] && medium->rtcp_ctx[vindex]->rtp_recvd) {
+					if((offset + rrlen) >= rtcpbuf_size) {
+						/* Our RTCP buffer is either full, or full enough: send the
+						 * messages we prepared so far first, and reset the buffer */
+						janus_ice_send_compound_rtcp(handle, medium, rtcpbuf, rtcpbuf_size, &offset);
+					}
 					/* Create a RR */
 					rtcp_rr *rr = (rtcp_rr *) &rtcpbuf[offset];
 					rr->header.version = 2;
@@ -4352,24 +4373,12 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 				}
 			}
 		}
-
-		if(offset < rtcpbuf_size)
-			continue;
-
-		/* Enqueue it, we'll send it later */
-		janus_plugin_rtcp rtcp = { .mindex = medium->mindex,
-			.video = (medium->type == JANUS_MEDIA_VIDEO), .buffer = rtcpbuf, .length = offset };
-		janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
-
-		offset = 0;
-		memset(rtcpbuf, 0, rtcpbuf_size);
 	}
 
 	if(offset > 0) {
-		/* Enqueue it, we'll send it later */
-		janus_plugin_rtcp rtcp = { .mindex = medium->mindex,
-			.video = (medium->type == JANUS_MEDIA_VIDEO), .buffer = rtcpbuf, .length = offset };
-		janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
+		/* We've got a batch of RTCP messages to send that we didn't
+		 * send as of yet: enqueue the buffer, we'll send it later */
+		janus_ice_send_compound_rtcp(handle, medium, rtcpbuf, rtcpbuf_size, &offset);
 	}
 
 	if(twcc_period == 1000) {
