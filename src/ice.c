@@ -4378,7 +4378,9 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	if(offset > 0) {
 		/* We've got a batch of RTCP messages to send that we didn't
 		 * send as of yet: enqueue the buffer, we'll send it later */
-		janus_ice_send_compound_rtcp(handle, medium, rtcpbuf, rtcpbuf_size, &offset);
+		janus_plugin_rtcp rtcp = { .mindex = medium->mindex,
+			.video = (medium->type == JANUS_MEDIA_VIDEO), .buffer = rtcpbuf, .length = offset };
+		janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
 	}
 
 	if(twcc_period == 1000) {
