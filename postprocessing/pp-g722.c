@@ -239,9 +239,7 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 
 void janus_pp_g722_close(void) {
 	/* Close decoder */
-	avcodec_close(dec_ctx);
-	av_free(dec_ctx);
-	dec_ctx = NULL;
+	avcodec_free_context(&dec_ctx);
 	/* Flush and close file */
 	if(wav_file != NULL) {
 		/* Update the header */

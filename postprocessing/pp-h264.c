@@ -549,10 +549,10 @@ void janus_pp_h264_close(void) {
 		av_write_trailer(fctx);
 #ifdef USE_CODECPAR
 	if(vEncoder != NULL)
-		avcodec_close(vEncoder);
+		avcodec_free_context(&vEncoder);
 #else
 	if(vStream != NULL && vStream->codec != NULL)
-		avcodec_close(vStream->codec);
+		avcodec_free_context(&(vStream->codec));
 #endif
 		avio_close(fctx->pb);
 		avformat_free_context(fctx);
