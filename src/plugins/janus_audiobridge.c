@@ -9753,6 +9753,8 @@ static void janus_audiobridge_participant_denoise(janus_audiobridge_participant 
 	opus_int16 *samples = (opus_int16 *)data;
 	/* Number of original samples, should be: 160 (8kHz), 320 (16kHz), 480 (24kHz), 960 (48kHz) */
 	int samples_count = len;
+	if(samples_count > (2 * OPUS_SAMPLES))
+		samples_count = (2 * OPUS_SAMPLES);
 	/* Actual length of the resampled array (double size for stereo) */
 	const int samples_len = !participant->resampler_stereo ? samples_count : 2*samples_count;
 
