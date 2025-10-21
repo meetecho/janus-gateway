@@ -33,6 +33,7 @@ room-<unique room ID>: {
 	pin = <optional password needed for joining the room>
 	sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 	spatial_audio = true|false (if true, the mix will be stereo to spatially place users, default=false)
+	use_limiter = true|false (whether to use a limiter to avoid clipping, default=false)
 	audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must be
 		negotiated/used or not for new joins, default=true)
 	audiolevel_event = true|false (whether to emit event to other users or not, default=false)
@@ -139,6 +140,7 @@ room-<unique room ID>: {
 	"allowed" : [ array of string tokens users can use to join this room, optional],
 	"sampling_rate" : <sampling rate of the room, optional, 16000 by default>,
 	"spatial_audio" : <true|false, whether the mix should spatially place users, default=false>,
+	"use_limiter" : <true|false, whether to use a limiter to avoid clipping, default=false>,
 	"audiolevel_ext" : <true|false, whether the ssrc-audio-level RTP extension must be negotiated for new joins, default=true>,
 	"audiolevel_event" : <true|false (whether to emit event to other users or not)>,
 	"audio_active_packets" : <number of packets with audio level (default=100, 2 seconds)>,
@@ -1363,6 +1365,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"default_expectedloss", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"default_bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"denoise", JANUS_JSON_BOOL, 0},
+	{"use_limiter", JANUS_JSON_BOOL, 0}
 	{"groups", JSON_ARRAY, 0}
 };
 static struct janus_json_parameter edit_parameters[] = {
@@ -1433,6 +1436,7 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"group", JSON_STRING, 0},
 	{"spatial_position", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"denoise", JANUS_JSON_BOOL, 0},
+	{"use_limiter", JANUS_JSON_BOOL, 0}
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
 	{"display", JSON_STRING, 0},
@@ -1504,6 +1508,76 @@ static uint16_t rtp_range_min = JANUS_AUDIOBRIDGE_DEFAULT_RTP_RANGE_MIN;
 static uint16_t rtp_range_max = JANUS_AUDIOBRIDGE_DEFAULT_RTP_RANGE_MAX;
 static uint16_t rtp_range_slider = JANUS_AUDIOBRIDGE_DEFAULT_RTP_RANGE_MIN;
 
+/* Constants for the audio limiter */
+#define K_SUB_FRAMES_IN_FRAME 20
+#define K_INITIAL_FILTER_STATE_LEVEL 0.0f
+// Instant attack.
+#define K_ATTACK_FILTER_CONSTANT 0.0f
+// This constant affects the way scaling factors are interpolated for the first
+// sub-frame of a frame. Only in the case in which the first sub-frame has an
+// estimated level which is greater than the that of the previous analyzed
+// sub-frame, linear interpolation is replaced with a power function which
+// reduces the chances of over-shooting (and hence saturation), however reducing
+// the fixed gain effectiveness.
+#define K_ATTACK_FIRST_SUB_FRAME_INTERPOLATION_POWER 8.0f
+// Limiter decay constant.
+// Computed as `10 ** (-1/20 * SUBFRAME_DURATION / K_DECAY_MS)` where:
+// - `SUBFRAME_DURATION` is `K_FRAME_DURATION_MS / K_SUB_FRAMES_IN_FRAME`;
+// - `K_FRAME_DURATION_MS` is 10 ms.;
+// - `K_DECAY_MS` is 20.0f;
+#define K_DECAY_FILTER_CONSTANT 0.9971259f
+// Number of interpolation points for each region of the limiter.
+// These values have been tuned to limit the interpolated gain curve error given
+// the limiter parameters and allowing a maximum error of +/- 32768^-1.
+#define K_INTERPOLATED_GAIN_CURVE_KNEE_POINTS 22
+#define K_INTERPOLATED_GAIN_CURVE_BEYOND_KNEE_POINTS 10
+#define K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS (K_INTERPOLATED_GAIN_CURVE_KNEE_POINTS + K_INTERPOLATED_GAIN_CURVE_BEYOND_KNEE_POINTS)
+// Defined as DbfsToLinear(kLimiterMaxInputLevelDbFs)
+#define K_MAX_INPUT_LEVEL_LINEAR 36766.300710566735f
+static float approximation_params_x[K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS] = {
+	30057.296875f,    30148.986328125f, 30240.67578125f,  30424.052734375f,
+	30607.4296875f,   30790.806640625f, 30974.18359375f,  31157.560546875f,
+	31340.939453125f, 31524.31640625f,  31707.693359375f, 31891.0703125f,
+	32074.447265625f, 32257.82421875f,  32441.201171875f, 32624.580078125f,
+	32807.95703125f,  32991.33203125f,  33174.7109375f,   33358.08984375f,
+	33541.46484375f,  33724.84375f,     33819.53515625f,  34009.5390625f,
+	34200.05859375f,  34389.81640625f,  34674.48828125f,  35054.375f,
+	35434.86328125f,  35814.81640625f,  36195.16796875f,  36575.03125f
+};
+static float approximation_params_m[K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS] = {
+	-3.515235675877192989e-07f, -1.050251626111275982e-06f,
+	-2.085213736791047268e-06f, -3.443004743530764244e-06f,
+	-4.773849468620028347e-06f, -6.077375928725814447e-06f,
+	-7.353257842623861507e-06f, -8.601219633419532329e-06f,
+	-9.821013009059242904e-06f, -1.101243378798244521e-05f,
+	-1.217532644659513608e-05f, -1.330956911260727793e-05f,
+	-1.441507538402220234e-05f, -1.549179251014720649e-05f,
+	-1.653970684856176376e-05f, -1.755882840370759368e-05f,
+	-1.854918446042574942e-05f, -1.951086778717581183e-05f,
+	-2.044398024736437947e-05f, -2.1348627342376858e-05f,
+	-2.222496914328075945e-05f, -2.265374678245279938e-05f,
+	-2.242570917587727308e-05f, -2.220122041762806475e-05f,
+	-2.19802095671184361e-05f,  -2.176260204578284174e-05f,
+	-2.133731686626560986e-05f, -2.092481918225530535e-05f,
+	-2.052459603874012828e-05f, -2.013615448959171772e-05f,
+	-1.975903069251216948e-05f, -1.939277899509761482e-05f
+};
+
+static float approximation_params_q[K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS] = {
+	1.010565876960754395f, 1.031631827354431152f, 1.062929749488830566f,
+	1.104239225387573242f, 1.144973039627075195f, 1.185109615325927734f,
+	1.224629044532775879f, 1.263512492179870605f, 1.301741957664489746f,
+	1.339300632476806641f, 1.376173257827758789f, 1.412345528602600098f,
+	1.447803974151611328f, 1.482536554336547852f, 1.516532182693481445f,
+	1.549780607223510742f, 1.582272171974182129f, 1.613999366760253906f,
+	1.644955039024353027f, 1.675132393836975098f, 1.704526185989379883f,
+	1.718986630439758301f, 1.711274504661560059f, 1.703639745712280273f,
+	1.696081161499023438f, 1.688597679138183594f, 1.673851132392883301f,
+	1.659391283988952637f, 1.645209431648254395f, 1.631297469139099121f,
+	1.617647409439086914f, 1.604251742362976074f
+};
+
+
 /* Asynchronous API message to handle */
 typedef struct janus_audiobridge_message {
 	janus_plugin_session *handle;
@@ -1528,6 +1602,7 @@ typedef struct janus_audiobridge_room {
 	gboolean spatial_audio;		/* Whether the mix will use spatial audio, using stereo */
 	gboolean audiolevel_ext;	/* Whether the ssrc-audio-level extension must be negotiated or not for new joins */
 	gboolean audiolevel_event;	/* Whether to emit event to other users about audiolevel */
+	gboolean use_limiter;		/* Whether to use limiter or not */
 	uint default_expectedloss;	/* Percent of packets we expect participants may miss, to help with outgoing FEC: can be overridden per-participant */
 	int32_t default_bitrate;	/* Default bitrate to use for all Opus streams when encoding */
 	int audio_active_packets;	/* Amount of packets with audio level for checkup */
@@ -2663,6 +2738,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *spatial = janus_config_get(config, cat, janus_config_type_item, "spatial_audio");
 			janus_config_item *audiolevel_ext = janus_config_get(config, cat, janus_config_type_item, "audiolevel_ext");
 			janus_config_item *audiolevel_event = janus_config_get(config, cat, janus_config_type_item, "audiolevel_event");
+			janus_config_item *use_limiter = janus_config_get(config, cat, janus_config_type_item, "use_limiter");
 			janus_config_item *audio_active_packets = janus_config_get(config, cat, janus_config_type_item, "audio_active_packets");
 			janus_config_item *audio_level_average = janus_config_get(config, cat, janus_config_type_item, "audio_level_average");
 			janus_config_item *default_expectedloss = janus_config_get(config, cat, janus_config_type_item, "default_expectedloss");
@@ -2741,6 +2817,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 					continue;
 			}
 			audiobridge->spatial_audio = spatial && spatial->value && janus_is_true(spatial->value);
+			audiobridge->use_limiter = use_limiter && use_limiter->value && janus_is_true(use_limiter->value);
 			audiobridge->audiolevel_ext = TRUE;
 			if(audiolevel_ext != NULL && audiolevel_ext->value != NULL)
 				audiobridge->audiolevel_ext = janus_is_true(audiolevel_ext->value);
@@ -3264,6 +3341,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_t *mjrsdir = json_object_get(root, "mjrs_dir");
 		json_t *allowrtp = json_object_get(root, "allow_rtp_participants");
 		json_t *permanent = json_object_get(root, "permanent");
+		json_t *use_limiter = json_object_get(root, "use_limiter");
 		if(allowed) {
 			/* Make sure the "allowed" array only contains strings */
 			gboolean ok = TRUE;
@@ -3390,6 +3468,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		audiobridge->spatial_audio = spatial ? json_is_true(spatial) : FALSE;
 		audiobridge->audiolevel_ext = audiolevel_ext ? json_is_true(audiolevel_ext) : TRUE;
 		audiobridge->audiolevel_event = audiolevel_event ? json_is_true(audiolevel_event) : FALSE;
+		audiobridge->use_limiter = use_limiter ? json_is_true(use_limiter) : FALSE;
 		if(audiobridge->audiolevel_event) {
 			audiobridge->audio_active_packets = 100;
 			if(json_integer_value(audio_active_packets) > 0) {
@@ -3579,6 +3658,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
 				}
 			}
+			if (audiobridge->use_limiter)
+				janus_config_add(config, c, janus_config_item_create("use_limiter", "true"));
 			if(audiobridge->allow_plainrtp)
 				janus_config_add(config, c, janus_config_item_create("allow_rtp_participants", "true"));
 			if(audiobridge->groups) {
@@ -3760,6 +3841,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
 				}
 			}
+			if (audiobridge->use_limiter)
+				janus_config_add(config, c, janus_config_item_create("use_limiter", "true"));
 			if(audiobridge->allow_plainrtp)
 				janus_config_add(config, c, janus_config_item_create("allow_rtp_participants", "true"));
 			if(audiobridge->groups) {
@@ -8510,6 +8593,22 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		}
 	}
 
+	/* For audio limiter we split frame in subframes */
+	int samples_in_sub_frame = 0;
+	float *per_sample_scaling_factors = NULL;
+	float *envelope = NULL;
+	float *scaling_factors = NULL;
+	uint32_t limiterBufferSize = 0;
+	float filter_state_level = K_INITIAL_FILTER_STATE_LEVEL;
+	float last_scaling_factor = 1.f;
+	/* In case audio limiter enabled, we need a buffer for it and some values */
+	if (audiobridge->use_limiter) {
+		samples_in_sub_frame = samples / K_SUB_FRAMES_IN_FRAME;
+		per_sample_scaling_factors = g_malloc0((audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES) * sizeof(float));
+		envelope = g_malloc0(K_SUB_FRAMES_IN_FRAME * sizeof(float));
+		scaling_factors = g_malloc0((K_SUB_FRAMES_IN_FRAME + 1) * sizeof(float));
+	}
+
 	/* Base RTP packets, in case there are forwarders involved */
 	gboolean have_opus[JANUS_AUDIOBRIDGE_MAX_GROUPS+1],
 		have_alaw[JANUS_AUDIOBRIDGE_MAX_GROUPS+1],
@@ -8536,6 +8635,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	int i=0;
 	int count = 0, rf_count = 0, pf_count = 0, prev_count = 0;
 	int lgain = 0, rgain = 0, diff = 0;
+	int mix_count = 0, sample_in_sub_frame = 0, sub_frame = 0;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&audiobridge->destroyed)) {
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
@@ -8679,6 +8779,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 							}
 						}
 					}
+					mix_count++;
 				} else {
 					/* Add to the group submix */
 					int index = p->group-1;
@@ -8803,6 +8904,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 							buffer[i] += (resampled[i]*p->volume_gain)/100;
 						}
 					}
+					mix_count++;
 				} else {
 					/* Add to the group submix */
 					index = p->group-1;
@@ -8825,13 +8927,99 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			for(index=0; index<groups_num; index++) {
 				for(i=0; i<samples; i++)
 					buffer[i] += *(groupBuffers + index*samples + i);
+				mix_count++;
 			}
+		}
+		/* If we use limiter we should initialize it if we have more than 2 tracks mixed or we have more than 1 track mixed and recording */
+		if (audiobridge->use_limiter && (mix_count > 2 || (audiobridge->recording && mix_count > 1))) {
+			/* Compute max envelope without smoothing. */
+			for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
+				for (sample_in_sub_frame = 0; sample_in_sub_frame < samples_in_sub_frame; ++sample_in_sub_frame) {
+					envelope[sub_frame] = fmax(envelope[sub_frame], fabs(buffer[sub_frame * samples_in_sub_frame + sample_in_sub_frame]));
+				}
+			}
+			/* Make sure envelope increases happen one step earlier so that the
+			 * corresponding *gain decrease* doesn't miss a sudden signal
+			 *  increase due to interpolation.
+			 */
+			for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME  - 1; ++sub_frame) {
+				if (envelope[sub_frame] < envelope[sub_frame + 1]) {
+				envelope[sub_frame] = envelope[sub_frame + 1];
+				}
+			}
+			/* Add attack / decay smoothing. */
+			for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
+				const float envelope_value = envelope[sub_frame];
+				if (envelope_value > filter_state_level) {
+					envelope[sub_frame] = envelope_value * (1 - K_ATTACK_FILTER_CONSTANT) + filter_state_level * K_ATTACK_FILTER_CONSTANT;
+				} else {
+					envelope[sub_frame] = envelope_value * (1 - K_DECAY_FILTER_CONSTANT) + filter_state_level * K_DECAY_FILTER_CONSTANT;
+				}
+				filter_state_level = envelope[sub_frame];
+			}
+			scaling_factors[0] = last_scaling_factor;
+			for (i = 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
+				const float input_level = envelope[i];								
+				if (input_level <= approximation_params_x[0]) {
+					/* Identity region. */
+					scaling_factors[i+1] = 1.0f;
+				} else if (input_level >= K_MAX_INPUT_LEVEL_LINEAR) {
+					/* Saturating lower bound. The saturing samples exactly hit the clipping level.
+					 * This method achieves has the lowest harmonic distorsion, but it
+					 * may reduce the amplitude of the non-saturating samples too much.
+					 */
+					scaling_factors[i+1] = 32768.f / input_level;
+				} else {
+					/* Knee and limiter regions; find the linear piece index. Searching in [0, K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS) */
+					size_t left = 0;
+					size_t right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
+					while (left < right) {
+						size_t mid = left + (right - left) / 2;
+						if (approximation_params_x[mid] < input_level)
+							left = mid + 1;
+						else
+							right = mid;
+					}
+					/* Now left points to first element that is >= input_level, we need a previous element */
+					const size_t index = (left > 0) ? left - 1 : 0;
+					/* Piece-wise linear interploation. */
+					const float gain = approximation_params_m[index] * input_level + approximation_params_q[index];
+					scaling_factors[i+1] = gain;
+				}
+			}
+			const int is_attack = scaling_factors[0] > scaling_factors[1];
+			if (is_attack) {
+				for (int i = 0; i < samples_in_sub_frame; ++i) {
+					float t = (float)i / samples_in_sub_frame;
+					per_sample_scaling_factors[i] = powf(1.0f - t, K_ATTACK_FIRST_SUB_FRAME_INTERPOLATION_POWER) * (scaling_factors[0] - scaling_factors[1]) + scaling_factors[1];
+				}
+			}
+			for (int i = is_attack ? 1 : 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
+				const int subframe_start = i * samples_in_sub_frame;
+				const float scaling_start = scaling_factors[i];
+				const float scaling_end = scaling_factors[i + 1];
+				const float scaling_diff = (scaling_end - scaling_start) / samples_in_sub_frame;
+				
+				for (int j = 0; j < samples_in_sub_frame; ++j) {
+					per_sample_scaling_factors[subframe_start + j] = scaling_start + scaling_diff * j;
+				}
+			}
+			last_scaling_factor = scaling_factors[K_SUB_FRAMES_IN_FRAME];
 		}
 		/* Are we recording the mix? (only do it if there's someone in, though...) */
 		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) {
+			/* If we use limiter and we mixed more than 1 track, apply it */
+			if (audiobridge->use_limiter && mix_count > 1) {
+				for(i=0; i<samples; i++) {
+					outBuffer[i] = (int)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
+				}
+			}
+			/* Clamp values that are outside int16 boundaries */
 			for(i=0; i<samples; i++) {
-				/* FIXME Smoothen/Normalize instead of truncating? */
-				outBuffer[i] = buffer[i];
+				if (outBuffer[i] > 32767)
+					outBuffer[i] = 32767;
+				else if (outBuffer[i] < -32768)
+					outBuffer[i] = -32768;
 			}
 			fwrite(outBuffer, sizeof(opus_int16), samples, audiobridge->recording);
 			/* Every 5 seconds we update the wav header */
@@ -8900,9 +9088,20 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					}
 				}
 			}
-			for(i=0; i<samples; i++)
-				/* FIXME Smoothen/Normalize instead of truncating? */
-				outBuffer[i] = sumBuffer[i];
+
+			/* If we use limiter and sumBuffer contains mix of more than 1 track (mix_count - 1 > 1), apply it */
+			if (audiobridge->use_limiter && mix_count > 2) {
+				for(i=0; i<samples; i++)
+					outBuffer[i] = (int)(sumBuffer[i] * per_sample_scaling_factors[i] + 0.5f);
+			}
+			/* Clamp values that are outside int16 boundaries */
+			for(i=0; i<samples; i++) {
+				if (outBuffer[i] > 32767)
+					outBuffer[i] = 32767;
+				else if (outBuffer[i] < -32768)
+					outBuffer[i] = -32768;
+			}
+
 			/* Enqueue this mixed frame for encoding in the participant thread */
 			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
 			mixedpkt->data = g_malloc(samples*2);
@@ -9065,6 +9264,9 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	g_free(rtpbuffer);
 	g_free(rtpalaw);
 	g_free(rtpulaw);
+	g_free(envelope);
+	g_free(per_sample_scaling_factors);
+	g_free(scaling_factors);
 	g_free(groupBuffers);
 	if(groupEncoders) {
 		for(index=0; index<groups_num; index++) {
