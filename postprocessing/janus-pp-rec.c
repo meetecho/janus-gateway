@@ -166,6 +166,8 @@ static int restamp_min_th = DEFAULT_RESTAMP_MIN_TH;
 #define DEFAULT_RESTAMP_PACKETS 10
 static int restamp_packets = DEFAULT_RESTAMP_PACKETS;
 
+static gboolean ignore_rtp_ts;
+
 /* Signal handler */
 static void janus_pp_handle_signal(int signum) {
 	working = 0;
@@ -338,6 +340,8 @@ int main(int argc, char *argv[]) {
 		if(val >= 0)
 			restamp_min_th = val;
 	}
+	if(args_info.ignore_rtp_ts_flag)
+		ignore_rtp_ts = TRUE;
 	/* Evaluate arguments to find source and target */
 	char *source = NULL, *destination = NULL, *setting = NULL;
 	int i=0;
@@ -394,6 +398,8 @@ int main(int argc, char *argv[]) {
 			JANUS_LOG(LOG_INFO, "Video orientation extension ID: %d\n", video_orient_extmap_id);
 		if(silence_distance > 0)
 			JANUS_LOG(LOG_INFO, "RTP silence suppression distance: %d\n", silence_distance);
+		if(ignore_rtp_ts)
+			JANUS_LOG(LOG_INFO, "Will ignore RTP timestamps, and use arrival times for timing\n");
 		JANUS_LOG(LOG_INFO, "\n");
 		if(source != NULL)
 			JANUS_LOG(LOG_INFO, "Source file: %s\n", source);
@@ -1209,14 +1215,34 @@ int main(int argc, char *argv[]) {
 	int rate = video ? 90000 : 48000;
 	if(g711 || g722)
 		rate = 8000;
-	double ts = 0.0, pts = 0.0;
+	double ts = 0.0, pts = 0.0, orig_ts = 0.0;
+	uint64_t orig_rtp_ts = 0, last_rtp_ts = 0, new_rtp_ts = list->ts;
 	while(tmp) {
 		count++;
 		if(!data) {
 			ts = (double)(tmp->ts - list->ts)/(double)rate;
 			pts = (double)tmp->p_ts/1000;
-			JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%.2fs pts=%.2fs\n",
-				tmp->offset, tmp->len, tmp->seq, tmp->ts, ts, pts);
+			if(!ignore_rtp_ts) {
+				JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%.2fs pts=%.2fs\n",
+					tmp->offset, tmp->len, tmp->seq, tmp->ts, ts, pts);
+			} else {
+				/* We need to rewrite the timestamps so that they match
+				 * the actual interarrival of packets, all taking into
+				 * account the fact that, for video, we'll need some
+				 * packets to have all the same RTP pseudo-timestamps */
+				orig_rtp_ts = tmp->ts;
+				orig_ts = ts;
+				if(orig_rtp_ts != last_rtp_ts) {
+					/* Calculate a new RTP timestamp */
+					new_rtp_ts = list->ts + ((uint64_t)tmp->p_ts * (rate/1000));
+				}
+				tmp->ts = new_rtp_ts;
+				ts = (double)(tmp->ts - list->ts)/(double)rate;
+				JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64" (orig=%"SCNu64"), time=%.2fs (orig=%.2fs) pts=%.2fs\n",
+					tmp->offset, tmp->len, tmp->seq, tmp->ts, orig_rtp_ts, ts, orig_ts, pts);
+				if(orig_rtp_ts != last_rtp_ts)
+					last_rtp_ts = orig_rtp_ts;
+			}
 		} else {
 			ts = (double)tmp->ts/G_USEC_PER_SEC;
 			JANUS_LOG(LOG_VERB, "[%10lu][%4d] time=%.2fs\n", tmp->offset, tmp->len, ts);
