@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.15.3] - 2025-10-21
+
+- Refactored keyframe buffering in Streaming plugin to store following deltas too (thanks [Byborg](https://www.byborgenterprises.com/)!) [[PR-3576](https://github.com/meetecho/janus-gateway/pull/3576)]
+- Added optional events for RTSP disconnections/reconnections in the Streaming plugin [[PR-3578](https://github.com/meetecho/janus-gateway/pull/3578)]
+- Fixed small leak when recording Streaming mountpoints
+- Fixed rare crash in AudioBridge when notifying participants [[PR-3589](https://github.com/meetecho/janus-gateway/pull/3589)]
+- Added option for managing ringing manually in the SIP plugin (thanks @adnanel!) [[PR-3556](https://github.com/meetecho/janus-gateway/pull/3556)]
+- Save custom headers and send them on SIP hangup event (thanks @kenangenjac!) [[PR-3558](https://github.com/meetecho/janus-gateway/pull/3558)]
+- Fix small memory leak in SIP plugin (thanks @oleksandr-mihal-zultys!) [[PR-3566](3566)]
+- Added support for Linux cooked capture v2 to pcap2mjr
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.15.2] - 2025-07-10
 
 - Added workaround to potential libnice issue
