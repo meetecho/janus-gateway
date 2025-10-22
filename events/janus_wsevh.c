@@ -177,7 +177,9 @@ typedef struct janus_wsevh_client {
 } janus_wsevh_client;
 static janus_wsevh_client *ws_client = NULL;
 static struct lws *wsi = NULL;
+#if (LWS_LIBRARY_VERSION_MAJOR < 3)
 static janus_mutex writable_mutex = JANUS_MUTEX_INITIALIZER;
+#endif
 
 static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len);
 static struct lws_protocols protocols[] = {
