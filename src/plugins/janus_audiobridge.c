@@ -8604,7 +8604,6 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	float *per_sample_scaling_factors = NULL;
 	float *envelope = NULL;
 	float *scaling_factors = NULL;
-	uint32_t limiterBufferSize = 0;
 	float filter_state_level = K_INITIAL_FILTER_STATE_LEVEL;
 	float last_scaling_factor = 1.f;
 	opus_int32 sample = 0;
