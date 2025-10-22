@@ -6459,6 +6459,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				break;
 			}
 			janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+			janus_refcount_decrease(&ps->ref);
 			temp = temp->next;
 		}
 		janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
