@@ -9011,15 +9011,24 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			/* If we use limiter and we mixed more than 1 track, apply it */
 			if (audiobridge->use_limiter && mix_count > 1) {
 				for(i=0; i<samples; i++) {
-					outBuffer[i] = (int)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
+					opus_int32 sample = (opus_int32)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
+					if(sample > 32767)
+						sample = 32767;
+					else if(sample < -32768)
+						sample = -32768;
+					outBuffer[i] = sample;
 				}
 			}
-			/* Clamp values that are outside int16 boundaries */
-			for(i=0; i<samples; i++) {
-				if (outBuffer[i] > 32767)
-					outBuffer[i] = 32767;
-				else if (outBuffer[i] < -32768)
-					outBuffer[i] = -32768;
+			else {
+				/* Clamp values that are outside int16 boundaries */
+				for(i=0; i<samples; i++) {
+					opus_int32 sample = (opus_int32)buffer[i];
+					if(sample > 32767)
+						sample = 32767;
+					else if(sample < -32768)
+						sample = -32768;
+					outBuffer[i] = sample;
+				}
 			}
 			fwrite(outBuffer, sizeof(opus_int16), samples, audiobridge->recording);
 			/* Every 5 seconds we update the wav header */
@@ -9092,14 +9101,23 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			/* If we use limiter and sumBuffer contains mix of more than 1 track (mix_count - 1 > 1), apply it */
 			if (audiobridge->use_limiter && mix_count > 2) {
 				for(i=0; i<samples; i++)
-					outBuffer[i] = (int)(sumBuffer[i] * per_sample_scaling_factors[i] + 0.5f);
-			}
-			/* Clamp values that are outside int16 boundaries */
-			for(i=0; i<samples; i++) {
-				if (outBuffer[i] > 32767)
-					outBuffer[i] = 32767;
-				else if (outBuffer[i] < -32768)
-					outBuffer[i] = -32768;
+					opus_int32 sample = (opus_int32)(sumBuffer[i] * per_sample_scaling_factors[i] + 0.5f);
+					if(sample > 32767)
+						sample = 32767;
+					else if(sample < -32768)
+						sample = -32768;
+					outBuffer[i] = sample;
+				}
+			} else {
+				/* Clamp values that are outside int16 boundaries */
+				for(i=0; i<samples; i++) {
+					opus_int32 sample = (opus_int32)sumBuffer[i];
+					if(sample > 32767)
+						sample = 32767;
+					else if(sample < -32768)
+						sample = -32768;
+					outBuffer[i] = sample;
+				}
 			}
 
 			/* Enqueue this mixed frame for encoding in the participant thread */
