@@ -51,6 +51,8 @@
 #				optionally with a fmtp attribute to match (codec/fmtp properties).
 #				If not provided, all codecs enabled in the room are offered, with no fmtp.
 #				Notice that the fmtp is parsed, and only a few codecs are supported.
+# dummy_e2ee = true|false (whether the dummy publisher should be advertised as supporting
+#			end-to-end encryption; default=value of room's require_e2ee)
 # threads = number of threads to assist with the relaying of publishers in the room; as
 #			in the Streaming plugin, this setting can help if you expect a lot of subscribers
 #			that may cause the plugin to slow down and fail to catch up (default=0)

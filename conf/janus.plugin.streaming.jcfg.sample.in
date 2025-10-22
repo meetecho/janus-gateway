@@ -1,3 +1,14 @@
+# You can configure static mountpoints that should be made available
+# when Janus starts in this configuration file. The syntax and the
+# available properties are listed below. Notice that, for the sake of
+# simplicity, only the global and legacy properties are listed in the
+# following text: you can use the new stream-based syntax as well (see
+# the 'multistream-test' example below for reference), but in that case
+# all properties whose names start with audio/video/data should be
+# renamed to have that prefix removed. Please refer to the Streaming
+# plugin documentation for more details, as the static configuration
+# in that case mirrors the dynamic API syntax.
+#
 # stream-name: {
 # type = rtp|live|ondemand|rtsp
 #        rtp = stream originated by an external tool (e.g., gstreamer or
@@ -36,8 +47,6 @@
 # videoiface = network interface or IP address to bind to, if any (binds to all otherwise)
 # videopt = <video RTP payload type> (e.g., 100)
 # videocodec = name of the video codec (e.g., vp8)
-# videobufferkf = true|false (whether the plugin should store the latest
-#		keyframe and send it immediately for new viewers, EXPERIMENTAL)
 # videosimulcast = true|false (do|don't enable video simulcasting)
 # videoport2 = second local port for receiving video frames (only for rtp, and simulcasting)
 # videoport3 = third local port for receiving video frames (only for rtp, and simulcasting)
@@ -58,6 +67,39 @@
 # threads = number of threads to assist with the relaying part, which can help
 #		if you expect a lot of viewers that may cause the RTP receiving part
 #		in the Streaming plugin to slow down and fail to catch up (default=0)
+#
+# Note: by default, the Streaming plugin only forwards the latest packets
+# it receives, never performing any buffering. This means that, for video
+# streams, new viewers may initially start receiving frames they cannot
+# decode right away, since they'd refer to keyframes that were sent before
+# they joined. In such scenarios, they'd have to wait until the next keyframe
+# arrives before video can be decoded and displayed, which could take a
+# while depending on the frequency of keyframes encoded by the source.
+# For forwarded streams (e.g., from the VideoRoom) this can be easily
+# addressed by using the RTCP support. For sources that can't or won't
+# honour dynamic keyframe requests, a partial and experimental solution
+# might be storing the latest keyframe and the following deltas, to send
+# to new viewers before new live packet are delivered. This feature can
+# be enabled in the Streaming plugin using the 'bufferkf_ms' and/or
+# the 'bufferkf_bytes' properties, which configure how many milliseconds
+# or how many bytes (in total) should be stored any time a keyframe is
+# received: data exceeding those limits won't be stored, until a new
+# keyframe arrives. The two properties are not mutually exclusive, and
+# can be configured at the same time: in that case, the first one that
+# hits the limit stops the buffering of the current keyframe. Notice
+# that, again, this feature should be considered highly experimental,
+# and that it comes with a few considerable drawbacks: the most obvious
+# one is that, depending on how many packets were stored, new viewers
+# may be hit with a considerable burst of data as soon as they connect,
+# which may negatively impact performance or even cause issues of its own.
+# Also notice that this is a global, and not per-stream, feature: this
+# means that if you create a mountpoint with two video streams, the
+# feature will impact both of them, and both streams will have a buffer
+# of their own. This also works for RTSP mountpoints.
+#	bufferkf_ms = how many milliseconds of packets to store, starting
+#					from a new keyframe (default=0)
+#	bufferkf_bytes = how many bytes of packets to store, starting
+#					from a new keyframe (default=0)
 #
 # In case you want to use SRTP for your RTP-based mountpoint, you'll need
 # to configure the SRTP-related properties as well, namely the suite to
@@ -106,6 +148,8 @@
 # 		formula: timeout = min(session_timeout, rtsp_session_timeout / 2). (default=0s)
 # rtsp_timeout = communication timeout (CURLOPT_TIMEOUT) for cURL call gathering the RTSP information (default=10s)
 # rtsp_conn_timeout = connection timeout for cURL (CURLOPT_CONNECTTIMEOUT) call gathering the RTSP information (default=5s)
+# rtsp_notify_changes = if set to true, will send an event to connected users when the RTSP session
+#		gets disconnected, and when it's reconnected (default=false)
 #
 # Notice that, for 'rtsp' mountpoints, normally the plugin uses the exact
 # SDP codec and fmtp attributes the remote camera or RTSP server sent.
@@ -217,7 +261,8 @@ multistream-test: {
 file-live-sample: {
 	type = "live"
 	id = 2
-	description = "a-law file source (radio broadcast)"
+	description = "Pseudo-live radio broadcast (a-law file source)"
+	metadata = "This is a pseudo-live stream, whose source is actually a static Opus file on the disk: the Streaming plugin goes through the file in real-time, and sends the frames via RTP. It's pseudo-live because it progresses even when there are no subscribers, and all subscribers get the same audio."
 	filename = "@streamdir@/radio.alaw"
 	audio = true
 	video = false
@@ -227,17 +272,21 @@ file-live-sample: {
 #
 # This is another sample of the file-based streaming support, but using
 # the "ondemand" type instead. In this case, the file we're streaming
-# contains raw mu-Law (still G.711) frames. Since this is "ondemand",
+# is an Opus file containing stereo opus frames. Since this is "ondemand",
 # anyone subscribing to this mountpoint will listen to their own version
 # of the stream, meaning that it will start from the beginning and then
-# loop when it's over. On-demand streaming supports Opus files as well.
+# loop when it's over. On-demand streaming supports G.711 files as well.
 #
 file-ondemand-sample: {
 	type = "ondemand"
 	id = 3
-	description = "mu-law file source (music)"
-	filename = "@streamdir@/music.mulaw"
+	description = "Remembrance, by Lorenzo Miniero (stereo music, Opus)"
+	metadata = "This is an on-demand stream, whose source is actually a static Opus file on the disk: when a subscriber opens it, the Streaming plugin starts from the beginning and goes through the file in real-time, and sends the frames via RTP. Unlike the pseudo-live sample, each subscriber opening it will experience a personal playout."
+	filename = "@streamdir@/remembrance.opus"
 	audio = true
+	audiopt = 100
+	audiortpmap = "opus/48000/2"
+	audiofmtp = "stereo=1"
 	video = false
 	secret = "adminpwd"
 }

@@ -48,6 +48,8 @@ void janus_plugin_rtp_extensions_reset(janus_plugin_rtp_extensions *extensions) 
 		extensions->max_delay = -1;
 		extensions->dd_len = 0;
 		memset(extensions->dd_content, 0, sizeof(extensions->dd_content));
+		extensions->spatial_layers = -1;
+		extensions->temporal_layers = -1;
 	}
 }
 void janus_plugin_rtp_reset(janus_plugin_rtp *packet) {

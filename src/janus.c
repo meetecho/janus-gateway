@@ -509,6 +509,7 @@ int janus_log_level = LOG_INFO;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
 char *janus_log_global_prefix = NULL;
+static int janus_log_rotate_sig = 0;
 int lock_debug = 0;
 #ifdef REFCOUNT_DEBUG
 int refcount_debug = 1;
@@ -517,8 +518,16 @@ int refcount_debug = 0;
 #endif
 
 
-/*! \brief Signal handler (just used to intercept CTRL+C and SIGTERM) */
+/*! \brief Signal handler (just used to intercept CTRL+C, SIGTERM and SIGUSR1) */
 static void janus_handle_signal(int signum) {
+	if(signum == janus_log_rotate_sig && janus_log_rotate_sig > 0) {
+		if(stop_signal > 0)
+			/* Skip log rotation while stopping */
+			return;
+		janus_log_reload();
+		return;
+	}
+	/* If we got here it's either a SIGINT or a SIGTERM */
 	stop_signal = signum;
 	switch(g_atomic_int_get(&stop)) {
 		case 0:
@@ -639,7 +648,7 @@ static janus_callbacks janus_handler_plugin =
 
 
 /* Core Sessions */
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 static GHashTable *sessions = NULL;
 static GMainContext *sessions_watchdog_context = NULL;
 
@@ -663,6 +672,7 @@ static void janus_session_free(const janus_refcount *session_ref) {
 		janus_request_destroy(session->source);
 		session->source = NULL;
 	}
+	janus_mutex_destroy(&session->mutex);
 	g_free(session);
 }
 
@@ -718,8 +728,8 @@ static gboolean janus_check_sessions(gpointer user_data) {
 					if(janus_events_is_enabled())
 						janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, JANUS_EVENT_SUBTYPE_NONE,
 							session->session_id, "timeout", NULL);
-					/* FIXME Is this safe? apparently it causes hash table errors on the console */
 					g_hash_table_iter_remove(&iter);
+					g_atomic_int_dec_and_test(&sessions_num);
 					janus_session_destroy(session);
 				}
 			}
@@ -1591,12 +1601,14 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 					janus_request_ice_handle_answer(handle, jsep_sdp);
 					/* Check if the answer does contain the mid/abs-send-time/twcc extmaps */
-					gboolean do_mid = FALSE, do_twcc = FALSE, do_dd = FALSE, do_abs_send_time = FALSE, do_abs_capture_time = FALSE;
+					gboolean do_mid = FALSE, do_twcc = FALSE, do_dd = FALSE, do_abs_send_time = FALSE,
+						do_abs_capture_time = FALSE, do_video_layers_alloc = FALSE;
 					GList *temp = parsed_sdp->m_lines;
 					while(temp) {
 						janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 						gboolean have_mid = FALSE, have_twcc = FALSE, have_dd = FALSE,
-							have_abs_send_time = FALSE, have_abs_capture_time = FALSE;
+							have_abs_send_time = FALSE, have_abs_capture_time = FALSE,
+							have_video_layers_alloc = FALSE;
 						GList *tempA = m->attributes;
 						while(tempA) {
 							janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
@@ -1611,6 +1623,8 @@ int janus_process_incoming_request(janus_request *request) {
 									have_abs_send_time = TRUE;
 								else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME))
 									have_abs_capture_time = TRUE;
+								else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_LAYERS))
+									have_video_layers_alloc = TRUE;
 							}
 							tempA = tempA->next;
 						}
@@ -1619,6 +1633,7 @@ int janus_process_incoming_request(janus_request *request) {
 						do_dd = do_dd || have_dd;
 						do_abs_send_time = do_abs_send_time || have_abs_send_time;
 						do_abs_capture_time = do_abs_capture_time || have_abs_capture_time;
+						do_video_layers_alloc = do_video_layers_alloc || have_video_layers_alloc;
 						temp = temp->next;
 					}
 					if(!do_mid && handle->pc)
@@ -1633,6 +1648,8 @@ int janus_process_incoming_request(janus_request *request) {
 						handle->pc->abs_send_time_ext_id = 0;
 					if(!do_abs_capture_time && handle->pc)
 						handle->pc->abs_capture_time_ext_id = 0;
+					if(!do_video_layers_alloc && handle->pc)
+						handle->pc->videolayers_ext_id = 0;
 				} else {
 					/* Check if the mid RTP extension is being negotiated */
 					handle->pc->mid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_MID);
@@ -1649,6 +1666,8 @@ int janus_process_incoming_request(janus_request *request) {
 					handle->pc->abs_send_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
 					/* Check if the abs-capture-time ID extension is being negotiated */
 					handle->pc->abs_capture_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME);
+					/* Check if the video-layers-allocation ID extension is being negotiated */
+					handle->pc->videolayers_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_LAYERS);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->pc->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -1717,6 +1736,8 @@ int janus_process_incoming_request(janus_request *request) {
 					handle->pc->abs_send_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_SEND_TIME);
 					/* Check if the abs-capture-time ID extension is being negotiated */
 					handle->pc->abs_capture_time_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME);
+					/* Check if the video-layers-alloc ID extension is being negotiated */
+					handle->pc->videolayers_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_LAYERS);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->pc->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -2183,9 +2204,9 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
 			json_object_set_new(status, "log_timestamps", janus_log_timestamps ? json_true() : json_false());
 			json_object_set_new(status, "log_colors", janus_log_colors ? json_true() : json_false());
+			json_object_set_new(status, "log_rotate_sig", json_integer(janus_log_rotate_sig));
 			json_object_set_new(status, "locking_debug", lock_debug ? json_true() : json_false());
 			json_object_set_new(status, "refcount_debug", refcount_debug ? json_true() : json_false());
-			json_object_set_new(status, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "min_nack_queue", json_integer(janus_get_min_nack_queue()));
 			json_object_set_new(status, "nack-optimizations", janus_is_nack_optimizations_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "no_media_timer", json_integer(janus_get_no_media_timer()));
@@ -2312,27 +2333,6 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "log_colors", janus_log_colors ? json_true() : json_false());
-			/* Send the success reply */
-			ret = janus_process_success(request, reply);
-			goto jsondone;
-		} else if(!strcasecmp(message_text, "set_libnice_debug")) {
-			/* Enable/disable the libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
-			JANUS_VALIDATE_JSON_OBJECT(root, debug_parameters,
-				error_code, error_cause, FALSE,
-				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
-			if(error_code != 0) {
-				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
-				goto jsondone;
-			}
-			json_t *debug = json_object_get(root, "debug");
-			if(json_is_true(debug)) {
-				janus_ice_debugging_enable();
-			} else {
-				janus_ice_debugging_disable();
-			}
-			/* Prepare JSON reply */
-			json_t *reply = janus_create_message("success", 0, transaction_text);
-			json_object_set_new(reply, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -3277,6 +3277,8 @@ json_t *janus_admin_peerconnection_summary(janus_ice_peerconnection *pc) {
 		json_object_set_new(se, JANUS_RTP_EXTMAP_PLAYOUT_DELAY, json_integer(pc->playoutdelay_ext_id));
 	if(pc->dependencydesc_ext_id > 0)
 		json_object_set_new(se, JANUS_RTP_EXTMAP_DEPENDENCY_DESC, json_integer(pc->dependencydesc_ext_id));
+	if(pc->videolayers_ext_id > 0)
+		json_object_set_new(se, JANUS_RTP_EXTMAP_VIDEO_LAYERS, json_integer(pc->videolayers_ext_id));
 	json_object_set_new(w, "extensions", se);
 	json_t *bwe = json_object();
 	json_object_set_new(bwe, "twcc", pc->do_transport_wide_cc ? json_true() : json_false());
@@ -3493,8 +3495,13 @@ void janus_transport_gone(janus_transport *plugin, janus_transport_session *tran
 				JANUS_LOG(LOG_VERB, "  -- Session %"SCNu64" will be over if not reclaimed\n", session->session_id);
 				JANUS_LOG(LOG_VERB, "  -- Marking Session %"SCNu64" as over\n", session->session_id);
 				if(reclaim_session_timeout < 1) { /* Reclaim session timeouts are disabled */
+					/* Notify event handlers, if needed */
+					if(janus_events_is_enabled())
+						janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, JANUS_EVENT_SUBTYPE_NONE,
+							session->session_id, "destroyed", NULL);
 					/* Mark the session as destroyed */
 					janus_session_destroy(session);
+					g_atomic_int_dec_and_test(&sessions_num);
 					g_hash_table_iter_remove(&iter);
 				} else {
 					/* Set flag for transport_gone. The Janus sessions watchdog will clean this up if not reclaimed */
@@ -3835,8 +3842,9 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		}
 		/* Make sure we don't send the rid/repaired-rid attributes when offering ourselves */
 		int mindex = 0;
-		int mid_ext_id = 0, transport_wide_cc_ext_id = 0, abs_send_time_ext_id = 0, abs_capture_time_ext_id = 0,
-			audiolevel_ext_id = 0, videoorientation_ext_id = 0, playoutdelay_ext_id = 0, dependencydesc_ext_id = 0;
+		int mid_ext_id = 0, transport_wide_cc_ext_id = 0, abs_send_time_ext_id = 0,
+			abs_capture_time_ext_id = 0, audiolevel_ext_id = 0, videoorientation_ext_id = 0,
+			playoutdelay_ext_id = 0, dependencydesc_ext_id = 0, videolayers_ext_id = 0;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -3863,6 +3871,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 							playoutdelay_ext_id = atoi(a->value);
 						else if(strstr(a->value, JANUS_RTP_EXTMAP_DEPENDENCY_DESC))
 							dependencydesc_ext_id = atoi(a->value);
+						else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_LAYERS))
+							videolayers_ext_id = atoi(a->value);
 						else if(strstr(a->value, JANUS_RTP_EXTMAP_RID) ||
 								strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID)) {
 							m->attributes = g_list_remove(m->attributes, a);
@@ -3901,12 +3911,15 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->pc->playoutdelay_ext_id = playoutdelay_ext_id;
 		if(ice_handle->pc && ice_handle->pc->dependencydesc_ext_id != dependencydesc_ext_id)
 			ice_handle->pc->dependencydesc_ext_id = dependencydesc_ext_id;
+		if(ice_handle->pc && ice_handle->pc->videolayers_ext_id != videolayers_ext_id)
+			ice_handle->pc->videolayers_ext_id = videolayers_ext_id;
 		janus_mutex_unlock(&ice_handle->mutex);
 	} else {
 		/* Check if the answer does contain the mid/rid/repaired-rid/abs-send-time/twcc extmaps */
 		int mindex = 0;
 		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE,
-			do_dd = FALSE, do_twcc = FALSE, do_abs_send_time = FALSE, do_abs_capture_time = FALSE;
+			do_dd = FALSE, do_twcc = FALSE, do_abs_send_time = FALSE,
+			do_abs_capture_time = FALSE, do_video_layers_alloc = FALSE;
 		GList *temp = parsed_sdp->m_lines;
 		janus_mutex_lock(&ice_handle->mutex);
 		while(temp) {
@@ -3915,7 +3928,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				g_hash_table_lookup(ice_handle->pc->media, GUINT_TO_POINTER(mindex)) : NULL;
 			gboolean have_mid = FALSE, have_rid = FALSE, have_repaired_rid = FALSE,
 				have_twcc = FALSE, have_dd = FALSE, have_abs_send_time = FALSE,
-				have_abs_capture_time = FALSE, have_msid = FALSE;
+				have_abs_capture_time = FALSE, have_video_layers_alloc = FALSE, have_msid = FALSE;
 			int opusred_pt = -1;
 			GList *tempA = m->attributes;
 			while(tempA) {
@@ -3964,6 +3977,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						have_abs_send_time = TRUE;
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_ABS_CAPTURE_TIME))
 						have_abs_capture_time = TRUE;
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_LAYERS))
+						have_video_layers_alloc = TRUE;
 				} else if(m->type == JANUS_SDP_AUDIO && medium != NULL && medium->opusred_pt > 0 &&
 						a->name && a->value && !strcasecmp(a->name, "rtpmap") && strstr(a->value, "red/48000/2")) {
 					opusred_pt = atoi(a->value);
@@ -3999,6 +4014,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			do_dd = do_dd || have_dd;
 			do_abs_send_time = do_abs_send_time || have_abs_send_time;
 			do_abs_capture_time = do_abs_capture_time || have_abs_capture_time;
+			do_video_layers_alloc = do_video_layers_alloc || have_video_layers_alloc;
 			mindex++;
 			temp = temp->next;
 		}
@@ -4020,6 +4036,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->pc->abs_send_time_ext_id = 0;
 		if(!do_abs_capture_time && ice_handle->pc)
 			ice_handle->pc->abs_capture_time_ext_id = 0;
+		if(!do_video_layers_alloc && ice_handle->pc)
+			ice_handle->pc->videolayers_ext_id = 0;
 		janus_mutex_unlock(&ice_handle->mutex);
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
@@ -4521,6 +4539,30 @@ gint main(int argc, char *argv[]) {
 			logfile = item->value;
 	}
 
+	/* Set an optional signal handler for log rotation */
+	const char *log_rotate_sig = NULL;
+	if(options.log_rotate_sig) {
+		log_rotate_sig = options.log_rotate_sig;
+		janus_config_add(config, config_general, janus_config_item_create("log_rotate_sig", log_rotate_sig));
+	} else {
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "log_rotate_sig");
+		if(item && item->value)
+			log_rotate_sig = item->value;
+	}
+	if(log_rotate_sig != NULL) {
+		if(!strcasecmp(log_rotate_sig, "SIGUSR1")) {
+			janus_log_rotate_sig = SIGUSR1;
+		} else if(!strcasecmp(log_rotate_sig, "SIGHUP")) {
+			janus_log_rotate_sig = SIGHUP;
+		} else {
+			JANUS_LOG(LOG_WARN, "Unsupported signal for log rotation: %s\n", log_rotate_sig);
+		}
+		if(janus_log_rotate_sig > 0) {
+			JANUS_LOG(LOG_INFO, "Setting signal for log rotation: %s (%d)\n", log_rotate_sig, janus_log_rotate_sig);
+			signal(janus_log_rotate_sig, janus_handle_signal);
+		}
+	}
+
 	/* Check if we're going to daemonize Janus */
 	if(options.daemon) {
 		daemonize = TRUE;
@@ -4842,8 +4884,6 @@ gint main(int argc, char *argv[]) {
 		janus_config_add(config, config_nat, janus_config_item_create("ice_enforce_list", options.ice_enforce_list));
 	if(options.ice_ignore_list)
 		janus_config_add(config, config_nat, janus_config_item_create("ice_ignore_list", options.ice_ignore_list));
-	if(options.libnice_debug)
-		janus_config_add(config, config_nat, janus_config_item_create("nice_debug", "true"));
 	if(options.full_trickle)
 		janus_config_add(config, config_nat, janus_config_item_create("full_trickle", "true"));
 	if(options.ice_lite)
@@ -5263,8 +5303,9 @@ gint main(int argc, char *argv[]) {
 	item = janus_config_get(config, config_nat, janus_config_type_item, "nice_debug");
 	if(item && item->value && janus_is_true(item->value)) {
 		/* Enable libnice debugging */
-		janus_ice_debugging_enable();
+		JANUS_LOG(LOG_WARN,"nice_debug option is NOT SUPPORTED ANYMORE! Please set NICE_DEBUG and G_MESSAGES_DEBUG env vars when starting Janus\n");
 	}
+
 	if(stun_server == NULL && turn_server == NULL) {
 		/* No STUN and TURN server provided for Janus: make sure it isn't on a private address */
 		int num_ips = janus_get_public_ip_count();
@@ -5443,7 +5484,6 @@ gint main(int argc, char *argv[]) {
 
 	/* Sessions */
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
-	janus_mutex_init(&sessions_mutex);
 	/* Start the sessions timeout watchdog */
 	sessions_watchdog_context = g_main_context_new();
 	GMainLoop *watchdog_loop = g_main_loop_new(sessions_watchdog_context, FALSE);

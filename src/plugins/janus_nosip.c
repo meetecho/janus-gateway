@@ -395,6 +395,8 @@ static void janus_nosip_session_free(const janus_refcount *session_ref) {
 	janus_nosip_srtp_cleanup(session);
 	g_hash_table_destroy(session->media_byfd);
 	session->handle = NULL;
+	janus_mutex_destroy(&session->mutex);
+	janus_mutex_destroy(&session->rec_mutex);
 	g_free(session);
 	session = NULL;
 }

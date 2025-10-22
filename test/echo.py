@@ -30,7 +30,7 @@ class WebSocketClient():
                                            ping_interval=10,
                                            ping_timeout=10,
                                            compression=None)
-        if self.connection.open:
+        if self.connection.state == ws.State.OPEN:
             asyncio.ensure_future(self.receiveMessage())
             logger.info('WebSocket connected')
             return self
@@ -256,7 +256,7 @@ async def run(pc, player, session, bitrate=512000, record=False):
     await asyncio.sleep(5)
 
     # Check WebSocket status
-    assert session._websocket.connection.open
+    assert session._websocket.connection.state == ws.State.OPEN
 
     # Get RTC stats and check the status
     rtcstats = await pc.getStats()
@@ -307,7 +307,8 @@ if __name__ == '__main__':
     else:
         player = None
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(
             run(pc=pc, player=player, session=session)

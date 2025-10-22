@@ -60,7 +60,7 @@
 						end-to-end encryption context using the recently introduced
 						<a target="_blank" href="https://www.chromestatus.com/feature/6321945865879552">Insertable Streams</a>.</p>
 						<p>Specifically, this demo will prompt for a secret, and then use the same transform functions as
-						<a target="_blank" href="https://webrtc.github.io/samples/src/content/peerconnection/endtoend-encryption/">this official demo</a>
+						<a target="_blank" href="https://webrtc.github.io/samples/src/content/insertable-streams/endtoend-encryption/">this official demo</a>
 						to encrypt the media: this means Janus will NOT have access to the media, but
 						will still be able to pass the packets to the EchoTest plugin and send them
 						back, thus ensuring an end-to-end encryption of the content. In this context,
@@ -68,10 +68,11 @@
 						that if you see both local and remote video, then it's working as expected.
 						You'll probably want to then experiment with this feature by playing with
 						other plugins as well, e.g., the VideoRoom, for E2E-encrypted conferences.</p>
-						<p>Notice that at the time of writing, only video can be end-to-end encrypted,
-						and not audio. More importantly, at the moment this will only work if you're
-						using a recent of Chrome version that has been started either with the following flag:</p>
-						<pre class="card card-body bg-gray">--enable-experimental-web-platform-features --force-fieldtrials=WebRTC-GenericDescriptorAdvertised/Enabled/</pre>
+						<p>Notice that this demo only works on Chrome 86+ and makes use of
+						the Insertable Streams API running on the main thread. For using e2ee with
+						JavaScript workers or with non-Chromium browsers, please refer to
+						<a target="_blank" href="https://github.com/webrtc/samples/tree/gh-pages/src/content/insertable-streams/endtoend-encryption"> the official demo code</a>
+						or contact us.
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>

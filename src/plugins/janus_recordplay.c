@@ -23,9 +23,22 @@
  * recording data channel messages (which Janus and the .mjr format do
  * support), you should use a different plugin instead.
  *
- * The configuration process is quite easy: just choose where the
- * recordings should be saved. The same folder will also be used to list
- * the available recordings that can be replayed.
+ * The configuration process is relatively straightforward: in the simplest
+ * configuration, you just choose where the recordings should be saved.
+ * The same folder will also be used to list the available recordings that
+ * can be replayed.
+ *
+ * Notice that, by default, all recordings are public, which means any
+ * user connecting to the plugin and asking for a list of recordings will
+ * be able to obtain their IDs. Recordings can be marked as private to
+ * avoid that, meaning that users will only be able to consume such a
+ * recording if they're aware of its ID via out of band mechanisms.
+ * Marking a recording as private can be done in two different ways:
+ *
+ * -# via the API, that is when the recording is created;
+ * -# by setting the \c private property to \c true in the plugin
+ * configuration file, which will automatically mark all new recordings
+ * as private by default unless otherwise specified in the API request.
  *
  * \note The application creates a special file in INI format with
  * <tt>.nfo</tt> extension for each recording that is saved. This is necessary
@@ -39,6 +52,7 @@
  * 		[12345678]
  * 		name = My videoroom recording
  * 		date = 2014-10-14 17:11:26
+ * 		private = false
  * 		audio = videoroom-audio.mjr
  * 		video = videoroom-video.mjr
  *
@@ -51,25 +65,30 @@
  * (invalid JSON, invalid request) which will always result in a
  * synchronous error response even for asynchronous requests.
  *
- * \c list and \c update are synchronous requests, which means you'll
+ * \c list , \c update and \c configure are synchronous requests, which means you'll
  * get a response directly within the context of the transaction. \c list
  * lists all the available recordings, while \c update forces the plugin
  * to scan the folder of recordings again in case some were added manually
- * and not indexed in the meanwhile.
+ * and not indexed in the meanwhile. The \c configure request can be used
+ * to tweak some settings while recording a session.
  *
- * The \c record , \c play , \c start and \c stop requests instead are
+ * The \c record , \c play , \c start , \c pause , \c resume and \c stop requests instead are
  * all asynchronous, which means you'll get a notification about their
  * success or failure in an event. \c record asks the plugin to start
  * recording a session; \c play asks the plugin to prepare the playout
  * of one of the previously recorded sessions; \c start starts the
  * actual playout, and \c stop stops whatever the session was for, i.e.,
- * recording or replaying.
+ * recording or replaying. Recording sessions can also be dynamically
+ * paused and resumed using \c pause and \c resume : the pauses will be
+ * omitted from the recording, meaning recordings will not have holes
+ * in them, and will move from one section to the other with no pause.
  *
  * The \c list request has to be formatted as follows:
  *
 \verbatim
 {
-	"request" : "list"
+	"request" : "list",
+	"admin_key" : "<plugin administrator key; optional>"
 }
 \endverbatim
  *
@@ -106,11 +125,18 @@
 }
 \endverbatim
  *
+ * Notice that, as explained previously, the \c list request will only
+ * return the list of all recordings who were \b not marked as private.
+ * To return the list of private recordings as well, the right \c admin_key
+ * must be provided as well. In case no \c admin_key was configured,
+ * then the list of private recordings will never be returned.
+ *
  * The \c update request instead has to be formatted as follows:
  *
 \verbatim
 {
-	"request" : "update"
+	"request" : "update",
+	"admin_key" : "<plugin administrator key; mandatory, if configured>"
 }
 \endverbatim
  *
@@ -122,6 +148,10 @@
 }
 \endverbatim
  *
+ * Notice that, if an \c admin_key was configured in the configuration
+ * file, it is a mandatory property to pass in an \c update request as
+ * well.
+ *
  * Coming to the asynchronous requests, \c record has to be attached to
  * a JSEP offer (failure to do so will result in an error) and has to be
  * formatted as follows:
@@ -131,6 +161,7 @@
 	"request" : "record",
 	"id" : <unique numeric ID for the recording; optional, will be chosen by the server if missing>
 	"name" : "<Pretty name for the recording>",
+	"is_private" : <true|false, whether the recording should be listable; the default is what was configured in the plugin config file>,
 	"filename" : "<Base path/name for the file (media type and extension added by the plugin); optional>",
 	"audiocodec" : "<name of the audio codec we prefer for the recording; optional>",
 	"videocodec" : "<name of the video codec we prefer for the recording; optional>",
@@ -149,7 +180,73 @@
 	"recordplay" : "event",
 	"result": {
 		"status" : "recording",
-		"id" : <unique numeric ID>
+		"id" : <unique numeric ID>,
+		"is_private" : <true|false, same as the request>
+	}
+}
+\endverbatim
+ *
+ * Some properties of the recording session can be tweaked dynamically
+ * via the \c configure request, and has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "configure",
+	"video-bitrate-max", <bitrate cap that should be forced (via REMB) on the recorder>,
+	"video-keyframe-interval", <how often, in seconds, the plugin should send a PLI to the recorder to request a keyframe>
+}
+\endverbatim
+ *
+ * A successful request will result in a confirmation of :
+ *
+\verbatim
+{
+	"recordplay" : "configure",
+	"status" : "ok",
+	"settings" : {
+		"video-bitrate-max" : <current value of the property>,
+		"video-keyframe-interval" : <current value of the property>
+	}
+}
+\endverbatim
+ *
+ * You can pause the recording process (meaning that RTP packets will keep
+ * on flowing but will not be recorded to file) using the \c pause request:
+ *
+\verbatim
+{
+	"request" : "pause",
+}
+\endverbatim
+ *
+ * This will result in a \c paused status:
+ *
+\verbatim
+{
+	"recordplay" : "event",
+	"result": {
+		"status" : "paused",
+		"id" : <unique numeric ID of the paused recording>
+	}
+}
+\endverbatim
+ *
+ * To resume the recording process you can use the \c resume request:
+ *
+\verbatim
+{
+	"request" : "resume",
+}
+\endverbatim
+ *
+ * This will result in a \c resumed status:
+ *
+\verbatim
+{
+	"recordplay" : "event",
+	"result": {
+		"status" : "resumed",
+		"id" : <unique numeric ID of the paused recording>
 	}
 }
 \endverbatim
@@ -170,7 +267,8 @@
 	"recordplay" : "event",
 	"result": {
 		"status" : "stopped",
-		"id" : <unique numeric ID of the interrupted recording>
+		"id" : <unique numeric ID of the interrupted recording>,
+		"is_private" : <whether the interrupted recording is private>
 	}
 }
 \endverbatim
@@ -184,6 +282,11 @@
  * plugin to generate a JSON offer (in response to a \c play request),
  * which means you'll then have to provide a JSEP answer within the
  * context of the following \c start request which will close the circle.
+ * Notice that \c play can be used to replay private recordings as well:
+ * a recording marked as private is simply not returned when retrieving
+ * the list of available recordings, but if the user is aware of a
+ * recording ID through other means, then that recording can be replayed
+ * as all other non-private recordings.
  *
  * A \c play request has to be formatted as follows:
  *
@@ -250,14 +353,18 @@
 \endverbatim
  *
  * If the plugin detects a loss of the associated PeerConnection, whether
- * as a result of a \c stop request or because the 10 seconds passed, a
- * \c done result notification is triggered to inform the application
+ * as a result of a \c stop request or because the connection was closed,
+ * a \c done result notification is triggered to inform the application
  * the recording/playout session is over:
  *
 \verbatim
 {
 	"recordplay" : "event",
-	"result": "done"
+	"result": {
+		"status" : "done",
+		"id" : <unique numeric ID of the completed recording>,
+		"is_private" : <whether the completed recording is private>
+	}
 }
 \endverbatim
  */
@@ -282,8 +389,8 @@
 
 
 /* Plugin information */
-#define JANUS_RECORDPLAY_VERSION			4
-#define JANUS_RECORDPLAY_VERSION_STRING		"0.0.4"
+#define JANUS_RECORDPLAY_VERSION			5
+#define JANUS_RECORDPLAY_VERSION_STRING		"0.0.5"
 #define JANUS_RECORDPLAY_DESCRIPTION		"This is a trivial Record&Play plugin for Janus, to record WebRTC sessions and replay them."
 #define JANUS_RECORDPLAY_NAME				"JANUS Record&Play plugin"
 #define JANUS_RECORDPLAY_AUTHOR				"Meetecho s.r.l."
@@ -349,6 +456,12 @@ janus_plugin *create(void) {
 static struct janus_json_parameter request_parameters[] = {
 	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
+static struct janus_json_parameter list_parameters[] = {
+	{"admin_key", JSON_STRING, 0}
+};
+static struct janus_json_parameter adminkey_parameters[] = {
+	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
 static struct janus_json_parameter configure_parameters[] = {
 	{"video-bitrate-max", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"video-keyframe-interval", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
@@ -356,6 +469,7 @@ static struct janus_json_parameter configure_parameters[] = {
 static struct janus_json_parameter record_parameters[] = {
 	{"name", JSON_STRING, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_NONEMPTY},
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"is_private", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
 	{"audiocodec", JSON_STRING, 0},
 	{"videocodec", JSON_STRING, 0},
@@ -371,6 +485,8 @@ static struct janus_json_parameter play_parameters[] = {
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
+static gboolean private_recordings = FALSE;
+static char *admin_key = NULL;
 static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
@@ -403,6 +519,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 
 typedef struct janus_recordplay_recording {
 	guint64 id;					/* Recording unique ID */
+	gboolean is_private;		/* Whether the recording is private */
 	char *name;					/* Name of the recording */
 	char *date;					/* Time of the recording */
 	char *arc_file;				/* Audio file name */
@@ -776,6 +893,7 @@ static void janus_recordplay_message_free(janus_recordplay_message *msg) {
 #define JANUS_RECORDPLAY_ERROR_INVALID_STATE		418
 #define JANUS_RECORDPLAY_ERROR_INVALID_SDP			419
 #define JANUS_RECORDPLAY_ERROR_RECORDING_EXISTS		420
+#define JANUS_RECORDPLAY_ERROR_UNAUTHORIZED			440
 #define JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR		499
 
 /* Plugin implementation */
@@ -808,6 +926,12 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_item *path = janus_config_get(config, config_general, janus_config_type_item, "path");
 		if(path && path->value)
 			recordings_path = g_strdup(path->value);
+		janus_config_item *key = janus_config_get(config, config_general, janus_config_type_item, "admin_key");
+		if(key != NULL && key->value != NULL)
+			admin_key = g_strdup(key->value);
+		janus_config_item *pvt = janus_config_get(config, config_general, janus_config_type_item, "private");
+		if(pvt != NULL && pvt->value != NULL)
+			private_recordings = janus_is_true(pvt->value);
 		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
@@ -820,6 +944,8 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 	}
 	if(recordings_path == NULL) {
 		JANUS_LOG(LOG_FATAL, "No recordings path specified, giving up...\n");
+		g_free(admin_key);
+		admin_key = NULL;
 		return -1;
 	}
 	/* Create the folder, if needed */
@@ -829,6 +955,10 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 		JANUS_LOG(LOG_VERB, "Creating folder: %d\n", res);
 		if(res != 0) {
 			JANUS_LOG(LOG_ERR, "%s", g_strerror(errno));
+			g_free(recordings_path);
+			recordings_path = NULL;
+			g_free(admin_key);
+			admin_key = NULL;
 			return -1;	/* No point going on... */
 		}
 	}
@@ -850,6 +980,10 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Record&Play handler thread...\n",
 			error->code, error->message ? error->message : "??");
 		g_error_free(error);
+		g_free(recordings_path);
+		recordings_path = NULL;
+		g_free(admin_key);
+		admin_key = NULL;
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_RECORDPLAY_NAME);
@@ -875,6 +1009,10 @@ void janus_recordplay_destroy(void) {
 	janus_mutex_unlock(&sessions_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
+	g_free(recordings_path);
+	recordings_path = NULL;
+	g_free(admin_key);
+	admin_key = NULL;
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_RECORDPLAY_NAME);
@@ -1054,6 +1192,18 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 	/* Some requests ('create' and 'destroy') can be handled synchronously */
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "update")) {
+		if(admin_key != NULL) {
+			/* An admin key was specified: make sure it was provided, and that it's valid */
+			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto plugin_response;
+			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+				JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT, JANUS_RECORDPLAY_ERROR_UNAUTHORIZED);
+			if(error_code != 0)
+				goto plugin_response;
+		}
 		/* Update list of available recordings, scanning the folder again */
 		janus_recordplay_update_recordings_list();
 		/* Send info back */
@@ -1061,6 +1211,25 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		json_object_set_new(response, "recordplay", json_string("ok"));
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "list")) {
+		JANUS_VALIDATE_JSON_OBJECT(root, list_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto plugin_response;
+		gboolean lock_recs_list = TRUE;
+		if(admin_key != NULL) {
+			json_t *admin_key_json = json_object_get(root, "admin_key");
+			/* Verify admin_key if it was provided */
+			if(admin_key_json != NULL && json_is_string(admin_key_json) && strlen(json_string_value(admin_key_json)) > 0) {
+				JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+					JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT, JANUS_RECORDPLAY_ERROR_UNAUTHORIZED);
+				if(error_code != 0) {
+					goto plugin_response;
+				} else {
+					lock_recs_list = FALSE;
+				}
+			}
+		}
 		json_t *list = json_array();
 		JANUS_LOG(LOG_VERB, "Request for the list of recordings\n");
 		/* Return a list of all available recordings */
@@ -1070,11 +1239,17 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		g_hash_table_iter_init(&iter, recordings);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_recordplay_recording *rec = value;
+			if(rec->is_private && lock_recs_list) {
+				/* Skip private recording if no valid admin_key was provided */
+				JANUS_LOG(LOG_VERB, "Skipping private recording '%"SCNu64"'\n", rec->id);
+				continue;
+			}
 			if(!g_atomic_int_get(&rec->completed))	/* Ongoing recording, skip */
 				continue;
 			janus_refcount_increase(&rec->ref);
 			json_t *ml = json_object();
 			json_object_set_new(ml, "id", json_integer(rec->id));
+			json_object_set_new(ml, "is_private", rec->is_private ? json_true() : json_false());
 			json_object_set_new(ml, "name", json_string(rec->name));
 			json_object_set_new(ml, "date", json_string(rec->date));
 			json_object_set_new(ml, "audio", rec->arc_file ? json_true() : json_false());
@@ -1181,6 +1356,18 @@ json_t *janus_recordplay_handle_admin_message(json_t *message) {
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "update")) {
 		/* Update list of available recordings, scanning the folder again */
+		if(admin_key != NULL) {
+			/* An admin key was specified: make sure it was provided, and that it's valid */
+			JANUS_VALIDATE_JSON_OBJECT(message, adminkey_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto admin_response;
+			JANUS_CHECK_SECRET(admin_key, message, "admin_key", error_code, error_cause,
+				JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT, JANUS_RECORDPLAY_ERROR_UNAUTHORIZED);
+			if(error_code != 0)
+				goto admin_response;
+		}
 		janus_recordplay_update_recordings_list();
 		/* Send info back */
 		response = json_object();
@@ -1414,7 +1601,13 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
 	json_object_set_new(event, "recordplay", json_string("event"));
-	json_object_set_new(event, "result", json_string("done"));
+	json_t *result = json_object();
+	json_object_set_new(result, "status", json_string("done"));
+	if(session->recording) {
+		json_object_set_new(result, "id", json_integer(session->recording->id));
+		json_object_set_new(result, "is_private", json_integer(session->recording->is_private));
+	}
+	json_object_set_new(event, "result", result);
 	int ret = gateway->push_event(handle, &janus_recordplay_plugin, NULL, event, NULL);
 	JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 	json_decref(event);
@@ -1458,8 +1651,12 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 				g_snprintf(nfo, 1024,
 					"[%"SCNu64"]\r\n"
 					"name = %s\r\n"
+					"private = %s\r\n"
 					"date = %s\r\n",
-						session->recording->id, session->recording->name, session->recording->date);
+						session->recording->id,
+						session->recording->name,
+						session->recording->is_private ? "true" : "false",
+						session->recording->date);
 				fwrite(nfo, sizeof(char), strlen(nfo), file);
 				/* Add lines for each recorded medium */
 				if(session->recording->arc_file) {
@@ -1576,6 +1773,10 @@ static void *janus_recordplay_handler(void *data) {
 			}
 			json_t *name = json_object_get(root, "name");
 			const char *name_text = json_string_value(name);
+			gboolean is_private = private_recordings;
+			json_t *pvt = json_object_get(root, "is_private");
+			if(pvt)
+				is_private = json_is_true(pvt);
 			json_t *filename = json_object_get(root, "filename");
 			if(filename) {
 				filename_text = json_string_value(filename);
@@ -1644,6 +1845,7 @@ static void *janus_recordplay_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Starting new recording with ID %"SCNu64"\n", id);
 			rec = g_malloc0(sizeof(janus_recordplay_recording));
 			rec->id = id;
+			rec->is_private = is_private;
 			rec->name = g_strdup(name_text);
 			rec->viewers = NULL;
 			rec->offer = NULL;
@@ -1886,11 +2088,13 @@ recdone:
 			result = json_object();
 			json_object_set_new(result, "status", json_string("recording"));
 			json_object_set_new(result, "id", json_integer(id));
+			json_object_set_new(result, "is_private", is_private ? json_true() : json_false());
 			/* Also notify event handlers */
 			if(!sdp_update && notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "event", json_string("recording"));
 				json_object_set_new(info, "id", json_integer(id));
+				json_object_set_new(info, "is_private", is_private ? json_true() : json_false());
 				json_object_set_new(info, "audio", session->arc ? json_true() : json_false());
 				json_object_set_new(info, "video", session->vrc ? json_true() : json_false());
 				json_object_set_new(info, "data", session->drc ? json_true() : json_false());
@@ -2046,6 +2250,7 @@ playdone:
 			json_object_set_new(result, "status", json_string("stopped"));
 			if(session->recording) {
 				json_object_set_new(result, "id", json_integer(session->recording->id));
+				json_object_set_new(result, "is_private", json_integer(session->recording->is_private));
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
@@ -2205,6 +2410,7 @@ void janus_recordplay_update_recordings_list(void) {
 			old_recordings = g_list_remove(old_recordings, &rec->id);
 			continue;
 		}
+		janus_config_item *pvt = janus_config_get(nfo, cat, janus_config_type_item, "private");
 		janus_config_item *name = janus_config_get(nfo, cat, janus_config_type_item, "name");
 		janus_config_item *date = janus_config_get(nfo, cat, janus_config_type_item, "date");
 		janus_config_item *audio = janus_config_get(nfo, cat, janus_config_type_item, "audio");
@@ -2223,6 +2429,9 @@ void janus_recordplay_update_recordings_list(void) {
 		}
 		rec = g_malloc0(sizeof(janus_recordplay_recording));
 		rec->id = id;
+		rec->is_private = (pvt == NULL) ? TRUE : private_recordings;
+		if(pvt && pvt->value)
+			rec->is_private = janus_is_true(pvt->value);
 		rec->name = g_strdup(name->value);
 		rec->date = g_strdup(date->value);
 		if(audio && audio->value) {

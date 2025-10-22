@@ -18,13 +18,16 @@
  * broadcasting (e.g., chatrooms, but not only).
  *
  * The only message that is typically sent to the plugin through the Janus API is
- * a "setup" message, by which the user initializes the PeerConnection
- * itself. Apart from that, all other messages can be exchanged directly
+ * a \c setup message, by which the user initializes the PeerConnection
+ * itself, as explained in the \ref textroomsetup section.
+ * Apart from that, all other messages can be exchanged directly
  * via Data Channels. For room management purposes, though, requests like
- * "create", "edit", "destroy", "list", "listparticipants" and "exists"
- * and "announcement" are available through the
- * Janus API as well: notice that in this case you'll have to use "request"
- * and not "textroom" as the name of the request.
+ * \c create , \c edit , \c destroy , \c list , \c listparticipants , \c exists
+ * and \c announcement are available through the
+ * Janus API as well: notice that in this case you'll have to use \c request
+ * and not \c textroom as the name of the request. You cannot join a room
+ * or send/receive messages via Janus API: that's only possible through
+ * the datachannel interface.
  *
  * Each room can also be configured with an HTTP backend to contact for
  * incoming messages. If configured, messages addressed to that room will
@@ -66,11 +69,67 @@ history = <number of messages to store as a history, and send back to new partic
 post = <optional backend to contact via HTTP post for all incoming messages>
 \endverbatim
  *
- * As explained in the next section, you can also create rooms programmatically.
+ * As explained in the next sections, you can also create rooms programmatically.
+ *
+ * \section textroomsetup Establishing a connection
+ *
+ * While some requests to the plugin can be sent via Janus API, the actual
+ * chatroom functionality is only available via datachannel. This means
+ * that you need to establish a WebRTC PeerConnection first, if you want
+ * to take full advantage of the functionality provided by the TextRoom plugin.
+ *
+ * To do that, you use the \c setup request, which doesn't require any
+ * argument:
+ *
+\verbatim
+{
+	"request" : "setup"
+}
+\endverbatim
+ *
+ * Assuming a datachannel wasn't established already, the plugin will
+ * react to that request with a basic event, which will contain a JSEP
+ * offer too:
+ *
+\verbatim
+{
+	"textroom" : "event",
+	"result" : "ok"
+}
+\endverbatim
+ *
+ * To complete the negotiation process and establish a WebRTC PeerConnection,
+ * you need to send an empty \c ack request with your JSEP answer:
+ *
+\verbatim
+{
+	"request" : "ack"
+}
+\endverbatim
+ *
+ * Should you need to perform an ICE restart, e.g., to keep the datachannel
+ * alive during a connection migration, you can use an empty \c restart
+ * request:
+ *
+\verbatim
+{
+	"request" : "restart"
+}
+\endverbatim
+ *
+ * Just as in the \c setup request, this will result in the plugin sending
+ * a new JSEP offer with an attempt to restart ICE. You can use the
+ * \c ack request to provide your JSEP answer in this case too.
+ *
+ * Once the datachannel is active, you can start exchanging messages
+ * there, referring to the \ref textroomapi for the syntax. As explained
+ * in the intro, some request described there can be sent over Janus API
+ * too, but you'll need to use \c request instead of \c textroom as the
+ * name of the request.
  *
  * \section textroomapi Text Room API
  *
- * All TextRoom API requests are addressed by a \c textroom named property,
+ * All TextRoom API requests sent via datachannels are addressed by a \c textroom named property,
  * and must contain a \c transaction string property as well, which will
  * be returned in the response. Notice that, for the sake of brevity, the
  * \c transaction property will not be displayed in the documentation,
@@ -85,6 +144,7 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 \verbatim
 {
 	"textroom" : "list",
+	"admin_key" : "<plugin administrator key; optional>"
 }
 \endverbatim
  *
@@ -93,12 +153,13 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 \verbatim
 {
 	"textroom" : "success",
-	"rooms" : [		// Array of room objects
+	"list" : [		// Array of room objects
 		{	// Room #1
 			"room" : <unique numeric ID>,
 			"description" : "<Name of the room>",
 			"pin_required" : <true|false, depending on whether the room is PIN-protected>,
-			"num_participants" : <count of the participants>
+			"num_participants" : <count of the participants>,
+			"history" : <size of history, if any>
 		},
 		// Other rooms
 	]
@@ -121,6 +182,7 @@ post = <optional backend to contact via HTTP post for all incoming messages>
  *
 \verbatim
 {
+	"textroom" : "success",
 	"room" : <unique numeric ID of the room>,
 	"participants" : [		// Array of participant objects
 		{	// Participant #1
@@ -732,6 +794,7 @@ static void janus_textroom_room_free(const janus_refcount *textroom_ref) {
 	g_hash_table_destroy(textroom->allowed);
 	if(textroom->history)
 		g_queue_free_full(textroom->history, (GDestroyNotify)g_free);
+	janus_mutex_destroy(&textroom->mutex);
 	g_free(textroom);
 }
 
@@ -745,6 +808,7 @@ static void janus_textroom_session_free(const janus_refcount *session_ref) {
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_hash_table_destroy(session->rooms);
+	janus_mutex_destroy(&session->mutex);
 	g_free(session);
 }
 
@@ -762,6 +826,7 @@ static void janus_textroom_participant_free(const janus_refcount *participant_re
 	/* This participant can be destroyed, free all the resources */
 	g_free(participant->username);
 	g_free(participant->display);
+	janus_mutex_destroy(&participant->mutex);
 	g_free(participant);
 }
 
@@ -2056,6 +2121,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		if(!internal) {
 			/* Send response back */
 			reply = json_object();
+			json_object_set_new(reply, "textroom", json_string("success"));
 			json_object_set_new(reply, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 			json_object_set_new(reply, "participants", list);
 		}
@@ -2289,7 +2355,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		if(!internal) {
 			/* Send response back */
 			reply = json_object();
-			json_object_set_new(reply, "textbridge", json_string("success"));
+			json_object_set_new(reply, "textroom", json_string("success"));
 		}
 	} else if(!strcasecmp(request_text, "announcement")) {
 		JANUS_LOG(LOG_VERB, "Attempt to send a TextRoom announcement\n");
@@ -2601,7 +2667,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			/* Now for the values */
 			janus_config_add(config, c, janus_config_item_create("description", textroom->room_name));
 			if(textroom->is_private)
-				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
+				janus_config_add(config, c, janus_config_item_create("is_private", "true"));
 			if(textroom->room_secret)
 				janus_config_add(config, c, janus_config_item_create("secret", textroom->room_secret));
 			if(textroom->room_pin)
@@ -2776,7 +2842,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
 			janus_config_add(config, c, janus_config_item_create("description", textroom->room_name));
 			if(textroom->is_private)
-				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
+				janus_config_add(config, c, janus_config_item_create("is_private", "true"));
 			if(textroom->room_secret)
 				janus_config_add(config, c, janus_config_item_create("secret", textroom->room_secret));
 			if(textroom->room_pin)
