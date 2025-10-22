@@ -1228,6 +1228,7 @@ room-<unique room ID>: {
 #include <netdb.h>
 #include <sys/time.h>
 #include <poll.h>
+#include <math.h>
 
 #include "../debug.h"
 #include "../apierror.h"
