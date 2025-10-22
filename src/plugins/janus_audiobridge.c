@@ -8607,6 +8607,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	uint32_t limiterBufferSize = 0;
 	float filter_state_level = K_INITIAL_FILTER_STATE_LEVEL;
 	float last_scaling_factor = 1.f;
+	opus_int32 sample = 0;
 	/* In case audio limiter enabled, we need a buffer for it and some values */
 	if (audiobridge->use_limiter) {
 		samples_in_sub_frame = samples / K_SUB_FRAMES_IN_FRAME;
@@ -8941,7 +8942,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			/* Compute max envelope without smoothing. */
 			for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
 				for (sample_in_sub_frame = 0; sample_in_sub_frame < samples_in_sub_frame; ++sample_in_sub_frame) {
-					envelope[sub_frame] = fmax(envelope[sub_frame], fabs(buffer[sub_frame * samples_in_sub_frame + sample_in_sub_frame]));
+					envelope[sub_frame] = fmax(envelope[sub_frame], abs(buffer[sub_frame * samples_in_sub_frame + sample_in_sub_frame]));
 				}
 			}
 			/* Make sure envelope increases happen one step earlier so that the
@@ -9017,7 +9018,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			/* If we use limiter and we mixed more than 1 track, apply it */
 			if (audiobridge->use_limiter && mix_count > 1) {
 				for(i=0; i<samples; i++) {
-					opus_int32 sample = (opus_int32)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
+					sample = (opus_int32)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
 					if(sample > 32767)
 						sample = 32767;
 					else if(sample < -32768)
@@ -9028,7 +9029,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			else {
 				/* Clamp values that are outside int16 boundaries */
 				for(i=0; i<samples; i++) {
-					opus_int32 sample = (opus_int32)buffer[i];
+					sample = (opus_int32)buffer[i];
 					if(sample > 32767)
 						sample = 32767;
 					else if(sample < -32768)
@@ -9105,8 +9106,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			}
 
 			/* If we use limiter and sumBuffer contains mix of more than 1 track (mix_count - 1 > 1), apply it */
-			if (audiobridge->use_limiter && mix_count > 2) {
-				for(i=0; i<samples; i++)
+			if(audiobridge->use_limiter && mix_count > 2) {
+				for(i=0; i<samples; i++) {
 					opus_int32 sample = (opus_int32)(sumBuffer[i] * per_sample_scaling_factors[i] + 0.5f);
 					if(sample > 32767)
 						sample = 32767;
