@@ -8939,8 +8939,9 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		/* If we use limiter we should initialize it if we have more than 2 tracks mixed or we have more than 1 track mixed and recording */
 		if (audiobridge->use_limiter && (mix_count > 2 || (audiobridge->recording && mix_count > 1))) {
 			/*
-			 * Copyright (c) 2011, The WebRTC project authors. All rights reserved.
-			 * The code below is adapted from the WebRTC project.
+			 * Calculating gain factors for limiter (adapted from WebRTC project).
+			 * Original WebRTC code: https://webrtc.googlesource.com/src
+			 * Licensed under BSD 3-Clause License.
 			 */
 			/* Compute max envelope without smoothing. */
 			for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
