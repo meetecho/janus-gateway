@@ -9109,8 +9109,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				}
 			}
 
-			/* If we use limiter and sumBuffer contains mix of more than 1 track (mix_count - 1 > 1), apply it */
-			if(audiobridge->use_limiter && mix_count > 2) {
+			/* If we use limiter and sumBuffer contains mix of more than 1 track, apply it */
+			if(audiobridge->use_limiter && (mix_count - (curBuffer ? 1 : 0)) > 1) {
 				for(i=0; i<samples; i++) {
 					opus_int32 sample = (opus_int32)(sumBuffer[i] * per_sample_scaling_factors[i] + 0.5f);
 					if(sample > 32767)
