@@ -8535,6 +8535,94 @@ static void janus_audiobridge_update_wav_header(janus_audiobridge_room *audiobri
 	}
 }
 
+static inline __attribute__((always_inline)) void initialize_limiter(
+	opus_int32 *buffer,
+	float *envelope,
+	float *scaling_factors,
+	float *per_sample_scaling_factors,
+	int samples_in_sub_frame,
+	float *filter_state_level,
+	float *last_scaling_factor) {
+
+	int sub_frame, sample_in_sub_frame, i;
+	/*
+	 * Calculating gain factors for limiter (adapted from WebRTC project).
+	 * Original WebRTC code: https://webrtc.googlesource.com/src
+	 * Licensed under BSD 3-Clause License.
+	 */
+	/* Compute max envelope without smoothing. */
+	for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
+		for (sample_in_sub_frame = 0; sample_in_sub_frame < samples_in_sub_frame; ++sample_in_sub_frame) {
+			envelope[sub_frame] = fmax(envelope[sub_frame], abs(buffer[sub_frame * samples_in_sub_frame + sample_in_sub_frame]));
+		}
+	}
+	/* Make sure envelope increases happen one step earlier so that the
+	 * corresponding *gain decrease* doesn't miss a sudden signal
+	 *  increase due to interpolation.
+	 */
+	for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME - 1; ++sub_frame) {
+		if (envelope[sub_frame] < envelope[sub_frame + 1])
+			envelope[sub_frame] = envelope[sub_frame + 1];
+	}
+	/* Add attack / decay smoothing. */
+	for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
+		const float envelope_value = envelope[sub_frame];
+		if (envelope_value > *filter_state_level) {
+			envelope[sub_frame] = envelope_value * (1 - K_ATTACK_FILTER_CONSTANT) + *filter_state_level * K_ATTACK_FILTER_CONSTANT;
+		} else {
+			envelope[sub_frame] = envelope_value * (1 - K_DECAY_FILTER_CONSTANT) + *filter_state_level * K_DECAY_FILTER_CONSTANT;
+		}
+		*filter_state_level = envelope[sub_frame];
+	}
+	scaling_factors[0] = *last_scaling_factor;
+	for (i = 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
+		const float input_level = envelope[i];
+		if (input_level <= approximation_params_x[0]) {
+			/* Identity region. */
+			scaling_factors[i+1] = 1.0f;
+		} else if (input_level >= K_MAX_INPUT_LEVEL_LINEAR) {
+			/* Saturating lower bound. The saturing samples exactly hit the clipping level.
+			 * This method achieves has the lowest harmonic distorsion, but it
+			 * may reduce the amplitude of the non-saturating samples too much.
+			 */
+			scaling_factors[i+1] = 32768.f / input_level;
+		} else {
+			/* Knee and limiter regions; find the linear piece index. Searching in [0, K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS) */
+			size_t left = 0;
+			size_t right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
+			while (left < right) {
+				size_t mid = left + (right - left) / 2;
+				if (approximation_params_x[mid] < input_level)
+					left = mid + 1;
+				else
+					right = mid;
+			}
+			/* Now left points to first element that is >= input_level, we need a previous element */
+			const size_t index = (left > 0) ? left - 1 : 0;
+			/* Piece-wise linear interploation. */
+			const float gain = approximation_params_m[index] * input_level + approximation_params_q[index];
+			scaling_factors[i+1] = gain;
+		}
+	}
+	const int is_attack = scaling_factors[0] > scaling_factors[1];
+	if (is_attack) {
+		for (int i = 0; i < samples_in_sub_frame; ++i) {
+			float t = (float)i / samples_in_sub_frame;
+			per_sample_scaling_factors[i] = powf(1.0f - t, K_ATTACK_FIRST_SUB_FRAME_INTERPOLATION_POWER) * (scaling_factors[0] - scaling_factors[1]) + scaling_factors[1];
+		}
+	}
+	for (int i = is_attack ? 1 : 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
+		const int subframe_start = i * samples_in_sub_frame;
+		const float scaling_start = scaling_factors[i];
+		const float scaling_end = scaling_factors[i + 1];
+		const float scaling_diff = (scaling_end - scaling_start) / samples_in_sub_frame;
+		for (int j = 0; j < samples_in_sub_frame; ++j) {
+			per_sample_scaling_factors[subframe_start + j] = scaling_start + scaling_diff * j;
+		}
+	}
+	*last_scaling_factor = scaling_factors[K_SUB_FRAMES_IN_FRAME];
+}
+
 /* Thread to mix the contributions from all participants */
 static void *janus_audiobridge_mixer_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Audio bridge thread starting...\n");
@@ -8937,86 +9025,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			}
 		}
 		/* If we use limiter we should initialize it if we have more than 2 tracks mixed or we have more than 1 track mixed and recording */
-		if (audiobridge->use_limiter && (mix_count > 2 || (audiobridge->recording && mix_count > 1))) {
-			/*
-			 * Calculating gain factors for limiter (adapted from WebRTC project).
-			 * Original WebRTC code: https://webrtc.googlesource.com/src
-			 * Licensed under BSD 3-Clause License.
-			 */
-			/* Compute max envelope without smoothing. */
-			for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
-				for (sample_in_sub_frame = 0; sample_in_sub_frame < samples_in_sub_frame; ++sample_in_sub_frame) {
-					envelope[sub_frame] = fmax(envelope[sub_frame], abs(buffer[sub_frame * samples_in_sub_frame + sample_in_sub_frame]));
-				}
-			}
-			/* Make sure envelope increases happen one step earlier so that the
-			 * corresponding *gain decrease* doesn't miss a sudden signal
-			 *  increase due to interpolation.
-			 */
-			for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME  - 1; ++sub_frame) {
-				if (envelope[sub_frame] < envelope[sub_frame + 1]) {
-				envelope[sub_frame] = envelope[sub_frame + 1];
-				}
-			}
-			/* Add attack / decay smoothing. */
-			for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
-				const float envelope_value = envelope[sub_frame];
-				if (envelope_value > filter_state_level) {
-					envelope[sub_frame] = envelope_value * (1 - K_ATTACK_FILTER_CONSTANT) + filter_state_level * K_ATTACK_FILTER_CONSTANT;
-				} else {
-					envelope[sub_frame] = envelope_value * (1 - K_DECAY_FILTER_CONSTANT) + filter_state_level * K_DECAY_FILTER_CONSTANT;
-				}
-				filter_state_level = envelope[sub_frame];
-			}
-			scaling_factors[0] = last_scaling_factor;
-			for (i = 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
-				const float input_level = envelope[i];								
-				if (input_level <= approximation_params_x[0]) {
-					/* Identity region. */
-					scaling_factors[i+1] = 1.0f;
-				} else if (input_level >= K_MAX_INPUT_LEVEL_LINEAR) {
-					/* Saturating lower bound. The saturing samples exactly hit the clipping level.
-					 * This method achieves has the lowest harmonic distorsion, but it
-					 * may reduce the amplitude of the non-saturating samples too much.
-					 */
-					scaling_factors[i+1] = 32768.f / input_level;
-				} else {
-					/* Knee and limiter regions; find the linear piece index. Searching in [0, K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS) */
-					size_t left = 0;
-					size_t right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
-					while (left < right) {
-						size_t mid = left + (right - left) / 2;
-						if (approximation_params_x[mid] < input_level)
-							left = mid + 1;
-						else
-							right = mid;
-					}
-					/* Now left points to first element that is >= input_level, we need a previous element */
-					const size_t index = (left > 0) ? left - 1 : 0;
-					/* Piece-wise linear interploation. */
-					const float gain = approximation_params_m[index] * input_level + approximation_params_q[index];
-					scaling_factors[i+1] = gain;
-				}
-			}
-			const int is_attack = scaling_factors[0] > scaling_factors[1];
-			if (is_attack) {
-				for (int i = 0; i < samples_in_sub_frame; ++i) {
-					float t = (float)i / samples_in_sub_frame;
-					per_sample_scaling_factors[i] = powf(1.0f - t, K_ATTACK_FIRST_SUB_FRAME_INTERPOLATION_POWER) * (scaling_factors[0] - scaling_factors[1]) + scaling_factors[1];
-				}
-			}
-			for (int i = is_attack ? 1 : 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
-				const int subframe_start = i * samples_in_sub_frame;
-				const float scaling_start = scaling_factors[i];
-				const float scaling_end = scaling_factors[i + 1];
-				const float scaling_diff = (scaling_end - scaling_start) / samples_in_sub_frame;
-				
-				for (int j = 0; j < samples_in_sub_frame; ++j) {
-					per_sample_scaling_factors[subframe_start + j] = scaling_start + scaling_diff * j;
-				}
-			}
-			last_scaling_factor = scaling_factors[K_SUB_FRAMES_IN_FRAME];
-		}
+		if (audiobridge->use_limiter && (mix_count > 2 || (audiobridge->recording && mix_count > 1)))
+			initialize_limiter(buffer, envelope, scaling_factors, per_sample_scaling_factors, samples_in_sub_frame, &filter_state_level, &last_scaling_factor);
 		/* Are we recording the mix? (only do it if there's someone in, though...) */
 		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) {
 			/* If we use limiter and we mixed more than 1 track, apply it */
