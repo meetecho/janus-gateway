@@ -1243,7 +1243,7 @@ room-<unique room ID>: {
 #include "../utils.h"
 #include "../ip-utils.h"
 
-#include "./audiobridge-deps/limiter/limiter.h"
+#include "audiobridge-deps/limiter/limiter.h"
 
 /* Plugin information */
 #define JANUS_AUDIOBRIDGE_VERSION			13
@@ -2566,7 +2566,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Setting function pointers according to runtime vectorization support (AVX2, SSE4.2 or scalar) */
 	init_limiter();
-	JANUS_LOG(LOG_INFO, "Initialized optimized limiter implementation\n")
+	JANUS_LOG(LOG_INFO, "Initialized optimized limiter implementation\n");
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
@@ -8576,7 +8576,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	int i=0;
 	int count = 0, rf_count = 0, pf_count = 0, prev_count = 0;
 	int lgain = 0, rgain = 0, diff = 0;
-	int mix_count = 0, sample_in_sub_frame = 0, sub_frame = 0;
+	int mix_count = 0, sample_in_sub_frame = 0;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&audiobridge->destroyed)) {
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
