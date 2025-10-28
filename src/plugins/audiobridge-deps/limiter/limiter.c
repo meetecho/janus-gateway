@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "../../../debug.h"
+
 /* SIMD intrinsics */
 #if defined(__AVX2__) || defined(__SSE4_2__)
 #include <immintrin.h>
@@ -296,16 +298,19 @@ inline __attribute__((always_inline)) void compute_scaling_factors(
 inline __attribute__((always_inline)) void init_limiter() {
     #if defined(__AVX2__)
     if (has_avx2()) {
+        JANUS_LOG(LOG_INFO, "Using AVX2 implementation of limiter\n");
         compute_max_envelope_func = compute_max_envelope_avx2;
         return;
     }
     #endif
     #if defined(__SSE4_2__)
     if (has_sse42()) {
+        JANUS_LOG(LOG_INFO, "Using SSE4.2 implementation of limiter\n");
         compute_max_envelope_func = compute_max_envelope_sse42;
         return;
     } 
     #endif
  
+    JANUS_LOG(LOG_INFO, "Using scalar implementation of limiter\n");
     compute_max_envelope_func = compute_max_envelope_scalar;
 }
