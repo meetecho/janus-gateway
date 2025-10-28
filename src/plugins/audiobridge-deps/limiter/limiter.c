@@ -12,20 +12,32 @@
 
 int has_avx2() {
     unsigned int eax, ebx, ecx, edx;
-    // First check leaf 1
-    if (__get_cpuid(1, &eax, &ebx, &ecx, &edx)) {
-        if ((ecx & bit_OSXSAVE) && (ecx & bit_AVX)) {
-            if (__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx)) {
-                return (ebx & (1 << 5)) != 0;  /* AVX2 — bit 5 of EBX */
-            }
-        }
-    }
-    return 0;
+    /* 1. CPUID leaf 1: AVX + OSXSAVE */
+    if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx))
+        return 0;
+
+    if (!(ecx & bit_AVX))
+        return 0;
+
+    if (!(ecx & bit_OSXSAVE))
+        return 0;
+
+    /* 2. Check tath OS saves XMM/YMM */
+    unsigned long long xcr0 = __builtin_ia32_xgetbv(0);
+    if ((xcr0 & 0x6) != 0x6)
+        return 0;
+
+    /* 3. CPUID leaf 7 subleaf 0: AVX2 */
+    if (!__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx))
+        return 0;
+
+    /* AVX2 — bit 5 of EBX */
+    return (ebx & (1u << 5)) != 0;
 }
 int has_sse42() {
     unsigned int eax, ebx, ecx, edx;
     if (__get_cpuid(1, &eax, &ebx, &ecx, &edx)) {
-        return (ecx & (1 << 20)) != 0;  /* SSE4.2 — bit 20 of ECX */
+        return (ecx & (1u << 20)) != 0;  /* SSE4.2 — bit 20 of ECX */
     }
     return 0;
 }
