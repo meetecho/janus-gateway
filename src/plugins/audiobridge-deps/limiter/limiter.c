@@ -143,7 +143,7 @@ static void calculate_scaling_factors_avx2(
     float *envelope,
     float *scaling_factors,
     float *last_scaling_factor) {
-    size_t i;
+    int i;
     scaling_factors[0] = *last_scaling_factor;
 
     /* Constants for vectorized operations */
@@ -182,17 +182,17 @@ static void calculate_scaling_factors_avx2(
             if (((float*)&mask_mid)[j] != 0.0f) {  /* Check if mask is set for this element */
                 const float input_level = temp_input[j];
                 /* Knee and limiter regions; find the linear piece index. Searching in [0, K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS) */
-                size_t left = 0;
-                size_t right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
+                int left = 0;
+                int right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
                 while (left < right) {
-                    size_t mid = left + (right - left) / 2;
+                    int mid = left + (right - left) / 2;
                     if (approximation_params_x[mid] < input_level)
                         left = mid + 1;
                     else
                         right = mid;
                 }
                 /* Now left points to first element that is >= input_level, we need a previous element */
-                const size_t index = (left > 0) ? left - 1 : 0;
+                const int index = (left > 0) ? left - 1 : 0;
                 /* Piece-wise linear interploation. */
                 const float gain = approximation_params_m[index] * input_level + approximation_params_q[index];
                 temp_result[j] = gain;
@@ -226,17 +226,17 @@ static void calculate_scaling_factors_avx2(
             scaling_factors[i+1] = 32768.f / input_level;
         } else {
             /* Knee and limiter regions; find the linear piece index. Searching in [0, K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS) */
-            size_t left = 0;
-            size_t right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
+            int left = 0;
+            int right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
             while (left < right) {
-                size_t mid = left + (right - left) / 2;
+                int mid = left + (right - left) / 2;
                 if (approximation_params_x[mid] < input_level)
                     left = mid + 1;
                 else
                     right = mid;
             }
             /* Now left points to first element that is >= input_level, we need a previous element */
-            const size_t index = (left > 0) ? left - 1 : 0;
+            const int index = (left > 0) ? left - 1 : 0;
             /* Piece-wise linear interploation. */
             const float gain = approximation_params_m[index] * input_level + approximation_params_q[index];
             scaling_factors[i+1] = gain;
@@ -524,7 +524,7 @@ static void calculate_scaling_factors_sse42(
     float *envelope,
     float *scaling_factors,
     float *last_scaling_factor) {
-    size_t i;
+    int i;
     scaling_factors[0] = *last_scaling_factor;
 
     /* Constants for vectorized operations */
@@ -563,17 +563,17 @@ static void calculate_scaling_factors_sse42(
             if (((float*)&mask_mid)[j] != 0.0f) {  /* Check if mask is set for this element */
                 const float input_level = temp_input[j];
                 /* Knee and limiter regions; find the linear piece index. Searching in [0, K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS) */
-                size_t left = 0;
-                size_t right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
+                int left = 0;
+                int right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
                 while (left < right) {
-                    size_t mid = left + (right - left) / 2;
+                    int mid = left + (right - left) / 2;
                     if (approximation_params_x[mid] < input_level)
                         left = mid + 1;
                     else
                         right = mid;
                 }
                 /* Now left points to first element that is >= input_level, we need a previous element */
-                const size_t index = (left > 0) ? left - 1 : 0;
+                const int index = (left > 0) ? left - 1 : 0;
                 /* Piece-wise linear interploation. */
                 const float gain = approximation_params_m[index] * input_level + approximation_params_q[index];
                 temp_result[j] = gain;
@@ -607,17 +607,17 @@ static void calculate_scaling_factors_sse42(
             scaling_factors[i+1] = 32768.f / input_level;
         } else {
             /* Knee and limiter regions; find the linear piece index. Searching in [0, K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS) */
-            size_t left = 0;
-            size_t right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
+            int left = 0;
+            int right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
             while (left < right) {
-                size_t mid = left + (right - left) / 2;
+                int mid = left + (right - left) / 2;
                 if (approximation_params_x[mid] < input_level)
                     left = mid + 1;
                 else
                     right = mid;
             }
             /* Now left points to first element that is >= input_level, we need a previous element */
-            const size_t index = (left > 0) ? left - 1 : 0;
+            const int index = (left > 0) ? left - 1 : 0;
             /* Piece-wise linear interploation. */
             const float gain = approximation_params_m[index] * input_level + approximation_params_q[index];
             scaling_factors[i+1] = gain;
@@ -628,7 +628,7 @@ static void calculate_scaling_factors_sse42(
 }
 
 static void clamp_buffer_sse42(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
-    size_t i = 0;
+    int i = 0;
     const __m128i v_min_val = _mm_set1_epi32(-32768);
     const __m128i v_max_val = _mm_set1_epi32(32767);
 
@@ -729,7 +729,7 @@ static void calculate_scaling_factors_scalar(
     float *envelope,
     float *scaling_factors,
     float *last_scaling_factor) {
-    size_t i;
+    int i;
     scaling_factors[0] = *last_scaling_factor;
     for (i = 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
         const float input_level = envelope[i];
@@ -744,17 +744,17 @@ static void calculate_scaling_factors_scalar(
             scaling_factors[i+1] = 32768.f / input_level;
         } else {
             /* Knee and limiter regions; find the linear piece index. Searching in [0, K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS) */
-            size_t left = 0;
-            size_t right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
+            int left = 0;
+            int right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
             while (left < right) {
-                size_t mid = left + (right - left) / 2;
+                int mid = left + (right - left) / 2;
                 if (approximation_params_x[mid] < input_level)
                     left = mid + 1;
                 else
                     right = mid;
             }
             /* Now left points to first element that is >= input_level, we need a previous element */
-            const size_t index = (left > 0) ? left - 1 : 0;
+            const int index = (left > 0) ? left - 1 : 0;
             /* Piece-wise linear interploation. */
             const float gain = approximation_params_m[index] * input_level + approximation_params_q[index];
             scaling_factors[i+1] = gain;
@@ -787,7 +787,7 @@ static void scale_buffer_scalar(
     int samples,
     float *per_sample_scaling_factors,
     opus_int16 *outBuffer){
-    size_t i;
+    int i;
     opus_int32 sample;
     for(i=0; i<samples; i++) {
         sample = (opus_int32)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
@@ -809,7 +809,7 @@ inline __attribute__((always_inline)) void scale_buffer(
 
 
 static void clamp_buffer_scalar(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
-    size_t i;
+    int i;
     opus_int32 sample;
     for(i=0; i<samples; i++) {
         sample = buffer[i];
