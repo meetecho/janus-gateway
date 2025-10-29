@@ -154,6 +154,9 @@ static void calculate_scaling_factors_avx2(
 
     /* Process 8 elements at a time */
     for (i = 0; i <= K_SUB_FRAMES_IN_FRAME - 8; i += 8) {
+        /* Assert that i is within expected bounds to help compiler optimization */
+        __builtin_assume(i >= 0);
+        __builtin_assume(i <= K_SUB_FRAMES_IN_FRAME - 8);
         /* Load 8 input levels */
         __m256 input_levels = _mm256_loadu_ps(&envelope[i]);
 
@@ -535,6 +538,9 @@ static void calculate_scaling_factors_sse42(
 
     /* Process 4 elements at a time */
     for (i = 0; i <= K_SUB_FRAMES_IN_FRAME - 4; i += 4) {
+        /* Assert that i is within expected bounds to help compiler optimization */
+        __builtin_assume(i >= 0);
+        __builtin_assume(i <= K_SUB_FRAMES_IN_FRAME - 4);
         /* Load 4 input levels */
         __m128 input_levels = _mm_loadu_ps(&envelope[i]);
 
