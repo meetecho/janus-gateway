@@ -153,7 +153,7 @@ static void calculate_scaling_factors_avx2(
     const __m256 scale_factor = _mm256_set1_ps(32768.0f);
 
     /* Process 8 elements at a time */
-    for (i = 0; i <= K_SUB_FRAMES_IN_FRAME - 8; i += 8) {
+    for (i = 0; i + 8 <= K_SUB_FRAMES_IN_FRAME; i += 8) {
         /* Load 8 input levels */
         __m256 input_levels = _mm256_loadu_ps(&envelope[i]);
 
@@ -273,7 +273,7 @@ static void compute_per_sample_scaling_factors_avx2(
         const __m256 v_scaling_diff = _mm256_set1_ps(scaling_diff);
 
         /* Process 8 elements at a time */
-        for (; j <= samples_in_sub_frame - 8; j += 8) {
+        for (; j + 8 <= samples_in_sub_frame; j += 8) {
             /* Create vector of indices [j, j+1, j+2, ..., j+7] */
             __m256i v_indices = _mm256_set_epi32(j+7, j+6, j+5, j+4, j+3, j+2, j+1, j);
             __m256 v_indices_f = _mm256_cvtepi32_ps(v_indices);
@@ -304,7 +304,7 @@ static void scale_buffer_avx2(
     const __m256 v_max_val = _mm256_set1_ps(32767.0f);
 
     /* Process 8 elements at a time */
-    for (; i <= samples - 8; i += 8) {
+    for (; i + 8 <= samples; i += 8) {
         /* Load 8 integers from buffer and convert to floats */
         __m256i v_int_vals = _mm256_loadu_si256((__m256i*)&buffer[i]);
         __m256 v_buf_vals = _mm256_cvtepi32_ps(v_int_vals);
@@ -351,7 +351,7 @@ static void clamp_buffer_avx2(opus_int32 *buffer, int samples, opus_int16 *outBu
     const __m256i v_max_val = _mm256_set1_epi32(32767);
 
     /* Process 8 elements at a time */
-    for (; i <= samples - 8; i += 8) {
+    for (; i + 8 <= samples; i += 8) {
         /* Load 8 integers from buffer */
         __m256i v_int_vals = _mm256_loadu_si256((__m256i*)&buffer[i]);
 
@@ -393,7 +393,7 @@ static void scale_buffer_sse42(
     const __m128 v_max_val = _mm_set1_ps(32767.0f);
 
     /* Process 4 elements at a time */
-    for (; i <= samples - 4; i += 4) {
+    for (; i + 4 <= samples; i += 4) {
         /* Load 4 integers from buffer and convert to floats */
         __m128i v_int_vals = _mm_loadu_si128((__m128i*)&buffer[i]);
         __m128 v_buf_vals = _mm_cvtepi32_ps(v_int_vals);
@@ -462,7 +462,7 @@ static void compute_per_sample_scaling_factors_sse42(
         const __m128 v_scaling_diff = _mm_set1_ps(scaling_diff);
 
         /* Process 4 elements at a time */
-        for (; j <= samples_in_sub_frame - 4; j += 4) {
+        for (; j + 4 <= samples_in_sub_frame; j += 4) {
             /* Create vector of indices [j, j+1, j+2, j+3] */
             __m128i v_indices = _mm_set_epi32(j+3, j+2, j+1, j);
             __m128 v_indices_f = _mm_cvtepi32_ps(v_indices);
@@ -534,7 +534,7 @@ static void calculate_scaling_factors_sse42(
     const __m128 scale_factor = _mm_set1_ps(32768.0f);
 
     /* Process 4 elements at a time */
-    for (i = 0; i <= K_SUB_FRAMES_IN_FRAME - 4; i += 4) {
+    for (i = 0; i + 4 <= K_SUB_FRAMES_IN_FRAME; i += 4) {
         /* Load 4 input levels */
         __m128 input_levels = _mm_loadu_ps(&envelope[i]);
 
@@ -633,7 +633,7 @@ static void clamp_buffer_sse42(opus_int32 *buffer, int samples, opus_int16 *outB
     const __m128i v_max_val = _mm_set1_epi32(32767);
 
     /* Process 4 elements at a time */
-    for (; i <= samples - 4; i += 4) {
+    for (; i + 4 <= samples; i += 4) {
         /* Load 4 integers from buffer */
         __m128i v_int_vals = _mm_loadu_si128((__m128i*)&buffer[i]);
 
