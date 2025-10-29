@@ -10,7 +10,7 @@
 #include <immintrin.h>
 #include <cpuid.h>
 
-int has_avx2(void) {
+static int has_avx2(void) {
     unsigned int eax, ebx, ecx, edx;
     /* 1. CPUID leaf 1: AVX + OSXSAVE */
     if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx))
@@ -34,7 +34,7 @@ int has_avx2(void) {
     /* AVX2 — bit 5 of EBX */
     return (ebx & (1u << 5)) != 0;
 }
-int has_sse42(void) {
+static int has_sse42(void) {
     unsigned int eax, ebx, ecx, edx;
     if (__get_cpuid(1, &eax, &ebx, &ecx, &edx)) {
         return (ecx & (1u << 20)) != 0;  /* SSE4.2 — bit 20 of ECX */
@@ -96,7 +96,7 @@ static void (*scale_buffer_func)(opus_int32 *buffer, int samples, float *per_sam
 static void (*clamp_buffer_func)(opus_int32 *buffer, int samples, opus_int16 *outBuffer) = NULL;
 
 #if defined(__AVX2__)
-void compute_max_envelope_avx2(opus_int32 *buffer, float *envelope, int samples_in_sub_frame){
+static void compute_max_envelope_avx2(opus_int32 *buffer, float *envelope, int samples_in_sub_frame){
    /* Compute max envelope without smoothing. */
    int sub_frame, sample_in_sub_frame;
     /* AVX2 implementation - process 8 32-bit integers at a time */
@@ -139,7 +139,7 @@ void compute_max_envelope_avx2(opus_int32 *buffer, float *envelope, int samples_
         }
     }
 }
-static inline __attribute__((always_inline)) void calculate_scaling_factors_avx2(
+static void calculate_scaling_factors_avx2(
     float *envelope,
     float *scaling_factors,
     float *last_scaling_factor) {
@@ -246,11 +246,10 @@ static inline __attribute__((always_inline)) void calculate_scaling_factors_avx2
     *last_scaling_factor = scaling_factors[K_SUB_FRAMES_IN_FRAME];
 }
 
-static inline __attribute__((always_inline)) void compute_per_sample_scaling_factors_avx2(
+static void compute_per_sample_scaling_factors_avx2(
     float *scaling_factors,
     float *per_sample_scaling_factors,
     int samples_in_sub_frame) {
-
     const int is_attack = scaling_factors[0] > scaling_factors[1];
 
     /* Handle attack section with scalar code (powf is difficult to vectorize efficiently) */
@@ -293,7 +292,7 @@ static inline __attribute__((always_inline)) void compute_per_sample_scaling_fac
     }
 }
 
-static inline __attribute__((always_inline)) void scale_buffer_avx2(
+static void scale_buffer_avx2(
     opus_int32 *buffer,
     int samples,
     float *per_sample_scaling_factors,
@@ -346,7 +345,7 @@ static inline __attribute__((always_inline)) void scale_buffer_avx2(
         outBuffer[i] = sample;
     }
 }
-static inline __attribute__((always_inline)) void clamp_buffer_avx2(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
+static void clamp_buffer_avx2(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
     int i = 0;
     const __m256i v_min_val = _mm256_set1_epi32(-32768);
     const __m256i v_max_val = _mm256_set1_epi32(32767);
@@ -382,7 +381,7 @@ static inline __attribute__((always_inline)) void clamp_buffer_avx2(opus_int32 *
 }
 #endif
 #if defined(__SSE4_2__)
-static inline __attribute__((always_inline)) void scale_buffer_sse42(
+static void scale_buffer_sse42(
     opus_int32 *buffer,
     int samples,
     float *per_sample_scaling_factors,
@@ -435,7 +434,7 @@ static inline __attribute__((always_inline)) void scale_buffer_sse42(
     }
 }
 
-static inline __attribute__((always_inline)) void compute_per_sample_scaling_factors_sse42(
+static void compute_per_sample_scaling_factors_sse42(
     float *scaling_factors,
     float *per_sample_scaling_factors,
     int samples_in_sub_frame) {
@@ -481,7 +480,7 @@ static inline __attribute__((always_inline)) void compute_per_sample_scaling_fac
         }
     }
 }
-void compute_max_envelope_sse42(opus_int32 *buffer, float *envelope, int samples_in_sub_frame){
+static void compute_max_envelope_sse42(opus_int32 *buffer, float *envelope, int samples_in_sub_frame){
    /* Compute max envelope without smoothing. */
    int sub_frame, sample_in_sub_frame;
     /* SSE4.2 implementation - process 4 floats at a time */
@@ -521,13 +520,11 @@ void compute_max_envelope_sse42(opus_int32 *buffer, float *envelope, int samples
         }
     }
 }
-static inline __attribute__((always_inline)) void calculate_scaling_factors_sse42(
+static void calculate_scaling_factors_sse42(
     float *envelope,
     float *scaling_factors,
     float *last_scaling_factor) {
-
     int i;
-
     scaling_factors[0] = *last_scaling_factor;
 
     /* Constants for vectorized operations */
@@ -630,7 +627,7 @@ static inline __attribute__((always_inline)) void calculate_scaling_factors_sse4
     *last_scaling_factor = scaling_factors[K_SUB_FRAMES_IN_FRAME];
 }
 
-static inline __attribute__((always_inline)) void clamp_buffer_sse42(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
+static void clamp_buffer_sse42(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
     int i = 0;
     const __m128i v_min_val = _mm_set1_epi32(-32768);
     const __m128i v_max_val = _mm_set1_epi32(32767);
@@ -703,7 +700,7 @@ static inline __attribute__((always_inline)) void compute_envelope(
         *filter_state_level = envelope[sub_frame];
     }
 }
-static inline __attribute__((always_inline)) void compute_per_sample_scaling_factors_scalar(
+static void compute_per_sample_scaling_factors_scalar(
     float *scaling_factors,
     float *per_sample_scaling_factors,
     int samples_in_sub_frame) {
@@ -728,7 +725,7 @@ static inline __attribute__((always_inline)) void compute_per_sample_scaling_fac
     }
 }
 
-static inline __attribute__((always_inline)) void calculate_scaling_factors_scalar(
+static void calculate_scaling_factors_scalar(
     float *envelope,
     float *scaling_factors,
     float *last_scaling_factor) {
@@ -788,7 +785,7 @@ inline __attribute__((always_inline)) void compute_scaling_factors(
 	compute_per_sample_scaling_factors_func(scaling_factors, per_sample_scaling_factors, samples_in_sub_frame);
 }
 
-static inline __attribute__((always_inline)) void scale_buffer_scalar(
+static void scale_buffer_scalar(
     opus_int32 *buffer,
     int samples,
     float *per_sample_scaling_factors,
@@ -814,7 +811,7 @@ inline __attribute__((always_inline)) void scale_buffer(
 }
 
 
-static inline __attribute__((always_inline)) void clamp_buffer_scalar(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
+static void clamp_buffer_scalar(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
     int i;
     opus_int32 sample;
     for(i=0; i<samples; i++) {
