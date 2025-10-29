@@ -43,7 +43,6 @@ int has_sse42() {
 }
 #endif
 
-
 /* Static data for the limiter */
 static float approximation_params_x[K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS] = {
 	30057.296875f,    30148.986328125f, 30240.67578125f,  30424.052734375f,
@@ -89,9 +88,12 @@ static float approximation_params_q[K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS] = {
 	1.617647409439086914f, 1.604251742362976074f
 };
 
-
-/* Function pointer for the selected implementation */
+/* Function pointers for the selected implementation */
 static void (*compute_max_envelope_func)(opus_int32 *buffer, float *envelope, int samples_in_sub_frame) = NULL;
+static void (*calculate_scaling_factors_func)(float *envelope, float *scaling_factors, float *last_scaling_factor) = NULL;
+static void (*compute_per_sample_scaling_factors_func)(float *scaling_factors, float *per_sample_scaling_factors, int samples_in_sub_frame) = NULL;
+static void (*scale_buffer_func)(opus_int32 *buffer, int samples, float *per_sample_scaling_factors, opus_int16 *outBuffer) = NULL;
+static void (*clamp_buffer_func)(opus_int32 *buffer, int samples, opus_int16 *outBuffer) = NULL;
 
 #if defined(__AVX2__)
 void compute_max_envelope_avx2(opus_int32 *buffer, float *envelope, int samples_in_sub_frame){
@@ -101,7 +103,7 @@ void compute_max_envelope_avx2(opus_int32 *buffer, float *envelope, int samples_
     for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
         const opus_int32 *sub_frame_buffer = &buffer[sub_frame * samples_in_sub_frame];
         __m256i max_val = _mm256_setzero_si256();
-        
+
         /* Process 8 integers at a time */
         int simd_samples = (samples_in_sub_frame / 8) * 8;
         for (sample_in_sub_frame = 0; sample_in_sub_frame < simd_samples; sample_in_sub_frame += 8) {
@@ -109,21 +111,21 @@ void compute_max_envelope_avx2(opus_int32 *buffer, float *envelope, int samples_
             __m256i abs_vals = _mm256_abs_epi32(vals);
             max_val = _mm256_max_epi32(max_val, abs_vals);
         }
-        
+
         /* Extract maximum from the vector */
         /* Get max of first 4 and last 4 elements */
         __m128i max_low = _mm256_extracti128_si256(max_val, 0);
         __m128i max_high = _mm256_extracti128_si256(max_val, 1);
         __m128i max_4 = _mm_max_epi32(max_low, max_high);
-        
+
         /* Get max of first 2 and last 2 elements */
         __m128i max_2 = _mm_max_epi32(max_4, _mm_shuffle_epi32(max_4, _MM_SHUFFLE(1, 0, 3, 2)));
-        
+
         /* Get max of first and last elements */
         __m128i max_1 = _mm_max_epi32(max_2, _mm_shuffle_epi32(max_2, _MM_SHUFFLE(0, 0, 0, 1)));
-        
+
         int max_scalar = _mm_cvtsi128_si32(max_1);
-        
+
         /* Process remaining samples */
         for (; sample_in_sub_frame < samples_in_sub_frame; ++sample_in_sub_frame) {
             int abs_val = abs(sub_frame_buffer[sample_in_sub_frame]);
@@ -131,130 +133,88 @@ void compute_max_envelope_avx2(opus_int32 *buffer, float *envelope, int samples_
                 max_scalar = abs_val;
             }
         }
-        
+
         if ((float)max_scalar > envelope[sub_frame]) {
             envelope[sub_frame] = (float)max_scalar;
         }
     }
 }
-#endif
-#if defined(__SSE4_2__)
-void compute_max_envelope_sse42(opus_int32 *buffer, float *envelope, int samples_in_sub_frame){
-   /* Compute max envelope without smoothing. */
-   int sub_frame, sample_in_sub_frame;
-    /* SSE4.2 implementation - process 4 floats at a time */
-    for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
-        const opus_int32 *sub_frame_buffer = &buffer[sub_frame * samples_in_sub_frame];
-        __m128 max_val = _mm_setzero_ps();
-        
-        /* Process 4 floats at a time */
-        int simd_samples = (samples_in_sub_frame / 4) * 4;
-        for (sample_in_sub_frame = 0; sample_in_sub_frame < simd_samples; sample_in_sub_frame += 4) {
-            /* Load 4 integers and convert to floats */
-            __m128i vals_i = _mm_loadu_si128((__m128i*)&sub_frame_buffer[sample_in_sub_frame]);
-            __m128 vals = _mm_cvtepi32_ps(vals_i);
-            
-            /* Take absolute values */
-            __m128 abs_vals = _mm_andnot_ps(_mm_set1_ps(-0.0f), vals);  /* Clear sign bit */
-            
-            max_val = _mm_max_ps(max_val, abs_vals);
-        }
-        
-        /* Extract maximum from the vector */
-        __m128 max_2 = _mm_max_ps(max_val, _mm_shuffle_ps(max_val, max_val, _MM_SHUFFLE(1, 0, 3, 2)));
-        __m128 max_1 = _mm_max_ss(max_2, _mm_shuffle_ps(max_2, max_2, _MM_SHUFFLE(0, 0, 0, 1)));
-        
-        float max_scalar = _mm_cvtss_f32(max_1);
-        
-        /* Process remaining samples */
-        for (; sample_in_sub_frame < samples_in_sub_frame; ++sample_in_sub_frame) {
-            float abs_val = (float)abs(sub_frame_buffer[sample_in_sub_frame]);
-            if (abs_val > max_scalar) {
-                max_scalar = abs_val;
-            }
-        }
-        
-        if (max_scalar > envelope[sub_frame]) {
-            envelope[sub_frame] = max_scalar;
-        }
-    }
-}
-#endif
-
-
-static void compute_max_envelope_scalar(opus_int32 *buffer, float *envelope, int samples_in_sub_frame){
-   /* Compute max envelope without smoothing. */
-   int sub_frame, sample_in_sub_frame;
-    for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
-        for (sample_in_sub_frame = 0; sample_in_sub_frame < samples_in_sub_frame; ++sample_in_sub_frame) {
-            envelope[sub_frame] = fmax(envelope[sub_frame], abs(buffer[sub_frame * samples_in_sub_frame + sample_in_sub_frame]));
-        }
-    }
-}
-
-static inline __attribute__((always_inline)) void compute_envelope(
-    opus_int32 *buffer,
-    float *envelope,
-    int samples_in_sub_frame,
-    float *filter_state_level) {
-    int sub_frame, sample_in_sub_frame;
-    compute_max_envelope_func(buffer, envelope, samples_in_sub_frame);
-    
-    /* Make sure envelope increases happen one step earlier so that the
-     * corresponding *gain decrease* doesn't miss a sudden signal
-     *  increase due to interpolation.
-     */
-    for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME - 1; ++sub_frame) {
-        if (envelope[sub_frame] < envelope[sub_frame + 1])
-            envelope[sub_frame] = envelope[sub_frame + 1];
-    }
-    
-    /* Add attack / decay smoothing. */
-    for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
-        const float envelope_value = envelope[sub_frame];
-        if (envelope_value > *filter_state_level) {
-            envelope[sub_frame] = envelope_value * (1 - K_ATTACK_FILTER_CONSTANT) + *filter_state_level * K_ATTACK_FILTER_CONSTANT;
-        } else {
-            envelope[sub_frame] = envelope_value * (1 - K_DECAY_FILTER_CONSTANT) + *filter_state_level * K_DECAY_FILTER_CONSTANT;
-        }
-        *filter_state_level = envelope[sub_frame];
-    }
-}
-static inline __attribute__((always_inline)) void compute_per_sample_scaling_factors(
-    float *scaling_factors,
-    float *per_sample_scaling_factors,
-    int samples_in_sub_frame) {
-    
-    const int is_attack = scaling_factors[0] > scaling_factors[1];
-    if (is_attack) {
-        for (int i = 0; i < samples_in_sub_frame; ++i) {
-            float t = (float)i / samples_in_sub_frame;
-            per_sample_scaling_factors[i] = powf(1.0f - t, K_ATTACK_FIRST_SUB_FRAME_INTERPOLATION_POWER) * (scaling_factors[0] - scaling_factors[1]) + scaling_factors[1];
-        }
-    }
-    
-    for (int i = is_attack ? 1 : 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
-        const int subframe_start = i * samples_in_sub_frame;
-        const float scaling_start = scaling_factors[i];
-        const float scaling_end = scaling_factors[i + 1];
-        const float scaling_diff = (scaling_end - scaling_start) / samples_in_sub_frame;
-        
-        for (int j = 0; j < samples_in_sub_frame; ++j) {
-            per_sample_scaling_factors[subframe_start + j] = scaling_start + scaling_diff * j;
-        }
-    }
-}
-
-static inline __attribute__((always_inline)) void calculate_scaling_factors(
+static inline __attribute__((always_inline)) void calculate_scaling_factors_avx2(
     float *envelope,
     float *scaling_factors,
     float *last_scaling_factor) {
-    
     int i;
-    
     scaling_factors[0] = *last_scaling_factor;
-    for (i = 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
-        const float input_level = envelope[i];								
+
+    /* Constants for vectorized operations */
+    const __m256 ones = _mm256_set1_ps(1.0f);
+    const __m256 threshold_low = _mm256_set1_ps(approximation_params_x[0]);
+    const __m256 threshold_high = _mm256_set1_ps(K_MAX_INPUT_LEVEL_LINEAR);
+    const __m256 scale_factor = _mm256_set1_ps(32768.0f);
+
+    /* Process 8 elements at a time */
+    for (i = 0; i <= K_SUB_FRAMES_IN_FRAME - 8; i += 8) {
+        /* Load 8 input levels */
+        __m256 input_levels = _mm256_loadu_ps(&envelope[i]);
+
+        /* Create masks for the three conditions */
+        __m256 mask_low = _mm256_cmp_ps(input_levels, threshold_low, _CMP_LE_OQ);
+        __m256 mask_high = _mm256_cmp_ps(input_levels, threshold_high, _CMP_GE_OQ);
+        __m256 mask_mid = _mm256_andnot_ps(mask_low, _mm256_andnot_ps(mask_high, ones));
+
+        /* Calculate scaling factors for each case */
+        /* Case 1: input_level <= approximation_params_x[0] -> scaling factor = 1.0f */
+        __m256 result_low = ones;
+
+        /* Case 2: input_level >= K_MAX_INPUT_LEVEL_LINEAR -> scaling factor = 32768.f / input_level */
+        __m256 result_high = _mm256_div_ps(scale_factor, input_levels);
+
+        /* Case 3: Middle region - use scalar processing for binary search */
+        __m256 result_mid = _mm256_setzero_ps();
+
+        /* Handle middle region with scalar code (binary search cannot be easily vectorized) */
+        float temp_input[8];
+        float temp_result[8];
+        _mm256_storeu_ps(temp_input, input_levels);
+        _mm256_storeu_ps(temp_result, result_mid);
+
+        for (int j = 0; j < 8; j++) {
+            if (((float*)&mask_mid)[j] != 0.0f) {  /* Check if mask is set for this element */
+                const float input_level = temp_input[j];
+                /* Knee and limiter regions; find the linear piece index. Searching in [0, K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS) */
+                size_t left = 0;
+                size_t right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
+                while (left < right) {
+                    size_t mid = left + (right - left) / 2;
+                    if (approximation_params_x[mid] < input_level)
+                        left = mid + 1;
+                    else
+                        right = mid;
+                }
+                /* Now left points to first element that is >= input_level, we need a previous element */
+                const size_t index = (left > 0) ? left - 1 : 0;
+                /* Piece-wise linear interploation. */
+                const float gain = approximation_params_m[index] * input_level + approximation_params_q[index];
+                temp_result[j] = gain;
+            }
+        }
+
+        result_mid = _mm256_loadu_ps(temp_result);
+
+        /* Combine results using masks */
+        __m256 result = _mm256_blendv_ps(
+            _mm256_blendv_ps(result_mid, result_high, mask_high),
+            result_low,
+            mask_low
+        );
+
+        /* Store results */
+        _mm256_storeu_ps(&scaling_factors[i + 1], result);
+    }
+
+    /* Process remaining elements with scalar code */
+    for (; i < K_SUB_FRAMES_IN_FRAME; ++i) {
+        const float input_level = envelope[i];
         if (input_level <= approximation_params_x[0]) {
             /* Identity region. */
             scaling_factors[i+1] = 1.0f;
@@ -282,7 +242,530 @@ static inline __attribute__((always_inline)) void calculate_scaling_factors(
             scaling_factors[i+1] = gain;
         }
     }
-    
+
+    *last_scaling_factor = scaling_factors[K_SUB_FRAMES_IN_FRAME];
+}
+
+static inline __attribute__((always_inline)) void compute_per_sample_scaling_factors_avx2(
+    float *scaling_factors,
+    float *per_sample_scaling_factors,
+    int samples_in_sub_frame) {
+
+    const int is_attack = scaling_factors[0] > scaling_factors[1];
+
+    /* Handle attack section with scalar code (powf is difficult to vectorize efficiently) */
+    if (is_attack) {
+        for (int i = 0; i < samples_in_sub_frame; ++i) {
+            float t = (float)i / samples_in_sub_frame;
+            per_sample_scaling_factors[i] = powf(1.0f - t, K_ATTACK_FIRST_SUB_FRAME_INTERPOLATION_POWER) * (scaling_factors[0] - scaling_factors[1]) + scaling_factors[1];
+        }
+    }
+
+    /* Vectorized linear interpolation for the main loop */
+    for (int i = is_attack ? 1 : 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
+        const int subframe_start = i * samples_in_sub_frame;
+        const float scaling_start = scaling_factors[i];
+        const float scaling_end = scaling_factors[i + 1];
+        const float scaling_diff = (scaling_end - scaling_start) / samples_in_sub_frame;
+
+        /* Vectorized processing - process 8 floats at a time */
+        int j = 0;
+        const __m256 v_scaling_start = _mm256_set1_ps(scaling_start);
+        const __m256 v_scaling_diff = _mm256_set1_ps(scaling_diff);
+
+        /* Process 8 elements at a time */
+        for (; j <= samples_in_sub_frame - 8; j += 8) {
+            /* Create vector of indices [j, j+1, j+2, ..., j+7] */
+            __m256i v_indices = _mm256_set_epi32(j+7, j+6, j+5, j+4, j+3, j+2, j+1, j);
+            __m256 v_indices_f = _mm256_cvtepi32_ps(v_indices);
+
+            /* Calculate scaling_start + scaling_diff * j for all 8 elements */
+            __m256 v_result = _mm256_fmadd_ps(v_scaling_diff, v_indices_f, v_scaling_start);
+
+            /* Store results */
+            _mm256_storeu_ps(&per_sample_scaling_factors[subframe_start + j], v_result);
+        }
+
+        /* Handle remaining elements with scalar code */
+        for (; j < samples_in_sub_frame; ++j) {
+            per_sample_scaling_factors[subframe_start + j] = scaling_start + scaling_diff * j;
+        }
+    }
+}
+
+static inline __attribute__((always_inline)) void scale_buffer_avx2(
+    opus_int32 *buffer,
+    int samples,
+    float *per_sample_scaling_factors,
+    opus_int16 *outBuffer){
+
+    int i = 0;
+    const __m256 v_half = _mm256_set1_ps(0.5f);
+    const __m256 v_min_val = _mm256_set1_ps(-32768.0f);
+    const __m256 v_max_val = _mm256_set1_ps(32767.0f);
+
+    /* Process 8 elements at a time */
+    for (; i <= samples - 8; i += 8) {
+        /* Load 8 integers from buffer and convert to floats */
+        __m256i v_int_vals = _mm256_loadu_si256((__m256i*)&buffer[i]);
+        __m256 v_buf_vals = _mm256_cvtepi32_ps(v_int_vals);
+
+        /* Load 8 scaling factors */
+        __m256 v_scale_vals = _mm256_loadu_ps(&per_sample_scaling_factors[i]);
+
+        /* Multiply buffer values with scaling factors */
+        __m256 v_mult_result = _mm256_mul_ps(v_buf_vals, v_scale_vals);
+
+        /* Add 0.5f for rounding */
+        __m256 v_rounded = _mm256_add_ps(v_mult_result, v_half);
+
+        /* Clamp values to [-32768, 32767] */
+        v_rounded = _mm256_max_ps(v_rounded, v_min_val);
+        v_rounded = _mm256_min_ps(v_rounded, v_max_val);
+
+        /* Convert to integers */
+        __m256i v_int_result = _mm256_cvtps_epi32(v_rounded);
+
+        /* Pack 32-bit integers to 16-bit integers */
+        /* First, pack the lower 4 32-bit values */
+        __m128i v_low = _mm256_extracti128_si256(v_int_result, 0);
+        __m128i v_high = _mm256_extracti128_si256(v_int_result, 1);
+        __m128i v_packed = _mm_packs_epi32(v_low, v_high);
+
+        /* Store the 8 16-bit integers */
+        _mm_storeu_si128((__m128i*)&outBuffer[i], v_packed);
+    }
+
+    /* Handle remaining elements with scalar code */
+    for (; i < samples; i++) {
+        opus_int32 sample = (opus_int32)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
+        if(sample > 32767)
+            sample = 32767;
+        else if(sample < -32768)
+            sample = -32768;
+        outBuffer[i] = sample;
+    }
+}
+static inline __attribute__((always_inline)) void clamp_buffer_avx2(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
+    int i = 0;
+    const __m256i v_min_val = _mm256_set1_epi32(-32768);
+    const __m256i v_max_val = _mm256_set1_epi32(32767);
+
+    /* Process 8 elements at a time */
+    for (; i <= samples - 8; i += 8) {
+        /* Load 8 integers from buffer */
+        __m256i v_int_vals = _mm256_loadu_si256((__m256i*)&buffer[i]);
+
+        /* Clamp values to [-32768, 32767] */
+        v_int_vals = _mm256_max_epi32(v_int_vals, v_min_val);
+        v_int_vals = _mm256_min_epi32(v_int_vals, v_max_val);
+
+        /* Pack 32-bit integers to 16-bit integers */
+        /* First, pack the lower 4 32-bit values */
+        __m128i v_low = _mm256_extracti128_si256(v_int_vals, 0);
+        __m128i v_high = _mm256_extracti128_si256(v_int_vals, 1);
+        __m128i v_packed = _mm_packs_epi32(v_low, v_high);
+
+        /* Store the 8 16-bit integers */
+        _mm_storeu_si128((__m128i*)&outBuffer[i], v_packed);
+    }
+
+    /* Handle remaining elements with scalar code */
+    for (; i < samples; i++) {
+        opus_int32 sample = buffer[i];
+        if(sample > 32767)
+            sample = 32767;
+        else if(sample < -32768)
+            sample = -32768;
+        outBuffer[i] = (opus_int16)sample;
+    }
+}
+#endif
+#if defined(__SSE4_2__)
+static inline __attribute__((always_inline)) void scale_buffer_sse42(
+    opus_int32 *buffer,
+    int samples,
+    float *per_sample_scaling_factors,
+    opus_int16 *outBuffer){
+
+    int i = 0;
+    const __m128 v_half = _mm_set1_ps(0.5f);
+    const __m128 v_min_val = _mm_set1_ps(-32768.0f);
+    const __m128 v_max_val = _mm_set1_ps(32767.0f);
+
+    /* Process 4 elements at a time */
+    for (; i <= samples - 4; i += 4) {
+        /* Load 4 integers from buffer and convert to floats */
+        __m128i v_int_vals = _mm_loadu_si128((__m128i*)&buffer[i]);
+        __m128 v_buf_vals = _mm_cvtepi32_ps(v_int_vals);
+
+        /* Load 4 scaling factors */
+        __m128 v_scale_vals = _mm_loadu_ps(&per_sample_scaling_factors[i]);
+
+        /* Multiply buffer values with scaling factors */
+        __m128 v_mult_result = _mm_mul_ps(v_buf_vals, v_scale_vals);
+
+        /* Add 0.5f for rounding */
+        __m128 v_rounded = _mm_add_ps(v_mult_result, v_half);
+
+        /* Clamp values to [-32768, 32767] */
+        v_rounded = _mm_max_ps(v_rounded, v_min_val);
+        v_rounded = _mm_min_ps(v_rounded, v_max_val);
+
+        /* Convert to integers */
+        __m128i v_int_result = _mm_cvtps_epi32(v_rounded);
+
+        /* Pack 32-bit integers to 16-bit integers */
+        __m128i v_low = v_int_result;
+        __m128i v_high = _mm_shuffle_epi32(v_int_result, _MM_SHUFFLE(3, 2, 3, 2));
+        __m128i v_packed = _mm_packs_epi32(v_low, v_high);
+
+        /* Store the 4 16-bit integers */
+        _mm_storel_epi64((__m128i*)&outBuffer[i], v_packed);
+    }
+
+    /* Handle remaining elements with scalar code */
+    for (; i < samples; i++) {
+        opus_int32 sample = (opus_int32)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
+        if(sample > 32767)
+            sample = 32767;
+        else if(sample < -32768)
+            sample = -32768;
+        outBuffer[i] = sample;
+    }
+}
+
+static inline __attribute__((always_inline)) void compute_per_sample_scaling_factors_sse42(
+    float *scaling_factors,
+    float *per_sample_scaling_factors,
+    int samples_in_sub_frame) {
+
+    const int is_attack = scaling_factors[0] > scaling_factors[1];
+
+    /* Handle attack section with scalar code (powf is difficult to vectorize efficiently) */
+    if (is_attack) {
+        for (int i = 0; i < samples_in_sub_frame; ++i) {
+            float t = (float)i / samples_in_sub_frame;
+            per_sample_scaling_factors[i] = powf(1.0f - t, K_ATTACK_FIRST_SUB_FRAME_INTERPOLATION_POWER) * (scaling_factors[0] - scaling_factors[1]) + scaling_factors[1];
+        }
+    }
+
+    /* Vectorized linear interpolation for the main loop */
+    for (int i = is_attack ? 1 : 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
+        const int subframe_start = i * samples_in_sub_frame;
+        const float scaling_start = scaling_factors[i];
+        const float scaling_end = scaling_factors[i + 1];
+        const float scaling_diff = (scaling_end - scaling_start) / samples_in_sub_frame;
+
+        /* Vectorized processing - process 4 floats at a time */
+        int j = 0;
+        const __m128 v_scaling_start = _mm_set1_ps(scaling_start);
+        const __m128 v_scaling_diff = _mm_set1_ps(scaling_diff);
+
+        /* Process 4 elements at a time */
+        for (; j <= samples_in_sub_frame - 4; j += 4) {
+            /* Create vector of indices [j, j+1, j+2, j+3] */
+            __m128i v_indices = _mm_set_epi32(j+3, j+2, j+1, j);
+            __m128 v_indices_f = _mm_cvtepi32_ps(v_indices);
+
+            /* Calculate scaling_start + scaling_diff * j for all 4 elements */
+            __m128 v_result = _mm_add_ps(v_scaling_start, _mm_mul_ps(v_scaling_diff, v_indices_f));
+
+            /* Store results */
+            _mm_storeu_ps(&per_sample_scaling_factors[subframe_start + j], v_result);
+        }
+
+        /* Handle remaining elements with scalar code */
+        for (; j < samples_in_sub_frame; ++j) {
+            per_sample_scaling_factors[subframe_start + j] = scaling_start + scaling_diff * j;
+        }
+    }
+}
+void compute_max_envelope_sse42(opus_int32 *buffer, float *envelope, int samples_in_sub_frame){
+   /* Compute max envelope without smoothing. */
+   int sub_frame, sample_in_sub_frame;
+    /* SSE4.2 implementation - process 4 floats at a time */
+    for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
+        const opus_int32 *sub_frame_buffer = &buffer[sub_frame * samples_in_sub_frame];
+        __m128 max_val = _mm_setzero_ps();
+
+        /* Process 4 floats at a time */
+        int simd_samples = (samples_in_sub_frame / 4) * 4;
+        for (sample_in_sub_frame = 0; sample_in_sub_frame < simd_samples; sample_in_sub_frame += 4) {
+            /* Load 4 integers and convert to floats */
+            __m128i vals_i = _mm_loadu_si128((__m128i*)&sub_frame_buffer[sample_in_sub_frame]);
+            __m128 vals = _mm_cvtepi32_ps(vals_i);
+
+            /* Take absolute values */
+            __m128 abs_vals = _mm_andnot_ps(_mm_set1_ps(-0.0f), vals);  /* Clear sign bit */
+
+            max_val = _mm_max_ps(max_val, abs_vals);
+        }
+
+        /* Extract maximum from the vector */
+        __m128 max_2 = _mm_max_ps(max_val, _mm_shuffle_ps(max_val, max_val, _MM_SHUFFLE(1, 0, 3, 2)));
+        __m128 max_1 = _mm_max_ss(max_2, _mm_shuffle_ps(max_2, max_2, _MM_SHUFFLE(0, 0, 0, 1)));
+
+        float max_scalar = _mm_cvtss_f32(max_1);
+
+        /* Process remaining samples */
+        for (; sample_in_sub_frame < samples_in_sub_frame; ++sample_in_sub_frame) {
+            float abs_val = (float)abs(sub_frame_buffer[sample_in_sub_frame]);
+            if (abs_val > max_scalar) {
+                max_scalar = abs_val;
+            }
+        }
+
+        if (max_scalar > envelope[sub_frame]) {
+            envelope[sub_frame] = max_scalar;
+        }
+    }
+}
+static inline __attribute__((always_inline)) void calculate_scaling_factors_sse42(
+    float *envelope,
+    float *scaling_factors,
+    float *last_scaling_factor) {
+
+    int i;
+
+    scaling_factors[0] = *last_scaling_factor;
+
+    /* Constants for vectorized operations */
+    const __m128 ones = _mm_set1_ps(1.0f);
+    const __m128 threshold_low = _mm_set1_ps(approximation_params_x[0]);
+    const __m128 threshold_high = _mm_set1_ps(K_MAX_INPUT_LEVEL_LINEAR);
+    const __m128 scale_factor = _mm_set1_ps(32768.0f);
+
+    /* Process 4 elements at a time */
+    for (i = 0; i <= K_SUB_FRAMES_IN_FRAME - 4; i += 4) {
+        /* Load 4 input levels */
+        __m128 input_levels = _mm_loadu_ps(&envelope[i]);
+
+        /* Create masks for the three conditions */
+        __m128 mask_low = _mm_cmp_ps(input_levels, threshold_low, _CMP_LE_OQ);
+        __m128 mask_high = _mm_cmp_ps(input_levels, threshold_high, _CMP_GE_OQ);
+        __m128 mask_mid = _mm_andnot_ps(mask_low, _mm_andnot_ps(mask_high, ones));
+
+        /* Calculate scaling factors for each case */
+        /* Case 1: input_level <= approximation_params_x[0] -> scaling factor = 1.0f */
+        __m128 result_low = ones;
+
+        /* Case 2: input_level >= K_MAX_INPUT_LEVEL_LINEAR -> scaling factor = 32768.f / input_level */
+        __m128 result_high = _mm_div_ps(scale_factor, input_levels);
+
+        /* Case 3: Middle region - use scalar processing for binary search */
+        __m128 result_mid = _mm_setzero_ps();
+
+        /* Handle middle region with scalar code (binary search cannot be easily vectorized) */
+        float temp_input[4];
+        float temp_result[4];
+        _mm_storeu_ps(temp_input, input_levels);
+        _mm_storeu_ps(temp_result, result_mid);
+
+        for (int j = 0; j < 4; j++) {
+            if (((float*)&mask_mid)[j] != 0.0f) {  /* Check if mask is set for this element */
+                const float input_level = temp_input[j];
+                /* Knee and limiter regions; find the linear piece index. Searching in [0, K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS) */
+                size_t left = 0;
+                size_t right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
+                while (left < right) {
+                    size_t mid = left + (right - left) / 2;
+                    if (approximation_params_x[mid] < input_level)
+                        left = mid + 1;
+                    else
+                        right = mid;
+                }
+                /* Now left points to first element that is >= input_level, we need a previous element */
+                const size_t index = (left > 0) ? left - 1 : 0;
+                /* Piece-wise linear interploation. */
+                const float gain = approximation_params_m[index] * input_level + approximation_params_q[index];
+                temp_result[j] = gain;
+            }
+        }
+
+        result_mid = _mm_loadu_ps(temp_result);
+
+        /* Combine results using masks */
+        __m128 result = _mm_blendv_ps(
+            _mm_blendv_ps(result_mid, result_high, mask_high),
+            result_low,
+            mask_low
+        );
+
+        /* Store results */
+        _mm_storeu_ps(&scaling_factors[i + 1], result);
+    }
+
+    /* Process remaining elements with scalar code */
+    for (; i < K_SUB_FRAMES_IN_FRAME; ++i) {
+        const float input_level = envelope[i];
+        if (input_level <= approximation_params_x[0]) {
+            /* Identity region. */
+            scaling_factors[i+1] = 1.0f;
+        } else if (input_level >= K_MAX_INPUT_LEVEL_LINEAR) {
+            /* Saturating lower bound. The saturing samples exactly hit the clipping level.
+             * This method achieves has the lowest harmonic distorsion, but it
+             * may reduce the amplitude of the non-saturating samples too much.
+             */
+            scaling_factors[i+1] = 32768.f / input_level;
+        } else {
+            /* Knee and limiter regions; find the linear piece index. Searching in [0, K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS) */
+            size_t left = 0;
+            size_t right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
+            while (left < right) {
+                size_t mid = left + (right - left) / 2;
+                if (approximation_params_x[mid] < input_level)
+                    left = mid + 1;
+                else
+                    right = mid;
+            }
+            /* Now left points to first element that is >= input_level, we need a previous element */
+            const size_t index = (left > 0) ? left - 1 : 0;
+            /* Piece-wise linear interploation. */
+            const float gain = approximation_params_m[index] * input_level + approximation_params_q[index];
+            scaling_factors[i+1] = gain;
+        }
+    }
+
+    *last_scaling_factor = scaling_factors[K_SUB_FRAMES_IN_FRAME];
+}
+
+static inline __attribute__((always_inline)) void clamp_buffer_sse42(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
+    int i = 0;
+    const __m128i v_min_val = _mm_set1_epi32(-32768);
+    const __m128i v_max_val = _mm_set1_epi32(32767);
+
+    /* Process 4 elements at a time */
+    for (; i <= samples - 4; i += 4) {
+        /* Load 4 integers from buffer */
+        __m128i v_int_vals = _mm_loadu_si128((__m128i*)&buffer[i]);
+
+        /* Clamp values to [-32768, 32767] */
+        v_int_vals = _mm_max_epi32(v_int_vals, v_min_val);
+        v_int_vals = _mm_min_epi32(v_int_vals, v_max_val);
+
+        /* Pack 32-bit integers to 16-bit integers */
+        __m128i v_low = v_int_vals;
+        __m128i v_high = _mm_shuffle_epi32(v_int_vals, _MM_SHUFFLE(3, 2, 3, 2));
+        __m128i v_packed = _mm_packs_epi32(v_low, v_high);
+
+        /* Store the 4 16-bit integers */
+        _mm_storel_epi64((__m128i*)&outBuffer[i], v_packed);
+    }
+
+    /* Handle remaining elements with scalar code */
+    for (; i < samples; i++) {
+        opus_int32 sample = buffer[i];
+        if(sample > 32767)
+            sample = 32767;
+        else if(sample < -32768)
+            sample = -32768;
+        outBuffer[i] = (opus_int16)sample;
+    }
+}
+#endif
+
+static void compute_max_envelope_scalar(opus_int32 *buffer, float *envelope, int samples_in_sub_frame){
+   /* Compute max envelope without smoothing. */
+   int sub_frame, sample_in_sub_frame;
+    for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
+        for (sample_in_sub_frame = 0; sample_in_sub_frame < samples_in_sub_frame; ++sample_in_sub_frame) {
+            envelope[sub_frame] = fmax(envelope[sub_frame], abs(buffer[sub_frame * samples_in_sub_frame + sample_in_sub_frame]));
+        }
+    }
+}
+
+static inline __attribute__((always_inline)) void compute_envelope(
+    opus_int32 *buffer,
+    float *envelope,
+    int samples_in_sub_frame,
+    float *filter_state_level) {
+    int sub_frame, sample_in_sub_frame;
+    compute_max_envelope_func(buffer, envelope, samples_in_sub_frame);
+
+    /* Make sure envelope increases happen one step earlier so that the
+     * corresponding *gain decrease* doesn't miss a sudden signal
+     *  increase due to interpolation.
+     */
+    for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME - 1; ++sub_frame) {
+        if (envelope[sub_frame] < envelope[sub_frame + 1])
+            envelope[sub_frame] = envelope[sub_frame + 1];
+    }
+
+    /* Add attack / decay smoothing. */
+    for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
+        const float envelope_value = envelope[sub_frame];
+        if (envelope_value > *filter_state_level) {
+            envelope[sub_frame] = envelope_value * (1 - K_ATTACK_FILTER_CONSTANT) + *filter_state_level * K_ATTACK_FILTER_CONSTANT;
+        } else {
+            envelope[sub_frame] = envelope_value * (1 - K_DECAY_FILTER_CONSTANT) + *filter_state_level * K_DECAY_FILTER_CONSTANT;
+        }
+        *filter_state_level = envelope[sub_frame];
+    }
+}
+static inline __attribute__((always_inline)) void compute_per_sample_scaling_factors_scalar(
+    float *scaling_factors,
+    float *per_sample_scaling_factors,
+    int samples_in_sub_frame) {
+
+    const int is_attack = scaling_factors[0] > scaling_factors[1];
+    if (is_attack) {
+        for (int i = 0; i < samples_in_sub_frame; ++i) {
+            float t = (float)i / samples_in_sub_frame;
+            per_sample_scaling_factors[i] = powf(1.0f - t, K_ATTACK_FIRST_SUB_FRAME_INTERPOLATION_POWER) * (scaling_factors[0] - scaling_factors[1]) + scaling_factors[1];
+        }
+    }
+
+    for (int i = is_attack ? 1 : 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
+        const int subframe_start = i * samples_in_sub_frame;
+        const float scaling_start = scaling_factors[i];
+        const float scaling_end = scaling_factors[i + 1];
+        const float scaling_diff = (scaling_end - scaling_start) / samples_in_sub_frame;
+
+        for (int j = 0; j < samples_in_sub_frame; ++j) {
+            per_sample_scaling_factors[subframe_start + j] = scaling_start + scaling_diff * j;
+        }
+    }
+}
+
+static inline __attribute__((always_inline)) void calculate_scaling_factors_scalar(
+    float *envelope,
+    float *scaling_factors,
+    float *last_scaling_factor) {
+
+    int i;
+
+    scaling_factors[0] = *last_scaling_factor;
+    for (i = 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
+        const float input_level = envelope[i];
+        if (input_level <= approximation_params_x[0]) {
+            /* Identity region. */
+            scaling_factors[i+1] = 1.0f;
+        } else if (input_level >= K_MAX_INPUT_LEVEL_LINEAR) {
+            /* Saturating lower bound. The saturing samples exactly hit the clipping level.
+             * This method achieves has the lowest harmonic distorsion, but it
+             * may reduce the amplitude of the non-saturating samples too much.
+             */
+            scaling_factors[i+1] = 32768.f / input_level;
+        } else {
+            /* Knee and limiter regions; find the linear piece index. Searching in [0, K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS) */
+            size_t left = 0;
+            size_t right = K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS;
+            while (left < right) {
+                size_t mid = left + (right - left) / 2;
+                if (approximation_params_x[mid] < input_level)
+                    left = mid + 1;
+                else
+                    right = mid;
+            }
+            /* Now left points to first element that is >= input_level, we need a previous element */
+            const size_t index = (left > 0) ? left - 1 : 0;
+            /* Piece-wise linear interploation. */
+            const float gain = approximation_params_m[index] * input_level + approximation_params_q[index];
+            scaling_factors[i+1] = gain;
+        }
+    }
+
     *last_scaling_factor = scaling_factors[K_SUB_FRAMES_IN_FRAME];
 }
 
@@ -294,17 +777,58 @@ inline __attribute__((always_inline)) void compute_scaling_factors(
 	int samples_in_sub_frame, 
 	float *filter_state_level, 
 	float *last_scaling_factor) {
-	
 	int sub_frame, sample_in_sub_frame;
-	
 	/*
 	 * Calculating gain factors for limiter (adapted from WebRTC project).
 	 * Original WebRTC code: https://webrtc.googlesource.com/src
 	 * Licensed under BSD 3-Clause License.
 	 */
 	compute_envelope(buffer, envelope, samples_in_sub_frame, filter_state_level);
-	calculate_scaling_factors(envelope, scaling_factors, last_scaling_factor);
-	compute_per_sample_scaling_factors(scaling_factors, per_sample_scaling_factors, samples_in_sub_frame);
+	calculate_scaling_factors_func(envelope, scaling_factors, last_scaling_factor);
+	compute_per_sample_scaling_factors_func(scaling_factors, per_sample_scaling_factors, samples_in_sub_frame);
+}
+
+static inline __attribute__((always_inline)) void scale_buffer_scalar(
+    opus_int32 *buffer,
+    int samples,
+    float *per_sample_scaling_factors,
+    opus_int16 *outBuffer){
+    int i;
+    opus_int32 sample;
+    for(i=0; i<samples; i++) {
+        sample = (opus_int32)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
+        if(sample > 32767)
+            sample = 32767;
+        else if(sample < -32768)
+            sample = -32768;
+        outBuffer[i] = sample;
+    }
+}
+
+inline __attribute__((always_inline)) void scale_buffer(
+    opus_int32 *buffer,
+    int samples,
+    float *per_sample_scaling_factors,
+    opus_int16 *outBuffer){
+    scale_buffer_func(buffer, samples, per_sample_scaling_factors, outBuffer);
+}
+
+
+static inline __attribute__((always_inline)) void clamp_buffer_scalar(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
+    int i;
+    opus_int32 sample;
+    for(i=0; i<samples; i++) {
+        sample = buffer[i];
+        if(sample > 32767)
+            sample = 32767;
+        else if(sample < -32768)
+            sample = -32768;
+        outBuffer[i] = (opus_int16)sample;
+    }
+}
+
+inline __attribute__((always_inline)) void clamp_buffer(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
+    clamp_buffer_func(buffer, samples, outBuffer);
 }
 
 inline __attribute__((always_inline)) void init_limiter() {
@@ -312,6 +836,10 @@ inline __attribute__((always_inline)) void init_limiter() {
     if (has_avx2()) {
         JANUS_LOG(LOG_INFO, "Using AVX2 implementation of limiter\n");
         compute_max_envelope_func = compute_max_envelope_avx2;
+        calculate_scaling_factors_func = calculate_scaling_factors_avx2;
+        compute_per_sample_scaling_factors_func = compute_per_sample_scaling_factors_avx2;
+        scale_buffer_func = scale_buffer_avx2;
+        clamp_buffer_func = clamp_buffer_avx2;
         return;
     }
     #endif
@@ -319,10 +847,18 @@ inline __attribute__((always_inline)) void init_limiter() {
     if (has_sse42()) {
         JANUS_LOG(LOG_INFO, "Using SSE4.2 implementation of limiter\n");
         compute_max_envelope_func = compute_max_envelope_sse42;
+        calculate_scaling_factors_func = calculate_scaling_factors_sse42;
+        compute_per_sample_scaling_factors_func = compute_per_sample_scaling_factors_sse42;
+        scale_buffer_func = scale_buffer_sse42;
+        clamp_buffer_func = clamp_buffer_sse42;
         return;
     } 
     #endif
  
     JANUS_LOG(LOG_INFO, "Using scalar implementation of limiter\n");
     compute_max_envelope_func = compute_max_envelope_scalar;
+    calculate_scaling_factors_func = calculate_scaling_factors_scalar;
+    compute_per_sample_scaling_factors_func = compute_per_sample_scaling_factors_scalar;
+    scale_buffer_func = scale_buffer_scalar;
+    clamp_buffer_func = clamp_buffer_scalar;
 }
