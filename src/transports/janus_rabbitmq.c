@@ -190,6 +190,7 @@ static gboolean declare_outgoing_queue = FALSE, declare_outgoing_queue_admin = F
 amqp_boolean_t queue_durable = 0, queue_exclusive = 0, queue_autodelete = 0,
 	queue_durable_admin = 0, queue_exclusive_admin = 0, queue_autodelete_admin = 0;
 static uint16_t heartbeat = 0;
+static gboolean block_startup_until_connected = FALSE;
 
 /* Transport implementation */
 int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_path) {
@@ -311,6 +312,11 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		JANUS_LOG(LOG_ERR, "Invalid heartbeat timeout (%s), falling back to default (0, disabling heartbeat)\n", item->value);
 		heartbeat = 0;
 	}
+
+	/* Check if we need to block startup until RabbitMQ is connected */
+	item = janus_config_get(config, config_general, janus_config_type_item, "block_startup_until_connected");
+	if(item && item->value && janus_is_true(item->value))
+		block_startup_until_connected = TRUE;
 
 	/* Now check if the Janus API must be supported */
 	item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
@@ -455,7 +461,22 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		rmq_client = g_malloc0(sizeof(janus_rabbitmq_client));
 
 		/* Connect */
-		int result = janus_rabbitmq_connect();
+		uint8_t retry_interval = 5; // Retry interval in seconds
+		int result = -1;
+		while(!rmq_client->destroy && !g_atomic_int_get(&stopping)) {
+			result = janus_rabbitmq_connect();
+			if (result == 0) {
+				break;
+			}
+
+			if (!block_startup_until_connected) {
+				break;
+			}
+
+			JANUS_LOG(LOG_ERR, "RabbitMQ: Connection failed, retrying in %d seconds\n", retry_interval);
+			g_usleep(retry_interval * 1000000);
+		}
+
 		if(result < 0) {
 			goto error;
 		}
