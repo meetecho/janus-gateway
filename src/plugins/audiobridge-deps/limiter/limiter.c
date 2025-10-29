@@ -89,14 +89,14 @@ static float approximation_params_q[K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS] = {
 };
 
 /* Function pointers for the selected implementation */
-static void (*compute_max_envelope_func)(opus_int32 *buffer, float *envelope, int samples_in_sub_frame) = NULL;
+static void (*compute_max_envelope_func)(opus_int32 *buffer, float envelope[K_SUB_FRAMES_IN_FRAME], int samples_in_sub_frame) = NULL;
 static void (*calculate_scaling_factors_func)(float *envelope, float *scaling_factors, float *last_scaling_factor) = NULL;
 static void (*compute_per_sample_scaling_factors_func)(float *scaling_factors, float *per_sample_scaling_factors, int samples_in_sub_frame) = NULL;
 static void (*scale_buffer_func)(opus_int32 *buffer, int samples, float *per_sample_scaling_factors, opus_int16 *outBuffer) = NULL;
 static void (*clamp_buffer_func)(opus_int32 *buffer, int samples, opus_int16 *outBuffer) = NULL;
 
 #if defined(__AVX2__)
-static void compute_max_envelope_avx2(opus_int32 *buffer, float *envelope, int samples_in_sub_frame){
+static void compute_max_envelope_avx2(opus_int32 *buffer, float envelope[K_SUB_FRAMES_IN_FRAME], int samples_in_sub_frame){
    /* Compute max envelope without smoothing. */
    int sub_frame, sample_in_sub_frame;
     /* AVX2 implementation - process 8 32-bit integers at a time */
@@ -480,7 +480,7 @@ static void compute_per_sample_scaling_factors_sse42(
         }
     }
 }
-static void compute_max_envelope_sse42(opus_int32 *buffer, float *envelope, int samples_in_sub_frame){
+static void compute_max_envelope_sse42(opus_int32 *buffer, float envelope[K_SUB_FRAMES_IN_FRAME], int samples_in_sub_frame){
    /* Compute max envelope without smoothing. */
    int sub_frame, sample_in_sub_frame;
     /* SSE4.2 implementation - process 4 floats at a time */
@@ -662,7 +662,7 @@ static void clamp_buffer_sse42(opus_int32 *buffer, int samples, opus_int16 *outB
 }
 #endif
 
-static void compute_max_envelope_scalar(opus_int32 *buffer, float *envelope, int samples_in_sub_frame){
+static void compute_max_envelope_scalar(opus_int32 *buffer, float envelope[K_SUB_FRAMES_IN_FRAME], int samples_in_sub_frame){
    /* Compute max envelope without smoothing. */
    int sub_frame, sample_in_sub_frame;
     for (sub_frame = 0; sub_frame < K_SUB_FRAMES_IN_FRAME; ++sub_frame) {
@@ -674,7 +674,7 @@ static void compute_max_envelope_scalar(opus_int32 *buffer, float *envelope, int
 
 static inline __attribute__((always_inline)) void compute_envelope(
     opus_int32 *buffer,
-    float *envelope,
+    float envelope[K_SUB_FRAMES_IN_FRAME],
     int samples_in_sub_frame,
     float *filter_state_level) {
     int sub_frame;
@@ -729,7 +729,9 @@ static void calculate_scaling_factors_scalar(
     float *envelope,
     float *scaling_factors,
     float *last_scaling_factor) {
+
     int i;
+
     scaling_factors[0] = *last_scaling_factor;
     for (i = 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
         const float input_level = envelope[i];
@@ -765,12 +767,12 @@ static void calculate_scaling_factors_scalar(
 }
 
 inline __attribute__((always_inline)) void compute_scaling_factors(
-	opus_int32 *buffer, 
-	float *envelope, 
-	float *scaling_factors, 
-	float *per_sample_scaling_factors, 
-	int samples_in_sub_frame, 
-	float *filter_state_level, 
+	opus_int32 *buffer,
+	float envelope[K_SUB_FRAMES_IN_FRAME],
+	float *scaling_factors,
+	float *per_sample_scaling_factors,
+	int samples_in_sub_frame,
+	float *filter_state_level,
 	float *last_scaling_factor) {
 	/*
 	 * Calculating gain factors for limiter (adapted from WebRTC project).
@@ -846,9 +848,9 @@ inline __attribute__((always_inline)) void init_limiter(void) {
         scale_buffer_func = scale_buffer_sse42;
         clamp_buffer_func = clamp_buffer_sse42;
         return;
-    } 
+    }
     #endif
- 
+
     JANUS_LOG(LOG_INFO, "Using scalar implementation of limiter\n");
     compute_max_envelope_func = compute_max_envelope_scalar;
     calculate_scaling_factors_func = calculate_scaling_factors_scalar;

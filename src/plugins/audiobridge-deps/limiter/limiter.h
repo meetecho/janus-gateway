@@ -36,8 +36,8 @@
 #define K_MAX_INPUT_LEVEL_LINEAR 36766.300710566735f
 
 void compute_scaling_factors(
-    opus_int32 *buffer, 
-    float *envelope, 
+    opus_int32 *buffer,
+    float envelope[K_SUB_FRAMES_IN_FRAME],
     float *scaling_factors, 
     float *per_sample_scaling_factors, 
     int samples_in_sub_frame, 
