@@ -831,7 +831,7 @@ inline __attribute__((always_inline)) void clamp_buffer(opus_int32 *buffer, int 
     clamp_buffer_func(buffer, samples, outBuffer);
 }
 
-inline __attribute__((always_inline)) void init_limiter() {
+inline __attribute__((always_inline)) void init_limiter(void) {
     #if defined(__AVX2__)
     if (has_avx2()) {
         JANUS_LOG(LOG_INFO, "Using AVX2 implementation of limiter\n");
