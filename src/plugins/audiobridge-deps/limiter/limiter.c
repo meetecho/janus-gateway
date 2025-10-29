@@ -524,7 +524,7 @@ static void calculate_scaling_factors_sse42(
     float *envelope,
     float *scaling_factors,
     float *last_scaling_factor) {
-    int i;
+    size_t i;
     scaling_factors[0] = *last_scaling_factor;
 
     /* Constants for vectorized operations */
