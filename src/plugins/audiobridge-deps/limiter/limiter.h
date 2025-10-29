@@ -44,7 +44,7 @@ void compute_scaling_factors(
     float *filter_state_level, 
     float *last_scaling_factor);
 
-void init_limiter();
+void init_limiter(void);
 
 void scale_buffer(
     opus_int32 *buffer,

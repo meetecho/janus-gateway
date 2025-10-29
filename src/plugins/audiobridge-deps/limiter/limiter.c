@@ -10,7 +10,7 @@
 #include <immintrin.h>
 #include <cpuid.h>
 
-int has_avx2() {
+int has_avx2(void) {
     unsigned int eax, ebx, ecx, edx;
     /* 1. CPUID leaf 1: AVX + OSXSAVE */
     if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx))
@@ -34,7 +34,7 @@ int has_avx2() {
     /* AVX2 — bit 5 of EBX */
     return (ebx & (1u << 5)) != 0;
 }
-int has_sse42() {
+int has_sse42(void) {
     unsigned int eax, ebx, ecx, edx;
     if (__get_cpuid(1, &eax, &ebx, &ecx, &edx)) {
         return (ecx & (1u << 20)) != 0;  /* SSE4.2 — bit 20 of ECX */
