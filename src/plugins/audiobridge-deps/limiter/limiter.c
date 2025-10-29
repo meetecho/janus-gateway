@@ -143,7 +143,7 @@ static void calculate_scaling_factors_avx2(
     float *envelope,
     float *scaling_factors,
     float *last_scaling_factor) {
-    int i;
+    size_t i;
     scaling_factors[0] = *last_scaling_factor;
 
     /* Constants for vectorized operations */
@@ -524,7 +524,7 @@ static void calculate_scaling_factors_sse42(
     float *envelope,
     float *scaling_factors,
     float *last_scaling_factor) {
-    int i;
+    size_t i;
     scaling_factors[0] = *last_scaling_factor;
 
     /* Constants for vectorized operations */
@@ -628,7 +628,7 @@ static void calculate_scaling_factors_sse42(
 }
 
 static void clamp_buffer_sse42(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
-    int i = 0;
+    size_t i = 0;
     const __m128i v_min_val = _mm_set1_epi32(-32768);
     const __m128i v_max_val = _mm_set1_epi32(32767);
 
@@ -677,7 +677,7 @@ static inline __attribute__((always_inline)) void compute_envelope(
     float *envelope,
     int samples_in_sub_frame,
     float *filter_state_level) {
-    int sub_frame, sample_in_sub_frame;
+    int sub_frame;
     compute_max_envelope_func(buffer, envelope, samples_in_sub_frame);
 
     /* Make sure envelope increases happen one step earlier so that the
@@ -729,9 +729,7 @@ static void calculate_scaling_factors_scalar(
     float *envelope,
     float *scaling_factors,
     float *last_scaling_factor) {
-
-    int i;
-
+    size_t i;
     scaling_factors[0] = *last_scaling_factor;
     for (i = 0; i < K_SUB_FRAMES_IN_FRAME; ++i) {
         const float input_level = envelope[i];
@@ -774,7 +772,6 @@ inline __attribute__((always_inline)) void compute_scaling_factors(
 	int samples_in_sub_frame, 
 	float *filter_state_level, 
 	float *last_scaling_factor) {
-	int sub_frame, sample_in_sub_frame;
 	/*
 	 * Calculating gain factors for limiter (adapted from WebRTC project).
 	 * Original WebRTC code: https://webrtc.googlesource.com/src
@@ -790,7 +787,7 @@ static void scale_buffer_scalar(
     int samples,
     float *per_sample_scaling_factors,
     opus_int16 *outBuffer){
-    int i;
+    size_t i;
     opus_int32 sample;
     for(i=0; i<samples; i++) {
         sample = (opus_int32)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
@@ -812,7 +809,7 @@ inline __attribute__((always_inline)) void scale_buffer(
 
 
 static void clamp_buffer_scalar(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
-    int i;
+    size_t i;
     opus_int32 sample;
     for(i=0; i<samples; i++) {
         sample = buffer[i];
