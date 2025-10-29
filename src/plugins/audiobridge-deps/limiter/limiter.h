@@ -38,10 +38,10 @@
 void compute_scaling_factors(
     opus_int32 *buffer,
     float envelope[K_SUB_FRAMES_IN_FRAME],
-    float *scaling_factors, 
-    float *per_sample_scaling_factors, 
-    int samples_in_sub_frame, 
-    float *filter_state_level, 
+    float scaling_factors[K_SUB_FRAMES_IN_FRAME + 1],
+    float *per_sample_scaling_factors,
+    int samples_in_sub_frame,
+    float *filter_state_level,
     float *last_scaling_factor);
 
 void init_limiter(void);

@@ -90,8 +90,8 @@ static float approximation_params_q[K_INTERPOLATED_GAIN_CURVE_TOTAL_POINTS] = {
 
 /* Function pointers for the selected implementation */
 static void (*compute_max_envelope_func)(opus_int32 *buffer, float envelope[K_SUB_FRAMES_IN_FRAME], int samples_in_sub_frame) = NULL;
-static void (*calculate_scaling_factors_func)(float *envelope, float *scaling_factors, float *last_scaling_factor) = NULL;
-static void (*compute_per_sample_scaling_factors_func)(float *scaling_factors, float *per_sample_scaling_factors, int samples_in_sub_frame) = NULL;
+static void (*calculate_scaling_factors_func)(float envelope[K_SUB_FRAMES_IN_FRAME], float scaling_factors[K_SUB_FRAMES_IN_FRAME + 1], float *last_scaling_factor) = NULL;
+static void (*compute_per_sample_scaling_factors_func)(float scaling_factors[K_SUB_FRAMES_IN_FRAME + 1], float *per_sample_scaling_factors, int samples_in_sub_frame) = NULL;
 static void (*scale_buffer_func)(opus_int32 *buffer, int samples, float *per_sample_scaling_factors, opus_int16 *outBuffer) = NULL;
 static void (*clamp_buffer_func)(opus_int32 *buffer, int samples, opus_int16 *outBuffer) = NULL;
 
@@ -140,8 +140,8 @@ static void compute_max_envelope_avx2(opus_int32 *buffer, float envelope[K_SUB_F
     }
 }
 static void calculate_scaling_factors_avx2(
-    float *envelope,
-    float *scaling_factors,
+    float envelope[K_SUB_FRAMES_IN_FRAME],
+    float scaling_factors[K_SUB_FRAMES_IN_FRAME + 1],
     float *last_scaling_factor) {
     int i;
     scaling_factors[0] = *last_scaling_factor;
@@ -247,7 +247,7 @@ static void calculate_scaling_factors_avx2(
 }
 
 static void compute_per_sample_scaling_factors_avx2(
-    float *scaling_factors,
+    float scaling_factors[K_SUB_FRAMES_IN_FRAME + 1],
     float *per_sample_scaling_factors,
     int samples_in_sub_frame) {
     const int is_attack = scaling_factors[0] > scaling_factors[1];
@@ -435,7 +435,7 @@ static void scale_buffer_sse42(
 }
 
 static void compute_per_sample_scaling_factors_sse42(
-    float *scaling_factors,
+    float scaling_factors[K_SUB_FRAMES_IN_FRAME + 1],
     float *per_sample_scaling_factors,
     int samples_in_sub_frame) {
 
@@ -521,8 +521,8 @@ static void compute_max_envelope_sse42(opus_int32 *buffer, float envelope[K_SUB_
     }
 }
 static void calculate_scaling_factors_sse42(
-    float *envelope,
-    float *scaling_factors,
+    float envelope[K_SUB_FRAMES_IN_FRAME],
+    float scaling_factors[K_SUB_FRAMES_IN_FRAME + 1],
     float *last_scaling_factor) {
     size_t i;
     scaling_factors[0] = *last_scaling_factor;
@@ -701,7 +701,7 @@ static inline __attribute__((always_inline)) void compute_envelope(
     }
 }
 static void compute_per_sample_scaling_factors_scalar(
-    float *scaling_factors,
+    float scaling_factors[K_SUB_FRAMES_IN_FRAME + 1],
     float *per_sample_scaling_factors,
     int samples_in_sub_frame) {
 
@@ -726,8 +726,8 @@ static void compute_per_sample_scaling_factors_scalar(
 }
 
 static void calculate_scaling_factors_scalar(
-    float *envelope,
-    float *scaling_factors,
+    float envelope[K_SUB_FRAMES_IN_FRAME],
+    float scaling_factors[K_SUB_FRAMES_IN_FRAME + 1],
     float *last_scaling_factor) {
 
     int i;
@@ -769,7 +769,7 @@ static void calculate_scaling_factors_scalar(
 inline __attribute__((always_inline)) void compute_scaling_factors(
 	opus_int32 *buffer,
 	float envelope[K_SUB_FRAMES_IN_FRAME],
-	float *scaling_factors,
+	float scaling_factors[K_SUB_FRAMES_IN_FRAME + 1],
 	float *per_sample_scaling_factors,
 	int samples_in_sub_frame,
 	float *filter_state_level,
