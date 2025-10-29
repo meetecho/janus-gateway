@@ -8535,16 +8535,14 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	}
 
 	/* For audio limiter we split frame in subframes */
-	int samples_in_sub_frame = 0;
+	int samples_in_sub_frame = samples / K_SUB_FRAMES_IN_FRAME;
 	float *per_sample_scaling_factors = NULL;
 	float *envelope = NULL;
 	float *scaling_factors = NULL;
 	float filter_state_level = K_INITIAL_FILTER_STATE_LEVEL;
 	float last_scaling_factor = 1.f;
-	opus_int32 sample = 0;
-	/* In case audio limiter enabled, we need a buffer for it and some values */
+	/* In case audio limiter enabled, we need some buffers for it */
 	if (audiobridge->use_limiter) {
-		samples_in_sub_frame = samples / K_SUB_FRAMES_IN_FRAME;
 		per_sample_scaling_factors = g_malloc0((audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES) * sizeof(float));
 		envelope = g_malloc0(K_SUB_FRAMES_IN_FRAME * sizeof(float));
 		scaling_factors = g_malloc0((K_SUB_FRAMES_IN_FRAME + 1) * sizeof(float));
@@ -8576,7 +8574,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	int i=0;
 	int count = 0, rf_count = 0, pf_count = 0, prev_count = 0;
 	int lgain = 0, rgain = 0, diff = 0;
-	int mix_count = 0, sample_in_sub_frame = 0;
+	int mix_count = 0;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&audiobridge->destroyed)) {
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
@@ -8877,27 +8875,12 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						  samples_in_sub_frame, &filter_state_level, &last_scaling_factor);	
 		/* Are we recording the mix? (only do it if there's someone in, though...) */
 		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) {
-			/* If we use limiter and we mixed more than 1 track, apply it */
 			if (audiobridge->use_limiter && mix_count > 1) {
-				for(i=0; i<samples; i++) {
-					sample = (opus_int32)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
-					if(sample > 32767)
-						sample = 32767;
-					else if(sample < -32768)
-						sample = -32768;
-					outBuffer[i] = sample;
-				}
-			}
-			else {
-				/* Clamp values that are outside int16 boundaries */
-				for(i=0; i<samples; i++) {
-					sample = (opus_int32)buffer[i];
-					if(sample > 32767)
-						sample = 32767;
-					else if(sample < -32768)
-						sample = -32768;
-					outBuffer[i] = sample;
-				}
+				/* If we use limiter and we mixed more than 1 track, apply it */
+				scale_buffer(buffer, samples, per_sample_scaling_factors, outBuffer);
+			} else {
+				/* Otherwise just clamp values that are outside int16 boundaries */
+				clamp_buffer(buffer, samples, outBuffer);
 			}
 			fwrite(outBuffer, sizeof(opus_int16), samples, audiobridge->recording);
 			/* Every 5 seconds we update the wav header */
@@ -8967,26 +8950,12 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				}
 			}
 
-			/* If we use limiter and sumBuffer contains mix of more than 1 track, apply it */
 			if(audiobridge->use_limiter && (mix_count - (curBuffer ? 1 : 0)) > 1) {
-				for(i=0; i<samples; i++) {
-					opus_int32 sample = (opus_int32)(sumBuffer[i] * per_sample_scaling_factors[i] + 0.5f);
-					if(sample > 32767)
-						sample = 32767;
-					else if(sample < -32768)
-						sample = -32768;
-					outBuffer[i] = sample;
-				}
+				/* If we use limiter and sumBuffer contains mix of more than 1 track, apply it */
+				scale_buffer(sumBuffer, samples, per_sample_scaling_factors, outBuffer);
 			} else {
-				/* Clamp values that are outside int16 boundaries */
-				for(i=0; i<samples; i++) {
-					opus_int32 sample = (opus_int32)sumBuffer[i];
-					if(sample > 32767)
-						sample = 32767;
-					else if(sample < -32768)
-						sample = -32768;
-					outBuffer[i] = sample;
-				}
+				/* Otherwise just clamp values that are outside int16 boundaries */
+				clamp_buffer(sumBuffer, samples, outBuffer);
 			}
 
 			/* Enqueue this mixed frame for encoding in the participant thread */
