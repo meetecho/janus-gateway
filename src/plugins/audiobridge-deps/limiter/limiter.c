@@ -299,45 +299,29 @@ static void scale_buffer_avx2(
     opus_int16 *outBuffer){
 
     int i = 0;
-    const __m256 v_half = _mm256_set1_ps(0.5f);
-    const __m256 v_min_val = _mm256_set1_ps(-32768.0f);
-    const __m256 v_max_val = _mm256_set1_ps(32767.0f);
-
     /* Process 8 elements at a time */
     for (; i + 8 <= samples; i += 8) {
         /* Load 8 integers from buffer and convert to floats */
         __m256i v_int_vals = _mm256_loadu_si256((__m256i*)&buffer[i]);
         __m256 v_buf_vals = _mm256_cvtepi32_ps(v_int_vals);
-
         /* Load 8 scaling factors */
         __m256 v_scale_vals = _mm256_loadu_ps(&per_sample_scaling_factors[i]);
-
         /* Multiply buffer values with scaling factors */
         __m256 v_mult_result = _mm256_mul_ps(v_buf_vals, v_scale_vals);
-
-        /* Add 0.5f for rounding */
-        __m256 v_rounded = _mm256_add_ps(v_mult_result, v_half);
-
-        /* Clamp values to [-32768, 32767] */
-        v_rounded = _mm256_max_ps(v_rounded, v_min_val);
-        v_rounded = _mm256_min_ps(v_rounded, v_max_val);
-
         /* Convert to integers */
-        __m256i v_int_result = _mm256_cvtps_epi32(v_rounded);
-
+        __m256i v_int_result = _mm256_cvtps_epi32(v_mult_result);
         /* Pack 32-bit integers to 16-bit integers */
         /* First, pack the lower 4 32-bit values */
         __m128i v_low = _mm256_extracti128_si256(v_int_result, 0);
         __m128i v_high = _mm256_extracti128_si256(v_int_result, 1);
         __m128i v_packed = _mm_packs_epi32(v_low, v_high);
-
         /* Store the 8 16-bit integers */
         _mm_storeu_si128((__m128i*)&outBuffer[i], v_packed);
     }
 
     /* Handle remaining elements with scalar code */
     for (; i < samples; i++) {
-        opus_int32 sample = (opus_int32)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
+        opus_int32 sample = (opus_int32)lrintf(buffer[i] * per_sample_scaling_factors[i]);
         if(sample > 32767)
             sample = 32767;
         else if(sample < -32768)
@@ -347,24 +331,15 @@ static void scale_buffer_avx2(
 }
 static void clamp_buffer_avx2(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
     int i = 0;
-    const __m256i v_min_val = _mm256_set1_epi32(-32768);
-    const __m256i v_max_val = _mm256_set1_epi32(32767);
-
     /* Process 8 elements at a time */
     for (; i + 8 <= samples; i += 8) {
         /* Load 8 integers from buffer */
         __m256i v_int_vals = _mm256_loadu_si256((__m256i*)&buffer[i]);
-
-        /* Clamp values to [-32768, 32767] */
-        v_int_vals = _mm256_max_epi32(v_int_vals, v_min_val);
-        v_int_vals = _mm256_min_epi32(v_int_vals, v_max_val);
-
         /* Pack 32-bit integers to 16-bit integers */
         /* First, pack the lower 4 32-bit values */
         __m128i v_low = _mm256_extracti128_si256(v_int_vals, 0);
         __m128i v_high = _mm256_extracti128_si256(v_int_vals, 1);
         __m128i v_packed = _mm_packs_epi32(v_low, v_high);
-
         /* Store the 8 16-bit integers */
         _mm_storeu_si128((__m128i*)&outBuffer[i], v_packed);
     }
@@ -386,46 +361,28 @@ static void scale_buffer_sse42(
     int samples,
     float *per_sample_scaling_factors,
     opus_int16 *outBuffer){
-
     int i = 0;
-    const __m128 v_half = _mm_set1_ps(0.5f);
-    const __m128 v_min_val = _mm_set1_ps(-32768.0f);
-    const __m128 v_max_val = _mm_set1_ps(32767.0f);
-
+    const __m128i v_zero = _mm_setzero_si128();
     /* Process 4 elements at a time */
     for (; i + 4 <= samples; i += 4) {
         /* Load 4 integers from buffer and convert to floats */
         __m128i v_int_vals = _mm_loadu_si128((__m128i*)&buffer[i]);
         __m128 v_buf_vals = _mm_cvtepi32_ps(v_int_vals);
-
         /* Load 4 scaling factors */
         __m128 v_scale_vals = _mm_loadu_ps(&per_sample_scaling_factors[i]);
-
         /* Multiply buffer values with scaling factors */
         __m128 v_mult_result = _mm_mul_ps(v_buf_vals, v_scale_vals);
-
-        /* Add 0.5f for rounding */
-        __m128 v_rounded = _mm_add_ps(v_mult_result, v_half);
-
-        /* Clamp values to [-32768, 32767] */
-        v_rounded = _mm_max_ps(v_rounded, v_min_val);
-        v_rounded = _mm_min_ps(v_rounded, v_max_val);
-
-        /* Convert to integers */
-        __m128i v_int_result = _mm_cvtps_epi32(v_rounded);
-
-        /* Pack 32-bit integers to 16-bit integers */
-        __m128i v_low = v_int_result;
-        __m128i v_high = _mm_shuffle_epi32(v_int_result, _MM_SHUFFLE(3, 2, 3, 2));
-        __m128i v_packed = _mm_packs_epi32(v_low, v_high);
-
+        /* Convert to integers (truncation) */
+        __m128i v_int_result = _mm_cvtps_epi32(v_mult_result);
+        /* Pack 32-bit integers to 16-bit integers with saturation */
+        __m128i v_packed = _mm_packs_epi32(v_int_result, v_zero);
         /* Store the 4 16-bit integers */
         _mm_storel_epi64((__m128i*)&outBuffer[i], v_packed);
     }
 
     /* Handle remaining elements with scalar code */
     for (; i < samples; i++) {
-        opus_int32 sample = (opus_int32)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
+        opus_int32 sample = (opus_int32)lrintf(buffer[i] * per_sample_scaling_factors[i]);
         if(sample > 32767)
             sample = 32767;
         else if(sample < -32768)
@@ -629,25 +586,14 @@ static void calculate_scaling_factors_sse42(
 
 static void clamp_buffer_sse42(opus_int32 *buffer, int samples, opus_int16 *outBuffer){
     int i = 0;
-    const __m128i v_min_val = _mm_set1_epi32(-32768);
-    const __m128i v_max_val = _mm_set1_epi32(32767);
-
     /* Process 4 elements at a time */
     for (; i + 4 <= samples; i += 4) {
         /* Load 4 integers from buffer */
-        __m128i v_int_vals = _mm_loadu_si128((__m128i*)&buffer[i]);
-
-        /* Clamp values to [-32768, 32767] */
-        v_int_vals = _mm_max_epi32(v_int_vals, v_min_val);
-        v_int_vals = _mm_min_epi32(v_int_vals, v_max_val);
-
-        /* Pack 32-bit integers to 16-bit integers */
-        __m128i v_low = v_int_vals;
-        __m128i v_high = _mm_shuffle_epi32(v_int_vals, _MM_SHUFFLE(3, 2, 3, 2));
-        __m128i v_packed = _mm_packs_epi32(v_low, v_high);
-
+        __m128i vec_int32 = _mm_loadu_si128((__m128i*)&buffer[i]);
+        /* Pack 32-bit integers to 16-bit integers with saturation */
+        __m128i vec_int16_packed = _mm_packs_epi32(vec_int32, _mm_setzero_si128());
         /* Store the 4 16-bit integers */
-        _mm_storel_epi64((__m128i*)&outBuffer[i], v_packed);
+        _mm_storel_epi64((__m128i*)&outBuffer[i], vec_int16_packed);
     }
 
     /* Handle remaining elements with scalar code */
@@ -792,7 +738,7 @@ static void scale_buffer_scalar(
     int i;
     opus_int32 sample;
     for(i=0; i<samples; i++) {
-        sample = (opus_int32)(buffer[i] * per_sample_scaling_factors[i] + 0.5f);
+        sample = (opus_int32)lrintf(buffer[i] * per_sample_scaling_factors[i]);
         if(sample > 32767)
             sample = 32767;
         else if(sample < -32768)
@@ -827,34 +773,45 @@ inline __attribute__((always_inline)) void clamp_buffer(opus_int32 *buffer, int 
     clamp_buffer_func(buffer, samples, outBuffer);
 }
 
-inline __attribute__((always_inline)) void init_limiter(void) {
-    #if defined(__AVX2__)
-    if (has_avx2()) {
-        JANUS_LOG(LOG_INFO, "Using AVX2 implementation of limiter\n");
-        compute_max_envelope_func = compute_max_envelope_avx2;
-        calculate_scaling_factors_func = calculate_scaling_factors_avx2;
-        compute_per_sample_scaling_factors_func = compute_per_sample_scaling_factors_avx2;
-        scale_buffer_func = scale_buffer_avx2;
-        clamp_buffer_func = clamp_buffer_avx2;
-        return;
-    }
-    #endif
-    #if defined(__SSE4_2__)
-    if (has_sse42()) {
-        JANUS_LOG(LOG_INFO, "Using SSE4.2 implementation of limiter\n");
+inline __attribute__((always_inline)) void init_limiter_avx2(void) {
+    JANUS_LOG(LOG_INFO, "Using AVX2 implementation of limiter\n");
+    compute_max_envelope_func = compute_max_envelope_avx2;
+    calculate_scaling_factors_func = calculate_scaling_factors_avx2;
+    compute_per_sample_scaling_factors_func = compute_per_sample_scaling_factors_avx2;
+    scale_buffer_func = scale_buffer_avx2;
+    clamp_buffer_func = clamp_buffer_avx2;
+}
+
+inline __attribute__((always_inline)) void init_limiter_sse42(void) {
+    JANUS_LOG(LOG_INFO, "Using SSE4.2 implementation of limiter\n");
         compute_max_envelope_func = compute_max_envelope_sse42;
         calculate_scaling_factors_func = calculate_scaling_factors_sse42;
         compute_per_sample_scaling_factors_func = compute_per_sample_scaling_factors_sse42;
         scale_buffer_func = scale_buffer_sse42;
         clamp_buffer_func = clamp_buffer_sse42;
-        return;
-    }
-    #endif
+}
 
+inline __attribute__((always_inline)) void init_limiter_scalar(void) {
     JANUS_LOG(LOG_INFO, "Using scalar implementation of limiter\n");
     compute_max_envelope_func = compute_max_envelope_scalar;
     calculate_scaling_factors_func = calculate_scaling_factors_scalar;
     compute_per_sample_scaling_factors_func = compute_per_sample_scaling_factors_scalar;
     scale_buffer_func = scale_buffer_scalar;
     clamp_buffer_func = clamp_buffer_scalar;
+}
+
+inline __attribute__((always_inline)) void init_limiter(void) {
+    #if defined(__AVX2__)
+    if (has_avx2()) {
+        init_limiter_avx2();
+        return;
+    }
+    #endif
+    #if defined(__SSE4_2__)
+    if (has_sse42()) {
+        init_limiter_sse42();
+        return;
+    }
+    #endif
+    init_limiter_scalar();
 }

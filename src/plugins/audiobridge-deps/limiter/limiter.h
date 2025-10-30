@@ -45,6 +45,9 @@ void compute_scaling_factors(
     float *last_scaling_factor);
 
 void init_limiter(void);
+void init_limiter_avx2(void);
+void init_limiter_sse42(void);
+void init_limiter_scalar(void);
 
 void scale_buffer(
     opus_int32 *buffer,
