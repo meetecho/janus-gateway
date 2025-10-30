@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <assert.h>
 #include "../../../debug.h"
 
 /* SIMD intrinsics */
@@ -593,6 +594,7 @@ static void calculate_scaling_factors_sse42(
         _mm_storeu_ps(&scaling_factors[i + 1], result);
     }
 
+    assert(i < K_SUB_FRAMES_IN_FRAME);
     /* Process remaining elements with scalar code */
     for (; i < K_SUB_FRAMES_IN_FRAME; ++i) {
         const float input_level = envelope[i];
