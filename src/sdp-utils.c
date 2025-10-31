@@ -1586,6 +1586,7 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	GHashTable *extmaps = NULL, *extids = NULL;
 	gboolean extids_allocated = FALSE;
+	gboolean twcc = FALSE;
 
 	int property = va_arg(args, int);
 	if(property != JANUS_SDP_OA_MLINE) {
@@ -1676,6 +1677,10 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 					} else {
 						g_hash_table_insert(extmaps, extmap, GINT_TO_POINTER(id));
 						g_hash_table_insert(extids, GINT_TO_POINTER(id), extmap);
+						if(!strcasecmp(extmap, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC)) {
+							/* Take note of the fact we may negotiate TWCC for this m-line */
+							twcc = TRUE;
+						}
 					}
 				}
 			}
@@ -1782,9 +1787,11 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 			a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", pt);
 			m->attributes = g_list_append(m->attributes, a);
 		}
-		/* It is safe to add transport-wide rtcp feedback message here, won't be used unless the header extension is negotiated */
-		a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
-		m->attributes = g_list_append(m->attributes, a);
+		if(twcc) {
+			/* Add the transport-wide RTCP feedback message here, since the header extension was negotiated */
+			a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
+			m->attributes = g_list_append(m->attributes, a);
+		}
 		/* Check if we need to add extensions to the SDP */
 		if(extids != NULL) {
 			GList *ids = g_list_sort(g_hash_table_get_keys(extids), janus_sdp_id_compare), *iter = ids;
@@ -1928,6 +1935,7 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 		*fmtp = NULL, *vp9_profile = NULL, *h264_profile = NULL;
 	char *custom_audio_fmtp = NULL;
 	GList *extmaps = NULL;
+	gboolean twcc = FALSE;
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	int property = va_arg(args, int);
 	if(property != JANUS_SDP_OA_MLINE) {
@@ -1972,8 +1980,13 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 			video_rtcpfb = va_arg(args, gboolean);
 		} else if(property == JANUS_SDP_OA_ACCEPT_EXTMAP) {
 			const char *extension = va_arg(args, char *);
-			if(extension != NULL)
+			if(extension != NULL) {
 				extmaps = g_list_append(extmaps, (char *)extension);
+				if(!strcasecmp(extension, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC)) {
+					/* Take note of the fact we may negotiate TWCC for this m-line */
+					twcc = TRUE;
+				}
+			}
 		} else if(property == JANUS_SDP_OA_ACCEPT_OPUSRED) {
 			audio_opusred = va_arg(args, gboolean);
 		} else {
@@ -2149,6 +2162,23 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 				janus_sdp_attribute *a = janus_sdp_attribute_create("msid", "%s %s", msid, mstid);
 				am->attributes = g_list_append(am->attributes, a);
 			}
+			/* Before moving to the attributes, check if the Trasport
+			 * Wide CC RTP extension was negotiated */
+			if(extmaps != NULL && twcc) {
+				/* We're trying to accept TWCC, but make sure it was offered */
+				twcc = FALSE;
+				GList *ma = offered->attributes;
+				while(ma) {
+					janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
+					if(a->name && strstr(a->name, "extmap") && a->value &&
+							strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC) != NULL) {
+						/* Take note of the fact we'll have to negotiate TWCC for this m-line */
+						twcc = TRUE;
+						break;
+					}
+					ma = ma->next;
+				}
+			}
 			/* Add the related attributes */
 			if(am->type == JANUS_SDP_AUDIO) {
 				/* Add rtpmap attribute */
@@ -2190,6 +2220,11 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 							pt, custom_audio_fmtp ? custom_audio_fmtp : fmtp);
 						am->attributes = g_list_append(am->attributes, a);
 					}
+					if(twcc) {
+						/* Add the transport-wide RTCP feedback message here, since the header extension was negotiated */
+						a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
+						am->attributes = g_list_append(am->attributes, a);
+					}
 				}
 			} else {
 				/* Add rtpmap attribute */
@@ -2209,9 +2244,11 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 						a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", pt);
 						am->attributes = g_list_append(am->attributes, a);
 					}
-					/* It is safe to add transport-wide rtcp feedback message here, won't be used unless the header extension is negotiated*/
-					a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
-					am->attributes = g_list_append(am->attributes, a);
+					if(twcc) {
+						/* Add the transport-wide RTCP feedback message here, since the header extension was negotiated */
+						a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
+						am->attributes = g_list_append(am->attributes, a);
+					}
 				}
 				if(!strcasecmp(codec, "vp9") && vp9_profile) {
 					/* Add a profile-id fmtp attribute */
