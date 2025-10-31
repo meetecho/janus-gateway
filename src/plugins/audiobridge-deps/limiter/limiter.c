@@ -773,6 +773,7 @@ inline __attribute__((always_inline)) void clamp_buffer(opus_int32 *buffer, int 
     clamp_buffer_func(buffer, samples, outBuffer);
 }
 
+#if defined(__AVX2__)
 inline __attribute__((always_inline)) void init_limiter_avx2(void) {
     JANUS_LOG(LOG_INFO, "Using AVX2 implementation of limiter\n");
     compute_max_envelope_func = compute_max_envelope_avx2;
@@ -781,7 +782,9 @@ inline __attribute__((always_inline)) void init_limiter_avx2(void) {
     scale_buffer_func = scale_buffer_avx2;
     clamp_buffer_func = clamp_buffer_avx2;
 }
+#endif
 
+#if defined(__SSE4_2__)
 inline __attribute__((always_inline)) void init_limiter_sse42(void) {
     JANUS_LOG(LOG_INFO, "Using SSE4.2 implementation of limiter\n");
         compute_max_envelope_func = compute_max_envelope_sse42;
@@ -790,6 +793,7 @@ inline __attribute__((always_inline)) void init_limiter_sse42(void) {
         scale_buffer_func = scale_buffer_sse42;
         clamp_buffer_func = clamp_buffer_sse42;
 }
+#endif
 
 inline __attribute__((always_inline)) void init_limiter_scalar(void) {
     JANUS_LOG(LOG_INFO, "Using scalar implementation of limiter\n");
