@@ -33,6 +33,7 @@ room-<unique room ID>: {
 	pin = <optional password needed for joining the room>
 	sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 	spatial_audio = true|false (if true, the mix will be stereo to spatially place users, default=false)
+	use_limiter = true|false (whether to use a limiter to avoid clipping, default=false)
 	audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must be
 		negotiated/used or not for new joins, default=true)
 	audiolevel_event = true|false (whether to emit event to other users or not, default=false)
@@ -139,6 +140,7 @@ room-<unique room ID>: {
 	"allowed" : [ array of string tokens users can use to join this room, optional],
 	"sampling_rate" : <sampling rate of the room, optional, 16000 by default>,
 	"spatial_audio" : <true|false, whether the mix should spatially place users, default=false>,
+	"use_limiter" : <true|false, whether to use a limiter to avoid clipping, default=false>,
 	"audiolevel_ext" : <true|false, whether the ssrc-audio-level RTP extension must be negotiated for new joins, default=true>,
 	"audiolevel_event" : <true|false (whether to emit event to other users or not)>,
 	"audio_active_packets" : <number of packets with audio level (default=100, 2 seconds)>,
@@ -1226,6 +1228,7 @@ room-<unique room ID>: {
 #include <netdb.h>
 #include <sys/time.h>
 #include <poll.h>
+#include <math.h>
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -1240,6 +1243,7 @@ room-<unique room ID>: {
 #include "../utils.h"
 #include "../ip-utils.h"
 
+#include "audiobridge-deps/limiter/limiter.h"
 
 /* Plugin information */
 #define JANUS_AUDIOBRIDGE_VERSION			13
@@ -1363,6 +1367,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"default_expectedloss", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"default_bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"denoise", JANUS_JSON_BOOL, 0},
+	{"use_limiter", JANUS_JSON_BOOL, 0},
 	{"groups", JSON_ARRAY, 0}
 };
 static struct janus_json_parameter edit_parameters[] = {
@@ -1433,6 +1438,7 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"group", JSON_STRING, 0},
 	{"spatial_position", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"denoise", JANUS_JSON_BOOL, 0},
+	{"use_limiter", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
 	{"display", JSON_STRING, 0},
@@ -1528,6 +1534,7 @@ typedef struct janus_audiobridge_room {
 	gboolean spatial_audio;		/* Whether the mix will use spatial audio, using stereo */
 	gboolean audiolevel_ext;	/* Whether the ssrc-audio-level extension must be negotiated or not for new joins */
 	gboolean audiolevel_event;	/* Whether to emit event to other users about audiolevel */
+	gboolean use_limiter;		/* Whether to use limiter or not */
 	uint default_expectedloss;	/* Percent of packets we expect participants may miss, to help with outgoing FEC: can be overridden per-participant */
 	int32_t default_bitrate;	/* Default bitrate to use for all Opus streams when encoding */
 	int audio_active_packets;	/* Amount of packets with audio level for checkup */
@@ -2557,6 +2564,10 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 	JANUS_LOG(LOG_WARN, "Denoising via RNNoise NOT supported\n");
 #endif
 
+	/* Setting function pointers according to runtime vectorization support (AVX2, SSE4.2 or scalar) */
+	init_limiter();
+	JANUS_LOG(LOG_INFO, "Initialized optimized limiter implementation\n");
+
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
 		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
@@ -2667,6 +2678,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *spatial = janus_config_get(config, cat, janus_config_type_item, "spatial_audio");
 			janus_config_item *audiolevel_ext = janus_config_get(config, cat, janus_config_type_item, "audiolevel_ext");
 			janus_config_item *audiolevel_event = janus_config_get(config, cat, janus_config_type_item, "audiolevel_event");
+			janus_config_item *use_limiter = janus_config_get(config, cat, janus_config_type_item, "use_limiter");
 			janus_config_item *audio_active_packets = janus_config_get(config, cat, janus_config_type_item, "audio_active_packets");
 			janus_config_item *audio_level_average = janus_config_get(config, cat, janus_config_type_item, "audio_level_average");
 			janus_config_item *default_expectedloss = janus_config_get(config, cat, janus_config_type_item, "default_expectedloss");
@@ -2745,6 +2757,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 					continue;
 			}
 			audiobridge->spatial_audio = spatial && spatial->value && janus_is_true(spatial->value);
+			audiobridge->use_limiter = use_limiter && use_limiter->value && janus_is_true(use_limiter->value);
 			audiobridge->audiolevel_ext = TRUE;
 			if(audiolevel_ext != NULL && audiolevel_ext->value != NULL)
 				audiobridge->audiolevel_ext = janus_is_true(audiolevel_ext->value);
@@ -3269,6 +3282,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_t *mjrsdir = json_object_get(root, "mjrs_dir");
 		json_t *allowrtp = json_object_get(root, "allow_rtp_participants");
 		json_t *permanent = json_object_get(root, "permanent");
+		json_t *use_limiter = json_object_get(root, "use_limiter");
 		if(allowed) {
 			/* Make sure the "allowed" array only contains strings */
 			gboolean ok = TRUE;
@@ -3395,6 +3409,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		audiobridge->spatial_audio = spatial ? json_is_true(spatial) : FALSE;
 		audiobridge->audiolevel_ext = audiolevel_ext ? json_is_true(audiolevel_ext) : TRUE;
 		audiobridge->audiolevel_event = audiolevel_event ? json_is_true(audiolevel_event) : FALSE;
+		audiobridge->use_limiter = use_limiter ? json_is_true(use_limiter) : FALSE;
 		if(audiobridge->audiolevel_event) {
 			audiobridge->audio_active_packets = 100;
 			if(json_integer_value(audio_active_packets) > 0) {
@@ -3584,6 +3599,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
 				}
 			}
+			if (audiobridge->use_limiter)
+				janus_config_add(config, c, janus_config_item_create("use_limiter", "true"));
 			if(audiobridge->allow_plainrtp)
 				janus_config_add(config, c, janus_config_item_create("allow_rtp_participants", "true"));
 			if(audiobridge->groups) {
@@ -3765,6 +3782,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
 				}
 			}
+			if (audiobridge->use_limiter)
+				janus_config_add(config, c, janus_config_item_create("use_limiter", "true"));
 			if(audiobridge->allow_plainrtp)
 				janus_config_add(config, c, janus_config_item_create("allow_rtp_participants", "true"));
 			if(audiobridge->groups) {
@@ -8515,6 +8534,20 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		}
 	}
 
+	/* For audio limiter we split frame in subframes */
+	int samples_in_sub_frame = samples / K_SUB_FRAMES_IN_FRAME;
+	float *per_sample_scaling_factors = NULL;
+	float *envelope = NULL;
+	float *scaling_factors = NULL;
+	float filter_state_level = K_INITIAL_FILTER_STATE_LEVEL;
+	float last_scaling_factor = 1.f;
+	/* In case audio limiter enabled, we need some buffers for it */
+	if (audiobridge->use_limiter) {
+		per_sample_scaling_factors = g_malloc0((audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES) * sizeof(float));
+		envelope = g_malloc0(K_SUB_FRAMES_IN_FRAME * sizeof(float));
+		scaling_factors = g_malloc0((K_SUB_FRAMES_IN_FRAME + 1) * sizeof(float));
+	}
+
 	/* Base RTP packets, in case there are forwarders involved */
 	gboolean have_opus[JANUS_AUDIOBRIDGE_MAX_GROUPS+1],
 		have_alaw[JANUS_AUDIOBRIDGE_MAX_GROUPS+1],
@@ -8541,6 +8574,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	int i=0;
 	int count = 0, rf_count = 0, pf_count = 0, prev_count = 0;
 	int lgain = 0, rgain = 0, diff = 0;
+	int mix_count = 0;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&audiobridge->destroyed)) {
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
@@ -8684,6 +8718,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 							}
 						}
 					}
+					mix_count++;
 				} else {
 					/* Add to the group submix */
 					int index = p->group-1;
@@ -8808,6 +8843,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 							buffer[i] += (resampled[i]*p->volume_gain)/100;
 						}
 					}
+					mix_count++;
 				} else {
 					/* Add to the group submix */
 					index = p->group-1;
@@ -8830,13 +8866,21 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			for(index=0; index<groups_num; index++) {
 				for(i=0; i<samples; i++)
 					buffer[i] += *(groupBuffers + index*samples + i);
+				mix_count++;
 			}
 		}
+		/* If we use limiter we should initialize it if we have more than 2 tracks mixed or we have more than 1 track mixed and recording */
+		if (audiobridge->use_limiter && (mix_count > 2 || (audiobridge->recording && mix_count > 1)))
+			compute_scaling_factors(buffer, envelope, scaling_factors, per_sample_scaling_factors, 
+						  samples_in_sub_frame, &filter_state_level, &last_scaling_factor);	
 		/* Are we recording the mix? (only do it if there's someone in, though...) */
 		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) {
-			for(i=0; i<samples; i++) {
-				/* FIXME Smoothen/Normalize instead of truncating? */
-				outBuffer[i] = buffer[i];
+			if (audiobridge->use_limiter && mix_count > 1) {
+				/* If we use limiter and we mixed more than 1 track, apply it */
+				scale_buffer(buffer, samples, per_sample_scaling_factors, outBuffer);
+			} else {
+				/* Otherwise just clamp values that are outside int16 boundaries */
+				clamp_buffer(buffer, samples, outBuffer);
 			}
 			fwrite(outBuffer, sizeof(opus_int16), samples, audiobridge->recording);
 			/* Every 5 seconds we update the wav header */
@@ -8905,9 +8949,15 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					}
 				}
 			}
-			for(i=0; i<samples; i++)
-				/* FIXME Smoothen/Normalize instead of truncating? */
-				outBuffer[i] = sumBuffer[i];
+
+			if(audiobridge->use_limiter && (mix_count - (curBuffer ? 1 : 0)) > 1) {
+				/* If we use limiter and sumBuffer contains mix of more than 1 track, apply it */
+				scale_buffer(sumBuffer, samples, per_sample_scaling_factors, outBuffer);
+			} else {
+				/* Otherwise just clamp values that are outside int16 boundaries */
+				clamp_buffer(sumBuffer, samples, outBuffer);
+			}
+
 			/* Enqueue this mixed frame for encoding in the participant thread */
 			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
 			mixedpkt->data = g_malloc(samples*2);
@@ -9070,6 +9120,9 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	g_free(rtpbuffer);
 	g_free(rtpalaw);
 	g_free(rtpulaw);
+	g_free(envelope);
+	g_free(per_sample_scaling_factors);
+	g_free(scaling_factors);
 	g_free(groupBuffers);
 	if(groupEncoders) {
 		for(index=0; index<groups_num; index++) {
