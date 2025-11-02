@@ -47,6 +47,16 @@ CLEANFILES += conf/janus.jcfg.sample
 
 
 ##
+# pkg-config file
+##
+
+EXTRA_DIST = janus-gateway.pc.in
+pkgconfigdir = $(libdir)/pkgconfig
+pkgconfig_DATA = janus-gateway.pc
+DISTCLEANFILES = janus-gateway.pc
+
+
+##
 # Fuzzers checking
 ##
 
