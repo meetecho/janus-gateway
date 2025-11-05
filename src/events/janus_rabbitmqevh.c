@@ -423,7 +423,7 @@ int janus_rabbitmqevh_connect(void) {
 		}
 	}
 
-	JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: Connected successfully");
+	JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: Connected successfully\n");
 
 	return 0;
 }
