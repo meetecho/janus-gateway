@@ -425,7 +425,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if(janus_faststart && strcasecmp(extension, "mp4")) {
-		JANUS_LOG(LOG_ERR, "Faststart only supported for MP4");
+		JANUS_LOG(LOG_ERR, "Faststart only supported for MP4\n");
 		cmdline_parser_free(&args_info);
 		exit(1);
 	}
@@ -896,7 +896,7 @@ int main(int argc, char *argv[]) {
 			gint64 when = 0;
 			bytes = fread(&when, 1, sizeof(gint64), file);
 			if(bytes < (int)sizeof(gint64)) {
-				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
+				JANUS_LOG(LOG_WARN, "Missing data timestamp header\n");
 				break;
 			}
 			when = ntohll(when);

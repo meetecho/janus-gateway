@@ -951,7 +951,7 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 		int res = janus_mkdir(recordings_path, 0755);
 		JANUS_LOG(LOG_VERB, "Creating folder: %d\n", res);
 		if(res != 0) {
-			JANUS_LOG(LOG_ERR, "%s", g_strerror(errno));
+			JANUS_LOG(LOG_ERR, "%s\n", g_strerror(errno));
 			g_free(recordings_path);
 			recordings_path = NULL;
 			g_free(admin_key);
@@ -2710,7 +2710,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 			gint64 when = 0;
 			bytes = fread(&when, 1, sizeof(gint64), file);
 			if(bytes < (int)sizeof(gint64)) {
-				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
+				JANUS_LOG(LOG_WARN, "Missing data timestamp header\n");
 				break;
 			}
 			when = ntohll(when);
