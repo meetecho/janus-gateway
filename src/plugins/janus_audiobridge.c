@@ -8621,7 +8621,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	int count = 0, rf_count = 0, pf_count = 0, prev_count = 0;
 	int lgain = 0, rgain = 0, diff = 0;
 	int mix_count = 0;
-	bool has_silent = FALSE;
+	gboolean has_silent = FALSE;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&audiobridge->destroyed)) {
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
