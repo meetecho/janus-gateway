@@ -1279,7 +1279,7 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle);
 #define SHRT_MAX_TUNED 29491
 #define SHRT_MIN_TUNED -29491
 
-/* Optimized inline function to add two 16-bit audio samples with overflow protection */
+/* Optimized inline function to clamp 16-bit audio samples */
 static inline opus_int16 overflow_check(int sum) {
     sum = sum > SHRT_MAX_TUNED ? SHRT_MAX_TUNED : sum;
     sum = sum < SHRT_MIN_TUNED ? SHRT_MIN_TUNED : sum;
