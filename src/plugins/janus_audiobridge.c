@@ -8533,10 +8533,12 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	opus_int32 buffer[audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES],
 		sumBuffer[audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES];
 	opus_int16 outBuffer[audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES],
-		resampled[audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES], *curBuffer = NULL;
+		fullMixBuffer[audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES],
+		resampled[audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES], *curBuffer = NULL, *mixBuffer = NULL;
 	memset(buffer, 0, OPUS_SAMPLES*(audiobridge->spatial_audio ? 8 : 4));
 	memset(sumBuffer, 0, OPUS_SAMPLES*(audiobridge->spatial_audio ? 8 : 4));
 	memset(outBuffer, 0, OPUS_SAMPLES*(audiobridge->spatial_audio ? 4 : 2));
+	memset(fullMixBuffer, 0, OPUS_SAMPLES*(audiobridge->spatial_audio ? 4 : 2));
 	memset(resampled, 0, OPUS_SAMPLES*(audiobridge->spatial_audio ? 4 : 2));
 
 	/* In case forwarding groups are enabled, we need additional buffers */
@@ -8619,6 +8621,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	int count = 0, rf_count = 0, pf_count = 0, prev_count = 0;
 	int lgain = 0, rgain = 0, diff = 0;
 	int mix_count = 0;
+	bool has_silent = FALSE;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&audiobridge->destroyed)) {
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
@@ -8691,6 +8694,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			buffer[i] = 0;
 		if(groups_num > 0)
 			memset(groupBuffers, 0, groupBuffersSize);
+		has_silent = FALSE;
 		ps = participants_list;
 		while(ps) {
 			janus_audiobridge_participant *p = (janus_audiobridge_participant *)ps->data;
@@ -8811,6 +8815,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						}
 					}
 				}
+			} else {
+				has_silent = TRUE;
 			}
 			janus_mutex_unlock(&p->qmutex);
 			ps = ps->next;
@@ -8916,17 +8922,31 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		/* If we use limiter we should initialize it if we have more than 2 tracks mixed or we have more than 1 track mixed and recording */
 		if (audiobridge->use_limiter && (mix_count > 2 || (audiobridge->recording && mix_count > 1)))
 			compute_scaling_factors(buffer, envelope, scaling_factors, per_sample_scaling_factors, 
-						  samples_in_sub_frame, &filter_state_level, &last_scaling_factor);	
-		/* Are we recording the mix? (only do it if there's someone in, though...) */
-		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) {
+						  samples_in_sub_frame, &filter_state_level, &last_scaling_factor);
+		
+		/* If we have silent participants, calculate once the full mix */
+		if (has_silent) {
 			if (audiobridge->use_limiter && mix_count > 1) {
 				/* If we use limiter and we mixed more than 1 track, apply it */
-				scale_buffer(buffer, samples, per_sample_scaling_factors, outBuffer);
+				scale_buffer(buffer, samples, per_sample_scaling_factors, fullMixBuffer);
 			} else {
 				/* Otherwise just clamp values that are outside int16 boundaries */
-				clamp_buffer(buffer, samples, outBuffer);
+				clamp_buffer(buffer, samples, fullMixBuffer);
 			}
-			fwrite(outBuffer, sizeof(opus_int16), samples, audiobridge->recording);
+		}
+		/* Are we recording the mix? (only do it if there's someone in, though...) */
+		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) {
+			/* If we didn't yet calculated full mix, do it now */
+			if (!has_silent) {
+				if (audiobridge->use_limiter && mix_count > 1) {
+					/* If we use limiter and we mixed more than 1 track, apply it */
+					scale_buffer(buffer, samples, per_sample_scaling_factors, fullMixBuffer);
+				} else {
+					/* Otherwise just clamp values that are outside int16 boundaries */
+					clamp_buffer(buffer, samples, fullMixBuffer);
+				}
+			}
+			fwrite(fullMixBuffer, sizeof(opus_int16), samples, audiobridge->recording);
 			/* Every 5 seconds we update the wav header */
 			gint64 now = janus_get_monotonic_time();
 			if(now - audiobridge->record_lastupdate >= 5*G_USEC_PER_SEC) {
@@ -8966,48 +8986,63 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			janus_mutex_unlock(&p->qmutex);
 			/* Remove the participant's own contribution */
 			curBuffer = (opus_int16 *)((pkt && pkt->length && !pkt->silence) ? pkt->data : NULL);
-			if(!p->stereo) {
-				for(i=0; i<samples; i++) {
-					if(p->volume_gain == 100)
-						sumBuffer[i] = buffer[i] - (curBuffer ? (curBuffer[i]) : 0);
-					else
-						sumBuffer[i] = buffer[i] - (curBuffer ? (curBuffer[i]*p->volume_gain)/100 : 0);
-				}
-			} else {
-				diff = 50 - p->spatial_position;
-				lgain = 50 + diff;
-				rgain = 50 - diff;
-				for(i=0; i<samples; i++) {
-					if(i%2 == 0) {
-						if(lgain == 100) {
-							sumBuffer[i] = buffer[i] - (curBuffer ? (curBuffer[i]) : 0);
+			if (curBuffer) {
+				if(!p->stereo) {
+					for(i=0; i<samples; i++) {
+						if(p->volume_gain == 100)
+							sumBuffer[i] = buffer[i] - curBuffer[i];
+						else
+							sumBuffer[i] = buffer[i] - ((curBuffer[i]*p->volume_gain)/100);
+					}
+				} else {
+					diff = 50 - p->spatial_position;
+					lgain = 50 + diff;
+					rgain = 50 - diff;
+					for(i=0; i<samples; i++) {
+						if(i%2 == 0) {
+							if(lgain == 100) {
+								sumBuffer[i] = buffer[i] - curBuffer[i];
+							} else {
+								sumBuffer[i] = buffer[i] - ((curBuffer[i]*lgain)/100);
+							}
 						} else {
-							sumBuffer[i] = buffer[i] - (curBuffer ? (curBuffer[i]*lgain)/100 : 0);
-						}
-					} else {
-						if(rgain == 100) {
-							sumBuffer[i] = buffer[i] - (curBuffer ? (curBuffer[i]) : 0);
-						} else {
-							sumBuffer[i] = buffer[i] - (curBuffer ? (curBuffer[i]*rgain)/100 : 0);
+							if(rgain == 100) {
+								sumBuffer[i] = buffer[i] - curBuffer[i];
+							} else {
+								sumBuffer[i] = buffer[i] - ((curBuffer[i]*rgain)/100);
+							}
 						}
 					}
 				}
-			}
-
-			if(audiobridge->use_limiter && (mix_count - (curBuffer ? 1 : 0)) > 1) {
-				/* If we use limiter and sumBuffer contains mix of more than 1 track, apply it */
-				scale_buffer(sumBuffer, samples, per_sample_scaling_factors, outBuffer);
+				if(audiobridge->use_limiter && (mix_count - (curBuffer ? 1 : 0)) > 1) {
+					/* If we use limiter and sumBuffer contains mix of more than 1 track, apply it */
+					scale_buffer(sumBuffer, samples, per_sample_scaling_factors, outBuffer);
+				} else {
+					/* Otherwise just clamp values that are outside int16 boundaries */
+					clamp_buffer(sumBuffer, samples, outBuffer);
+				}
+				mixBuffer = outBuffer;
+			} else if (!has_silent) {
+				JANUS_LOG(LOG_WARN, "[%s] No packet for participant (%s), but we have no silent participants either\n", audiobridge->room_id_str, p->user_id_str);
+				for(i=0; i<samples; i++)
+					sumBuffer[i] = buffer[i];
+				if(audiobridge->use_limiter && (mix_count - (curBuffer ? 1 : 0)) > 1) {
+					/* If we use limiter and sumBuffer contains mix of more than 1 track, apply it */
+					scale_buffer(sumBuffer, samples, per_sample_scaling_factors, outBuffer);
+				} else {
+					/* Otherwise just clamp values that are outside int16 boundaries */
+					clamp_buffer(sumBuffer, samples, outBuffer);
+				}
+				mixBuffer = outBuffer;
 			} else {
-				/* Otherwise just clamp values that are outside int16 boundaries */
-				clamp_buffer(sumBuffer, samples, outBuffer);
+				mixBuffer = fullMixBuffer;
 			}
-
 			/* Enqueue this mixed frame for encoding in the participant thread */
 			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
 			mixedpkt->data = g_malloc(samples*2);
 			if(p->codec != JANUS_AUDIOCODEC_OPUS && audiobridge->sampling_rate != 8000) {
 				/* Downsample this from whatever the mixer uses */
-				i = janus_audiobridge_resample(outBuffer, samples, audiobridge->sampling_rate, (int16_t *)mixedpkt->data, 8000);
+				i = janus_audiobridge_resample(mixBuffer, samples, audiobridge->sampling_rate, (int16_t *)mixedpkt->data, 8000);
 				if(i == 0) {
 					JANUS_LOG(LOG_WARN, "[G.711] Error downsampling from %d, skipping audio packet\n", audiobridge->sampling_rate);
 					g_free(mixedpkt->data);
@@ -9018,7 +9053,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				}
 			} else {
 				/* Just copy */
-				memcpy(mixedpkt->data, outBuffer, samples*2);
+				memcpy(mixedpkt->data, mixBuffer, samples*2);
 			}
 			mixedpkt->length = samples;	/* We set the number of samples here, not the data length */
 			mixedpkt->timestamp = ts;
