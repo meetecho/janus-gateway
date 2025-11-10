@@ -9315,6 +9315,9 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							g_free(pkt->data);
 							g_free(pkt);
 							break;
+						} else if (pkt->length == 0) {
+							/* Empty packet => buffer is all zeroes (g_malloc0) => it's silence */
+							pkt->silence = TRUE;
 						}
 						/* Queue the decoded packet for the mixer */
 						janus_mutex_lock(&participant->qmutex);
