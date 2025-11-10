@@ -3567,7 +3567,7 @@ static void *janus_sip_handler(void *data) {
 			char *contact_header = janus_sip_session_contact_header_retrieve(session);
 			/* Retrieve the outbound proxy */
 			char *proxy = session->helper && session->master ?
-					session->master->account.outbound_proxy : session->account.outbound_proxy;
+				session->master->account.outbound_proxy : session->account.outbound_proxy;
 			/* Send the SUBSCRIBE */
 			nua_subscribe(nh,
 				SIPTAG_TO_STR(to),
