@@ -8703,6 +8703,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					!g_atomic_int_get(&p->active) || p->muted || g_atomic_int_get(&p->suspended) || !p->inbuf) {
 				janus_mutex_unlock(&p->qmutex);
 				ps = ps->next;
+				has_silent = TRUE; /* If we have someone who is not speaking, but listening */
 				continue;
 			}
 			GList *peek = g_list_first(p->inbuf);
@@ -8715,6 +8716,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						JANUS_LOG(LOG_WARN, "[G.711] Error upsampling to %d, skipping audio packet\n", audiobridge->sampling_rate);
 						janus_mutex_unlock(&p->qmutex);
 						ps = ps->next;
+						has_silent = TRUE; /* If we have someone who is not speaking, but listening */
 						continue;
 					}
 					memcpy(pkt->data, resampled, pkt->length*2);
