@@ -8589,6 +8589,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	float last_scaling_factor = 1.f;
 	/* In case audio limiter enabled, we need some buffers for it */
 	if (audiobridge->use_limiter) {
+		JANUS_LOG(LOG_INFO, "Audio limiter enabled\n");
 		per_sample_scaling_factors = g_malloc0((audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES) * sizeof(float));
 		envelope = g_malloc0(K_SUB_FRAMES_IN_FRAME * sizeof(float));
 		scaling_factors = g_malloc0((K_SUB_FRAMES_IN_FRAME + 1) * sizeof(float));
