@@ -3584,6 +3584,9 @@ static void *janus_sip_handler(void *data) {
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 			/* Retrieve the Contact header for manually adding if not NULL */
 			char *contact_header = janus_sip_session_contact_header_retrieve(session);
+			/* Retrieve the outbound proxy */
+			char *proxy = session->helper && session->master ?
+				session->master->account.outbound_proxy : session->account.outbound_proxy;
 			/* Send the SUBSCRIBE */
 			nua_subscribe(nh,
 				SIPTAG_TO_STR(to),
@@ -3592,8 +3595,7 @@ static void *janus_sip_handler(void *data) {
 				TAG_IF(contact_header != NULL, SIPTAG_CONTACT_STR(contact_header)),
 				SIPTAG_ACCEPT_STR(accept),
 				SIPTAG_EXPIRES_STR(ttl_text),
-				NUTAG_PROXY(session->helper && session->master ?
-					session->master->account.outbound_proxy : session->account.outbound_proxy),
+				TAG_IF(proxy != NULL, NUTAG_PROXY(proxy)),
 				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				TAG_END());
 			result = json_object();
