@@ -3570,7 +3570,7 @@ static void *janus_sip_handler(void *data) {
 			json_t *content_type_text = json_object_get(root, "content_type");
 			if(content_type_text && json_is_string(content_type_text))
 				content_type = json_string_value(content_type_text);
-				/* Retrieve the content message */
+			/* Retrieve the content message */
 			const char *msg_content = NULL;
 			json_t *msg_content_text = json_object_get(root, "content");
 			if(msg_content_text && json_is_string(msg_content_text))
