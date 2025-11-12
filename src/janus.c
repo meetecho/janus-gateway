@@ -509,6 +509,7 @@ int janus_log_level = LOG_INFO;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
 char *janus_log_global_prefix = NULL;
+static int janus_log_rotate_sig = 0;
 int lock_debug = 0;
 #ifdef REFCOUNT_DEBUG
 int refcount_debug = 1;
@@ -517,8 +518,16 @@ int refcount_debug = 0;
 #endif
 
 
-/*! \brief Signal handler (just used to intercept CTRL+C and SIGTERM) */
+/*! \brief Signal handler (just used to intercept CTRL+C, SIGTERM and SIGUSR1) */
 static void janus_handle_signal(int signum) {
+	if(signum == janus_log_rotate_sig && janus_log_rotate_sig > 0) {
+		if(stop_signal > 0)
+			/* Skip log rotation while stopping */
+			return;
+		janus_log_reload();
+		return;
+	}
+	/* If we got here it's either a SIGINT or a SIGTERM */
 	stop_signal = signum;
 	switch(g_atomic_int_get(&stop)) {
 		case 0:
@@ -639,7 +648,7 @@ static janus_callbacks janus_handler_plugin =
 
 
 /* Core Sessions */
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 static GHashTable *sessions = NULL;
 static GMainContext *sessions_watchdog_context = NULL;
 
@@ -663,6 +672,7 @@ static void janus_session_free(const janus_refcount *session_ref) {
 		janus_request_destroy(session->source);
 		session->source = NULL;
 	}
+	janus_mutex_destroy(&session->mutex);
 	g_free(session);
 }
 
@@ -2194,9 +2204,9 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
 			json_object_set_new(status, "log_timestamps", janus_log_timestamps ? json_true() : json_false());
 			json_object_set_new(status, "log_colors", janus_log_colors ? json_true() : json_false());
+			json_object_set_new(status, "log_rotate_sig", json_integer(janus_log_rotate_sig));
 			json_object_set_new(status, "locking_debug", lock_debug ? json_true() : json_false());
 			json_object_set_new(status, "refcount_debug", refcount_debug ? json_true() : json_false());
-			json_object_set_new(status, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "min_nack_queue", json_integer(janus_get_min_nack_queue()));
 			json_object_set_new(status, "nack-optimizations", janus_is_nack_optimizations_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "no_media_timer", json_integer(janus_get_no_media_timer()));
@@ -2323,27 +2333,6 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "log_colors", janus_log_colors ? json_true() : json_false());
-			/* Send the success reply */
-			ret = janus_process_success(request, reply);
-			goto jsondone;
-		} else if(!strcasecmp(message_text, "set_libnice_debug")) {
-			/* Enable/disable the libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
-			JANUS_VALIDATE_JSON_OBJECT(root, debug_parameters,
-				error_code, error_cause, FALSE,
-				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
-			if(error_code != 0) {
-				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
-				goto jsondone;
-			}
-			json_t *debug = json_object_get(root, "debug");
-			if(json_is_true(debug)) {
-				janus_ice_debugging_enable();
-			} else {
-				janus_ice_debugging_disable();
-			}
-			/* Prepare JSON reply */
-			json_t *reply = janus_create_message("success", 0, transaction_text);
-			json_object_set_new(reply, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -4550,6 +4539,30 @@ gint main(int argc, char *argv[]) {
 			logfile = item->value;
 	}
 
+	/* Set an optional signal handler for log rotation */
+	const char *log_rotate_sig = NULL;
+	if(options.log_rotate_sig) {
+		log_rotate_sig = options.log_rotate_sig;
+		janus_config_add(config, config_general, janus_config_item_create("log_rotate_sig", log_rotate_sig));
+	} else {
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "log_rotate_sig");
+		if(item && item->value)
+			log_rotate_sig = item->value;
+	}
+	if(log_rotate_sig != NULL) {
+		if(!strcasecmp(log_rotate_sig, "SIGUSR1")) {
+			janus_log_rotate_sig = SIGUSR1;
+		} else if(!strcasecmp(log_rotate_sig, "SIGHUP")) {
+			janus_log_rotate_sig = SIGHUP;
+		} else {
+			JANUS_LOG(LOG_WARN, "Unsupported signal for log rotation: %s\n", log_rotate_sig);
+		}
+		if(janus_log_rotate_sig > 0) {
+			JANUS_LOG(LOG_INFO, "Setting signal for log rotation: %s (%d)\n", log_rotate_sig, janus_log_rotate_sig);
+			signal(janus_log_rotate_sig, janus_handle_signal);
+		}
+	}
+
 	/* Check if we're going to daemonize Janus */
 	if(options.daemon) {
 		daemonize = TRUE;
@@ -4871,8 +4884,6 @@ gint main(int argc, char *argv[]) {
 		janus_config_add(config, config_nat, janus_config_item_create("ice_enforce_list", options.ice_enforce_list));
 	if(options.ice_ignore_list)
 		janus_config_add(config, config_nat, janus_config_item_create("ice_ignore_list", options.ice_ignore_list));
-	if(options.libnice_debug)
-		janus_config_add(config, config_nat, janus_config_item_create("nice_debug", "true"));
 	if(options.full_trickle)
 		janus_config_add(config, config_nat, janus_config_item_create("full_trickle", "true"));
 	if(options.ice_lite)
@@ -5292,8 +5303,9 @@ gint main(int argc, char *argv[]) {
 	item = janus_config_get(config, config_nat, janus_config_type_item, "nice_debug");
 	if(item && item->value && janus_is_true(item->value)) {
 		/* Enable libnice debugging */
-		janus_ice_debugging_enable();
+		JANUS_LOG(LOG_WARN,"nice_debug option is NOT SUPPORTED ANYMORE! Please set NICE_DEBUG and G_MESSAGES_DEBUG env vars when starting Janus\n");
 	}
+
 	if(stun_server == NULL && turn_server == NULL) {
 		/* No STUN and TURN server provided for Janus: make sure it isn't on a private address */
 		int num_ips = janus_get_public_ip_count();
@@ -5472,7 +5484,6 @@ gint main(int argc, char *argv[]) {
 
 	/* Sessions */
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
-	janus_mutex_init(&sessions_mutex);
 	/* Start the sessions timeout watchdog */
 	sessions_watchdog_context = g_main_context_new();
 	GMainLoop *watchdog_loop = g_main_loop_new(sessions_watchdog_context, FALSE);

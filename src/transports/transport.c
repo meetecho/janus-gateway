@@ -6,7 +6,7 @@
  * the gateway and all the transports need too implement to interact with
  * each other. The structures to make the communication possible are
  * defined here as well.
- * 
+ *
  * \ingroup transportapi
  * \ref transportapi
  */
@@ -18,6 +18,7 @@ static void janus_transport_session_free(const janus_refcount *transport_ref) {
 	/* This session can be destroyed, free all the resources */
 	if(session->p_free)
 		session->p_free(session->transport_p);
+	janus_mutex_destroy(&session->mutex);
 	g_free(session);
 }
 

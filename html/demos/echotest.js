@@ -216,15 +216,15 @@ $(document).ready(function() {
 										if(totTl !== null && totTl !== undefined) {
 											if(totTl < 3 && !$('#tl-2').hasClass('hide'))
 												$('#tl-2').addClass('hide');
-											else
+											else if(totTl >= 3)
 												$('#tl-2').removeClass('hide');
 											if(totTl < 2 && !$('#tl-1').hasClass('hide'))
 												$('#tl-1').addClass('hide');
-											else
+											else if(totTl >= 2)
 												$('#tl-1').removeClass('hide');
 											if(totTl < 1 && !$('#tl-0').hasClass('hide'))
 												$('#tl-0').addClass('hide');
-											else
+											else if(totTl >= 1)
 												$('#tl-0').removeClass('hide');
 										}
 									}
@@ -242,30 +242,30 @@ $(document).ready(function() {
 										if(totSl !== null && totSl !== undefined) {
 											if(totSl < 3 && !$('#sl-2').hasClass('hide'))
 												$('#sl-2').addClass('hide');
-											else
+											else if(totSl >= 3)
 												$('#sl-2').removeClass('hide');
 											if(totSl < 2 && !$('#sl-1').hasClass('hide'))
 												$('#sl-1').addClass('hide');
-											else
+											else if(totSl >= 2)
 												$('#sl-1').removeClass('hide');
 											if(totSl < 1 && !$('#sl-0').hasClass('hide'))
 												$('#sl-0').addClass('hide');
-											else
+											else if(totSl >= 1)
 												$('#sl-0').removeClass('hide');
 										}
 										let totTl = msg["tot_temporal_layers"];
 										if(totTl !== null && totTl !== undefined) {
 											if(totTl < 3 && !$('#tl-2').hasClass('hide'))
 												$('#tl-2').addClass('hide');
-											else
+											else if(totTl >= 3)
 												$('#tl-2').removeClass('hide');
 											if(totTl < 2 && !$('#tl-1').hasClass('hide'))
 												$('#tl-1').addClass('hide');
-											else
+											else if(totTl >= 2)
 												$('#tl-1').removeClass('hide');
 											if(totTl < 1 && !$('#tl-0').hasClass('hide'))
 												$('#tl-0').addClass('hide');
-											else
+											else if(totTl >= 1)
 												$('#tl-0').removeClass('hide');
 										}
 									}

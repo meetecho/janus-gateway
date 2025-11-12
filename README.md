@@ -285,8 +285,6 @@ or on the command line:
                                   (experimental)  (default=off)
 	-O, --ipv6-link-local         Whether IPv6 link-local candidates should be
                                   gathered as well  (default=off)
-	-l, --libnice-debug           Whether to enable libnice debugging or not
-                                  (default=off)
 	-f, --full-trickle            Do full-trickle instead of half-trickle
                                   (default=off)
 	-I, --ice-lite                Whether to enable the ICE Lite mode or not

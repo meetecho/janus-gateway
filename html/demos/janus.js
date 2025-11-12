@@ -1526,8 +1526,8 @@ var Janus = (function (factory) {
 							let tr = transceivers[mindex];
 							if(tr && tr.sender && tr.sender.track && tr.sender.track.kind === 'video') {
 								let params = tr.sender.getParameters();
-								if(params && params.encodings && params.encodings[0] &&
-									params.encodings[0].scalabilityMode) {
+								if(params && params.encodings && params.encodings.length === 1 &&
+										params.encodings[0] && params.encodings[0].scalabilityMode) {
 									// This video stream uses SVC
 									if(!svc)
 										svc = [];
@@ -2532,40 +2532,18 @@ var Janus = (function (factory) {
 							transceiver = config.pc.getTransceivers()
 								.find(t => (t.sender === sender));
 						} else if(track.simulcast) {
-							if(Janus.webRTCAdapter.browserDetails.browser !== 'firefox') {
-								// Standard RID
-								Janus.log('Enabling rid-based simulcasting:', nt);
-								let maxBitrates = getMaxBitrates(track.simulcastMaxBitrates);
-								transceiver = config.pc.addTransceiver(nt, {
-									direction: 'sendrecv',
-									streams: [config.myStream],
-									sendEncodings: track.sendEncodings || [
-										{ rid: 'h', active: true, scalabilityMode: 'L1T2', maxBitrate: maxBitrates.high },
-										{ rid: 'm', active: true, scalabilityMode: 'L1T2', maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
-										{ rid: 'l', active: true, scalabilityMode: 'L1T2', maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
-									]
-								});
-							} else {
-								// Firefox-based RID, based on https://gist.github.com/voluntas/088bc3cc62094730647b
-								Janus.log('Enabling Simulcasting for Firefox (RID)');
-								transceiver = config.pc.addTransceiver(nt, {
-									direction: 'sendrecv',
-									streams: [config.myStream]
-								});
-								sender = transceiver ? transceiver.sender : null;
-								if(sender) {
-									let parameters = sender.getParameters();
-									if(!parameters)
-										parameters = {};
-									let maxBitrates = getMaxBitrates(track.simulcastMaxBitrates);
-									parameters.encodings = track.sendEncodings || [
-										{ rid: 'h', active: true, maxBitrate: maxBitrates.high },
-										{ rid: 'm', active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
-										{ rid: 'l', active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
-									];
-									sender.setParameters(parameters);
-								}
-							}
+							// Standard RID
+							Janus.log('Enabling rid-based simulcasting:', nt);
+							let maxBitrates = getMaxBitrates(track.simulcastMaxBitrates);
+							transceiver = config.pc.addTransceiver(nt, {
+								direction: 'sendrecv',
+								streams: [config.myStream],
+								sendEncodings: track.sendEncodings || [
+									{ rid: 'h', active: true, scalabilityMode: 'L1T2', maxBitrate: maxBitrates.high },
+									{ rid: 'm', active: true, scalabilityMode: 'L1T2', maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
+									{ rid: 'l', active: true, scalabilityMode: 'L1T2', maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
+								]
+							});
 						} else {
 							Janus.log('Enabling SVC (' + track.svc + '):', nt);
 							transceiver = config.pc.addTransceiver(nt, {

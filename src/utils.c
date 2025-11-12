@@ -24,6 +24,7 @@
 #include <openssl/rand.h>
 
 #include "utils.h"
+#include "rtp.h"
 #include "debug.h"
 #include "mutex.h"
 
@@ -931,6 +932,24 @@ gboolean janus_h265_is_keyframe(const char *buffer, int len) {
 		/* FIXME We return TRUE for more than just VPS and SPS, as
 		 * suggested in https://github.com/meetecho/janus-gateway/issues/2323 */
 		return TRUE;
+	}
+	return FALSE;
+}
+
+gboolean janus_is_keyframe(int codec, const char *buffer, int len) {
+	switch(codec) {
+		case JANUS_VIDEOCODEC_VP8:
+			return janus_vp8_is_keyframe(buffer, len);
+		case JANUS_VIDEOCODEC_VP9:
+			return janus_vp9_is_keyframe(buffer, len);
+		case JANUS_VIDEOCODEC_H264:
+			return janus_h264_is_keyframe(buffer, len);
+		case JANUS_VIDEOCODEC_AV1:
+			return janus_av1_is_keyframe(buffer, len);
+		case JANUS_VIDEOCODEC_H265:
+			return janus_h265_is_keyframe(buffer, len);
+		default:
+			break;
 	}
 	return FALSE;
 }

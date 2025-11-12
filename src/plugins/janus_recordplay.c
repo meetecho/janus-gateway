@@ -65,19 +65,23 @@
  * (invalid JSON, invalid request) which will always result in a
  * synchronous error response even for asynchronous requests.
  *
- * \c list and \c update are synchronous requests, which means you'll
+ * \c list , \c update and \c configure are synchronous requests, which means you'll
  * get a response directly within the context of the transaction. \c list
  * lists all the available recordings, while \c update forces the plugin
  * to scan the folder of recordings again in case some were added manually
- * and not indexed in the meanwhile.
+ * and not indexed in the meanwhile. The \c configure request can be used
+ * to tweak some settings while recording a session.
  *
- * The \c record , \c play , \c start and \c stop requests instead are
+ * The \c record , \c play , \c start , \c pause , \c resume and \c stop requests instead are
  * all asynchronous, which means you'll get a notification about their
  * success or failure in an event. \c record asks the plugin to start
  * recording a session; \c play asks the plugin to prepare the playout
  * of one of the previously recorded sessions; \c start starts the
  * actual playout, and \c stop stops whatever the session was for, i.e.,
- * recording or replaying.
+ * recording or replaying. Recording sessions can also be dynamically
+ * paused and resumed using \c pause and \c resume : the pauses will be
+ * omitted from the recording, meaning recordings will not have holes
+ * in them, and will move from one section to the other with no pause.
  *
  * The \c list request has to be formatted as follows:
  *
@@ -178,6 +182,71 @@
 		"status" : "recording",
 		"id" : <unique numeric ID>,
 		"is_private" : <true|false, same as the request>
+	}
+}
+\endverbatim
+ *
+ * Some properties of the recording session can be tweaked dynamically
+ * via the \c configure request, and has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "configure",
+	"video-bitrate-max", <bitrate cap that should be forced (via REMB) on the recorder>,
+	"video-keyframe-interval", <how often, in seconds, the plugin should send a PLI to the recorder to request a keyframe>
+}
+\endverbatim
+ *
+ * A successful request will result in a confirmation of :
+ *
+\verbatim
+{
+	"recordplay" : "configure",
+	"status" : "ok",
+	"settings" : {
+		"video-bitrate-max" : <current value of the property>,
+		"video-keyframe-interval" : <current value of the property>
+	}
+}
+\endverbatim
+ *
+ * You can pause the recording process (meaning that RTP packets will keep
+ * on flowing but will not be recorded to file) using the \c pause request:
+ *
+\verbatim
+{
+	"request" : "pause",
+}
+\endverbatim
+ *
+ * This will result in a \c paused status:
+ *
+\verbatim
+{
+	"recordplay" : "event",
+	"result": {
+		"status" : "paused",
+		"id" : <unique numeric ID of the paused recording>
+	}
+}
+\endverbatim
+ *
+ * To resume the recording process you can use the \c resume request:
+ *
+\verbatim
+{
+	"request" : "resume",
+}
+\endverbatim
+ *
+ * This will result in a \c resumed status:
+ *
+\verbatim
+{
+	"recordplay" : "event",
+	"result": {
+		"status" : "resumed",
+		"id" : <unique numeric ID of the paused recording>
 	}
 }
 \endverbatim
@@ -885,7 +954,7 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 		int res = janus_mkdir(recordings_path, 0755);
 		JANUS_LOG(LOG_VERB, "Creating folder: %d\n", res);
 		if(res != 0) {
-			JANUS_LOG(LOG_ERR, "%s", g_strerror(errno));
+			JANUS_LOG(LOG_ERR, "%s\n", g_strerror(errno));
 			g_free(recordings_path);
 			recordings_path = NULL;
 			g_free(admin_key);
@@ -2663,7 +2732,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 			gint64 when = 0;
 			bytes = fread(&when, 1, sizeof(gint64), file);
 			if(bytes < (int)sizeof(gint64)) {
-				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
+				JANUS_LOG(LOG_WARN, "Missing data timestamp header\n");
 				break;
 			}
 			when = ntohll((uint64_t)when);

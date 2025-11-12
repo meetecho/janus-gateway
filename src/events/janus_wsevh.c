@@ -177,7 +177,9 @@ typedef struct janus_wsevh_client {
 } janus_wsevh_client;
 static janus_wsevh_client *ws_client = NULL;
 static struct lws *wsi = NULL;
-static janus_mutex writable_mutex;
+#if (LWS_LIBRARY_VERSION_MAJOR < 3)
+static janus_mutex writable_mutex = JANUS_MUTEX_INITIALIZER;
+#endif
 
 static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len);
 static struct lws_protocols protocols[] = {
@@ -410,7 +412,6 @@ int janus_wsevh_init(const char *config_path) {
 		JANUS_LOG(LOG_FATAL, "Error initializing WebSocket connection\n");
 		goto error;
 	}
-	janus_mutex_init(&writable_mutex);
 
 	/* Initialize the events queue */
 	events = g_queue_new();
@@ -836,6 +837,7 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 				ws_client->bufpending = 0;
 				ws_client->bufoffset = 0;
 				janus_mutex_unlock(&ws_client->mutex);
+				janus_mutex_destroy(&ws_client->mutex);
 			}
 			/* Check if we should reconnect */
 			ws_client = NULL;
