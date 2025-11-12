@@ -2,6 +2,7 @@ cmdline.c
 cmdline.h
 version.c
 docs/html/
+janus-gateway.pc
 
 /janus
 /janus-cfgconv

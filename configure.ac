@@ -97,6 +97,9 @@ glib_version=2.34
 ssl_version=1.0.1
 jansson_version=2.5
 
+JANUS_PACKAGES_PUBLIC="glib-2.0 >= $glib_version, jansson >= $jansson_version"
+AC_SUBST(JANUS_PACKAGES_PUBLIC)
+
 ##
 # Janus
 ##
@@ -1005,6 +1008,7 @@ AC_CONFIG_FILES([
   Makefile
   html/Makefile
   docs/Makefile
+  janus-gateway.pc
 ])
 
 JANUS_MANUAL_LIBS+=" -pthread"

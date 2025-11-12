@@ -217,6 +217,16 @@ $(dir_absent):
 	echo "not-a-git-repo" | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
 
 ##
+# pkg-config file
+##
+
+EXTRA_DIST = janus-gateway.pc.in
+pkgconfigdir = $(libdir)/pkgconfig
+pkgconfig_DATA = janus-gateway.pc
+DISTCLEANFILES = janus-gateway.pc
+
+
+##
 # Fuzzers checking
 ##
 
