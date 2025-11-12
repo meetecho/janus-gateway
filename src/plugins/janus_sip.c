@@ -827,7 +827,9 @@ static struct janus_json_parameter subscribe_parameters[] = {
 	{"accept", JSON_STRING, 0},
 	{"subscribe_ttl", JANUS_JSON_INTEGER, 0},
 	{"call_id", JANUS_JSON_STRING, 0},
-	{"headers", JSON_OBJECT, 0}
+	{"headers", JSON_OBJECT, 0},
+	{"content", JSON_STRING, 0},
+	{"content_type", JSON_STRING, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
 	{"proxy", JSON_STRING, 0},
