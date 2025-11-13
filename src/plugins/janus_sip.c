@@ -6183,7 +6183,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_t *headers = janus_sip_get_incoming_headers(sip, session);
 					json_object_set_new(resultj, "headers", headers);
 				}
-				json_object_set_new(resultj, "etag", json_string(sip->sip_etag->g_string));
+				if(sip && sip->sip_etag && sip->sip_etag->g_string)
+					json_object_set_new(resultj, "etag", json_string(sip->sip_etag->g_string));
 				if (sip && sip->sip_expires)
 					json_object_set_new(resultj, "expires", json_integer(sip->sip_expires->ex_delta));
 				json_object_set_new(resultj, "reason", json_string(phrase ? phrase : ""));
