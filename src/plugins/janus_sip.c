@@ -6172,26 +6172,26 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			if(status == 200 || status == 202) {
 				/* Success */
-				json_t *eventj = json_object();
-				json_object_set_new(eventj, "sip", json_string("event"));
+				json_t *event = json_object();
+				json_object_set_new(event, "sip", json_string("event"));
 				if(sip && sip->sip_call_id)
-					json_object_set_new(eventj, "call_id", json_string(sip->sip_call_id->i_id));
-				json_t *resultj = json_object();
-				json_object_set_new(resultj, "event", json_string("publish_succeeded"));
-				json_object_set_new(resultj, "code", json_integer(status));
+					json_object_set_new(event, "call_id", json_string(sip->sip_call_id->i_id));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("publish_succeeded"));
+				json_object_set_new(result, "code", json_integer(status));
 				if(session->incoming_header_prefixes) {
 					json_t *headers = janus_sip_get_incoming_headers(sip, session);
-					json_object_set_new(resultj, "headers", headers);
+					json_object_set_new(result, "headers", headers);
 				}
 				if(sip && sip->sip_etag && sip->sip_etag->g_string)
-					json_object_set_new(resultj, "etag", json_string(sip->sip_etag->g_string));
+					json_object_set_new(result, "etag", json_string(sip->sip_etag->g_string));
 				if (sip && sip->sip_expires)
-					json_object_set_new(resultj, "expires", json_integer(sip->sip_expires->ex_delta));
-				json_object_set_new(resultj, "reason", json_string(phrase ? phrase : ""));
-				json_object_set_new(eventj, "result", resultj);
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, eventj, NULL);
+					json_object_set_new(result, "expires", json_integer(sip->sip_expires->ex_delta));
+				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
+				json_object_set_new(event, "result", result);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, event, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
-				json_decref(eventj);
+				json_decref(event);
 			} else if(status == 401 || status == 407) {
 				const char *scheme = NULL;
 				const char *realm = NULL;
@@ -6236,25 +6236,30 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
 					secret);
 				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
-				nua_authenticate(nh, NUTAG_AUTH(auth), TAG_END());
+				/* Authenticate */
+				nua_authenticate(nh, 
+					NUTAG_AUTH(auth), 
+					TAG_END());
+				break;
 			} else if(status >= 400) {
+				/* Something went wrong */
 				JANUS_LOG(LOG_WARN, "[%s] PUBLISH failed: %d %s\n", session->account.username, status, phrase ? phrase : "");
-				json_t *eventj = json_object();
-				json_object_set_new(eventj, "sip", json_string("event"));
+				json_t *event = json_object();
+				json_object_set_new(event, "sip", json_string("event"));
 				if(sip && sip->sip_call_id)
-					json_object_set_new(eventj, "call_id", json_string(sip->sip_call_id->i_id));
-				json_t *resultj = json_object();
-				json_object_set_new(resultj, "event", json_string("publish_failed"));
-				json_object_set_new(resultj, "code", json_integer(status));
-				json_object_set_new(resultj, "reason", json_string(phrase ? phrase : ""));
+					json_object_set_new(event, "call_id", json_string(sip->sip_call_id->i_id));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("publish_failed"));
+				json_object_set_new(result, "code", json_integer(status));
+				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
 				if(session->incoming_header_prefixes) {
 					json_t *headers = janus_sip_get_incoming_headers(sip, session);
-					json_object_set_new(resultj, "headers", headers);
+					json_object_set_new(result, "headers", headers);
 				}
-				json_object_set_new(eventj, "result", resultj);
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, eventj, NULL);
+				json_object_set_new(event, "result", result);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, event, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
-				json_decref(eventj);
+				json_decref(event);
 			}
 			break;
 		}
