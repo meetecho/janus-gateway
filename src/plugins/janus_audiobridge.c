@@ -1201,51 +1201,6 @@ room-<unique room ID>: {
  * request on the participant handle, which will finalize the media
  * establishment.
  *
- * \subsection ablimiter AudioBridge limiter
- *
- * The AudioBridge plugin has a built-in audio limiter, which can be used
- * to limit the volume of the audio stream coming to participants.
- * This limiter is disabled by default, and can be enabled by setting
- * the \c use_limiter property to \c true in the \c create request.
- * The limiter is applied to recording (if there are 2 or more participants
- * speaking) and to all tracks that participants receive from the
- * AudioBridge plugin (if there are 2 or mote participants speaking besides
- * this participant).
- *
- * The limiter contains code parts adapted from the WebRTC code which is
- * licensed under the BSD license:
-\verbatim
-Copyright (c) 2011, The WebRTC project authors. All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in
-    the documentation and/or other materials provided with the
-    distribution.
-
-  * Neither the name of Google nor the names of its contributors may
-    be used to endorse or promote products derived from this software
-    without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-\endverbatim
- *
  */
 
 #include "plugin.h"
@@ -1266,6 +1221,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifdef HAVE_RNNOISE
 #include <rnnoise.h>
 #endif
+/* We ship our own version of  */
+#include "audiobridge-deps/limiter/limiter.h"
 
 #include <arpa/inet.h>
 #include <net/if.h>
@@ -1287,8 +1244,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../sdp-utils.h"
 #include "../utils.h"
 #include "../ip-utils.h"
-
-#include "audiobridge-deps/limiter/limiter.h"
 
 /* Plugin information */
 #define JANUS_AUDIOBRIDGE_VERSION			13
@@ -2609,8 +2564,8 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 #endif
 
 	/* Setting function pointers according to runtime vectorization support (AVX2, SSE4.2 or scalar) */
+	JANUS_LOG(LOG_INFO, "Initializing optimized limiter implementation\n");
 	init_limiter();
-	JANUS_LOG(LOG_INFO, "Initialized optimized limiter implementation\n");
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
@@ -3643,7 +3598,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
 				}
 			}
-			if (audiobridge->use_limiter)
+			if(audiobridge->use_limiter)
 				janus_config_add(config, c, janus_config_item_create("use_limiter", "true"));
 			if(audiobridge->allow_plainrtp)
 				janus_config_add(config, c, janus_config_item_create("allow_rtp_participants", "true"));
@@ -3826,7 +3781,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
 				}
 			}
-			if (audiobridge->use_limiter)
+			if(audiobridge->use_limiter)
 				janus_config_add(config, c, janus_config_item_create("use_limiter", "true"));
 			if(audiobridge->allow_plainrtp)
 				janus_config_add(config, c, janus_config_item_create("allow_rtp_participants", "true"));
@@ -8533,12 +8488,12 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	opus_int32 buffer[audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES],
 		sumBuffer[audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES];
 	opus_int16 outBuffer[audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES],
-		fullMixBuffer[audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES],
+		fullmix_buffer[audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES],
 		resampled[audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES], *curBuffer = NULL, *mixBuffer = NULL;
 	memset(buffer, 0, OPUS_SAMPLES*(audiobridge->spatial_audio ? 8 : 4));
 	memset(sumBuffer, 0, OPUS_SAMPLES*(audiobridge->spatial_audio ? 8 : 4));
 	memset(outBuffer, 0, OPUS_SAMPLES*(audiobridge->spatial_audio ? 4 : 2));
-	memset(fullMixBuffer, 0, OPUS_SAMPLES*(audiobridge->spatial_audio ? 4 : 2));
+	memset(fullmix_buffer, 0, OPUS_SAMPLES*(audiobridge->spatial_audio ? 4 : 2));
 	memset(resampled, 0, OPUS_SAMPLES*(audiobridge->spatial_audio ? 4 : 2));
 
 	/* In case forwarding groups are enabled, we need additional buffers */
@@ -8588,11 +8543,11 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	float filter_state_level = K_INITIAL_FILTER_STATE_LEVEL;
 	float last_scaling_factor = 1.f;
 	/* In case audio limiter enabled, we need some buffers for it */
-	if (audiobridge->use_limiter) {
-		JANUS_LOG(LOG_INFO, "Audio limiter enabled\n");
-		per_sample_scaling_factors = g_malloc0((audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES) * sizeof(float));
+	if(audiobridge->use_limiter) {
+		JANUS_LOG(LOG_INFO, "Audio limiter enabled for room %s (%s)\n", audiobridge->room_id_str, audiobridge->room_name);
 		envelope = g_malloc0(K_SUB_FRAMES_IN_FRAME * sizeof(float));
-		scaling_factors = g_malloc0((K_SUB_FRAMES_IN_FRAME + 1) * sizeof(float));
+		scaling_factors = g_malloc((K_SUB_FRAMES_IN_FRAME + 1) * sizeof(float));
+		per_sample_scaling_factors = g_malloc((audiobridge->spatial_audio ? OPUS_SAMPLES*2 : OPUS_SAMPLES) * sizeof(float));
 	}
 
 	/* Base RTP packets, in case there are forwarders involved */
@@ -8923,33 +8878,33 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			}
 		}
 		/* If we use limiter we should initialize it if we have more than 2 tracks mixed or we have more than 1 track mixed and recording */
-		if (audiobridge->use_limiter && (mix_count > 2 || (audiobridge->recording && mix_count > 1)))
+		if(audiobridge->use_limiter && (mix_count > 2 || (audiobridge->recording && mix_count > 1)))
 			compute_scaling_factors(buffer, envelope, scaling_factors, per_sample_scaling_factors, 
 						  samples_in_sub_frame, &filter_state_level, &last_scaling_factor);
 		
 		/* If we have silent participants, calculate once the full mix */
-		if (has_silent) {
-			if (audiobridge->use_limiter && mix_count > 1) {
+		if(has_silent) {
+			if(audiobridge->use_limiter && mix_count > 1) {
 				/* If we use limiter and we mixed more than 1 track, apply it */
-				scale_buffer(buffer, samples, per_sample_scaling_factors, fullMixBuffer);
+				scale_buffer(buffer, samples, per_sample_scaling_factors, fullmix_buffer);
 			} else {
 				/* Otherwise just clamp values that are outside int16 boundaries */
-				clamp_buffer(buffer, samples, fullMixBuffer);
+				clamp_buffer(buffer, samples, fullmix_buffer);
 			}
 		}
 		/* Are we recording the mix? (only do it if there's someone in, though...) */
 		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) {
 			/* If we didn't yet calculated full mix, do it now */
-			if (!has_silent) {
-				if (audiobridge->use_limiter && mix_count > 1) {
+			if(!has_silent) {
+				if(audiobridge->use_limiter && mix_count > 1) {
 					/* If we use limiter and we mixed more than 1 track, apply it */
-					scale_buffer(buffer, samples, per_sample_scaling_factors, fullMixBuffer);
+					scale_buffer(buffer, samples, per_sample_scaling_factors, fullmix_buffer);
 				} else {
 					/* Otherwise just clamp values that are outside int16 boundaries */
-					clamp_buffer(buffer, samples, fullMixBuffer);
+					clamp_buffer(buffer, samples, fullmix_buffer);
 				}
 			}
-			fwrite(fullMixBuffer, sizeof(opus_int16), samples, audiobridge->recording);
+			fwrite(fullmix_buffer, sizeof(opus_int16), samples, audiobridge->recording);
 			/* Every 5 seconds we update the wav header */
 			gint64 now = janus_get_monotonic_time();
 			if(now - audiobridge->record_lastupdate >= 5*G_USEC_PER_SEC) {
@@ -8989,7 +8944,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			janus_mutex_unlock(&p->qmutex);
 			/* Remove the participant's own contribution */
 			curBuffer = (opus_int16 *)((pkt && pkt->length && !pkt->silence) ? pkt->data : NULL);
-			if (curBuffer) {
+			if(curBuffer) {
 				if(!p->stereo) {
 					for(i=0; i<samples; i++) {
 						if(p->volume_gain == 100)
@@ -9025,8 +8980,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					clamp_buffer(sumBuffer, samples, outBuffer);
 				}
 				mixBuffer = outBuffer;
-			} else if (!has_silent) {
-				JANUS_LOG(LOG_WARN, "[%s] No packet for participant (%s), but we have no silent participants either\n", audiobridge->room_id_str, p->user_id_str);
+			} else if(!has_silent) {
+				/* JANUS_LOG(LOG_WARN, "[%s] No packet for participant (%s), but we have no silent participants either\n", audiobridge->room_id_str, p->user_id_str); */
 				for(i=0; i<samples; i++)
 					sumBuffer[i] = buffer[i];
 				if(audiobridge->use_limiter && (mix_count - (curBuffer ? 1 : 0)) > 1) {
@@ -9038,7 +8993,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				}
 				mixBuffer = outBuffer;
 			} else {
-				mixBuffer = fullMixBuffer;
+				mixBuffer = fullmix_buffer;
 			}
 			/* Enqueue this mixed frame for encoding in the participant thread */
 			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
@@ -9318,7 +9273,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							g_free(pkt->data);
 							g_free(pkt);
 							break;
-						} else if (pkt->length == 0) {
+						} else if(pkt->length == 0) {
 							/* Empty packet => buffer is all zeroes (g_malloc0) => it's silence */
 							pkt->silence = TRUE;
 						}
@@ -9415,7 +9370,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						g_free(pkt->data);
 						g_free(pkt);
 						continue;
-					} else if (pkt->length == 0) {
+					} else if(pkt->length == 0) {
 						/* Empty packet => buffer is all zeroes (g_malloc0) => it's silence */
 						pkt->silence = TRUE;
 					}
