@@ -9218,13 +9218,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 				} else {
 					/* Decode the audio packet */
 					bpkt = (janus_audiobridge_buffer_packet *)jbp.data;
-					janus_mutex_lock(&participant->decoding_mutex);
-					if(participant->decoder == NULL) {
-						/* This means we're cleaning up, so don't try to decode */
-						janus_mutex_unlock(&participant->decoding_mutex);
-						janus_audiobridge_buffer_packet_destroy(bpkt);
-						break;
-					}
 					/* Access the payload */
 					char *buffer = bpkt->rtp ? bpkt->rtp->buffer : NULL;
 					uint16_t len = bpkt->rtp ? bpkt->rtp->length : 0;
@@ -9233,7 +9226,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					if(!payload) {
 						JANUS_LOG(LOG_ERR, "[%s] Ops! got an error accessing the RTP payload\n",
 							participant->codec == JANUS_AUDIOCODEC_OPUS ? "Opus" : "G.711");
-						janus_mutex_unlock(&participant->decoding_mutex);
 						janus_audiobridge_buffer_packet_destroy(bpkt);
 						continue;
 					}
@@ -9252,12 +9244,19 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					pkt->length = 0;
 					if(participant->codec == JANUS_AUDIOCODEC_OPUS) {
 						/* Opus */
+						janus_mutex_lock(&participant->decoding_mutex);
+						if(participant->decoder == NULL) {
+							/* This means we're cleaning up, so don't try to decode */
+							janus_mutex_unlock(&participant->decoding_mutex);
+							janus_audiobridge_buffer_packet_destroy(bpkt);
+							break;
+						}
 						pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)pkt->data, BUFFER_SAMPLES, 0);
+						janus_mutex_unlock(&participant->decoding_mutex);
 					} else if(participant->codec == JANUS_AUDIOCODEC_PCMA || participant->codec == JANUS_AUDIOCODEC_PCMU) {
 						/* G.711 */
 						if(plen != 160) {
 							JANUS_LOG(LOG_WARN, "[G.711] Wrong packet size (expected 160, got %d), skipping audio packet\n", plen);
-							janus_mutex_unlock(&participant->decoding_mutex);
 							janus_audiobridge_buffer_packet_destroy(bpkt);
 							g_free(pkt->data);
 							g_free(pkt);
@@ -9286,7 +9285,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					/* Update the details */
 					participant->last_seq = pkt->seq_number;
 					participant->last_timestamp = pkt->timestamp;
-					janus_mutex_unlock(&participant->decoding_mutex);
 					if(pkt->length < 0) {
 						if(participant->codec == JANUS_AUDIOCODEC_OPUS) {
 							JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", pkt->length, opus_strerror(pkt->length));
