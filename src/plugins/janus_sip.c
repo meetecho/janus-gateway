@@ -506,7 +506,7 @@
 }
 \endverbatim
  *
- * As anticipated, SIP events are supported as well, using the SUBSCRIBE
+ * As anticipated, SIP events are supported as well, using the SUBSCRIBE, PUBLISH
  * and NOTIFY mechanism. To do that, you need to use the \c subscribe
  * request, which has to be formatted like this:
  *
@@ -541,6 +541,27 @@
 }
 \endverbatim
  *
+ * For publishing, instead, you use the \c publish request, which has to be
+ * formatted like this:
+ *
+\verbatim
+{
+	"request" : "publish",
+	"call_id" : "<user-defined value of Call-ID SIP header used in all SIP requests throughout the publication; optional>",
+	"to" : "<who should be the PUBLISH addressed to; optional, will use the user's identity if missing>",
+	"event" : "<the event to publish, e.g., 'message-summary'; mandatory>",
+	"content-type" : "<content-type of the message; optional>",
+	"content" : "<content of the message; optional>",
+	"publish_ttl" : "<integer; number of seconds after which the publication should expire; optional>",
+	"etag" : "<string; ETag to use for the publication, if any; optional>",
+	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP PUBLISH; optional>"
+}
+\endverbatim
+ * A \c publishing event will be sent back, followed by a
+ * A \c publish_succeeded if the PUBLISH request was accepted, and a
+ * \c publish_failed if the transaction failed instead.
+ *
+ * 
  * You can also record a SIP call, and it works pretty much the same the
  * VideoCall plugin does. Specifically, you make use of the \c recording
  * request to either start or stop a recording, using the following syntax:
