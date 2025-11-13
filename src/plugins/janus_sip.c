@@ -520,6 +520,8 @@
 	"accept" : "<what should be put in the Accept header; optional>",
 	"to" : "<who should be the SUBSCRIBE addressed to; optional, will use the user's identity if missing>",
 	"subscribe_ttl" : "<integer; number of seconds after which the subscription should expire; optional>",
+	"content" : "<content to put in the body of the SUBSCRIBE; optional>",
+	"content_type" : "<content-type of the body; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP SUBSCRIBE; optional>"
 }
 \endverbatim
@@ -830,7 +832,9 @@ static struct janus_json_parameter subscribe_parameters[] = {
 	{"accept", JSON_STRING, 0},
 	{"subscribe_ttl", JANUS_JSON_INTEGER, 0},
 	{"call_id", JANUS_JSON_STRING, 0},
-	{"headers", JSON_OBJECT, 0}
+	{"headers", JSON_OBJECT, 0},
+	{"content", JSON_STRING, 0},
+	{"content_type", JSON_STRING, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
 	{"proxy", JSON_STRING, 0},
@@ -3585,6 +3589,16 @@ static void *janus_sip_handler(void *data) {
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 			/* Retrieve the Contact header for manually adding if not NULL */
 			char *contact_header = janus_sip_session_contact_header_retrieve(session);
+			/* Retrieve the content type */
+			const char *content_type = NULL;
+			json_t *content_type_text = json_object_get(root, "content_type");
+			if(content_type_text && json_is_string(content_type_text))
+				content_type = json_string_value(content_type_text);
+			/* Retrieve the content message */
+			const char *msg_content = NULL;
+			json_t *msg_content_text = json_object_get(root, "content");
+			if(msg_content_text && json_is_string(msg_content_text))
+				msg_content = json_string_value(msg_content_text);
 			/* Retrieve the outbound proxy */
 			char *proxy = session->helper && session->master ?
 				session->master->account.outbound_proxy : session->account.outbound_proxy;
@@ -3598,6 +3612,8 @@ static void *janus_sip_handler(void *data) {
 				SIPTAG_EXPIRES_STR(ttl_text),
 				TAG_IF(proxy != NULL, NUTAG_PROXY(proxy)),
 				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
+				TAG_IF(content_type != NULL && msg_content != NULL, SIPTAG_CONTENT_TYPE_STR(content_type)),
+				TAG_IF(content_type != NULL && msg_content != NULL, SIPTAG_PAYLOAD_STR(msg_content)),
 				TAG_END());
 			result = json_object();
 			json_object_set_new(result, "event", json_string("subscribing"));
