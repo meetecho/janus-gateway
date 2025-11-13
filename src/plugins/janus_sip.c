@@ -3596,7 +3596,7 @@ static void *janus_sip_handler(void *data) {
 			const char *msg_content = NULL;
 			json_t *msg_content_text = json_object_get(root, "content");
 			if(msg_content_text && json_is_string(msg_content_text))
-			msg_content = json_string_value(msg_content_text);
+				msg_content = json_string_value(msg_content_text);
 			/* Retrieve the outbound proxy */
 			char *proxy = session->helper && session->master ?
 				session->master->account.outbound_proxy : session->account.outbound_proxy;
