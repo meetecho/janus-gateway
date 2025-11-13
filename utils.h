@@ -234,8 +234,7 @@ void janus_protected_folders_clear(void);
 /*! \brief Creates a string describing the JSON type and constraint
  * @param jtype The JSON type, e.g., JSON_STRING
  * @param flags Indicates constraints for the described type
- * @param[out] type_name The type description, e.g., "a positive integer"; required size is 19 characters
- * @returns 0 if successful, a negative integer otherwise */
+ * @param[out] type_name The type description, e.g., "a positive integer"; required size is 19 characters */
 void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name);
 
 /*! \brief Checks whether the JSON value matches the type and constraint
