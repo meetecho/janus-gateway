@@ -3687,11 +3687,6 @@ static void *janus_sip_handler(void *data) {
 			if(request_callid)
 				callid = json_string_value(request_callid);
 
-			/* Create a hash key for the publishers table */
-			const char *hashkey = event_type;
-			if(callid)
-				hashkey = callid;
-
 			/* If call-id does not exist in request, create a random one */
 			if(callid == NULL) {
 				JANUS_LOG(LOG_WARN, "Invalid call_id provided, generating a random one\n");
@@ -3704,7 +3699,7 @@ static void *janus_sip_handler(void *data) {
 			nua_handle_t *nh = NULL;
 			janus_mutex_lock(&session->stack->smutex);
 			if(session->stack->publishers != NULL)
-				nh = g_hash_table_lookup(session->stack->publishers, (char *)hashkey);
+				nh = g_hash_table_lookup(session->stack->publishers, (char *)event_type);
 			if(nh == NULL) {
 				/* Create a handle in the appropriate NUA */
 				nua_t *use_nua = NULL;
@@ -3722,10 +3717,10 @@ static void *janus_sip_handler(void *data) {
 				nh = nua_handle(use_nua, session, TAG_END());
 				if(session->stack->publishers == NULL) {
 					/* Create table for mapping publishers too */
-					session->stack->publishers = g_hash_table_new_full(g_str_hash, g_str_equal,
+					session->stack->publishers = g_hash_table_new_full(g_int64_hash, g_int64_equal,
 						(GDestroyNotify)g_free, (GDestroyNotify)nua_handle_destroy);
 				}
-				g_hash_table_insert(session->stack->publishers, g_strdup(hashkey), nh);
+				g_hash_table_insert(session->stack->publishers, g_strdup(event_type), nh);
 			}
 			janus_mutex_unlock(&session->stack->smutex);
 
@@ -3779,22 +3774,11 @@ static void *janus_sip_handler(void *data) {
 				to = session->account.identity;
 			const char *event_type = json_string_value(json_object_get(root, "event"));
 
-			/* Take call-id from request, if it exists */
-			const char *callid = NULL;
-			json_t *request_callid = json_object_get(root, "call_id");
-			if(request_callid)
-				callid = json_string_value(request_callid);
-
-			/* Create a hash key for the publishers table */
-			const char *hashkey = event_type;
-			if(callid)
-				hashkey = callid;
-
 			/* Get the handle we used for this publishing */
 			janus_mutex_lock(&session->stack->smutex);
 			nua_handle_t *nh = NULL;
 			if(session->stack->publishers != NULL)
-				nh = g_hash_table_lookup(session->stack->publishers, (char *)hashkey);
+				nh = g_hash_table_lookup(session->stack->publishers, (char *)event_type);
 			janus_mutex_unlock(&session->stack->smutex);
 			if(nh == NULL) {
 				JANUS_LOG(LOG_ERR, "Wrong state (no publishers to this call id or event type)\n");
@@ -3811,8 +3795,6 @@ static void *janus_sip_handler(void *data) {
 			);
 			result = json_object();
 			json_object_set_new(result, "event", json_string("unpublishing"));
-			if(callid)
-				json_object_set_new(result, "call_id", json_string(callid));
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
 			if(session->stack == NULL) {
