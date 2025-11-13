@@ -4902,7 +4902,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			g_snprintf(error_cause, 512, "Can't reset (not in a room)");
 			goto prepare_response;
 		}
-		g_atomic_int_set(&participant->reset, TRUE);
+		g_atomic_int_set(&participant->reset, 1);
 		response = json_object();
 		json_object_set_new(response, "audiobridge", json_string("success"));
 		goto prepare_response;
@@ -6353,7 +6353,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 				janus_mutex_unlock(&participant->decoding_mutex);
 				JANUS_LOG(LOG_VERB, "Opus decoder reset\n");
 			}
-			g_atomic_int_set(&participant->reset, FALSE);
+			g_atomic_int_set(&participant->reset, 0);
 		}
 		/* We'll need to decode the frame (Opus/G.711 -> slinear), so check the payload type */
 		janus_rtp_header *rtp = (janus_rtp_header *)buf;
@@ -6519,7 +6519,7 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 		opus_decoder_destroy(participant->decoder);
 	participant->decoder = NULL;
 	janus_mutex_unlock(&participant->decoding_mutex);
-	g_atomic_int_set(&participant->reset, FALSE);
+	g_atomic_int_set(&participant->reset, 0);
 	participant->audio_active_packets = 0;
 	participant->audio_dBov_sum = 0;
 	participant->talking = FALSE;
@@ -6893,7 +6893,7 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->outbuf = NULL;
 				participant->encoder = NULL;
 				participant->decoder = NULL;
-				g_atomic_int_set(&participant->reset, FALSE);
+				g_atomic_int_set(&participant->reset, 0);
 				participant->fec = FALSE;
 				participant->last_timestamp = 0;
 				participant->last_seq = 0;
@@ -7022,7 +7022,7 @@ static void *janus_audiobridge_handler(void *data) {
 				JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
 			}
 #endif
-			g_atomic_int_set(&participant->reset, FALSE);
+			g_atomic_int_set(&participant->reset, 0);
 			/* If we need to generate an offer ourselves, do that */
 			if(gen_offer != NULL)
 				generate_offer = json_is_true(gen_offer);
@@ -7825,7 +7825,7 @@ static void *janus_audiobridge_handler(void *data) {
 					janus_mutex_unlock(&rooms_mutex);
 					goto error;
 				}
-				g_atomic_int_set(&participant->reset, FALSE);
+				g_atomic_int_set(&participant->reset, 0);
 				/* Destroy the previous encoder/decoder and update the references */
 				janus_mutex_lock(&participant->encoding_mutex);
 				if(participant->encoder)
@@ -8181,7 +8181,7 @@ static void *janus_audiobridge_handler(void *data) {
 					/* Opus codec, inband FEC (from Janus to user) set */
 					participant->fec = TRUE;
 					janus_mutex_lock(&participant->encoding_mutex);
-					if(participant->encoder != NULL)
+					if(participant->encoder)
 						opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
 					janus_mutex_unlock(&participant->encoding_mutex);
 				}
@@ -9168,7 +9168,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					if(!first && participant->codec == JANUS_AUDIOCODEC_OPUS && lost_packets_gap <= JITTER_BUFFER_MAX_GAP_SIZE && !participant->muted) {
 						lost_packets_gap++;
 						janus_mutex_lock(&participant->decoding_mutex);
-						if(!participant->decoder) {
+						if(participant->decoder == NULL) {
 							/* This means we're cleaning up, so don't try to decode */
 							janus_mutex_unlock(&participant->decoding_mutex);
 							janus_audiobridge_buffer_packet_destroy(bpkt);
@@ -9219,7 +9219,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					/* Decode the audio packet */
 					bpkt = (janus_audiobridge_buffer_packet *)jbp.data;
 					janus_mutex_lock(&participant->decoding_mutex);
-					if(!participant->decoder) {
+					if(participant->decoder == NULL) {
 						/* This means we're cleaning up, so don't try to decode */
 						janus_mutex_unlock(&participant->decoding_mutex);
 						janus_audiobridge_buffer_packet_destroy(bpkt);
