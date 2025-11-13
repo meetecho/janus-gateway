@@ -9313,7 +9313,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 		if(mixedpkt != NULL && g_atomic_int_get(&session->destroyed) == 0 && g_atomic_int_get(&session->started)) {
 			if(g_atomic_int_get(&participant->active) && (participant->codec == JANUS_AUDIOCODEC_PCMA ||
 					participant->codec == JANUS_AUDIOCODEC_PCMU)) {
-				janus_mutex_lock(&participant->encoding_mutex);
 				/* Encode using G.711 */
 				if(mixedpkt->length != 320) {
 					/* TODO Resample */
@@ -9329,7 +9328,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					for(i=0; i<160; i++)
 						*(payload+12+i) = janus_audiobridge_g711_ulaw_encode(outBuffer[i]);
 				}
-				janus_mutex_unlock(&participant->encoding_mutex);
 				outpkt->length = 172;	/* Take the RTP header into consideration */
 				/* Update RTP header */
 				outpkt->data->version = 2;
