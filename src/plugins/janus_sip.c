@@ -3674,8 +3674,9 @@ static void *janus_sip_handler(void *data) {
 			/* If call-id does not exist in request, create a random one */
 			if(callid == NULL) {
 				JANUS_LOG(LOG_WARN, "Invalid call_id provided, generating a random one\n");
-				callid = g_malloc0(24);
-				janus_sip_random_string(24, callid);
+				char new_callid[24];
+				janus_sip_random_string(24, new_callid);
+				callid = new_callid;
 			}
 
 			/* Prepare or reuse per-event handle (publishers) */
