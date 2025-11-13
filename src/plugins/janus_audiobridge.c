@@ -8880,7 +8880,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		/* If we use limiter we should initialize it if we have more than 2 tracks mixed or we have more than 1 track mixed and recording */
 		if(audiobridge->use_limiter && (mix_count > 2 || (audiobridge->recording && mix_count > 1)))
 			compute_scaling_factors(buffer, envelope, scaling_factors, per_sample_scaling_factors, 
-						  samples_in_sub_frame, &filter_state_level, &last_scaling_factor);
+				samples_in_sub_frame, &filter_state_level, &last_scaling_factor);
 		
 		/* If we have silent participants, calculate once the full mix */
 		if(has_silent) {
