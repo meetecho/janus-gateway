@@ -3712,7 +3712,7 @@ static void *janus_sip_handler(void *data) {
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 			char *contact_header = janus_sip_session_contact_header_retrieve(session);
 			char *proxy = session->helper && session->master ?
-					session->master->account.outbound_proxy : session->account.outbound_proxy;
+				session->master->account.outbound_proxy : session->account.outbound_proxy;
 			const char *content_type = NULL;
 			json_t *content_type_text = json_object_get(root, "content_type");
 			if(content_type_text && json_is_string(content_type_text))
