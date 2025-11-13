@@ -520,6 +520,8 @@
 	"accept" : "<what should be put in the Accept header; optional>",
 	"to" : "<who should be the SUBSCRIBE addressed to; optional, will use the user's identity if missing>",
 	"subscribe_ttl" : "<integer; number of seconds after which the subscription should expire; optional>",
+	"content" : "<content to put in the body of the SUBSCRIBE; optional>",
+	"content_type" : "<content-type of the body; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP SUBSCRIBE; optional>"
 }
 \endverbatim
