@@ -591,6 +591,11 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_pc, janus_dtls_role role) {
 		return NULL;
 	}
 	SSL_set_ex_data(dtls->ssl, 0, dtls);
+	// Set the MTU so that we don't send packets that are too large with no
+	// fragmentation.
+	int mtu = 1350;
+	SSL_set_mtu(dtls->ssl, mtu);
+	DTLS_set_link_mtu(dtls->ssl, mtu);
 	SSL_set_info_callback(dtls->ssl, janus_dtls_callback);
 	dtls->read_bio = BIO_new(BIO_s_mem());
 	if(!dtls->read_bio) {
