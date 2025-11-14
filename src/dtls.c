@@ -590,12 +590,14 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_pc, janus_dtls_role role) {
 		janus_refcount_decrease(&dtls->ref);
 		return NULL;
 	}
+#ifdef OPENSSL_VERSION_MAJOR
 	SSL_set_ex_data(dtls->ssl, 0, dtls);
 	// Set the MTU so that we don't send packets that are too large with no
 	// fragmentation.
 	SSL_set_mtu(dtls->ssl, janus_dtls_bio_agent_get_mtu());
 	DTLS_set_link_mtu(dtls->ssl, janus_dtls_bio_agent_get_mtu());
 	SSL_set_info_callback(dtls->ssl, janus_dtls_callback);
+#endif
 	dtls->read_bio = BIO_new(BIO_s_mem());
 	if(!dtls->read_bio) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating read BIO! (%s)\n",
