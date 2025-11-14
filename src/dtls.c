@@ -633,7 +633,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_pc, janus_dtls_role role) {
 	int grp_list[1] = { NID_X9_62_prime256v1 };
 	SSL_set1_groups(dtls->ssl, grp_list, 1);
 #endif
-	const long flags = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_SINGLE_ECDH_USE;
+	const long flags = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_SINGLE_ECDH_USE | SSL_OP_NO_QUERY_MTU;
 	SSL_set_options(dtls->ssl, flags);
 #ifdef HAVE_DTLS_SETTIMEOUT
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting DTLS initial timeout: %"SCNu16"ms\n", handle->handle_id, dtls_timeout_base);
