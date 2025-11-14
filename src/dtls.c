@@ -591,6 +591,10 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_pc, janus_dtls_role role) {
 		return NULL;
 	}
 	SSL_set_ex_data(dtls->ssl, 0, dtls);
+	// Set the MTU so that we don't send packets that are too large with no
+	// fragmentation.
+	SSL_set_mtu(dtls->ssl, janus_dtls_bio_agent_get_mtu());
+	DTLS_set_link_mtu(dtls->ssl, janus_dtls_bio_agent_get_mtu());
 	SSL_set_info_callback(dtls->ssl, janus_dtls_callback);
 	dtls->read_bio = BIO_new(BIO_s_mem());
 	if(!dtls->read_bio) {
@@ -629,7 +633,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_pc, janus_dtls_role role) {
 	int grp_list[1] = { NID_X9_62_prime256v1 };
 	SSL_set1_groups(dtls->ssl, grp_list, 1);
 #endif
-	const long flags = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_SINGLE_ECDH_USE;
+	const long flags = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_SINGLE_ECDH_USE | SSL_OP_NO_QUERY_MTU;
 	SSL_set_options(dtls->ssl, flags);
 #ifdef HAVE_DTLS_SETTIMEOUT
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting DTLS initial timeout: %"SCNu16"ms\n", handle->handle_id, dtls_timeout_base);
