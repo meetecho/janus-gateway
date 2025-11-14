@@ -1254,6 +1254,10 @@ room-<unique room ID>: {
 
 #define JANUS_AUDIOBRIDGE_MAX_GROUPS		5
 
+/* Audio mixing with overflow protection - tuned to 0.9 of MAX/MIN to prevent clipping */
+#define JANUS_AUDIOBRIDGE_SHRT_MAX_TUNED	29491
+#define JANUS_AUDIOBRIDGE_SHRT_MIN_TUNED	-29491
+
 /* Plugin methods */
 janus_plugin *create(void);
 int janus_audiobridge_init(janus_callbacks *callback, const char *config_path);
@@ -8451,6 +8455,30 @@ static void janus_audiobridge_update_wav_header(janus_audiobridge_room *audiobri
 	}
 }
 
+/* Helper to limit/clamp mixed audio */
+static inline void janus_audiobridge_limit_mix(opus_int32 *sumBuffer, opus_int16 *outBuffer, int samples) {
+	/* Find the loudest sample first, if there's one */
+	opus_int32 loudest = 0, sample = 0;
+	int i = 0;
+	for(i=0; i<samples; i++) {
+		sample = abs(sumBuffer[i]);
+		if(sample > JANUS_AUDIOBRIDGE_SHRT_MAX_TUNED && sample > loudest)
+			loudest = sample;
+	}
+	int gain = 100;
+	if(loudest > JANUS_AUDIOBRIDGE_SHRT_MAX_TUNED) {
+		/* We need to apply a negative gain to contain the mix */
+		float gainF = (float)JANUS_AUDIOBRIDGE_SHRT_MAX_TUNED / (float)loudest;
+		gainF *= 100;
+		gain = gainF;
+	}
+	/* Transform to 16-bit samples, limiting if necessary */
+	for(i=0; i<samples; i++) {
+		sample = (gain == 100) ? sumBuffer[i] : ((sumBuffer[i]*gain)/100);
+		outBuffer[i] = sample;
+	}
+}
+
 /* Thread to mix the contributions from all participants */
 static void *janus_audiobridge_mixer_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Audio bridge thread starting...\n");
@@ -8834,10 +8862,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		}
 		/* Are we recording the mix? (only do it if there's someone in, though...) */
 		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) {
-			for(i=0; i<samples; i++) {
-				/* FIXME Smoothen/Normalize instead of truncating? */
-				outBuffer[i] = buffer[i];
-			}
+			janus_audiobridge_limit_mix(buffer, outBuffer, samples);
 			fwrite(outBuffer, sizeof(opus_int16), samples, audiobridge->recording);
 			/* Every 5 seconds we update the wav header */
 			gint64 now = janus_get_monotonic_time();
@@ -8905,9 +8930,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					}
 				}
 			}
-			for(i=0; i<samples; i++)
-				/* FIXME Smoothen/Normalize instead of truncating? */
-				outBuffer[i] = sumBuffer[i];
+			janus_audiobridge_limit_mix(sumBuffer, outBuffer, samples);
 			/* Enqueue this mixed frame for encoding in the participant thread */
 			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
 			mixedpkt->data = g_malloc(samples*2);
@@ -8965,8 +8988,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			if(go_on) {
 				/* By default, let's send the mixed frame to everybody */
 				if(groups_num == 0) {
-					for(i=0; i<samples; i++)
-						outBuffer[i] = buffer[i];
+					janus_audiobridge_limit_mix(buffer, outBuffer, samples);
 					have_opus[0] = FALSE;
 					have_alaw[0] = FALSE;
 					have_ulaw[0] = FALSE;
@@ -8990,13 +9012,11 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					if(groups_num > 0) {
 						if(rfm->group == 0) {
 							/* We're forwarding the main mix */
-							for(i=0; i<samples; i++)
-								outBuffer[i] = buffer[i];
+							janus_audiobridge_limit_mix(buffer, outBuffer, samples);
 						} else {
 							/* We're forwarding a group mix */
 							index = rfm->group-1;
-							for(i=0; i<samples; i++)
-								outBuffer[i] = *(groupBuffers + index*samples + i);
+							janus_audiobridge_limit_mix(groupBuffers + index*samples, outBuffer, samples);
 						}
 					}
 					if(rfm->codec == JANUS_AUDIOCODEC_OPUS) {
