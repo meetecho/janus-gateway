@@ -598,7 +598,6 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_pc, janus_dtls_role role) {
 	DTLS_set_link_mtu(dtls->ssl, janus_dtls_bio_agent_get_mtu());
 #endif
 	SSL_set_info_callback(dtls->ssl, janus_dtls_callback);
-#endif
 	dtls->read_bio = BIO_new(BIO_s_mem());
 	if(!dtls->read_bio) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating read BIO! (%s)\n",
