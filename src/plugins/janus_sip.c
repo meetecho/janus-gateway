@@ -3688,9 +3688,9 @@ static void *janus_sip_handler(void *data) {
 				callid = json_string_value(request_callid);
 
 			/* If call-id does not exist in request, create a random one */
+			char new_callid[24];
 			if(callid == NULL) {
 				JANUS_LOG(LOG_WARN, "Invalid call_id provided, generating a random one\n");
-				char new_callid[24];
 				janus_sip_random_string(24, new_callid);
 				callid = new_callid;
 			}
