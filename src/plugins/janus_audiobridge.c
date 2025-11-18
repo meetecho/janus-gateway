@@ -811,7 +811,7 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
- * In case you want to stop all playbacks of a room immediatly,
+ * In case you want to stop all playbacks of a room immediately,
  * you can use the \c stop_all_files request:
  *
 \verbatim
@@ -862,7 +862,7 @@ room-<unique room ID>: {
  * one, without requiring you to do a \c leave + \c join + \c configure
  * round. Of course remember not to pass any JSEP-related payload when
  * doing a \c changeroom as the same pre-existing PeerConnection will be
- * re-used for the purpose.
+ * reused for the purpose.
  *
  * Notice that you can also ask the AudioBridge plugin to send you an offer,
  * when you join, rather than providing one yourself: this means that the
@@ -970,7 +970,7 @@ room-<unique room ID>: {
  * Notice that if no ip/port are provided, it means this participant will
  * only send media, and will not receive any (e.g., for injecting audio).
  * This means the AudioBridge plugin will only start sending media via RTP
- * if it received a valid ip/port from the remote paricipant endpoint.
+ * if it received a valid ip/port from the remote participant endpoint.
  * If you're interested in supporting scenarios where the AudioBridge
  * "dials out" (e.g., for outgoing INVITES to SIP endpoints) check the
  * \ref aboffer section.
