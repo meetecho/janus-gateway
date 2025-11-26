@@ -2461,6 +2461,9 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 				janus_sip_session *helper = (janus_sip_session *)temp->data;
 				if(helper != NULL && helper->handle != NULL) {
 					/* Get rid of this helper */
+					helper->helper = FALSE;
+					helper->master_id = 0;
+					helper->master = NULL;
 					janus_refcount_decrease(&session->ref);
 					janus_refcount_decrease(&helper->ref);
 					gateway->end_session(helper->handle);
@@ -2475,6 +2478,9 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 			gboolean found = (g_list_find(master->helpers, session) != NULL);
 			if(found) {
 				master->helpers = g_list_remove(master->helpers, session);
+				session->helper = FALSE;
+				session->master_id = 0;
+				session->master = NULL;
 				janus_refcount_decrease(&session->ref);
 				janus_refcount_decrease(&master->ref);
 			}
@@ -3482,7 +3488,7 @@ static void *janus_sip_handler(void *data) {
 				janus_mutex_unlock(&master->mutex);
 				session->helper = FALSE;
 				session->master = NULL;
-				session->master_id = FALSE;
+				session->master_id = 0;
 				/* Done */
 				session->account.registration_status = janus_sip_registration_status_unregistered;
 				result = json_object();
