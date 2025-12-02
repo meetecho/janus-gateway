@@ -150,7 +150,8 @@
 		"event" : "registered",
 		"username" : <SIP URI username>,
 		"register_sent" : <true|false, depending on whether a REGISTER was sent or not>,
-		"master_id" : <unique ID of this registered session in the plugin, if a potential master>
+		"master_id" : <unique numeric ID of this registered session in the plugin, if a potential master>,
+		"unique_id" : "<unique UUID of this session in this plugin, needed for some requests>
 	}
 }
 \endverbatim
@@ -1121,6 +1122,7 @@ typedef struct janus_sip_dtmf {
 
 typedef struct janus_sip_session {
 	janus_plugin_session *handle;
+	char *unique_id;
 	ssip_t *stack;
 	janus_sip_account account;
 	janus_sip_call_status status;
@@ -1166,6 +1168,7 @@ static GHashTable *callids;
 static GHashTable *messageids;
 static GHashTable *masters;
 static GHashTable *transfers;
+static GHashTable *unique_ids;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_sip_srtp_cleanup(janus_sip_session *session);
@@ -1278,6 +1281,10 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 	if(session->sdp) {
 		janus_sdp_destroy(session->sdp);
 		session->sdp = NULL;
+	}
+	if(session->unique_id) {
+		g_free(session->unique_id);
+		session->unique_id = NULL;
 	}
 	if(session->transaction) {
 		g_free(session->transaction);
@@ -2200,6 +2207,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	messageids = g_hash_table_new_full(NULL, NULL, (GDestroyNotify)g_free, (GDestroyNotify)janus_sip_session_dereference);
 	masters = g_hash_table_new(NULL, NULL);
 	transfers = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sip_transfer_destroy);
+	unique_ids = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_sip_message_free);
 	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
@@ -2263,12 +2271,14 @@ void janus_sip_destroy(void) {
 	g_hash_table_destroy(identities);
 	g_hash_table_destroy(masters);
 	g_hash_table_destroy(transfers);
+	g_hash_table_destroy(unique_ids);
 	sessions = NULL;
 	callids = NULL;
 	messageids = NULL;
 	identities = NULL;
 	masters = NULL;
 	transfers = NULL;
+	unique_ids = NULL;
 	janus_mutex_unlock(&sessions_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
@@ -2427,6 +2437,14 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
+	while(session->unique_id == NULL) {
+		session->unique_id = janus_random_uuid();
+		if(g_hash_table_lookup(unique_ids, session->unique_id) != NULL) {
+			g_free(session->unique_id);
+			session->unique_id = NULL;
+		}
+		g_hash_table_insert(unique_ids, g_strdup(session->unique_id), session);
+	}
 	janus_mutex_unlock(&sessions_mutex);
 
 	return;
@@ -2499,6 +2517,8 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 			nua_shutdown(session->stack->s_nua);
 		janus_mutex_unlock(&session->stack->smutex);
 	}
+	if(session->unique_id)
+		g_hash_table_remove(sessions, session->unique_id);
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
@@ -2519,6 +2539,7 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 	janus_mutex_unlock(&sessions_mutex);
 	/* Provide some generic info, e.g., if we're in a call and with whom */
 	json_t *info = json_object();
+	json_object_set_new(info, "unique_id", json_string(session->unique_id));
 	if(session->master != NULL) {
 		/* This is an helper session, provide the details for the master session */
 		json_object_set_new(info, "helper", json_true());
@@ -3093,6 +3114,7 @@ static void *janus_sip_handler(void *data) {
 				json_object_set_new(result, "register_sent", json_false());
 				json_object_set_new(result, "helper", json_true());
 				json_object_set_new(result, "master_id", json_integer(session->master_id));
+				json_object_set_new(result, "unique_id", json_string(session->unique_id));
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
@@ -3101,6 +3123,7 @@ static void *janus_sip_handler(void *data) {
 					json_object_set_new(info, "type", json_string("guest"));
 					json_object_set_new(info, "helper", json_true());
 					json_object_set_new(info, "master_id", json_integer(session->master_id));
+					json_object_set_new(info, "unique_id", json_string(session->unique_id));
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 				goto done;
@@ -3450,6 +3473,7 @@ static void *janus_sip_handler(void *data) {
 					TAG_END());
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registering"));
+				json_object_set_new(result, "unique_id", json_string(session->unique_id));
 			} else {
 				JANUS_LOG(LOG_VERB, "Not sending a SIP REGISTER: either send_register was set to false or guest mode was enabled\n");
 				session->account.registration_status = janus_sip_registration_status_disabled;
@@ -3458,6 +3482,7 @@ static void *janus_sip_handler(void *data) {
 				json_object_set_new(result, "username", json_string(session->account.username));
 				json_object_set_new(result, "register_sent", json_false());
 				json_object_set_new(result, "master_id", json_integer(session->master_id));
+				json_object_set_new(result, "unique_id", json_string(session->unique_id));
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
@@ -3465,6 +3490,7 @@ static void *janus_sip_handler(void *data) {
 					json_object_set_new(info, "identity", json_string(session->account.identity));
 					json_object_set_new(info, "type", json_string("guest"));
 					json_object_set_new(info, "master_id", json_integer(session->master_id));
+					json_object_set_new(info, "unique_id", json_string(session->unique_id));
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 			}
@@ -6361,6 +6387,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_t *headers = janus_sip_get_incoming_headers(sip, session);
 					json_object_set_new(reging, "headers", headers);
 				}
+				json_object_set_new(reg, "unique_id", json_string(session->unique_id));
 				json_object_set_new(reg, "result", reging);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, reg, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
