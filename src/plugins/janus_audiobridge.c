@@ -46,6 +46,7 @@ room-<unique room ID>: {
 	record_dir = /path/to/ (path to save the recording to, makes record_file a relative path if provided)
 	mjrs = true|false (whether all participants in the room should be individually recorded to mjr files, default=false)
 	mjrs_dir = "/path/to/" (path to save the mjr files to)
+	mjrs_autoresume = true|false (whether suspended participants on resume will automatically restart mjr recording if mjrs is true, default=false)
 	allow_rtp_participants = true|false (whether participants should be allowed to join
 		via plain RTP as well, rather than just WebRTC, default=false)
 	groups = optional, non-hierarchical, array of groups to tag participants, for external forwarding purposes only
@@ -151,6 +152,7 @@ room-<unique room ID>: {
 	"record_dir" : "</path/to/, optional; makes record_file a relative path, if provided>",
 	"mjrs" : <true|false (whether all participants in the room should be individually recorded to mjr files, default=false)>,
 	"mjrs_dir" : "</path/to/, optional>",
+	"mjrs_autoresume" : <true|false (whether suspended participants on resume will automatically restart mjr recording if mjrs is true, default=false)>,
 	"allow_rtp_participants" : <true|false, whether participants should be allowed to join via plain RTP as well, default=false>,
 	"groups" : [ non-hierarchical array of string group names to use to gat participants, for external forwarding purposes only, optional]
 }
@@ -283,7 +285,8 @@ room-<unique room ID>: {
 	"room" : <unique numeric ID of the room>,
 	"secret" : "<room secret; mandatory if configured>"
 	"mjrs" : <true|false, whether all participants in the room should be individually recorded to mjr files or not>,
-	"mjrs_dir" : "<path where all MJR files should be saved to (optional)>"
+	"mjrs_dir" : "<path where all MJR files should be saved to (optional)>",
+	"mjrs_autoresume" : <true|false, whether suspended participants on resume will automatically restart mjr recording if mjrs is true; (optional), default=false>
 }
 \endverbatim
  *
@@ -429,7 +432,7 @@ room-<unique room ID>: {
 	"secret" : "<room secret, mandatory if configured>",
 	"room" : <unique numeric ID of the room>,
 	"id" : <unique numeric ID of the suspended participant to resume>,
-	"record": <true|false, whether to record this resumed user's contribution to a .mjr file (mixer not involved); optional, false by default>,
+	"record": <true|false, whether to record this resumed user's contribution to a .mjr file (mixer not involved); optional, false by default unless mjrs_autoresume = true and mjrs recording is enabled for the room>,
 	"filename": "<basename of the file to record to, -audio.mjr will be added by the plugin; optional, will be relative to mjrs_dir, if configured in the room>"
 }
 \endverbatim
@@ -1354,6 +1357,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"record_dir", JSON_STRING, 0},
 	{"mjrs", JANUS_JSON_BOOL, 0},
 	{"mjrs_dir", JSON_STRING, 0},
+	{"mjrs_autoresume", JANUS_JSON_BOOL, 0},
 	{"allow_rtp_participants", JANUS_JSON_BOOL, 0},
 	{"permanent", JANUS_JSON_BOOL, 0},
 	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
@@ -1540,6 +1544,7 @@ typedef struct janus_audiobridge_room {
 	gchar *record_dir;			/* Folder to save the recording file to */
 	gboolean mjrs;				/* Whether all participants in the room should be individually recorded to mjr files or not */
 	gchar *mjrs_dir;			/* Folder to save the mjrs file to */
+	gboolean mjrs_autoresume;	/* whether suspended participants on resume will automatically restart mjr recording if mjrs is true */
 	FILE *recording;			/* File to record the room into */
 	gint64 record_lastupdate;	/* Time when we last updated the wav header */
 	volatile gint wav_header_added;	/* If wav header is added in recording file */
@@ -2680,6 +2685,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *recdir = janus_config_get(config, cat, janus_config_type_item, "record_dir");
 			janus_config_item *mjrs = janus_config_get(config, cat, janus_config_type_item, "mjrs");
 			janus_config_item *mjrsdir = janus_config_get(config, cat, janus_config_type_item, "mjrs_dir");
+			janus_config_item *mjrs_autoresume = janus_config_get(config, cat, janus_config_type_item, "mjrs_autoresume");
 			janus_config_item *allowrtp = janus_config_get(config, cat, janus_config_type_item, "allow_rtp_participants");
 			if(sampling == NULL || sampling->value == NULL) {
 				JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, missing mandatory information...\n");
@@ -2817,6 +2823,8 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				audiobridge->mjrs = TRUE;
 			if(mjrsdir && mjrsdir->value)
 				audiobridge->mjrs_dir = g_strdup(mjrsdir->value);
+			if(mjrs_autoresume && mjrs_autoresume->value && janus_is_true(mjrs_autoresume->value))
+				audiobridge->mjrs_autoresume = TRUE;
 			audiobridge->allow_plainrtp = FALSE;
 			if(allowrtp && allowrtp->value)
 				audiobridge->allow_plainrtp = janus_is_true(allowrtp->value);
@@ -3267,6 +3275,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_t *recdir = json_object_get(root, "record_dir");
 		json_t *mjrs = json_object_get(root, "mjrs");
 		json_t *mjrsdir = json_object_get(root, "mjrs_dir");
+		json_t *mjrs_autoresume = json_object_get(root, "mjrs_autoresume");
 		json_t *allowrtp = json_object_get(root, "allow_rtp_participants");
 		json_t *permanent = json_object_get(root, "permanent");
 		if(allowed) {
@@ -3472,6 +3481,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			audiobridge->mjrs = TRUE;
 		if(mjrsdir)
 			audiobridge->mjrs_dir = g_strdup(json_string_value(mjrsdir));
+		if(mjrs_autoresume && json_is_true(mjrs_autoresume))
+			audiobridge->mjrs_autoresume = TRUE;
 		audiobridge->allow_plainrtp = FALSE;
 		if(allowrtp && json_is_true(allowrtp))
 			audiobridge->allow_plainrtp = TRUE;
@@ -3607,6 +3618,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				janus_config_add(config, c, janus_config_item_create("mjrs", "true"));
 			if(audiobridge->mjrs_dir)
 				janus_config_add(config, c, janus_config_item_create("mjrs_dir", audiobridge->mjrs_dir));
+			if(audiobridge->mjrs_autoresume)
+				janus_config_add(config, c, janus_config_item_create("mjrs_autoresume", "true"));
 			if(audiobridge->spatial_audio)
 				janus_config_add(config, c, janus_config_item_create("spatial_audio", "true"));
 			/* Save modified configuration */
@@ -3788,6 +3801,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				janus_config_add(config, c, janus_config_item_create("mjrs", "true"));
 			if(audiobridge->mjrs_dir)
 				janus_config_add(config, c, janus_config_item_create("mjrs_dir", audiobridge->mjrs_dir));
+			if(audiobridge->mjrs_autoresume)
+				janus_config_add(config, c, janus_config_item_create("mjrs_autoresume", "true"));
 			if(audiobridge->spatial_audio)
 				janus_config_add(config, c, janus_config_item_create("spatial_audio", "true"));
 			/* Save modified configuration */
@@ -5995,7 +6010,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				json_t *record = json_object_get(root, "record");
 				json_t *recfile = json_object_get(root, "filename");
 				janus_mutex_lock(&participant->rec_mutex);
-				if(record && json_is_true(record)) {
+				/* We record if record is true, or if it is unspecified and mjrs and mjrs_autoresume are true */
+				if((record && json_is_true(record)) || (record == NULL && audiobridge->mjrs && audiobridge->mjrs_autoresume)) {
 					/* Start recording (ignore if recording already) */
 					if(participant->arc != NULL) {
 						JANUS_LOG(LOG_WARN, "Already recording participant's audio (room %s, user %s)\n",
