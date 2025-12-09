@@ -9184,8 +9184,9 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						pkt->seq_number = participant->last_seq + 1;
 						/* This is a redundant packet, so we can't parse any extension info */
 						pkt->silence = FALSE;
-						janus_audiobridge_participant_istalking(session, participant, NULL, NULL);
 						pkt->length = opus_decode(participant->decoder, NULL, 0, (opus_int16 *)pkt->data, output_samples, 0);
+						janus_mutex_unlock(&participant->decoding_mutex);
+						janus_audiobridge_participant_istalking(session, participant, NULL, NULL);
 #ifdef HAVE_RNNOISE
 						/* Check if we need to denoise this packet */
 						if(participant->denoise)
@@ -9194,7 +9195,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						/* Update the details */
 						participant->last_seq = pkt->seq_number;
 						participant->last_timestamp = pkt->timestamp;
-						janus_mutex_unlock(&participant->decoding_mutex);
 						if(pkt->length < 0) {
 							JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", pkt->length, opus_strerror(pkt->length));
 							g_free(pkt->data);
