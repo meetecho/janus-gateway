@@ -1,0 +1,28 @@
+# WebTransport stuff: whether they should be enabled, which ports they
+# should use, and so on.
+general: {
+	#events = true					# Whether to notify event handlers about transport events (default=true)
+	json = "indented"				# Whether the JSON messages should be indented (default),
+									# plain (no indentation) or compact (no indentation and no spaces)
+
+	wt = true						# Whether to enable the WebTransport API
+	wt_port = 9088					# WebTransport server port
+	#wt_ip = "192.168.0.1"			# Whether we should bind this server to a specific IP address only
+}
+
+# If you want to expose the Admin API via WebTransport as well, you need to
+# specify a different server instance, as you cannot mix Janus API and
+# Admin API messaging. Notice that by default the Admin API support via
+# WebTransport is disabled.
+admin: {
+	admin_wt = false					# Whether to enable the Admin API WebTransport API
+	admin_wt_port = 9188				# Admin API WebTransport server port, if enabled
+	#admin_wt_ip = "192.168.0.1"		# Whether we should bind this server to a specific IP address only
+}
+
+# Certificate and key to use for any WebTransport server, if enabled (and passphrase if needed).
+certificates: {
+	#cert_pem = "/path/to/cert.pem"
+	#cert_key = "/path/to/key.pem"
+	#cert_pwd = "secretpassphrase"
+}

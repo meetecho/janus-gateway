@@ -1,0 +1,6 @@
+# events = true|false, whether events should be sent to event handlers
+
+general: {
+	#sslkeylog = "</path/to/sslkeylogfile>"
+	#events = false
+}
