@@ -407,6 +407,23 @@ nat: {
 	#ignore_unreachable_ice_server = true
 }
 
+# In case Janus was configured with imquic support, you can configure here
+# some settings related to RTP over QUIC (RoQ) support, namely for RoQ
+# forwarders (sending RTP out) and RoQ servers (receiving RTP), which
+# some plugins may have a need for.
+quic: {
+	# By default, even with imquic available, RoQ support is disabled.
+	# To enable it, uncomment this property and set it to true.
+	#enable_roq = true
+
+	# In case you want plugins to be able to expose a RoQ server (e.g.,
+	# to feed a Streaming plugin mountpoint), you can specify the
+	# certificate info they'll use for the QUIC connectivity here.
+	#cert_pem = "/path/to/certificate.pem"
+	#cert_key = "/path/to/key.pem"
+	#cert_pwd = "secretpassphrase"
+}
+
 # You can choose which of the available plugins should be
 # enabled or not. Use the 'disable' directive to prevent Janus from
 # loading one or more plugins: use a comma separated list of plugin file

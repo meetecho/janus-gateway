@@ -40,6 +40,9 @@
 #include "ip-utils.h"
 #include "rtcp.h"
 #include "rtpfwd.h"
+#ifdef HAVE_IMQUIC
+#include "roq.h"
+#endif
 #include "auth.h"
 #include "record.h"
 #include "events.h"
@@ -4474,6 +4477,7 @@ gint main(int argc, char *argv[]) {
 	janus_config_category *config_plugins = janus_config_get_create(config, NULL, janus_config_type_category, "plugins");
 	janus_config_category *config_events = janus_config_get_create(config, NULL, janus_config_type_category, "events");
 	janus_config_category *config_loggers = janus_config_get_create(config, NULL, janus_config_type_category, "loggers");
+	janus_config_category *config_quic = janus_config_get_create(config, NULL, janus_config_type_category, "quic");
 
 	/* Any log prefix? */
 	janus_config_array *lp = janus_config_get(config, config_general, janus_config_type_item, "log_prefix");
@@ -5438,6 +5442,33 @@ gint main(int argc, char *argv[]) {
 		janus_options_destroy();
 		exit(1);
 	}
+
+	/* FIXME Initialize the RTP over QUIC (RoQ) functionality */
+	gboolean enable_roq = FALSE;
+	item = janus_config_get(config, config_quic, janus_config_type_item, "enable_roq");
+	if(item && item->value)
+		enable_roq = janus_is_true(item->value);
+#ifndef HAVE_IMQUIC
+	if(enable_roq)
+		JANUS_LOG(LOG_WARN, "imquic support not compiled, RTP over QUIC (RoQ) not available\n");
+#else
+	const char *roq_server_pem = NULL;
+	item = janus_config_get(config, config_quic, janus_config_type_item, "cert_pem");
+	if(item && item->value)
+		roq_server_pem = item->value;
+	const char *roq_server_key = NULL;
+	item = janus_config_get(config, config_quic, janus_config_type_item, "cert_key");
+	if(item && item->value)
+		roq_server_key = item->value;
+	const char *roq_server_pwd = NULL;
+	item = janus_config_get(config, config_quic, janus_config_type_item, "cert_pwd");
+	if(item && item->value)
+		roq_server_pwd = item->value;
+	if(janus_roq_init(enable_roq, roq_server_pem, roq_server_key, roq_server_pwd) < 0) {
+		janus_options_destroy();
+		exit(1);
+	}
+#endif
 
 	/* Sessions */
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);

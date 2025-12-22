@@ -127,11 +127,39 @@ AC_ARG_ENABLE([boringssl],
               ],
               [boringssl_dir=])
 
+AC_ARG_ENABLE([quictls],
+              [AS_HELP_STRING([--enable-quictls],
+                              [Use quictls instead of OpenSSL])],
+              [PKG_CHECK_MODULES([LIBCRYPTO],
+                              [openssl+quictls],
+                              [
+                               AC_DEFINE(HAVE_QUICTLS)
+                              ],
+                              [AC_MSG_ERROR([quictls not found. See README.md for installation instructions])
+                              ])
+              ],
+              [PKG_CHECK_MODULES([LIBCRYPTO],
+                              [
+                               libssl >= $ssl_version
+                               libcrypto
+                              ],
+                              [],
+                              [AC_MSG_ERROR([OpenSSL not found. See README.md for installation instructions])
+                              ])
+              ])
+
 AC_ARG_ENABLE([libsrtp2],
               [AS_HELP_STRING([--enable-libsrtp2],
                               [Use libsrtp 2.0.x instead of libsrtp 1.5.x])],
               [],
               [enable_libsrtp2=maybe])
+
+AC_ARG_ENABLE([imquic],
+              [AS_HELP_STRING([--enable-imquic],
+                              [Use imquic for RTP over QUIC (RoQ), WebTransport, and to test QUIC integrations])],
+              [AS_IF([test "x$enable_imquic" != "xyes"],
+                     [enable_imquic=no])],
+              [enable_imquic=no])
 
 AC_ARG_ENABLE([aes-gcm],
               [AS_HELP_STRING([--disable-aes-gcm],
@@ -183,6 +211,8 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_videocall=no])
                AS_IF([test "x$enable_plugin_videoroom" != "xyes"],
                      [enable_plugin_videoroom=no])
+               AS_IF([test "x$enable_plugin_moq" != "xyes"],
+                     [enable_plugin_moq=no])
               ],
               [])
 
@@ -202,6 +232,8 @@ AC_ARG_ENABLE([all-transports],
                      [enable_unix_sockets=no])
                AS_IF([test "x$enable_nanomsg" != "xyes"],
                      [enable_nanomsg=no])
+               AS_IF([test "x$enable_webtransport" != "xyes"],
+                     [enable_webtransport=no])
               ],
               [])
 
@@ -286,6 +318,13 @@ AC_ARG_ENABLE([nanomsg],
                      [enable_nanomsg=no])],
               [enable_nanomsg=maybe])
 
+AC_ARG_ENABLE([webtransport],
+              [AS_HELP_STRING([--disable-webtransport],
+                              [Disable WebTransport integration])],
+              [AS_IF([test "x$enable_webtransport" != "xyes"],
+                     [enable_webtransport=no])],
+              [enable_webtransport=maybe])
+
 AC_ARG_ENABLE([sample-event-handler],
               [AS_HELP_STRING([--disable-sample-event-handler],
                               [Disable sample event handler (HTTP POST) ])],
@@ -356,8 +395,6 @@ freebsd*)
                     libconfig
                     nice
                     jansson >= $jansson_version
-                    libssl >= $ssl_version
-                    libcrypto
                     zlib"
 esac
 PKG_CHECK_MODULES([JANUS],"$PKGCHECKMODULES")
@@ -765,6 +802,13 @@ AC_ARG_ENABLE([plugin-videoroom],
                      [enable_plugin_videoroom=no])],
               [enable_plugin_videoroom=yes])
 
+AC_ARG_ENABLE([plugin-moq],
+              [AS_HELP_STRING([--disable-plugin-moq],
+                              [Disable moq plugin])],
+              [AS_IF([test "x$enable_plugin_moq" != "xyes"],
+                     [enable_plugin_moq=no])],
+              [enable_plugin_moq=maybe])
+
 PKG_CHECK_MODULES([SOFIA],
                   [sofia-sip-ua],
                   [
@@ -852,6 +896,31 @@ PKG_CHECK_MODULES([DUKTAPE],
                   ])
 AC_SUBST([DUKTAPE_CFLAGS])
 AC_SUBST([DUKTAPE_LIBS])
+
+AS_IF([test "x$enable_imquic" != "xno"],
+      [PKG_CHECK_MODULES([IMQUIC],
+                         [imquic],
+                         [
+                           AC_DEFINE(HAVE_IMQUIC)
+                           enable_imquic=yes
+                           AS_IF([test "x$enable_webtransport" = "xmaybe"],
+                                 [enable_webtransport=yes])
+                           AS_IF([test "x$enable_plugin_moq" = "xmaybe"],
+                                 [enable_plugin_moq=yes])
+                         ],
+                         [
+                           AS_IF([test "x$enable_webtransport" = "xyes"],
+                                 [AC_MSG_ERROR([imquic not found. See README.md for installation instructions or use --disable-webtransport])])
+                           AS_IF([test "x$enable_plugin_moq" = "xyes"],
+                                 [AC_MSG_ERROR([imquic not found. See README.md for installation instructions or use --disable-plugin-moq])])
+                         ])
+       AC_SUBST([imquic_CFLAGS])
+       AC_SUBST([imquic_LIBS])
+      ]);
+
+AM_CONDITIONAL([ENABLE_IMQUIC], [test "x$enable_imquic" = "xyes"])
+AM_CONDITIONAL([ENABLE_WEBTRANSPORT], [test "x$enable_webtransport" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_MOQ], [test "x$enable_plugin_moq" = "xyes"])
 
 AM_CONDITIONAL([ENABLE_PLUGIN_AUDIOBRIDGE], [test "x$enable_plugin_audiobridge" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_DUKTAPE], [test "x$enable_plugin_duktape" = "xyes"])
@@ -1023,6 +1092,9 @@ AM_COND_IF([ENABLE_POST_PROCESSING],
 AM_COND_IF([ENABLE_TURN_REST_API],
 	[echo "TURN REST API client:      yes"],
 	[echo "TURN REST API client:      no"])
+AM_COND_IF([ENABLE_IMQUIC],
+	[echo "RTP over QUIC support:     yes"],
+	[echo "RTP over QUIC support:     no"])
 AM_COND_IF([ENABLE_DOCS],
 	[echo "Doxygen documentation:     yes"],
 	[echo "Doxygen documentation:     no"])
@@ -1045,6 +1117,9 @@ AM_COND_IF([ENABLE_PFUNIX],
 AM_COND_IF([ENABLE_NANOMSG],
 	[echo "    Nanomsg:               yes"],
 	[echo "    Nanomsg:               no"])
+AM_COND_IF([ENABLE_WEBTRANSPORT],
+	[echo "    WebTransport:          yes"],
+	[echo "    WebTransport:          no"])
 echo "Plugins:"
 AM_COND_IF([ENABLE_PLUGIN_ECHOTEST],
 	[echo "    Echo Test:             yes"],
@@ -1079,6 +1154,9 @@ AM_COND_IF([ENABLE_PLUGIN_LUA],
 AM_COND_IF([ENABLE_PLUGIN_DUKTAPE],
 	[echo "    Duktape Interpreter:   yes"],
 	[echo "    Duktape Interpreter:   no"])
+AM_COND_IF([ENABLE_PLUGIN_MOQ],
+	[echo "    MoQ/WebRTC Tester:     yes"],
+	[echo "    MoQ/WebRTC Tester:     no"])
 echo "Event handlers:"
 AM_COND_IF([ENABLE_SAMPLEEVH],
 	[echo "    Sample event handler:  yes"],

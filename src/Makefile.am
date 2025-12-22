@@ -93,6 +93,8 @@ janus_SOURCES = \
 	record.c \
 	record.h \
 	refcount.h \
+	roq.c \
+	roq.h \
 	rtcp.c \
 	rtcp.h \
 	rtp.c \
@@ -127,8 +129,10 @@ janus_SOURCES = \
 janus_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(JANUS_CFLAGS) \
+	$(LIBCRYPTO_CFLAGS) \
 	$(LIBSRTP_CFLAGS) \
 	$(LIBCURL_CFLAGS) \
+	$(IMQUIC_CFLAGS) \
 	-DPLUGINDIR=\"$(plugindir)\" \
 	-DTRANSPORTDIR=\"$(transportdir)\" \
 	-DEVENTDIR=\"$(eventdir)\" \
@@ -141,8 +145,10 @@ janus_LDADD = \
 	$(BORINGSSL_LIBS) \
 	$(JANUS_LIBS) \
 	$(JANUS_MANUAL_LIBS) \
+	$(LIBCRYPTO_LDFLAGS) $(LIBCRYPTO_LIBS) \
 	$(LIBSRTP_LDFLAGS) $(LIBSRTP_LIBS) \
 	$(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) \
+	$(IMQUIC_LDFLAGS) $(IMQUIC_LIBS) \
 	$(NULL)
 
 dist_man1_MANS = janus.1
@@ -160,11 +166,13 @@ janus_cfgconv_SOURCES = \
 janus_cfgconv_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(JANUS_CFLAGS) \
+	$(LIBCRYPTO_CFLAGS) \
 	$(NULL)
 
 janus_cfgconv_LDADD = \
 	$(JANUS_LIBS) \
 	$(JANUS_MANUAL_LIBS) \
+	$(LIBCRYPTO_LDFLAGS) $(LIBCRYPTO_LIBS) \
 	$(NULL)
 
 dist_man1_MANS += janus-cfgconv.1
@@ -271,6 +279,16 @@ transports_libjanus_nanomsg_la_LDFLAGS = $(transports_ldflags) -lnanomsg
 transports_libjanus_nanomsg_la_LIBADD = $(transports_libadd)
 conf_DATA += ../conf/janus.transport.nanomsg.jcfg.sample
 EXTRA_DIST += ../conf/janus.transport.nanomsg.jcfg.sample
+endif
+
+if ENABLE_WEBTRANSPORT
+transport_LTLIBRARIES += transports/libjanus_webtransport.la
+transports_libjanus_webtransport_la_SOURCES = transports/janus_webtransport.c
+transports_libjanus_webtransport_la_CFLAGS = $(transports_cflags)
+transports_libjanus_webtransport_la_LDFLAGS = $(transports_ldflags)
+transports_libjanus_webtransport_la_LIBADD = $(transports_libadd)
+conf_DATA += ../conf/janus.transport.webtransport.jcfg.sample
+EXTRA_DIST += ../conf/janus.transport.webtransport.jcfg.sample
 endif
 
 ##
@@ -535,6 +553,15 @@ duktape_DATA += \
 EXTRA_DIST += ../conf/janus.plugin.duktape.jcfg.sample.in
 endif
 
+if ENABLE_PLUGIN_MOQ
+plugin_LTLIBRARIES += plugins/libjanus_moq.la
+plugins_libjanus_moq_la_SOURCES = plugins/janus_moq.c
+plugins_libjanus_moq_la_CFLAGS = $(plugins_cflags) $(IMQUIC_CFLAGS)
+plugins_libjanus_moq_la_LDFLAGS = $(plugins_ldflags) $(IMQUIC_LDFLAGS) $(IMQUIC_LIBS)
+plugins_libjanus_moq_la_LIBADD = $(plugins_libadd) $(IMQUIC_LIBADD)
+conf_DATA += ../conf/janus.plugin.moq.jcfg.sample
+EXTRA_DIST += ../conf/janus.plugin.moq.jcfg.sample
+endif
 
 ##
 # Post-processing

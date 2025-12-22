@@ -418,6 +418,9 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 #ifdef HAVE_BORINGSSL
 	crypto_lib = "BoringSSL";
 #endif
+#ifdef HAVE_QUICTLS
+	crypto_lib = "quictls";
+#endif
 	JANUS_LOG(LOG_INFO, "Crypto: %s\n", crypto_lib);
 #ifndef HAVE_SRTP_AESGCM
 	JANUS_LOG(LOG_WARN, "The libsrtp installation does not support AES-GCM profiles\n");

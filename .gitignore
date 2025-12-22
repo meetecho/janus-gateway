@@ -23,6 +23,7 @@ Makefile.in
 /depcomp
 /compile
 /install-sh
+/install-sh~
 /ltmain.sh
 
 /config.log
