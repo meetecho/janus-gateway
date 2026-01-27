@@ -39,6 +39,7 @@
 #include "debug.h"
 #include "ip-utils.h"
 #include "rtcp.h"
+#include "rtpfwd.h"
 #include "auth.h"
 #include "record.h"
 #include "events.h"
@@ -5255,6 +5256,11 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_WARN, "Data Channels support not compiled\n");
 #endif
 
+	/* Initialize the RTP forwarders functionality */
+	if(janus_rtp_forwarders_init() < 0) {
+		exit(1);
+	}
+
 	/* Sessions */
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	/* Start the sessions timeout watchdog */
@@ -5787,6 +5793,7 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "De-initializing SCTP...\n");
 	janus_sctp_deinit();
 #endif
+	janus_rtp_forwarders_deinit();
 	janus_auth_deinit();
 
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");

@@ -13,7 +13,7 @@ CLEANFILES = $(NULL)
 bin_PROGRAMS = janus
 
 headerdir = $(includedir)/janus
-header_HEADERS = apierror.h config.h log.h debug.h mutex.h record.h \
+header_HEADERS = apierror.h config.h log.h debug.h mutex.h record.h rtpfwd.h \
 	rtcp.h rtp.h rtpsrtp.h sdp-utils.h ip-utils.h utils.h refcount.h text2pcap.h
 
 pluginsheaderdir = $(includedir)/janus/plugins
@@ -117,6 +117,8 @@ janus_SOURCES = \
 	rtp.c \
 	rtp.h \
 	rtpsrtp.h \
+	rtpfwd.c \
+	rtpfwd.h \
 	sctp.c \
 	sctp.h \
 	sdp.c \
