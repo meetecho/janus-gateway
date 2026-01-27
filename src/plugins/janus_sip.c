@@ -38,7 +38,8 @@
  * The supported requests are \c register , \c unregister , \c call ,
  * \c progress , \c accept , \c decline , \c info , \c message , \c dtmf_info ,
  * \c subscribe , \c unsubscribe , \c transfer , \c recording , \c keyframe ,
- * \c hold , \c unhold , \c update and \c hangup . \c register can be used,
+ * \c hold , \c unhold , \c update , \c rtp_forward , \c stop_rtp_forward ,
+ * \c listforwarders and \c hangup . \c register can be used,
  * as the name suggests, to register a username at a SIP registrar to
  * call and be called, while \c unregister unregisters it; \c call is used
  * to send an INVITE to a different SIP URI through the plugin; in case one
@@ -56,7 +57,9 @@
  * NOTIFY asynchronous events; \c recording is used, instead, to record the
  * conversation to one or more .mjr files (depending on the direction you
  * want to record); \c update allows you to update an existing session
- * (e.g., to do a renegotiation or force an ICE restart); finally, \c hangup
+ * (e.g., to do a renegotiation or force an ICE restart); \c rtp_forward ,
+ * \c stop_rtp_forward and \c listforwarders are related to the
+ * \ref siprtpfwd functionality; finally, \c hangup
  * can be used to terminate the communication at any time, either to
  * hangup (BYE) an ongoing call or to cancel/decline (CANCEL/BYE) a call
  * that hasn't started yet.
@@ -708,6 +711,156 @@
  * All this is the application responsibility, and as such it's up to
  * the developer to react to events accordingly.
  *
+ * \subsection siprtpfwd RTP forwarders in the SIP plugin
+ *
+ * RTP forwarders are a quite useful functionality that a few plugins
+ * in Janus can take advantage of. As the name suggests, their main
+ * purpose is indeed forwarding/relaying RTP traffic to an external
+ * backend, for further processing or management of media packets outside
+ * of the context of the plugin that's responsible for it.
+ *
+ * Within the context of the SIP plugin, RTP forwarders allow you to
+ * send the RTP traffic belonging to a specific SIP call to an external
+ * backend, e.g., to a component implementing transcriptions, a remote
+ * recorder, a lawful interception application or whatever else may have
+ * a need for the content of a call in real-time. The RTP forwarder
+ * functionality is conceived in a way that allows you to separately
+ * forward individual RTP streams: this allows you to only forward, e.g.,
+ * the audio packets of the local Janus user, only forward the video
+ * packets of the SIP peer, forward everything, or any combination in
+ * between. For every media stream you're interested in forwarding, a
+ * separate RTP forwarder will be needed, which is what enables this
+ * flexibility. Multiple forwarders can be created for the same stream,
+ * in case the same RTP traffic should be sent to multiple backends at
+ * the same time.
+ *
+ * Notice that SIP is not involved for RTP forwarders. RTP traffic is
+ * relayed out of context, using a specific API that is part of the
+ * SIP plugin itself. RTP forwarders will need an ongoing SIP call to
+ * operate, though, as they'll be associated to existing media streams
+ * in an existing SIP call; more specifically, forwarding requests must
+ * be performed on the handle that's handling the call that should be
+ * the target of its operations, which is why the related requests don't
+ * need any identifier (the scope is automatically obtained from the
+ * context of the handle). Forwarders that were created while a call
+ * was active will automatically be destroyed when the call is hung up
+ *
+ * To setup new RTP forwarders, you can use the \c rtp_forward request,
+ * which must be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "rtp_forward",
+	"streams" : [
+		{
+			"type": "<what we want forward: must be one of audio, video, peer_audio, peer_video>",
+			"host" : "<host address to forward the packets to>",
+			"host_family" : "<optional; ipv4 by default>",
+			"port" : <port to forward the packets to>,
+			"ssrc" : <SSRC to use to use when forwarding; optional>,
+			"pt" : <payload type to use when forwarding; optional>,
+			"srtp_suite" : <length of authentication tag (32 or 80); optional>,
+			"srtp_crypto" : "<key to use as crypto (base64 encoded key as in SDES); optional>"
+		},
+		{
+			.. other streams, if needed..
+		}
+	]
+}
+\endverbatim
+ *
+ * The syntax of the request makes it easy to set up multiple RTP forwarders
+ * for a call at the same time, by adding multiple objects as part of the
+ * \c streams array.
+ *
+ * A successful request will result in an \c rtp_forward event, containing
+ * the relevant info associated to the new forwarder(s):
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "rtp_forward",
+		"forwarders" : [
+			{
+				"stream_id" : <unique numeric ID assigned to this forwarder, if any>,
+				"type" : "<type of this forwarder, as configured in the request>",
+				"host" : "<host this forwarder is streaming to, same as request if not resolved>",
+				"port" : <port this forwarder is streaming to, same as request if configured>,
+				"media" : "<audio or video>",
+				"ssrc" : <SSRC this forwarder is using, if any>,
+				"pt" : <payload type this forwarder is using, if any>,
+				"srtp" : <true|false, whether the RTP stream is encrypted>
+			},
+			// Other forwarders, if configured
+		]
+	},
+	"call_id": "<call-ID of the call>"
+}
+\endverbatim
+ *
+ * The \c stream_id property returned for each forwarder is what will
+ * need to be used for managing it, i.e., to destroy it once done.
+ *
+ * To stop a previously created RTP forwarder and stop it, you can use
+ * the \c stop_rtp_forward request, which has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "stop_rtp_forward",
+	"stream_id" : <unique numeric ID of the RTP forwarder>
+}
+\endverbatim
+ *
+ * A successful request will result in a \c stop_rtp_forward event:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "stop_rtp_forward",
+		"stream_id" : <unique numeric ID, same as request>
+	},
+	"call_id" : "<call-ID of the call>"
+}
+\endverbatim
+ *
+ * To get a list of all the forwarders for an active call, instead, you
+ * can make use of the \c listforwarders request, which has to be
+ * formatted as follows:
+ *
+\verbatim
+{
+	"request" : "listforwarders"
+}
+\endverbatim
+ *
+ * A successful request will produce a list of RTP forwarders in a
+ * \c forwarders event:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "forwarders",
+		"forwarders" : [		// Array of RTP forwarders
+			{	// RTP forwarder #1
+				"stream_id" : <unique numeric ID assigned to this forwarder, if any>,
+				"type" : "<type of this forwarder, as configured in the request>",
+				"host" : "<host this forwarder is streaming to, same as request if not resolved>",
+				"port" : <port this forwarder is streaming to, same as request if configured>,
+				"media" : "<audio or video>",
+				"ssrc" : <SSRC this forwarder is using, if any>,
+				"pt" : <payload type this forwarder is using, if any>,
+				"srtp" : <true|false, whether the RTP stream is encrypted>
+			},
+			// Other forwarders for this publisher
+		]
+	},
+	"call_id" : "<call-ID of the call>"
+}
+\endverbatim
+ *
  */
 
 #include "plugin.h"
@@ -739,14 +892,15 @@
 #include "../rtp.h"
 #include "../rtpsrtp.h"
 #include "../rtcp.h"
+#include "../rtpfwd.h"
 #include "../sdp-utils.h"
 #include "../utils.h"
 #include "../ip-utils.h"
 
 
 /* Plugin information */
-#define JANUS_SIP_VERSION			9
-#define JANUS_SIP_VERSION_STRING	"0.0.9"
+#define JANUS_SIP_VERSION			10
+#define JANUS_SIP_VERSION_STRING	"0.0.10"
 #define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through a Janus instance."
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
@@ -906,6 +1060,22 @@ static struct janus_json_parameter sipmessage_parameters[] = {
 static struct janus_json_parameter keyframe_parameters[] = {
 	{"user", JANUS_JSON_BOOL, 0},
 	{"peer", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter rtp_forward_parameters[] = {
+	{"streams", JANUS_JSON_ARRAY, JANUS_JSON_PARAM_REQUIRED},
+};
+static struct janus_json_parameter rtp_forward_stream_parameters[] = {
+	{"type", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"host_family", JSON_STRING, 0},
+	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"ssrc", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"pt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"srtp_suite", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"srtp_crypto", JSON_STRING, 0}
+};
+static struct janus_json_parameter stop_rtp_forward_parameters[] = {
+	{"stream_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 
 /* Useful stuff */
@@ -1137,6 +1307,11 @@ typedef struct janus_sip_session {
 	janus_recorder *vrc;		/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
 	janus_mutex rec_mutex;		/* Mutex to protect the recorders from race conditions */
+	GHashTable *audio_forwarders, *video_forwarders,
+		*peer_audio_forwarders, *peer_video_forwarders,
+		*all_forwarders;	/* RTP forwarders for this call (all streams), if any */
+	janus_mutex rtp_forwarders_mutex;
+	int udp_sock; 				/* The socket on which to forward RTP packets */
 	GThread *relayer_thread;
 	volatile gint establishing, established;
 	volatile gint hangingup;
@@ -1174,6 +1349,10 @@ static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 static void janus_sip_srtp_cleanup(janus_sip_session *session);
 static void janus_sip_media_reset(janus_sip_session *session);
 static void janus_sip_rtcp_pli_send(janus_sip_session *session);
+
+static janus_rtp_forwarder *janus_sip_rtp_forwarder_add_helper(janus_sip_session *session, const char *type,
+	const gchar *host, int port, int pt, uint32_t ssrc, int srtp_suite, const char *srtp_crypto);
+static json_t *janus_sip_rtp_forwarder_summary(janus_rtp_forwarder *f);
 
 static void janus_sip_call_update_status(janus_sip_session *session, janus_sip_call_status new_status) {
 	if(session->status != new_status) {
@@ -1319,6 +1498,17 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 		session->hangup_custom_headers = NULL;
 	}
 	janus_sip_srtp_cleanup(session);
+	g_hash_table_destroy(session->audio_forwarders);
+	session->audio_forwarders = NULL;
+	g_hash_table_destroy(session->video_forwarders);
+	session->video_forwarders = NULL;
+	g_hash_table_destroy(session->peer_audio_forwarders);
+	session->peer_audio_forwarders = NULL;
+	g_hash_table_destroy(session->peer_video_forwarders);
+	session->peer_video_forwarders = NULL;
+	g_hash_table_destroy(session->all_forwarders);
+	session->all_forwarders = NULL;
+	janus_mutex_destroy(&session->rtp_forwarders_mutex);
 	janus_mutex_destroy(&session->mutex);
 	janus_mutex_destroy(&session->rec_mutex);
 	g_free(session);
@@ -1701,6 +1891,7 @@ static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_
 #define JANUS_SIP_ERROR_TOO_STRICT			452
 #define JANUS_SIP_ERROR_HELPER_ERROR		453
 #define JANUS_SIP_ERROR_NO_SUCH_CALLID		454
+#define JANUS_SIP_ERROR_NO_SUCH_STREAM		455
 
 
 /* Random string helper (for call-ids) */
@@ -2428,6 +2619,17 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_remote_policy.ssrc.type = ssrc_any_inbound;
 	session->media.video_local_policy.ssrc.type = ssrc_any_inbound;
 	janus_mutex_init(&session->rec_mutex);
+	janus_mutex_init(&session->rtp_forwarders_mutex);
+	session->audio_forwarders = g_hash_table_new_full(NULL, NULL,
+		NULL, (GDestroyNotify)janus_rtp_forwarder_destroy);
+	session->video_forwarders = g_hash_table_new_full(NULL, NULL,
+		NULL, (GDestroyNotify)janus_rtp_forwarder_destroy);
+	session->peer_audio_forwarders = g_hash_table_new_full(NULL, NULL,
+		NULL, (GDestroyNotify)janus_rtp_forwarder_destroy);
+	session->peer_video_forwarders = g_hash_table_new_full(NULL, NULL,
+		NULL, (GDestroyNotify)janus_rtp_forwarder_destroy);
+	session->all_forwarders = g_hash_table_new(NULL, NULL);
+	session->udp_sock = -1;
 	g_atomic_int_set(&session->establishing, 0);
 	g_atomic_int_set(&session->established, 0);
 	g_atomic_int_set(&session->hangingup, 0);
@@ -2681,6 +2883,18 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 				JANUS_LOG(LOG_VERB, "Got SIP video SSRC: %"SCNu32"\n", session->media.video_ssrc);
 			}
 			if(session->media.has_video && session->media.video_rtp_fd != -1) {
+				/* Check if there are forwarders interested in this traffic */
+				janus_mutex_lock(&session->rtp_forwarders_mutex);
+				GHashTableIter iter;
+				gpointer value;
+				g_hash_table_iter_init(&iter, session->video_forwarders);
+				while(session->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
+					janus_rtp_forwarder *rtp_forward = (janus_rtp_forwarder *)value;
+					if(!rtp_forward->is_video)
+						continue;
+					janus_rtp_forwarder_send_rtp(rtp_forward, buf, len, 0);
+				}
+				janus_mutex_unlock(&session->rtp_forwarders_mutex);
 				/* Save the frame if we're recording */
 				janus_recorder_save_frame(session->vrc, buf, len);
 				/* Is SRTP involved? */
@@ -2731,6 +2945,18 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 				JANUS_LOG(LOG_VERB, "Got SIP audio SSRC: %"SCNu32"\n", session->media.audio_ssrc);
 			}
 			if(session->media.has_audio && session->media.audio_rtp_fd != -1) {
+				/* Check if there are forwarders interested in this traffic */
+				janus_mutex_lock(&session->rtp_forwarders_mutex);
+				GHashTableIter iter;
+				gpointer value;
+				g_hash_table_iter_init(&iter, session->audio_forwarders);
+				while(session->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
+					janus_rtp_forwarder *rtp_forward = (janus_rtp_forwarder *)value;
+					if(rtp_forward->is_data || rtp_forward->is_video)
+						continue;
+					janus_rtp_forwarder_send_rtp(rtp_forward, buf, len, 0);
+				}
+				janus_mutex_unlock(&session->rtp_forwarders_mutex);
 				/* Save the frame if we're recording */
 				janus_recorder_save_frame(session->arc, buf, len);
 				/* Is SRTP involved? */
@@ -2911,6 +3137,15 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	janus_mutex_lock(&session->rec_mutex);
 	janus_sip_recorder_close(session, TRUE, TRUE, TRUE, TRUE);
 	janus_mutex_unlock(&session->rec_mutex);
+	/* Get rid of RTP forwarders, if any */
+	janus_mutex_lock(&session->rtp_forwarders_mutex);
+	g_hash_table_remove_all(session->audio_forwarders);
+	g_hash_table_remove_all(session->video_forwarders);
+	g_hash_table_remove_all(session->peer_audio_forwarders);
+	g_hash_table_remove_all(session->peer_video_forwarders);
+	g_hash_table_remove_all(session->all_forwarders);
+	janus_mutex_unlock(&session->rtp_forwarders_mutex);
+	/* Update the SIP status */
 	if(!(session->status == janus_sip_call_status_inviting ||
 			session->status == janus_sip_call_status_invited ||
 			janus_sip_call_is_established(session))) {
@@ -5236,6 +5471,224 @@ static void *janus_sip_handler(void *data) {
 			/* Notify the result */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("keyframesent"));
+		} else if(!strcasecmp(request_text, "rtp_forward")) {
+			JANUS_VALIDATE_JSON_OBJECT(root, rtp_forward_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			if(!janus_sip_call_is_established(session)) {
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, sizeof(error_cause), "Wrong state (not in a call)");
+				goto error;
+			}
+			/* Iterate on the provided streams array */
+			json_t *streams = json_object_get(root, "streams");
+			if(streams == NULL || json_array_size(streams) == 0) {
+				error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
+				g_snprintf(error_cause, sizeof(error_cause), "Missing mandatory element streams, or empty array");
+				goto error;
+			}
+			/* Iterate on the streams objects and validate them all */
+			size_t i = 0;
+			for(i=0; i<json_array_size(streams); i++) {
+				json_t *s = json_array_get(streams, i);
+				JANUS_VALIDATE_JSON_OBJECT(s, rtp_forward_stream_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+				if(error_code != 0)
+					goto error;
+				const char *type = json_string_value(json_object_get(s, "type"));
+				if(strcasecmp(type, "audio") && strcasecmp(type, "video") &&
+						strcasecmp(type, "peer_audio") && strcasecmp(type, "peer_video")) {
+					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, sizeof(error_cause), "Invalid element (type)");
+					goto error;
+				}
+				/* Make sure we have a host attribute, either global or stream-specific */
+				json_t *stream_host = json_object_get(s, "host");
+				const char *s_host = json_string_value(stream_host), *resolved_host = NULL;
+				json_t *stream_host_family = json_object_get(s, "host_family");
+				const char *s_host_family = json_string_value(stream_host_family);
+				int s_family = AF_INET;
+				if(s_host_family) {
+					if(!strcasecmp(s_host_family, "ipv4")) {
+						s_family = AF_INET;
+					} else if(!strcasecmp(s_host_family, "ipv6")) {
+						s_family = AF_INET6;
+					} else {
+						JANUS_LOG(LOG_ERR, "Unsupported protocol family (%s)\n", s_host_family);
+						error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Unsupported protocol family (%s)", s_host_family);
+						goto error;
+					}
+				}
+				struct addrinfo *res = NULL, *start = NULL;
+				janus_network_address addr;
+				janus_network_address_string_buffer addr_buf;
+				struct addrinfo hints;
+				memset(&hints, 0, sizeof(hints));
+				if(s_family != 0)
+					hints.ai_family = s_family;
+				if(getaddrinfo(s_host, NULL, s_family != 0 ? &hints : NULL, &res) == 0) {
+					start = res;
+					while(res != NULL) {
+						if(janus_network_address_from_sockaddr(res->ai_addr, &addr) == 0 &&
+								janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
+							/* Resolved */
+							resolved_host = janus_network_address_string_from_buffer(&addr_buf);
+							freeaddrinfo(start);
+							start = NULL;
+							break;
+						}
+						res = res->ai_next;
+					}
+				}
+				if(resolved_host == NULL) {
+					if(start)
+						freeaddrinfo(start);
+					JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", s_host);
+					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Could not resolve address (%s)...", s_host);
+					goto error;
+				}
+				/* Add the resolved address to the JSON object, so that we can use it later */
+				json_object_set_new(s, "host", json_string(resolved_host));
+				/* We may need to SRTP-encrypt this stream */
+				int srtp_suite = 0;
+				const char *srtp_crypto = NULL;
+				json_t *s_suite = json_object_get(s, "srtp_suite");
+				json_t *s_crypto = json_object_get(s, "srtp_crypto");
+				if(s_suite && s_crypto) {
+					srtp_suite = json_integer_value(s_suite);
+					if(srtp_suite != 32 && srtp_suite != 80) {
+						JANUS_LOG(LOG_ERR, "Invalid SRTP suite (%d)\n", srtp_suite);
+						error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid SRTP suite (%d)", srtp_suite);
+						goto error;
+					}
+					srtp_crypto = json_string_value(s_crypto);
+					if(srtp_crypto == NULL) {
+						JANUS_LOG(LOG_ERR, "Invalid SRTP crypto\n");
+						error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid SRTP crypto");
+						goto error;
+					}
+				}
+			}
+			janus_refcount_increase(&session->ref);	/* This is just to handle the request for now */
+			janus_mutex_lock(&session->rtp_forwarders_mutex);
+			if(session->udp_sock <= 0) {
+				session->udp_sock = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+				int v6only = 0;
+				if(session->udp_sock <= 0 ||
+						(!ipv6_disabled && setsockopt(session->udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)) {
+					janus_mutex_unlock(&session->rtp_forwarders_mutex);
+					janus_refcount_decrease(&session->ref);
+					JANUS_LOG(LOG_ERR, "Could not open UDP socket for RTP forwarder, %d (%s)\n",
+						errno, g_strerror(errno));
+					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Could not open UDP socket for RTP forwarder");
+					goto error;
+				}
+			}
+			/* Iterate on all objects, and create the related forwarder(s) */
+			result = json_object();
+			json_t *new_forwarders = json_array();
+			for(i=0; i<json_array_size(streams); i++) {
+				json_t *s = json_array_get(streams, i);
+				const char *type = json_string_value(json_object_get(s, "type"));
+				json_t *stream_host = json_object_get(s, "host");
+				const char *host = json_string_value(stream_host);
+				json_t *stream_port = json_object_get(s, "port");
+				uint16_t port = json_integer_value(stream_port);
+				json_t *stream_pt = json_object_get(s, "pt");
+				json_t *stream_ssrc = json_object_get(s, "ssrc");
+				int srtp_suite = 0;
+				const char *srtp_crypto = NULL;
+				json_t *s_suite = json_object_get(s, "srtp_suite");
+				json_t *s_crypto = json_object_get(s, "srtp_crypto");
+				if(s_suite && s_crypto) {
+					srtp_suite = json_integer_value(s_suite);
+					srtp_crypto = json_string_value(s_crypto);
+				}
+				/* Create the forwarder */
+				janus_rtp_forwarder *f = janus_sip_rtp_forwarder_add_helper(session, type,
+					host, port, json_integer_value(stream_pt), json_integer_value(stream_ssrc), srtp_suite, srtp_crypto);
+				if(f) {
+					json_t *rtpf = janus_sip_rtp_forwarder_summary(f);
+					json_array_append_new(new_forwarders, rtpf);
+					/* Also notify event handlers */
+					if(notify_events && gateway->events_is_enabled()) {
+						json_t *info = janus_sip_rtp_forwarder_summary(f);
+						json_object_set_new(info, "event", json_string("rtp_forward"));
+						json_object_set_new(info, "type", json_string(type));
+						json_object_set_new(info, "stream_id", json_integer(f->stream_id));
+						json_object_set_new(info, "host", json_string(host));
+						json_object_set_new(info, "port", json_integer(port));
+						gateway->notify_event(&janus_sip_plugin, NULL, info);
+					}
+				}
+			}
+			janus_mutex_unlock(&session->rtp_forwarders_mutex);
+			janus_refcount_decrease(&session->ref);
+			if(new_forwarders != NULL)
+				json_object_set_new(result, "forwarders", new_forwarders);
+			json_object_set_new(result, "event", json_string("rtp_forward"));
+		} else if(!strcasecmp(request_text, "stop_rtp_forward")) {
+			JANUS_VALIDATE_JSON_OBJECT(root, stop_rtp_forward_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			json_t *id = json_object_get(root, "stream_id");
+			guint32 stream_id = json_integer_value(id);
+			janus_refcount_increase(&session->ref);	/* Just to handle the message now */
+			janus_mutex_lock(&session->rtp_forwarders_mutex);
+			/* Find the forwarder by iterating on all the streams */
+			gboolean found = g_hash_table_remove(session->audio_forwarders, GUINT_TO_POINTER(stream_id));
+			if(!found)
+				found = g_hash_table_remove(session->video_forwarders, GUINT_TO_POINTER(stream_id));
+			if(!found)
+				found = g_hash_table_remove(session->peer_audio_forwarders, GUINT_TO_POINTER(stream_id));
+			if(!found)
+				found = g_hash_table_remove(session->peer_video_forwarders, GUINT_TO_POINTER(stream_id));
+			if(found)
+				g_hash_table_remove(session->all_forwarders, GUINT_TO_POINTER(stream_id));
+			janus_mutex_unlock(&session->rtp_forwarders_mutex);
+			janus_refcount_decrease(&session->ref);
+			if(!found) {
+				JANUS_LOG(LOG_ERR, "No such stream (%"SCNu32")\n", stream_id);
+				error_code = JANUS_SIP_ERROR_NO_SUCH_STREAM;
+				g_snprintf(error_cause, 512, "No such stream (%"SCNu32")", stream_id);
+				goto error;
+			}
+			result = json_object();
+			json_object_set_new(result, "event", json_string("stop_rtp_forward"));
+			json_object_set_new(result, "stream_id", json_integer(stream_id));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("stop_rtp_forward"));
+				json_object_set_new(info, "stream_id", json_integer(stream_id));
+				gateway->notify_event(&janus_sip_plugin, NULL, info);
+			}
+		} else if(!strcasecmp(request_text, "listforwarders")) {
+			/* Return a list of all forwarders for this call */
+			json_t *list = json_array();
+			GHashTableIter iter;
+			gpointer value;
+			janus_mutex_lock(&session->rtp_forwarders_mutex);
+			g_hash_table_iter_init(&iter, session->all_forwarders);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_rtp_forwarder *rf = (janus_rtp_forwarder *)value;
+				json_t *fl = janus_sip_rtp_forwarder_summary(rf);
+				json_array_append_new(list, fl);
+			}
+			janus_mutex_unlock(&session->rtp_forwarders_mutex);
+			result = json_object();
+			json_object_set_new(result, "event", json_string("forwarders"));
+			json_object_set_new(result, "rtp_forwarders", list);
 		} else if(!strcasecmp(request_text, "reset")) {
 			/* Apparently, under some particular circumstances that we haven't
 			 * managed to replicate ourselves yet, it can sometimes happen that
@@ -7573,6 +8026,18 @@ static void *janus_sip_relay_thread(void *data) {
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					janus_rtp_header_update(header, &session->media.acontext, FALSE, 0);
+					/* Check if there are forwarders interested in this traffic */
+					janus_mutex_lock(&session->rtp_forwarders_mutex);
+					GHashTableIter iter;
+					gpointer value;
+					g_hash_table_iter_init(&iter, session->peer_audio_forwarders);
+					while(session->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
+						janus_rtp_forwarder *rtp_forward = (janus_rtp_forwarder *)value;
+						if(rtp_forward->is_data || rtp_forward->is_video)
+							continue;
+						janus_rtp_forwarder_send_rtp(rtp_forward, buffer, bytes, 0);
+					}
+					janus_mutex_unlock(&session->rtp_forwarders_mutex);
 					/* Save the frame if we're recording */
 					header->ssrc = htonl(session->media.audio_ssrc_peer);
 					janus_recorder_save_frame(session->arc_peer, buffer, bytes);
@@ -7652,6 +8117,18 @@ static void *janus_sip_relay_thread(void *data) {
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					janus_rtp_header_update(header, &session->media.vcontext, TRUE, 0);
+					/* Check if there are forwarders interested in this traffic */
+					janus_mutex_lock(&session->rtp_forwarders_mutex);
+					GHashTableIter iter;
+					gpointer value;
+					g_hash_table_iter_init(&iter, session->peer_video_forwarders);
+					while(session->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
+						janus_rtp_forwarder *rtp_forward = (janus_rtp_forwarder *)value;
+						if(!rtp_forward->is_video)
+							continue;
+						janus_rtp_forwarder_send_rtp(rtp_forward, buffer, bytes, 0);
+					}
+					janus_mutex_unlock(&session->rtp_forwarders_mutex);
 					/* Save the frame if we're recording */
 					header->ssrc = htonl(session->media.video_ssrc_peer);
 					janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
@@ -7895,4 +8372,62 @@ static void janus_sip_rtcp_pli_send(janus_sip_session *session) {
 				session->account.username, g_strerror(errno), rtcp_len);
 		}
 	}
+}
+
+/* RTP forwarder helpers */
+static janus_rtp_forwarder *janus_sip_rtp_forwarder_add_helper(janus_sip_session *session, const char *type,
+		const gchar *host, int port, int pt, uint32_t ssrc, int srtp_suite, const char *srtp_crypto) {
+	if(!session || !type || !host)
+		return NULL;
+	gboolean is_video = !strcasecmp(type, "video") || !strcasecmp(type, "peer_video");
+	gboolean is_peer = !strcasecmp(type, "peer_audio") || !strcasecmp(type, "peer_video");
+	/* Create a new RTP forwarder */
+	janus_rtp_forwarder *rf = janus_rtp_forwarder_create(JANUS_SIP_NAME, 0,
+		session->udp_sock, host, port, ssrc, pt, srtp_suite, srtp_crypto, FALSE, 0, is_video, FALSE);
+	if(rf == NULL)
+		return NULL;
+	rf->metadata = g_strdup(type);
+	/* Add the forwarder to the ones we have for the publisher stream */
+	g_hash_table_insert(session->all_forwarders, GUINT_TO_POINTER(rf->stream_id), rf);
+	if(!is_video && !is_peer) {
+		g_hash_table_insert(session->audio_forwarders, GUINT_TO_POINTER(rf->stream_id), rf);
+	} else if(is_video && !is_peer) {
+		g_hash_table_insert(session->video_forwarders, GUINT_TO_POINTER(rf->stream_id), rf);
+		gateway->send_pli(session->handle);
+	} else if(!is_video && is_peer) {
+		g_hash_table_insert(session->peer_audio_forwarders, GUINT_TO_POINTER(rf->stream_id), rf);
+	} else if(is_video && is_peer) {
+		g_hash_table_insert(session->peer_video_forwarders, GUINT_TO_POINTER(rf->stream_id), rf);
+		janus_sip_rtcp_pli_send(session);
+	}
+	/* Done */
+	JANUS_LOG(LOG_VERB, "[SIP-%s] Added %s' %s rtp_forward: %s:%d stream_id: %"SCNu32"\n",
+		session->account.username, is_peer ? "peer" : "user", is_video ? "video" : "audio", host, port, rf->stream_id);
+	return rf;
+}
+
+static json_t *janus_sip_rtp_forwarder_summary(janus_rtp_forwarder *f) {
+	if(f == NULL)
+		return NULL;
+	json_t *json = json_object();
+	json_object_set_new(json, "stream_id", json_integer(f->stream_id));
+	if(f->metadata)
+		json_object_set_new(json, "type", json_string((const char *)f->metadata));
+	char address[100];
+	if(f->serv_addr.sin_family == AF_INET) {
+		json_object_set_new(json, "host", json_string(
+			inet_ntop(AF_INET, &f->serv_addr.sin_addr, address, sizeof(address))));
+	} else {
+		json_object_set_new(json, "host", json_string(
+			inet_ntop(AF_INET6, &f->serv_addr6.sin6_addr, address, sizeof(address))));
+	}
+	json_object_set_new(json, "port", json_integer(ntohs(f->serv_addr.sin_port)));
+	json_object_set_new(json, "media", json_string(f->is_video ? "video" : "audio"));
+	if(f->payload_type > 0)
+		json_object_set_new(json, "pt", json_integer(f->payload_type));
+	if(f->ssrc)
+		json_object_set_new(json, "ssrc", json_integer(f->ssrc));
+	if(f->is_srtp)
+		json_object_set_new(json, "srtp", json_true());
+	return json;
 }
