@@ -4163,7 +4163,7 @@ static void *janus_sip_handler(void *data) {
 			session->media.has_srtp_local_video = answer_srtp && (session->media.has_srtp_remote_video || !answer);
 			if(answer_srtp) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", session->media.require_srtp ? "mandatory" : "optional");
-				if(!answer && session->media.srtp_profile == NULL) {
+				if(!answer && !session->media.srtp_profile) {
 					/* We got an offerless-INVITE, any SRTP profile different from the default? */
 					srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
 					const char *profile = json_string_value(json_object_get(root, "srtp_profile"));
