@@ -314,6 +314,7 @@
 {
 	"request" : "progress",
 	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
+	"srtp_profile" : "<SRTP profile to negotiate, in case SRTP is offered; optional, and only needed in response to offerless-INVITEs>",
 	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP OK; optional>"
 	"autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
 }
@@ -334,6 +335,7 @@
 {
 	"request" : "accept",
 	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
+	"srtp_profile" : "<SRTP profile to negotiate, in case SRTP is offered; optional, and only needed in response to offerless-INVITEs>",
 	"headers" : "<object with key/value mappings (header name/value), to specify custom headers to add to the SIP OK; optional>"
 	"autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
 }
@@ -1011,11 +1013,13 @@ static struct janus_json_parameter call_parameters[] = {
 };
 static struct janus_json_parameter accept_parameters[] = {
 	{"srtp", JSON_STRING, 0},
+	{"srtp_profile", JSON_STRING, 0},
 	{"headers", JSON_OBJECT, 0},
 	{"autoaccept_reinvites", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter progress_parameters[] = {
 	{"srtp", JSON_STRING, 0},
+	{"srtp_profile", JSON_STRING, 0},
 	{"headers", JSON_OBJECT, 0},
 	{"autoaccept_reinvites", JANUS_JSON_BOOL, 0}
 };
@@ -4332,6 +4336,26 @@ static void *janus_sip_handler(void *data) {
 			}
 			if(error_code != 0)
 				goto error;
+			/* Any SDP to handle? if not, something's wrong */
+			const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
+			const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+			if(!msg_sdp || !msg_sdp_type) {
+				JANUS_LOG(LOG_ERR, "Missing SDP\n");
+				error_code = JANUS_SIP_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "Missing SDP");
+				goto error;
+			}
+			if(json_is_true(json_object_get(msg->jsep, "e2ee"))) {
+				/* Media is encrypted, but SIP endpoints will need unencrypted media frames */
+				JANUS_LOG(LOG_ERR, "Media encryption unsupported by this plugin\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Media encryption unsupported by this plugin");
+				goto error;
+			}
+			/* This may be an SDP answer, or an SDP offer (answer to offerless INVITE) */
+			gboolean answer = !strcasecmp(msg_sdp_type, "answer");
+			/* Check if we need to involve SRTP */
+			janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
 			json_t *srtp = json_object_get(root, "srtp");
 			gboolean answer_srtp = FALSE;
 			if(srtp) {
@@ -4351,9 +4375,9 @@ static void *janus_sip_handler(void *data) {
 				}
 			}
 			gboolean has_srtp = TRUE;
-			if(session->media.has_audio)
+			if(session->media.has_audio && answer)
 				has_srtp = (has_srtp && session->media.has_srtp_remote_audio);
-			if(session->media.has_video)
+			if(session->media.has_video && answer)
 				has_srtp = (has_srtp && session->media.has_srtp_remote_video);
 			if(session->media.require_srtp && !has_srtp) {
 				JANUS_LOG(LOG_ERR, "Can't %s the call: SDES-SRTP required, but caller didn't offer it\n", progress ? "progress" : "accept");
@@ -4364,33 +4388,40 @@ static void *janus_sip_handler(void *data) {
 			answer_srtp = answer_srtp || session->media.has_srtp_remote_audio || session->media.has_srtp_remote_video;
 			json_t *aar = json_object_get(root, "autoaccept_reinvites");
 			session->media.autoaccept_reinvites = aar ? json_is_true(aar) : TRUE;
-			/* Any SDP to handle? if not, something's wrong */
-			const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
-			const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
-			if(!msg_sdp) {
-				JANUS_LOG(LOG_ERR, "Missing SDP\n");
-				error_code = JANUS_SIP_ERROR_MISSING_SDP;
-				g_snprintf(error_cause, 512, "Missing SDP");
-				goto error;
-			}
-			if(json_is_true(json_object_get(msg->jsep, "e2ee"))) {
-				/* Media is encrypted, but SIP endpoints will need unencrypted media frames */
-				JANUS_LOG(LOG_ERR, "Media encryption unsupported by this plugin\n");
-				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Media encryption unsupported by this plugin");
-				goto error;
-			}
 			/* Accept/Progress a call from another peer */
 			JANUS_LOG(LOG_VERB, "We're %s the call from %s\n", progress ? "progressing" : "accepting", session->callee);
-			gboolean answer = !strcasecmp(msg_sdp_type, "answer");
 			if(!answer) {
 				JANUS_LOG(LOG_VERB, "This is a response to an offerless INVITE\n");
 			}
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
-			session->media.has_srtp_local_audio = answer_srtp && session->media.has_srtp_remote_audio;
-			session->media.has_srtp_local_video = answer_srtp && session->media.has_srtp_remote_video;
+			session->media.has_srtp_local_audio = answer_srtp && (session->media.has_srtp_remote_audio || !answer);
+			session->media.has_srtp_local_video = answer_srtp && (session->media.has_srtp_remote_video || !answer);
 			if(answer_srtp) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", session->media.require_srtp ? "mandatory" : "optional");
+				if(!answer && !session->media.srtp_profile) {
+					/* We got an offerless-INVITE, any SRTP profile different from the default? */
+					srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+					const char *profile = json_string_value(json_object_get(root, "srtp_profile"));
+					if(profile) {
+						if(!strcmp(profile, "AES_CM_128_HMAC_SHA1_32")) {
+							srtp_profile = JANUS_SRTP_AES128_CM_SHA1_32;
+						} else if(!strcmp(profile, "AES_CM_128_HMAC_SHA1_80")) {
+							srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+#ifdef HAVE_SRTP_AESGCM
+						} else if(!strcmp(profile, "AEAD_AES_128_GCM")) {
+							srtp_profile = JANUS_SRTP_AEAD_AES_128_GCM;
+						} else if(!strcmp(profile, "AEAD_AES_256_GCM")) {
+							srtp_profile = JANUS_SRTP_AEAD_AES_256_GCM;
+#endif
+						} else {
+							JANUS_LOG(LOG_ERR, "Invalid element (unsupported SRTP profile)\n");
+							error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+							g_snprintf(error_cause, 512, "Invalid element (unsupported SRTP profile)");
+							goto error;
+						}
+					}
+					session->media.srtp_profile = srtp_profile;
+				}
 			}
 
 			/* Get video-orientation extension id from SDP we got */
