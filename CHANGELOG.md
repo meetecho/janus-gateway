@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.16.0] - 2026-02-06
+
+- Generate a pkg-config .pc file when installing Janus [[PR-3596](https://github.com/meetecho/janus-gateway/pull/3596)]
+- Strip some WebRTC-specific SDP attributes in SIP and NoSIP plugins
+- Added RTP forwarders support to SIP and NoSIP plugins (thanks @WebTrit!) [[PR-3583](https://github.com/meetecho/janus-gateway/pull/3583)]
+- Fixed subscription renewal possibly going to the wrong host in the SIP plugin (thanks @digiboridev!) [[PR-3602](https://github.com/meetecho/janus-gateway/pull/3602)]
+- Laid foundations for plugin-specific unique session ID in SIP and NoSIP plugins [[PR-3607](https://github.com/meetecho/janus-gateway/pull/3607)]
+- Fixed 'use-after-free' in SIP session helpers (thanks @oleksandr-mihal-zultys!) [[PR-3614](https://github.com/meetecho/janus-gateway/pull/3614)]
+- Fixed SIP plugin not offering SRTP in response to offerless INVITEs [[PR-3618](https://github.com/meetecho/janus-gateway/pull/3618)]
+- Added new janus-pp-rec option to ignore RTP headers for timing purposes
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.15.3] - 2025-10-21
 
 - Refactored keyframe buffering in Streaming plugin to store following deltas too (thanks [Byborg](https://www.byborgenterprises.com/)!) [[PR-3576](https://github.com/meetecho/janus-gateway/pull/3576)]
