@@ -1221,7 +1221,7 @@ room-<unique room ID>: {
 #ifdef HAVE_RNNOISE
 #include <rnnoise.h>
 #endif
-/* We ship our own version of  */
+/* We ship our own version of AGC2 (ported from WebRTC project) */
 #include "audiobridge-deps/limiter/limiter.h"
 
 #include <arpa/inet.h>

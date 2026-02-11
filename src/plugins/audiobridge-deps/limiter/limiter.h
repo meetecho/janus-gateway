@@ -1,4 +1,7 @@
-/* The code in this file contains code adapted from WebRTC project. */
+/* The code in this file contains code adapted from WebRTC project.
+ * WebRTC repository: https://webrtc.googlesource.com/src
+ * Original source directory: modules/audio_processing/agc2
+ */
 /*
     Copyright (c) 2011, The WebRTC project authors. All rights reserved.
 
