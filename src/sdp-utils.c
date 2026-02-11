@@ -1066,10 +1066,10 @@ char *janus_sdp_get_video_profile(janus_videocodec codec, const char *fmtp) {
 	gchar **list = g_strsplit(fmtp, ";", -1);
 	int i=0;
 	gchar *index = list[0];
-	char *profile = NULL;
+	char *profile = NULL, *temp = NULL;
 	while(index != NULL) {
-		if(strstr(index, needle) != NULL) {
-			profile = index + strlen(needle);
+		if((temp = strstr(index, needle)) != NULL) {
+			profile = temp + strlen(needle);
 			if(strlen(profile) > 0)
 				profile = g_strdup(profile);
 			else

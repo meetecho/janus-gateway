@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[1.4.0],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[1.4.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -68,11 +68,11 @@ cc*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=1400
+JANUS_VERSION=1401
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="1.4.0"
+JANUS_VERSION_STRING="1.4.1"
 AC_SUBST(JANUS_VERSION_STRING)
-JANUS_VERSION_SO="2:9:0"
+JANUS_VERSION_SO="2:10:0"
 AC_SUBST(JANUS_VERSION_SO)
 
 case "$host_os" in
@@ -98,6 +98,9 @@ esac
 glib_version=2.34
 ssl_version=1.0.1
 jansson_version=2.5
+
+JANUS_PACKAGES_PUBLIC="glib-2.0 >= $glib_version, jansson >= $jansson_version"
+AC_SUBST(JANUS_PACKAGES_PUBLIC)
 
 ##
 # Janus
@@ -987,6 +990,7 @@ AC_CONFIG_FILES([
   src/Makefile
   html/Makefile
   docs/Makefile
+  janus-gateway.pc
 ])
 
 JANUS_MANUAL_LIBS+=" -pthread"

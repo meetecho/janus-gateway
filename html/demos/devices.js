@@ -30,8 +30,6 @@ function initDevices(devices) {
 	$('#devices').removeClass('hide');
 	$('#devices').parent().removeClass('hide');
 	$('#choose-device').click(restartCapture);
-	let audio = $('#audio-device').val();
-	let video = $('#video-device').val();
 	$('#audio-device, #video-device').find('option').remove();
 
 	devices.forEach(function(device) {
@@ -77,9 +75,6 @@ function initDevices(devices) {
 				});
 		}
 	});
-
-	$('#audio-device').val(audio);
-	$('#video-device').val(video);
 
 	$('#change-devices').click(function() {
 		// A different device has been selected: hangup the session, and set it up again
