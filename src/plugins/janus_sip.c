@@ -684,7 +684,7 @@
 		"event" : "transfer",
 		"refer_id" : <unique ID, internal to Janus, of this referral>,
 		"refer_to" : "<SIP URI to call>",
-		"referred_by" : "<SIP URI SIP URI header conveying the identity of the transferor; optional>",
+		"referred_by" : "<SIP URI header conveying the identity of the transferor; optional>",
 		"replaces" : "<call-ID of the call this transfer is supposed to replace; optional, and only present for attended transfers>",
 		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
