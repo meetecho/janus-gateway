@@ -845,7 +845,7 @@
 	"sip" : "event",
 	"result" : {
 		"event" : "forwarders",
-		"forwarders" : [		// Array of RTP forwarders
+		"rtp_forwarders" : [		// Array of RTP forwarders
 			{	// RTP forwarder #1
 				"stream_id" : <unique numeric ID assigned to this forwarder, if any>,
 				"type" : "<type of this forwarder, as configured in the request>",
