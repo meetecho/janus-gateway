@@ -3566,11 +3566,15 @@ static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscr
 				json_object_set_new(m, "feed_id", string_ids ? json_string(ps->publisher->user_id_str) : json_integer(ps->publisher->user_id));
 				if(ps->publisher->display)
 					json_object_set_new(m, "feed_display", json_string(ps->publisher->display));
+				if(ps->publisher->metadata)
+					json_object_set_new(m, "feed_metadata", json_deep_copy(ps->publisher->metadata));
 				/* If this is a legacy subscription, put the info in the generic part too */
 				if(legacy && event) {
 					json_object_set_new(event, "id", string_ids ? json_string(ps->publisher->user_id_str) : json_integer(ps->publisher->user_id));
 					if(ps->publisher->display)
 						json_object_set_new(event, "display", json_string(ps->publisher->display));
+					if(ps->publisher->metadata)
+						json_object_set_new(event, "metadata", json_deep_copy(ps->publisher->metadata));
 				}
 			}
 			if(ps->mid)
@@ -11083,10 +11087,12 @@ static void *janus_videoroom_handler(void *data) {
 						json_object_set_new(display_event, "videoroom", json_string("event"));
 						json_object_set_new(display_event, "id", string_ids ?
 							json_string(participant->user_id_str) : json_integer(participant->user_id));
-						json_object_set_new(display_event, "display", json_string(participant->display));
-						if(participant->room && !g_atomic_int_get(&participant->room->destroyed)) {
-							janus_videoroom_notify_participants(participant, display_event, FALSE);
-						}
+					json_object_set_new(display_event, "display", json_string(participant->display));
+					if(participant->metadata)
+						json_object_set_new(display_event, "metadata", json_deep_copy(participant->metadata));
+					if(participant->room && !g_atomic_int_get(&participant->room->destroyed)) {
+						janus_videoroom_notify_participants(participant, display_event, FALSE);
+					}
 						json_decref(display_event);
 					}
 					g_free(old_display);
