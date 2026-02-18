@@ -3814,11 +3814,16 @@ static void *janus_sip_handler(void *data) {
 			if(request_callid)
 				callid = json_string_value(request_callid);
 
+			/* Create a hash key for the subscriptions table */
+			const char *hashkey = event_type;
+			if(callid)
+				hashkey = callid;
+
 			/* Do we have a handle for this subscription already? */
 			janus_mutex_lock(&session->stack->smutex);
 			nua_handle_t *nh = NULL;
 			if(session->stack->subscriptions != NULL)
-				nh = g_hash_table_lookup(session->stack->subscriptions, (char *)event_type);
+				nh = g_hash_table_lookup(session->stack->subscriptions, (char *)hashkey);
 			if(nh == NULL) {
 				/* We don't, create one now */
 				if(!session->helper) {
@@ -3850,10 +3855,10 @@ static void *janus_sip_handler(void *data) {
 				}
 				if(session->stack->subscriptions == NULL) {
 					/* We still need a table for mapping these subscriptions as well */
-					session->stack->subscriptions = g_hash_table_new_full(g_int64_hash, g_int64_equal,
+					session->stack->subscriptions = g_hash_table_new_full(g_str_hash, g_str_equal,
 						(GDestroyNotify)g_free, (GDestroyNotify)nua_handle_destroy);
 				}
-				g_hash_table_insert(session->stack->subscriptions, g_strdup(event_type), nh);
+				g_hash_table_insert(session->stack->subscriptions, g_strdup(hashkey), nh);
 			}
 			janus_mutex_unlock(&session->stack->smutex);
 			char custom_headers[2048];
@@ -3908,11 +3913,23 @@ static void *janus_sip_handler(void *data) {
 			if(to == NULL)
 				to = session->account.identity;
 			const char *event_type = json_string_value(json_object_get(root, "event"));
+
+			/* Take call-id from request, if it exists */
+			const char *callid = NULL;
+			json_t *request_callid = json_object_get(root, "call_id");
+			if(request_callid)
+				callid = json_string_value(request_callid);
+
+			/* Create a hash key for the subscriptions table */
+			const char *hashkey = event_type;
+			if(callid)
+				hashkey = callid;
+
 			/* Get the handle we used for this subscription */
 			janus_mutex_lock(&session->stack->smutex);
 			nua_handle_t *nh = NULL;
 			if(session->stack->subscriptions != NULL)
-				nh = g_hash_table_lookup(session->stack->subscriptions, (char *)event_type);
+				nh = g_hash_table_lookup(session->stack->subscriptions, (char *)hashkey);
 			janus_mutex_unlock(&session->stack->smutex);
 			if(nh == NULL) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not subscribed to this event)\n");
@@ -3925,6 +3942,8 @@ static void *janus_sip_handler(void *data) {
 				SIPTAG_EXPIRES_STR("0"), TAG_END());
 			result = json_object();
 			json_object_set_new(result, "event", json_string("unsubscribing"));
+			if (callid)
+				json_object_set_new(result, "call_id", json_string(callid));
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
 			if(session->stack == NULL) {
