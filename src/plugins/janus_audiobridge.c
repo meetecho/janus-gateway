@@ -1275,6 +1275,17 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle);
 void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_audiobridge_query_session(janus_plugin_session *handle);
 
+/* Audio mixing with overflow protection - tuned to 0.9 of MAX/MIN to prevent clipping */
+#define JANUS_AUDIOBRIDGE_SHRT_MAX_TUNED 29491
+#define JANUS_AUDIOBRIDGE_SHRT_MIN_TUNED -29491
+
+/* Optimized inline function to clamp 16-bit audio samples */
+static inline opus_int16 janus_audiobridge_overflow_check(int32_t sum) {
+    sum = sum > JANUS_AUDIOBRIDGE_SHRT_MAX_TUNED ? JANUS_AUDIOBRIDGE_SHRT_MAX_TUNED : sum;
+    sum = sum < JANUS_AUDIOBRIDGE_SHRT_MIN_TUNED ? JANUS_AUDIOBRIDGE_SHRT_MIN_TUNED : sum;
+    return (opus_int16)sum;
+}
+
 /* Plugin setup */
 static janus_plugin janus_audiobridge_plugin =
 	JANUS_PLUGIN_INIT (
@@ -8907,7 +8918,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			}
 			for(i=0; i<samples; i++)
 				/* FIXME Smoothen/Normalize instead of truncating? */
-				outBuffer[i] = sumBuffer[i];
+				outBuffer[i] = janus_audiobridge_overflow_check(sumBuffer[i]);
 			/* Enqueue this mixed frame for encoding in the participant thread */
 			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
 			mixedpkt->data = g_malloc(samples*2);
