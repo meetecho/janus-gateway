@@ -8882,28 +8882,16 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			compute_scaling_factors(buffer, envelope, scaling_factors, per_sample_scaling_factors, 
 				samples_in_sub_frame, &filter_state_level, &last_scaling_factor);
 		
-		/* If we have silent participants, calculate once the full mix */
-		if(has_silent) {
-			if(audiobridge->use_limiter && mix_count > 1) {
-				/* If we use limiter and we mixed more than 1 track, apply it */
-				scale_buffer(buffer, samples, per_sample_scaling_factors, fullmix_buffer);
-			} else {
-				/* Otherwise just clamp values that are outside int16 boundaries */
-				clamp_buffer(buffer, samples, fullmix_buffer);
-			}
+		/* Always calculate the full mix when limiter is enabled and we have multiple mixed tracks */
+		if(audiobridge->use_limiter && mix_count > 1) {
+			/* Apply limiter to create the fullmix_buffer */
+			scale_buffer(buffer, samples, per_sample_scaling_factors, fullmix_buffer);
+		} else {
+			/* Otherwise just clamp values that are outside int16 boundaries */
+			clamp_buffer(buffer, samples, fullmix_buffer);
 		}
 		/* Are we recording the mix? (only do it if there's someone in, though...) */
 		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) {
-			/* If we didn't yet calculated full mix, do it now */
-			if(!has_silent) {
-				if(audiobridge->use_limiter && mix_count > 1) {
-					/* If we use limiter and we mixed more than 1 track, apply it */
-					scale_buffer(buffer, samples, per_sample_scaling_factors, fullmix_buffer);
-				} else {
-					/* Otherwise just clamp values that are outside int16 boundaries */
-					clamp_buffer(buffer, samples, fullmix_buffer);
-				}
-			}
 			fwrite(fullmix_buffer, sizeof(opus_int16), samples, audiobridge->recording);
 			/* Every 5 seconds we update the wav header */
 			gint64 now = janus_get_monotonic_time();
@@ -8980,18 +8968,6 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					clamp_buffer(sumBuffer, samples, outBuffer);
 				}
 				mixBuffer = outBuffer;
-			} else if(!has_silent) {
-				/* JANUS_LOG(LOG_WARN, "[%s] No packet for participant (%s), but we have no silent participants either\n", audiobridge->room_id_str, p->user_id_str); */
-				for(i=0; i<samples; i++)
-					sumBuffer[i] = buffer[i];
-				if(audiobridge->use_limiter && (mix_count - (curBuffer ? 1 : 0)) > 1) {
-					/* If we use limiter and sumBuffer contains mix of more than 1 track, apply it */
-					scale_buffer(sumBuffer, samples, per_sample_scaling_factors, outBuffer);
-				} else {
-					/* Otherwise just clamp values that are outside int16 boundaries */
-					clamp_buffer(sumBuffer, samples, outBuffer);
-				}
-				mixBuffer = outBuffer;
 			} else {
 				mixBuffer = fullmix_buffer;
 			}
@@ -9052,8 +9028,9 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			if(go_on) {
 				/* By default, let's send the mixed frame to everybody */
 				if(groups_num == 0) {
+					/* Use the fullmix_buffer */
 					for(i=0; i<samples; i++)
-						outBuffer[i] = buffer[i];
+						outBuffer[i] = fullmix_buffer[i];
 					have_opus[0] = FALSE;
 					have_alaw[0] = FALSE;
 					have_ulaw[0] = FALSE;
@@ -9076,9 +9053,9 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					/* Check if we're forwarding the main mix or a specific group */
 					if(groups_num > 0) {
 						if(rfm->group == 0) {
-							/* We're forwarding the main mix */
+							/* We're forwarding the main mix - use the fullmix_buffer */
 							for(i=0; i<samples; i++)
-								outBuffer[i] = buffer[i];
+								outBuffer[i] = fullmix_buffer[i];
 						} else {
 							/* We're forwarding a group mix */
 							index = rfm->group-1;
