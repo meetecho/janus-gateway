@@ -421,7 +421,6 @@ quic: {
 	# certificate info they'll use for the QUIC connectivity here.
 	#cert_pem = "/path/to/certificate.pem"
 	#cert_key = "/path/to/key.pem"
-	#cert_pwd = "secretpassphrase"
 }
 
 # You can choose which of the available plugins should be

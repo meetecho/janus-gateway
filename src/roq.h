@@ -30,9 +30,8 @@
  * @param enable_roq Whether the RoQ support should be enabled or not
  * @param cert_pem The certificate to use for RoQ servers
  * @param cert_key The certificate key to use for RoQ servers
- * @param password The password to use for the certificate, if any
  * @returns 0 in case of success, a negative integer on errors */
-int janus_roq_init(gboolean enable_roq, const char *cert_pem, const char *cert_key, const char *password);
+int janus_roq_init(gboolean enable_roq, const char *cert_pem, const char *cert_key);
 /*! \brief RoQ code de-initialization */
 void janus_roq_deinit(void);
 

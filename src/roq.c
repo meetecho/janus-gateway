@@ -25,7 +25,7 @@
 static gboolean roq_enabled = FALSE;
 
 /* Certificate files */
-static char *roq_cert_pem = NULL, *roq_cert_key = NULL, *roq_cert_pwd = NULL;
+static char *roq_cert_pem = NULL, *roq_cert_key = NULL;
 
 /* Local resources */
 static janus_mutex roqconns_mutex = JANUS_MUTEX_INITIALIZER,
@@ -45,7 +45,7 @@ static void janus_roq_server_free(const janus_refcount *s_ref);
 
 /* \brief RoQ code initialization
  * @returns 0 in case of success, a negative integer on errors */
-int janus_roq_init(gboolean enable_roq, const char *cert_pem, const char *cert_key, const char *password) {
+int janus_roq_init(gboolean enable_roq, const char *cert_pem, const char *cert_key) {
 	/* FIXME Initialize imquic */
 	imquic_set_log_level(IMQUIC_LOG_INFO);
 	if(imquic_init(NULL) < 0)
@@ -59,7 +59,6 @@ int janus_roq_init(gboolean enable_roq, const char *cert_pem, const char *cert_k
 	/* Take note of the cryptographic information */
 	roq_cert_pem = cert_pem ? g_strdup(cert_pem) : NULL;
 	roq_cert_key = cert_key ? g_strdup(cert_key) : NULL;
-	roq_cert_pwd = password ? g_strdup(password) : NULL;
 	if(roq_cert_pem == NULL || roq_cert_key == NULL)
 		JANUS_LOG(LOG_WARN, "RoQ servers will be unavailable (no certificate/key provided)\n");
 	/* Initialize the tables */
@@ -77,7 +76,6 @@ void janus_roq_deinit(void) {
 	/* Free the resources */
 	g_free(roq_cert_pem);
 	g_free(roq_cert_key);
-	g_free(roq_cert_pwd);
 	/* Get rid of the tables */
 	janus_mutex_lock(&roqconns_mutex);
 	g_hash_table_destroy(roqconns);
@@ -372,7 +370,6 @@ janus_roq_server *janus_roq_server_create(const char *ctx, const char *id, const
 		IMQUIC_CONFIG_INIT,
 		IMQUIC_CONFIG_TLS_CERT, roq_cert_pem,
 		IMQUIC_CONFIG_TLS_KEY, roq_cert_key,
-		IMQUIC_CONFIG_TLS_PASSWORD, roq_cert_pwd,
 		IMQUIC_CONFIG_LOCAL_BIND, host,
 		IMQUIC_CONFIG_LOCAL_PORT, port,
 		IMQUIC_CONFIG_RAW_QUIC, TRUE,

@@ -127,27 +127,6 @@ AC_ARG_ENABLE([boringssl],
               ],
               [boringssl_dir=])
 
-AC_ARG_ENABLE([quictls],
-              [AS_HELP_STRING([--enable-quictls],
-                              [Use quictls instead of OpenSSL])],
-              [PKG_CHECK_MODULES([LIBCRYPTO],
-                              [openssl+quictls],
-                              [
-                               AC_DEFINE(HAVE_QUICTLS)
-                              ],
-                              [AC_MSG_ERROR([quictls not found. See README.md for installation instructions])
-                              ])
-              ],
-              [PKG_CHECK_MODULES([LIBCRYPTO],
-                              [
-                               libssl >= $ssl_version
-                               libcrypto
-                              ],
-                              [],
-                              [AC_MSG_ERROR([OpenSSL not found. See README.md for installation instructions])
-                              ])
-              ])
-
 AC_ARG_ENABLE([libsrtp2],
               [AS_HELP_STRING([--enable-libsrtp2],
                               [Use libsrtp 2.0.x instead of libsrtp 1.5.x])],
@@ -395,6 +374,8 @@ freebsd*)
                     libconfig
                     nice
                     jansson >= $jansson_version
+                    libssl >= $ssl_version
+                    libcrypto
                     zlib"
 esac
 PKG_CHECK_MODULES([JANUS],"$PKGCHECKMODULES")

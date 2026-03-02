@@ -121,7 +121,7 @@ static imquic_server *wt = NULL, *admin_wt = NULL;
 /* imquic callbacks */
 static void janus_webtransport_new_connection(imquic_connection *conn, void *user_data);
 static void janus_webtransport_stream_incoming(imquic_connection *conn, uint64_t stream_id,
-	uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete);
+	uint8_t *bytes, uint64_t length, gboolean complete);
 static void janus_webtransport_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint64_t length);
 static void janus_webtransport_connection_gone(imquic_connection *conn);
 
@@ -181,7 +181,6 @@ static imquic_server *janus_webtransport_create_wt_server(
 
 	char *server_pem = NULL;
 	char *server_key = NULL;
-	char *password = NULL;
 
 	item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pem");
 	if(!item || !item->value) {
@@ -193,9 +192,6 @@ static imquic_server *janus_webtransport_create_wt_server(
 	item = janus_config_get(config, config_certs, janus_config_type_item, "cert_key");
 	if(item && item->value)
 		server_key = (char *)item->value;
-	item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pwd");
-	if(item && item->value)
-		password = (char *)item->value;
 	JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 
 	/* Prepare server */
@@ -203,7 +199,6 @@ static imquic_server *janus_webtransport_create_wt_server(
 		IMQUIC_CONFIG_INIT,
 		IMQUIC_CONFIG_TLS_CERT, server_pem,
 		IMQUIC_CONFIG_TLS_KEY, server_key,
-		IMQUIC_CONFIG_TLS_PASSWORD, password,
 		IMQUIC_CONFIG_LOCAL_BIND, ip,
 		IMQUIC_CONFIG_LOCAL_PORT, port,
 		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
@@ -396,7 +391,7 @@ int janus_webtransport_send_message(janus_transport_session *transport, void *re
 	/* Send the message: we create a new stream for each message */
 	uint64_t stream_id = 0;
 	imquic_new_stream_id(client->conn, FALSE, &stream_id);
-	imquic_send_on_stream(client->conn, stream_id, (uint8_t *)payload, 0, strlen(payload), TRUE);
+	imquic_send_on_stream(client->conn, stream_id, (uint8_t *)payload, strlen(payload), TRUE);
 	/* Done */
 	imquic_connection_unref(client->conn);
 	json_decref(message);
@@ -528,11 +523,11 @@ static void janus_webtransport_new_connection(imquic_connection *conn, void *use
 }
 
 static void janus_webtransport_stream_incoming(imquic_connection *conn, uint64_t stream_id,
-		uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete) {
+		uint8_t *bytes, uint64_t length, gboolean complete) {
 	/* Got incoming data via STREAM */
-	JANUS_LOG(LOG_INFO, "[%s] [STREAM-%"SCNu64"] Got data: %"SCNu64"--%"SCNu64" (%s)\n",
+	JANUS_LOG(LOG_INFO, "[%s] [STREAM-%"SCNu64"] Got data: %"SCNu64" bytes (%s)\n",
 		imquic_get_connection_name(conn),
-		stream_id, offset, offset+length, (complete ? "complete" : "not complete"));
+		stream_id, length, (complete ? "complete" : "not complete"));
 	if(length > 0) {
 		int len = length;
 		JANUS_LOG(LOG_INFO, "  -- %.*s\n", len, (char *)(bytes));

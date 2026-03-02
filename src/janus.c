@@ -5460,11 +5460,7 @@ gint main(int argc, char *argv[]) {
 	item = janus_config_get(config, config_quic, janus_config_type_item, "cert_key");
 	if(item && item->value)
 		roq_server_key = item->value;
-	const char *roq_server_pwd = NULL;
-	item = janus_config_get(config, config_quic, janus_config_type_item, "cert_pwd");
-	if(item && item->value)
-		roq_server_pwd = item->value;
-	if(janus_roq_init(enable_roq, roq_server_pem, roq_server_key, roq_server_pwd) < 0) {
+	if(janus_roq_init(enable_roq, roq_server_pem, roq_server_key) < 0) {
 		janus_options_destroy();
 		exit(1);
 	}

@@ -1536,6 +1536,7 @@ static void janus_streaming_roq_server_destroy(janus_streaming_roq_server *roq_s
 static void janus_streaming_roq_server_free(const janus_refcount *roq_server_ref) {
 	janus_streaming_roq_server *roq_server = janus_refcount_containerof(roq_server_ref, janus_streaming_roq_server, ref);
 	/* This RoQ server can be destroyed, free all the resources */
+	g_free(roq_server->name);
 	g_list_free(roq_server->mountpoints);
 	g_free(roq_server);
 }
@@ -2201,6 +2202,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 			g_hash_table_insert(roq_servers, g_strdup(cat->name), srs);
 			cl = cl->next;
 		}
+		g_list_free(clist);
 	}
 #endif
 	/* Iterate on all mountpoints */
