@@ -20,9 +20,8 @@ admin: {
 	#admin_wt_ip = "192.168.0.1"		# Whether we should bind this server to a specific IP address only
 }
 
-# Certificate and key to use for any WebTransport server, if enabled (and passphrase if needed).
+# Certificate and key to use for any WebTransport server, if enabled.
 certificates: {
 	#cert_pem = "/path/to/cert.pem"
 	#cert_key = "/path/to/key.pem"
-	#cert_pwd = "secretpassphrase"
 }
