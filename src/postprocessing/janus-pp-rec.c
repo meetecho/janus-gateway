@@ -1157,7 +1157,7 @@ int main(int argc, char *argv[]) {
 	else if(l16 && !l16_48k)
 		rate = 16000;
 	double ts = 0.0, pts = 0.0, orig_ts = 0.0;
-	uint64_t orig_rtp_ts = 0, last_rtp_ts = 0, new_rtp_ts = list->ts;
+	uint64_t orig_rtp_ts = 0, last_rtp_ts = 0, new_rtp_ts = list ? list->ts : 0;
 	while(tmp) {
 		count++;
 		if(!data) {
@@ -1265,7 +1265,7 @@ int main(int argc, char *argv[]) {
 	if(extjson_only) {
 		/* Print the extended header and leave */
 		char *info_text = json_dumps(info, JSON_COMPACT | JSON_PRESERVE_ORDER);
-		JANUS_PRINT("%s\n", info_text);
+		JANUS_PRINT("%s\n", info_text ? info_text : "");
 		free(info_text);
 		json_decref(info);
 		g_free(metadata);
