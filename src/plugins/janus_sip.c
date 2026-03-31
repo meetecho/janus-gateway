@@ -1332,6 +1332,9 @@ typedef struct janus_sip_session {
 	GList *incoming_header_prefixes;
 	json_t *hangup_custom_headers;
 	GList *active_calls;
+	/* Stripped m=text lines from incoming SDP: stored here for re-injection
+	 * in the SIP answer as rejected (port=0) m-lines (RFC 3264 Section 6) */
+	GList *text_mlines; /* List of janus_sdp_mline pointers */
 	janus_refcount ref;
 	janus_sip_dtmf latest_dtmf;
 } janus_sip_session;
@@ -1806,6 +1809,16 @@ static void janus_sip_media_reset(janus_sip_session *session) {
 	session->media.dtmf_pt = -1;
 	janus_rtp_switching_context_reset(&session->media.acontext);
 	janus_rtp_switching_context_reset(&session->media.vcontext);
+	/* Free any stored text m-lines from a previous call */
+	if(session->text_mlines) {
+		GList *t = session->text_mlines;
+		while(t) {
+			janus_sdp_mline_destroy((janus_sdp_mline *)t->data);
+			t = t->next;
+		}
+		g_list_free(session->text_mlines);
+		session->text_mlines = NULL;
+	}
 }
 
 
@@ -4456,6 +4469,43 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			janus_mutex_unlock(&session->mutex);
+			/* Re-inject stripped m=text lines as rejected (port=0) before
+			 * generating the SIP answer, to match the original SIP offer's
+			 * m-line count (RFC 3264 Section 6) */
+			if(answer && session->text_mlines) {
+				GList *t = session->text_mlines;
+				while(t) {
+					janus_sdp_mline *tm = (janus_sdp_mline *)t->data;
+					/* Create a rejected m-line: port=0, inactive */
+					janus_sdp_mline *rejected = janus_sdp_mline_create(
+						JANUS_SDP_TEXT, 0, tm->proto ? tm->proto : "RTP/AVP", JANUS_SDP_INACTIVE);
+					rejected->index = tm->index;
+					/* Copy the first format from the original to satisfy SDP syntax */
+					if(tm->fmts) {
+						rejected->fmts = g_list_append(rejected->fmts,
+							g_strdup((char *)tm->fmts->data));
+					} else {
+						rejected->fmts = g_list_append(rejected->fmts, g_strdup("0"));
+					}
+					if(tm->ptypes) {
+						rejected->ptypes = g_list_append(rejected->ptypes, tm->ptypes->data);
+					} else {
+						rejected->ptypes = g_list_append(rejected->ptypes, GINT_TO_POINTER(0));
+					}
+					/* Insert at the original index position */
+					parsed_sdp->m_lines = g_list_insert(parsed_sdp->m_lines, rejected, tm->index);
+					JANUS_LOG(LOG_VERB, "Re-injected rejected m=text at index %d in SIP answer\n", tm->index);
+					t = t->next;
+				}
+				/* Clean up the stored text m-lines */
+				t = session->text_mlines;
+				while(t) {
+					janus_sdp_mline_destroy((janus_sdp_mline *)t->data);
+					t = t->next;
+				}
+				g_list_free(session->text_mlines);
+				session->text_mlines = NULL;
+			}
 			char *sdp = janus_sip_sdp_manipulate(session, parsed_sdp, TRUE);
 			if(sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
@@ -6128,6 +6178,32 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					janus_sdp_destroy(sdp);
 					break;
 				}
+				/* Strip m=text lines from the SDP before forwarding to WebRTC.
+				 * Janus doesn't support T.140 RTT, and WebRTC browsers may reject or
+				 * mishandle unsupported media types. We save the stripped m-lines
+				 * so we can re-inject them as rejected (port=0) in the SIP answer,
+				 * preserving RFC 3264 m-line count matching on the SIP side. */
+				if(session->text_mlines) {
+					GList *t = session->text_mlines;
+					while(t) {
+						janus_sdp_mline_destroy((janus_sdp_mline *)t->data);
+						t = t->next;
+					}
+					g_list_free(session->text_mlines);
+					session->text_mlines = NULL;
+				}
+				GList *ml = sdp->m_lines;
+				while(ml) {
+					janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
+					GList *next = ml->next;
+					if(m->type == JANUS_SDP_TEXT) {
+						JANUS_LOG(LOG_VERB, "Stripping m=text line (index %d) from SDP offer to browser\n", m->index);
+						session->text_mlines = g_list_append(session->text_mlines, m);
+						sdp->m_lines = g_list_remove_link(sdp->m_lines, ml);
+						g_list_free_1(ml);
+					}
+					ml = next;
+				}
 			}
 			if(reinvite && session->media.autoaccept_reinvites) {
 				/* No need to involve the application: we reply ourselves */
@@ -6156,8 +6232,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 
 			/* Notify the application about the new incoming call or re-INVITE */
 			json_t *jsep = NULL;
-			if(sdp)
-				jsep = json_pack("{ssss}", "type", "offer", "sdp", sip->sip_payload->pl_data);
+			if(sdp) {
+				/* Generate a cleaned SDP string (without m=text) for the browser */
+				char *clean_sdp = janus_sdp_write(sdp);
+				jsep = json_pack("{ssss}", "type", "offer", "sdp",
+					clean_sdp ? clean_sdp : sip->sip_payload->pl_data);
+				g_free(clean_sdp);
+			}
 			json_t *call = json_object();
 			json_object_set_new(call, "sip", json_string("event"));
 			json_t *calling = json_object();
@@ -7357,6 +7438,12 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 	GList *temp = sdp->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+		/* Skip rejected/unsupported media types like m=text (T.140 RTT):
+		 * these were re-injected as port=0 and should not be modified */
+		if(m->type != JANUS_SDP_AUDIO && m->type != JANUS_SDP_VIDEO) {
+			temp = temp->next;
+			continue;
+		}
 		g_free(m->proto);
 		m->proto = g_strdup(session->media.require_srtp ? "RTP/SAVP" : "RTP/AVP");
 		if(m->type == JANUS_SDP_AUDIO) {
