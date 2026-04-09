@@ -30,6 +30,22 @@ general: {
 	#pid_file = "/path/to/janus.pid"		# PID file to create when Janus has been
 											# started, and to destroy at shutdown
 
+		# This is where you can check, at startup, the limits to how many file
+		# descriptors Janus can open. This has an impact on network sockets,
+		# threads, actual files, and so on. It's an important aspect of configuring
+		# Janus, since if it opens more file descriptors than it is allowed to, it will
+		# crash. This is well explained and addressed in the FAQ on configuring ulimit:
+		#     https://janus.conf.meetecho.com/docs/FAQ.html#ulimit
+		# The 'check_openfiles_limit' property can help ensure you are not caught by surprise,
+		# since depending on how Janus is configured (e.g., with respect to event loops),
+		# the number of PeerConnections/mountpoints, the media topology, etc., the
+		# maximum number of open files may be reached way later than Janus was started,
+		# and catch you by surprise. More precisely, 'check_openfiles_limit' can be used
+		# to ensure the current limit to open file descriptors is at least the value
+		# you want: if not, Janus will immediately shutdown, allowing you to go and fix
+		# that externally (e.g., via ulimit, before starting Janus, as explained in the FAQ).
+	#check_openfiles_limit = 500000
+
 		# There are different ways you can authenticate the Janus and Admin APIs
 	#api_secret = "janusrocks"		# String that all Janus requests must contain
 									# to be accepted/authorized by the Janus core.

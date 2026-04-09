@@ -4,6 +4,7 @@ option "pid-file" p "Open the specified PID file when starting Janus (default=no
 option "disable-stdout" N "Disable stdout based logging" flag off
 option "log-stdout" - "Log to stdout, even when the process is daemonized" flag off
 option "log-file" L "Log to the specified file (default=stdout only)" string typestr="path" optional
+option "check-openfiles-limit" l "Check if the current limit on the maximum number of allowed open file descriptors matches this value (if not, Janus will close with a failure; default=none)" int typestr="value" optional
 option "cwd-path" H "Working directory for Janus daemon process (default=/)" string typestr="path" optional
 option "interface" i "Interface to use (will be the public IP)" string typestr="ipaddress" optional
 option "plugins-folder" P "Plugins folder (default=./plugins)" string typestr="path" optional

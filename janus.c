@@ -4553,6 +4553,28 @@ gint main(int argc, char *argv[])
 		janus_log_level = args_info.debug_level_arg;
 	}
 
+	/* Let's check if there are limits we need to check */
+	uint64_t check_openfiles_limit = 0;
+	if(args_info.check_openfiles_limit_given && args_info.check_openfiles_limit_arg > 0) {
+		check_openfiles_limit = args_info.check_openfiles_limit_arg;
+	} else {
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "check_openfiles_limit");
+		if(item && item->value)
+			check_openfiles_limit = g_ascii_strtoull(item->value, 0, 10);
+	}
+	if(check_openfiles_limit > 0) {
+		struct rlimit limits = { 0 };
+		if(getrlimit(RLIMIT_NOFILE, &limits) < 0) {
+			JANUS_LOG(LOG_FATAL, "Error calling getrlimit: %d (%s)\n", errno, g_strerror(errno));
+			exit(1);
+		}
+		if(limits.rlim_cur < check_openfiles_limit) {
+			JANUS_LOG(LOG_FATAL, "Maximum number of open file descriptors check failed: %"SCNi64" < %"SCNi64" (hard limit: %"SCNi64")\n",
+				limits.rlim_cur, check_openfiles_limit, limits.rlim_max);
+			exit(1);
+		}
+	}
+
 	/* Any PID we need to create? */
 	const char *pidfile = NULL;
 	if(args_info.pid_file_given) {
