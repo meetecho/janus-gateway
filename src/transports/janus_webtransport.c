@@ -620,9 +620,10 @@ static void janus_webtransport_datagram_incoming(imquic_connection *conn, uint8_
 	JANUS_LOG(LOG_WARN, "[%s] [DATAGRAM] Got data: %"SCNu64" (ignored)\n", imquic_get_connection_name(conn), length);
 }
 
-static void janus_webtransport_connection_gone(imquic_connection *conn) {
+static void janus_webtransport_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	/* Connection was closed */
-	JANUS_LOG(LOG_INFO, "[%s] Connection gone\n", imquic_get_connection_name(conn));
+	JANUS_LOG(LOG_INFO, "[%s] Connection gone: %"SCNu64" (%s)\n",
+		imquic_get_connection_name(conn), error_code, reason);
 	/* Get the associated client */
 	janus_mutex_lock(&wt_mutex);
 	janus_webtransport_client *wt_client = g_hash_table_lookup(connections, conn);

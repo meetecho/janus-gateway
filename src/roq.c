@@ -328,7 +328,8 @@ static void janus_roq_servers_rtp_incoming(imquic_connection *conn,
 }
 static void janus_roq_servers_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	/* Connection was closed */
-	JANUS_LOG(LOG_INFO, "[%s] RoQ connection gone\n", imquic_get_connection_name(conn));
+	JANUS_LOG(LOG_INFO, "[%s] RoQ connection gone: %"SCNu64" (%s)\n",
+		imquic_get_connection_name(conn), error_code, reason);
 	janus_mutex_lock(&roqconns_mutex);
 	janus_roq_server *rs = g_hash_table_lookup(roqconns, conn);
 	g_hash_table_remove(roqconns, conn);
