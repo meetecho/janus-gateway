@@ -22,6 +22,7 @@ gboolean janus_options_parse(janus_options *options, int argc, char *argv[]) {
 		{ "log-stdout", 0, 0, G_OPTION_ARG_NONE, &options->log_stdout, "Log to stdout, even when the process is daemonized", NULL },
 		{ "log-file", 'L', 0, G_OPTION_ARG_STRING, &options->log_file, "Log to the specified file (default=stdout only)", "path" },
 		{ "log-rotate-sig", 'R', 0, G_OPTION_ARG_STRING, &options->log_rotate_sig, "Signal to trigger log reloading (e.g. SIGUSR1) (default=none)", "signal" },
+		{ "check-openfiles-limits", 'l', 0, G_OPTION_ARG_INT64, &options->check_openfiles_limit, "Check if the current limit on the maximum number of allowed open file descriptors matches this value (if not, Janus will close with a failure; default=none)", "value" },
 		{ "cwd-path", 'H', 0, G_OPTION_ARG_STRING, &options->cwd_path, "Working directory for Janus daemon process (default=/)", "path" },
 		{ "interface", 'i', 0, G_OPTION_ARG_STRING, &options->interface, "Interface to use (will be the public IP)", "ipaddress" },
 		{ "plugins-folder", 'P', 0, G_OPTION_ARG_STRING, &options->plugins_folder, "Plugins folder (default=./plugins)", "path" },

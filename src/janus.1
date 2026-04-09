@@ -26,11 +26,17 @@ Open the specified PID file when starting Janus (default=none)
 .BR \-N ", " \-\-disable-stdout
 Disable stdout based logging (default=off)
 .TP
-.BR \-L ", " \-\-log-stdout
+.BR \-\-log-stdout
 Log to stdout, even when the process is daemonized (default=off)
 .TP
 .BR \-L ", " \-\-log-file=\fIpath\fR
 Log to the specified file (default=stdout only)
+.TP
+.BR \-R ", " \-\-log-rotate-sig=\fIsignal\fR
+Signal to trigger log reloading (e.g. SIGUSR1) (default=none)
+.TP
+.BR \-l ", " \-\-check-openfiles-limits=\fIvalue\fR
+Check if the current limit on the maximum number of allowed open file descriptors matches this value (if not, Janus will close with a failure; default=none)
 .TP
 .BR \-H ", " \-\-cwd-path=\fIpath\fR
 Working directory for Janus daemon process (default=/)
