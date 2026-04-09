@@ -216,7 +216,7 @@ static GHashTable *connections = NULL;
 static janus_mutex connections_mutex = JANUS_MUTEX_INITIALIZER;
 /* Callbacks */
 static void janus_moq_new_connection(imquic_connection *conn, void *user_data);
-static void janus_moq_connection_gone(imquic_connection *conn);
+static void janus_moq_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason);
 /* MoQ specific */
 static void janus_moq_moq_ready(imquic_connection *conn);
 static void janus_moq_moq_publish_namespace_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *params);
@@ -228,18 +228,9 @@ static void janus_moq_moq_incoming_unsubscribe(imquic_connection *conn, uint64_t
 static void janus_moq_moq_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
 	imquic_moq_request_parameters *parameters, GList *track_extensions);
 static void janus_moq_moq_subscribe_error(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 static void janus_moq_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason);
 static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_object *object);
-
-/* Helper to destroy an object extension */
-static void imquic_moq_object_extension_free(imquic_moq_object_extension *extension) {
-	if(extension != NULL) {
-		if(extension->value.data.buffer != NULL)
-			g_free(extension->value.data.buffer);
-		g_free(extension);
-	}
-}
 
 /* LOC processing */
 typedef enum janus_moq_loc_media_type {
@@ -580,11 +571,11 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 			if(!packet->video && session->audio_track.track && session->audio_track.active) {
 				/* Each audio frame is self contained, write the LOC info first as extensions */
 				GList *exts = NULL;
-				imquic_moq_object_extension type = { 0 };
+				imquic_moq_property type = { 0 };
 				type.id = JANUS_MOQ_LOC_MEDIA_TYPE;
 				type.value.number = JANUS_MOQ_LOC_MEDIA_OPUS;
 				exts = g_list_append(exts, &type);
-				imquic_moq_object_extension header = { 0 };
+				imquic_moq_property header = { 0 };
 				header.id = JANUS_MOQ_LOC_OPUS_HEADER;
 				uint8_t buffer[200];
 				size_t offset = 0, blen = sizeof(buffer);
@@ -609,7 +600,7 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 					.object_id = session->audio_track.object_id,
 					.payload = (uint8_t *)payload,
 					.payload_len = plen,
-					.extensions = exts,
+					.properties = exts,
 					.delivery = IMQUIC_MOQ_USE_SUBGROUP,
 					.end_of_stream = TRUE
 				};
@@ -641,11 +632,11 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 						imquic_get_connection_name(conn), session->video_track.offset);
 					/* Write the LOC info first as extensions */
 					GList *exts = NULL;
-					imquic_moq_object_extension type = { 0 };
+					imquic_moq_property type = { 0 };
 					type.id = JANUS_MOQ_LOC_MEDIA_TYPE;
 					type.value.number = JANUS_MOQ_LOC_MEDIA_H264;
 					exts = g_list_append(exts, &type);
-					imquic_moq_object_extension header = { 0 };
+					imquic_moq_property header = { 0 };
 					header.id = JANUS_MOQ_LOC_H264_HEADER;
 					uint8_t buffer[200];
 					size_t offset = 0, blen = sizeof(buffer);
@@ -663,7 +654,7 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 					header.value.data.buffer = buffer;
 					header.value.data.length = offset;
 					exts = g_list_append(exts, &header);
-					imquic_moq_object_extension extradata = { 0 };
+					imquic_moq_property extradata = { 0 };
 					if(session->video_track.extradata_len > 0) {
 						extradata.id = JANUS_MOQ_LOC_H264_EXTRADATA;
 						extradata.value.data.buffer = session->video_track.extradata;
@@ -680,7 +671,7 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 						.object_id = session->video_track.object_id,
 						.payload = session->video_track.buffer,
 						.payload_len = session->video_track.offset,
-						.extensions = exts,
+						.properties = exts,
 						.delivery = IMQUIC_MOQ_USE_SUBGROUP,
 						.end_of_stream = TRUE
 					};
@@ -1207,9 +1198,10 @@ static void janus_moq_new_connection(imquic_connection *conn, void *user_data) {
 		imquic_moq_set_max_request_id(conn, 100);	/* FIXME */
 }
 
-static void janus_moq_connection_gone(imquic_connection *conn) {
+static void janus_moq_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	/* Connection has gone away */
-	JANUS_LOG(LOG_INFO, "[%s] Connection gone\n", imquic_get_connection_name(conn));
+	JANUS_LOG(LOG_INFO, "[%s] Connection gone: %"SCNu64" (%s)\n",
+		imquic_get_connection_name(conn), error_code, reason);
 	janus_mutex_lock(&connections_mutex);
 	janus_moq_session *session = g_hash_table_lookup(connections, conn);
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
@@ -1245,7 +1237,7 @@ static void janus_moq_moq_ready(imquic_connection *conn) {
 		};
 		imquic_moq_request_parameters params;
 		imquic_moq_request_parameters_init_defaults(&params);
-		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), &tns, &params);
+		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), 0, &tns, &params);
 	} else {
 		/* Let's subscribe to the provided namespace/name(s) */
 		imquic_moq_namespace tns = {
@@ -1300,14 +1292,8 @@ static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t r
 	track[0] = '\0';
 	if(tn->buffer && tn->length > 0)
 		g_snprintf(track, sizeof(track), "%.*s", (int)tn->length, tn->buffer);
-	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
-		/* Older versions of MoQ expect the track alias in the SUBSCRIBE */
-		JANUS_LOG(LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
-			imquic_get_connection_name(conn), namespace, track, request_id, track_alias);
-	} else {
-		JANUS_LOG(LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64")\n",
-			imquic_get_connection_name(conn), namespace, track, request_id);
-	}
+	JANUS_LOG(LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64")\n",
+		imquic_get_connection_name(conn), namespace, track, request_id);
 	janus_moq_session *session = g_hash_table_lookup(connections, conn);
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
 		janus_mutex_unlock(&connections_mutex);
@@ -1326,13 +1312,13 @@ static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t r
 	if(session->audio_track.track && !strcasecmp(session->audio_track.track, track)) {
 		/* FIXME Subscription for the audio track */
 		session->audio_track.request_id = request_id;
-		session->audio_track.track_alias = imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12 ? track_alias : 0;
+		session->audio_track.track_alias = 0;
 		imquic_moq_accept_subscribe(conn, request_id, session->audio_track.track_alias, &rparams, NULL);
 		session->audio_track.active = TRUE;
 	} else if(session->video_track.track && !strcasecmp(session->video_track.track, track)) {
 		/* FIXME Subscription for the video track */
 		session->video_track.request_id = request_id;
-		session->video_track.track_alias = imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12 ? track_alias : 1;
+		session->video_track.track_alias = 1;
 		imquic_moq_accept_subscribe(conn, request_id, session->video_track.track_alias, &rparams, NULL);
 		session->video_track.active = TRUE;
 		gateway->send_pli(session->handle);
@@ -1373,9 +1359,9 @@ static void janus_moq_moq_subscribe_accepted(imquic_connection *conn, uint64_t r
 }
 
 static void janus_moq_moq_subscribe_error(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval) {
-	JANUS_LOG(LOG_INFO, "[%s] Got an error subscribing to ID %"SCNu64"/%"SCNu64": error %d (%s)\n",
-		imquic_get_connection_name(conn), request_id, track_alias, error_code, reason);
+		imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
+	JANUS_LOG(LOG_INFO, "[%s] Got an error subscribing to ID %"SCNu64": error %d (%s)\n",
+		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* TODO Stop here */
 }
 
@@ -1388,8 +1374,8 @@ static void janus_moq_moq_publish_done(imquic_connection *conn, uint64_t request
 
 static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
-	int num_exts = g_list_length(object->extensions);
-	JANUS_LOG(LOG_HUGE, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", payload=%zu bytes, extensions=%d, delivery=%s, status=%s, eos=%d\n",
+	int num_exts = g_list_length(object->properties);
+	JANUS_LOG(LOG_HUGE, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
 		imquic_get_connection_name(conn), object->request_id, object->track_alias,
 		object->group_id, object->subgroup_id, object->object_id,
 		object->payload_len, num_exts, imquic_moq_delivery_str(object->delivery),
@@ -1402,14 +1388,14 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 	/* FIXME Assuming LOC from https://github.com/facebookexperimental/moq-encoder-player/
 	 * which uses the MoQ-MI draft: https://datatracker.ietf.org/doc/html/draft-cenzano-moq-media-interop */
 	uint64_t duration = 0, seq_id = 0;
-	struct imquic_moq_object_extension_data *loc_header = NULL, *loc_extradata = NULL;
+	struct imquic_moq_property_data *loc_header = NULL, *loc_extradata = NULL;
 	if(num_exts > 0) {
-		/* Parse the extensions to get access to the LOC info */
-		JANUS_LOG(LOG_HUGE, "  -- Processing %d extensions (%zu bytes):\n", num_exts);
+		/* Parse the properties to get access to the LOC info */
+		JANUS_LOG(LOG_HUGE, "  -- Processing %d properties:\n", num_exts);
 		janus_moq_loc_media_type media_type = JANUS_MOQ_LOC_MEDIA_NONE;
-		GList *temp = object->extensions;
+		GList *temp = object->properties;
 		while(temp) {
-			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
+			imquic_moq_property *ext = (imquic_moq_property *)temp->data;
 			switch(ext->id) {
 				case JANUS_MOQ_LOC_MEDIA_TYPE: {
 					media_type = ext->value.number;
