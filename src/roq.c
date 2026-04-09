@@ -43,10 +43,25 @@ static void janus_roq_server_unref(janus_roq_server *rs);
 /* Static helper to free an RoQ server instance when the reference goes to 0 */
 static void janus_roq_server_free(const janus_refcount *s_ref);
 
+/* imquic logging */
+static void janus_roq_log_cb(int level, const char *format, ...) G_GNUC_PRINTF(2, 3);
+static void janus_roq_log_cb(int level, const char *format, ...) {
+	/* FIXME */
+	char line[200];
+	va_list ap;
+	va_start(ap, format);
+	g_vsnprintf(line, sizeof(line), format, ap);
+	va_end(ap);
+	JANUS_LOG(LOG_INFO, "%s%s%s",
+		ANSI_COLOR_GREEN"[imquic]"ANSI_COLOR_RESET,
+		imquic_log_prefix[level | ((int)imquic_log_colors << 3)], line);
+}
+
 /* \brief RoQ code initialization
  * @returns 0 in case of success, a negative integer on errors */
 int janus_roq_init(gboolean enable_roq, const char *cert_pem, const char *cert_key) {
-	/* FIXME Initialize imquic */
+	/* Initialize imquic */
+	imquic_set_log_function(janus_roq_log_cb);
 	imquic_set_log_level(IMQUIC_LOG_INFO);
 	if(imquic_init(NULL) < 0)
 		return -1;
