@@ -331,7 +331,7 @@ static void janus_roq_servers_new_connection(imquic_connection *conn, void *user
 static void janus_roq_servers_rtp_incoming(imquic_connection *conn,
 		imquic_roq_multiplexing multiplexing, uint64_t flow_id, uint8_t *bytes, size_t blen) {
 	if(!janus_is_rtp((char *)bytes, (int)blen) && !janus_is_rtcp((char *)bytes, (int)blen)) {
-		JANUS_LOG(LOG_WARN, "[%s]  -- [flow=%"SCNu64"][%zu] Not an RTP packet\n",
+		JANUS_LOG(LOG_WARN, "[%s]  -- [flow=%"SCNu64"][%zu] Not an RTP/RTCP packet\n",
 			imquic_get_connection_name(conn), flow_id, blen);
 		return;
 	}
