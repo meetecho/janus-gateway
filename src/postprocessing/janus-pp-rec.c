@@ -924,9 +924,9 @@ int main(int argc, char *argv[]) {
 				rtp_header_len += rtp_read_n;
 			}
 			if(options.audio_level_extmap_id > 0)
-				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, len, options.audio_level_extmap_id, &audiolevel);
+				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, rtp_header_len, options.audio_level_extmap_id, &audiolevel);
 			if(options.video_orient_extmap_id > 0) {
-				janus_pp_rtp_header_extension_parse_video_orientation(prebuffer, len, options.video_orient_extmap_id, &rotation);
+				janus_pp_rtp_header_extension_parse_video_orientation(prebuffer, rtp_header_len, options.video_orient_extmap_id, &rotation);
 				if(rotation != -1 && rotation != last_rotation) {
 					if(!extjson_only)
 						last_rotation = rotation;
@@ -1157,7 +1157,7 @@ int main(int argc, char *argv[]) {
 	else if(l16 && !l16_48k)
 		rate = 16000;
 	double ts = 0.0, pts = 0.0, orig_ts = 0.0;
-	uint64_t orig_rtp_ts = 0, last_rtp_ts = 0, new_rtp_ts = list->ts;
+	uint64_t orig_rtp_ts = 0, last_rtp_ts = 0, new_rtp_ts = list ? list->ts : 0;
 	while(tmp) {
 		count++;
 		if(!data) {
@@ -1265,7 +1265,7 @@ int main(int argc, char *argv[]) {
 	if(extjson_only) {
 		/* Print the extended header and leave */
 		char *info_text = json_dumps(info, JSON_COMPACT | JSON_PRESERVE_ORDER);
-		JANUS_PRINT("%s\n", info_text);
+		JANUS_PRINT("%s\n", info_text ? info_text : "");
 		free(info_text);
 		json_decref(info);
 		g_free(metadata);
@@ -1566,22 +1566,28 @@ int main(int argc, char *argv[]) {
 
 /* Static helper to quickly find the extension data */
 static int janus_pp_rtp_header_extension_find(char *buf, int len, int id,
-		uint8_t *byte, uint32_t *word, char **ref) {
-	if(!buf || len < 12)
+		uint8_t *byte, uint32_t *word, char **ref, uint8_t *idlen) {
+	if(idlen == NULL)
 		return -1;
+	*idlen = 0;
+	if(!buf || len < 12)
+		return -2;
 	janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)buf;
+	if(rtp->version != 2) {
+		return -3;
+	}
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
-	if(rtp->extension) {
+	if(rtp->extension && (len > hlen + (int)sizeof(janus_pp_rtp_header_extension))) {
 		janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(buf+hlen);
 		int extlen = ntohs(ext->length)*4;
 		hlen += 4;
 		if(len > (hlen + extlen)) {
-			/* 1-Byte extension */
 			if(ntohs(ext->type) == 0xBEDE) {
+				/* 1-Byte extension */
 				const uint8_t padding = 0x00, reserved = 0xF;
-				uint8_t extid = 0, idlen;
+				uint8_t extid = 0;
 				int i = 0;
 				while(i < extlen) {
 					extid = (uint8_t)buf[hlen+i] >> 4;
@@ -1591,18 +1597,51 @@ static int janus_pp_rtp_header_extension_find(char *buf, int len, int id,
 						i++;
 						continue;
 					}
-					idlen = ((uint8_t)buf[hlen+i] & 0xF)+1;
-					if(extid == id) {
+					*idlen = ((uint8_t)buf[hlen+i] & 0xF)+1;
+					i++;
+					if(extid == id && ((i+*idlen) <= extlen)) {
 						/* Found! */
 						if(byte)
-							*byte = (uint8_t)buf[hlen+i+1];
-						if(word)
-							*word = ntohl(*(uint32_t *)(buf+hlen+i));
+							*byte = (uint8_t)buf[hlen+i];
+						if(word && *idlen >= 4 && (i+4) < extlen) {
+							memcpy(word, buf+hlen+i, sizeof(uint32_t));
+							*word = ntohl(*word);
+						}
 						if(ref)
 							*ref = &buf[hlen+i];
 						return 0;
 					}
-					i += 1 + idlen;
+					i += *idlen;
+				}
+			} else if(ntohs(ext->type) == 0x1000) {
+				/* 2-Byte extension */
+				const uint8_t padding = 0x00;
+				uint8_t extid = 0;
+				int i = 0;
+				while(i < extlen) {
+					if((extlen-i) < 2)
+						break;
+					extid = buf[hlen+i];
+					if(extid == padding) {
+						i += 2;
+						continue;
+					}
+					i++;
+					*idlen = buf[hlen+i];
+					i++;
+					if(extid == id && ((i+*idlen) <= extlen)) {
+						/* Found! */
+						if(byte)
+							*byte = (uint8_t)buf[hlen+i];
+						if(word && *idlen >= 4 && (i+4) < extlen) {
+							memcpy(word, buf+hlen+i, sizeof(uint32_t));
+							*word = ntohl(*word);
+						}
+						if(ref)
+							*ref = &buf[hlen+i];
+						return 0;
+					}
+					i += *idlen;
 				}
 			}
 			hlen += extlen;
@@ -1612,8 +1651,8 @@ static int janus_pp_rtp_header_extension_find(char *buf, int len, int id,
 }
 
 static int janus_pp_rtp_header_extension_parse_audio_level(char *buf, int len, int id, int *level) {
-	uint8_t byte = 0;
-	if(janus_pp_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL) < 0)
+	uint8_t byte = 0, idlen = 0;
+	if(janus_pp_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL, &idlen) < 0)
 		return -1;
 	/* a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
 	int value = byte & 0x7F;
@@ -1623,8 +1662,8 @@ static int janus_pp_rtp_header_extension_parse_audio_level(char *buf, int len, i
 }
 
 static int janus_pp_rtp_header_extension_parse_video_orientation(char *buf, int len, int id, int *rotation) {
-	uint8_t byte = 0;
-	if(janus_pp_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL) < 0)
+	uint8_t byte = 0, idlen = 0;
+	if(janus_pp_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL, &idlen) < 0)
 		return -1;
 	/* a=extmap:4 urn:3gpp:video-orientation */
 	gboolean r1bit = (byte & 0x02) >> 1;
