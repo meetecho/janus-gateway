@@ -2726,7 +2726,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					header->type = medium->payload_type;
 					packet_ssrc = medium->ssrc_peer[vindex];
 					header->ssrc = htonl(packet_ssrc);
-					if(plen > 0) {
+					if(plen >= 2) {
 						memcpy(&header->seq_number, payload, 2);
 						/* Finally, remove the original sequence number from the payload: move the whole
 						 * payload back two bytes rather than shifting the header forward (avoid misaligned access) */
