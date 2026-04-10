@@ -128,7 +128,7 @@ static gfloat rmq_reconnect_backoff_multiplier = 1.5;
 #define JANUS_RABBITMQ_EXCHANGE_TYPE "fanout"
 
 /* JSON serialization options */
-static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+static size_t json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 
 /* Parameter validation (for tweaking and queries via Admin API) */
 static struct janus_json_parameter request_parameters[] = {
@@ -234,8 +234,8 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			/* Compact, so no spaces between separators */
 			json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 		} else {
-			JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
-			json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (compact)\n", item->value);
+			json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 		}
 	}
 
