@@ -13,7 +13,7 @@ general: {
 						# HTTP POST, JSON object), or if it's ok to group them
 						# (one or more per HTTP POST, JSON array with objects)
 						# The default is 'true' to limit the number of connections.
-	json = "indented"	# Whether the JSON messages should be indented (default),
+	json = "compact"	# Whether the JSON messages should be indented (pretty),
 						# plain (no indentation) or compact (no indentation and no spaces)
 
 	#compress = true	# Optionally, the JSON messages can be compressed using zlib
