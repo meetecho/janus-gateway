@@ -8648,6 +8648,11 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 		 * now subscribe; if this is a subscriber, instead, ask the publisher a FIR */
 		if(session->participant_type == janus_videoroom_p_type_publisher) {
 			janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
+			if(participant == NULL) {
+				/* No publisher instance? Shouldn't happen at this stage */
+				janus_refcount_decrease(&session->ref);
+				return;
+			}
 			/* Notify all other participants that there's a new boy in town */
 			janus_videoroom *room = participant->room;
 			if(room && !g_atomic_int_get(&room->destroyed)) {
@@ -9342,6 +9347,11 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
 		janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
+		if(participant == NULL) {
+			/* No cleanup needed */
+			g_atomic_int_set(&session->hangingup, 0);
+			return;
+		}
 		/* Get rid of the recorders, if available */
 		janus_mutex_lock(&participant->rec_mutex);
 		g_free(participant->recording_base);
