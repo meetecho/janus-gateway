@@ -313,10 +313,25 @@ static void janus_http_allow_address(const char *ip, gboolean admin) {
 		return;
 	/* Is this an IP or an interface? */
 	janus_mutex_lock(&access_list_mutex);
-	if(!admin)
-		janus_http_access_list = g_list_append(janus_http_access_list, (gpointer)ip);
-	else
-		janus_http_admin_access_list = g_list_append(janus_http_admin_access_list, (gpointer)ip);
+	if(!admin) {
+		janus_http_access_list = g_list_append(janus_http_access_list, g_strdup(ip));
+		if(strstr(ip, ":") == NULL) {
+			/* Add a ::ffff: prefixed address too, which we may need if the server
+			 * supports IPV6 too, and so IPv4 addresses will look different */
+			char pfx_ip[50];
+			g_snprintf(pfx_ip, sizeof(pfx_ip), "::ffff:%s", ip);
+			janus_http_access_list = g_list_append(janus_http_access_list, g_strdup(pfx_ip));
+		}
+	} else {
+		janus_http_admin_access_list = g_list_append(janus_http_admin_access_list, g_strdup(ip));
+		if(strstr(ip, ":") == NULL) {
+			/* Add a ::ffff: prefixed address too, which we may need if the server
+			 * supports IPV6 too, and so IPv4 addresses will look different */
+			char pfx_ip[50];
+			g_snprintf(pfx_ip, sizeof(pfx_ip), "::ffff:%s", ip);
+			janus_http_admin_access_list = g_list_append(janus_http_admin_access_list, g_strdup(pfx_ip));
+		}
+	}
 	janus_mutex_unlock(&access_list_mutex);
 }
 static gboolean janus_http_is_allowed(const char *ip, gboolean admin) {
@@ -334,7 +349,7 @@ static gboolean janus_http_is_allowed(const char *ip, gboolean admin) {
 	GList *temp = admin ? janus_http_admin_access_list : janus_http_access_list;
 	while(temp) {
 		const char *allowed = (const char *)temp->data;
-		if(allowed != NULL && strstr(ip, allowed)) {
+		if(allowed != NULL && strstr(ip, allowed) == ip) {
 			janus_mutex_unlock(&access_list_mutex);
 			return TRUE;
 		}
@@ -991,6 +1006,9 @@ void janus_http_destroy(void) {
 	g_hash_table_destroy(sessions);
 	sessions = NULL;
 	janus_mutex_unlock(&sessions_mutex);
+
+	g_list_free_full(janus_http_access_list, (GDestroyNotify)g_free);
+	g_list_free_full(janus_http_admin_access_list, (GDestroyNotify)g_free);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
