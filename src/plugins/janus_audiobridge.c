@@ -31,6 +31,8 @@ room-<unique room ID>: {
 	is_private = true|false (private rooms don't appear when you do a 'list' request)
 	secret = <optional password needed for manipulating (e.g. destroying) the room>
 	pin = <optional password needed for joining the room>
+	signed_tokens = true|false (whether access to the room requires signed tokens; default=false,
+				 only works if signed tokens are used in the core as well)
 	sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 	spatial_audio = true|false (if true, the mix will be stereo to spatially place users, default=false)
 	audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must be
@@ -135,6 +137,7 @@ room-<unique room ID>: {
 	"description" : "<pretty name of the room, optional>",
 	"secret" : "<password required to edit/destroy the room, optional>",
 	"pin" : "<password required to join the room, optional>",
+	"signed_tokens" : <true|false, whether signed tokens are required to join; optional, default=false>,
 	"is_private" : <true|false, whether the room should appear in a list request>,
 	"allowed" : [ array of string tokens users can use to join this room, optional],
 	"sampling_rate" : <sampling rate of the room, optional, 16000 by default>,
@@ -1363,7 +1366,8 @@ static struct janus_json_parameter create_parameters[] = {
 	{"default_expectedloss", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"default_bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"denoise", JANUS_JSON_BOOL, 0},
-	{"groups", JSON_ARRAY, 0}
+	{"groups", JSON_ARRAY, 0},
+	{"signed_tokens", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter edit_parameters[] = {
 	{"secret", JSON_STRING, 0},
@@ -1549,6 +1553,7 @@ typedef struct janus_audiobridge_room {
 	GHashTable *participants;	/* Map of participants */
 	GHashTable *anncs;			/* Map of announcements */
 	gboolean check_tokens;		/* Whether to check tokens when participants join (see below) */
+	gboolean signed_tokens;		/* Whether signed tokens are required (assuming they're enabled in the core) */
 	gboolean muted;				/* Whether the room is globally muted (except for admins and played files) */
 	GHashTable *allowed;		/* Map of participants (as tokens) allowed to join */
 	GThread *thread;			/* Mixer thread for this room */
@@ -2676,6 +2681,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *denoise = janus_config_get(config, cat, janus_config_type_item, "denoise");
 			janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
 			janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
+			janus_config_item *signed_tokens = janus_config_get(config, cat, janus_config_type_item, "signed_tokens");
 			janus_config_array *groups = janus_config_get(config, cat, janus_config_type_array, "groups");
 			janus_config_item *record = janus_config_get(config, cat, janus_config_type_item, "record");
 			janus_config_item *recfile = janus_config_get(config, cat, janus_config_type_item, "record_file");
@@ -2801,6 +2807,13 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			}
 			if(pin != NULL && pin->value != NULL) {
 				audiobridge->room_pin = g_strdup(pin->value);
+			}
+			if(signed_tokens && signed_tokens->value && janus_is_true(signed_tokens->value)) {
+				if(!gateway->auth_is_signed()) {
+					JANUS_LOG(LOG_WARN, "Can't enforce signed tokens for this room, signed-mode not in use in the core\n");
+				} else {
+					audiobridge->signed_tokens = TRUE;
+				}
 			}
 			g_atomic_int_set(&audiobridge->record, 0);
 			if(record && record->value && janus_is_true(record->value))
@@ -3251,6 +3264,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_t *secret = json_object_get(root, "secret");
 		json_t *pin = json_object_get(root, "pin");
 		json_t *is_private = json_object_get(root, "is_private");
+		json_t *signed_tokens = json_object_get(root, "signed_tokens");
 		json_t *allowed = json_object_get(root, "allowed");
 		json_t *sampling = json_object_get(root, "sampling_rate");
 		if(sampling == NULL)
@@ -3496,6 +3510,13 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			}
 			audiobridge->check_tokens = TRUE;
 		}
+		if(signed_tokens && json_is_true(signed_tokens)) {
+			if(!gateway->auth_is_signed()) {
+				JANUS_LOG(LOG_WARN, "Can't enforce signed tokens for this room, signed-mode not in use in the core\n");
+			} else {
+				audiobridge->signed_tokens = TRUE;
+			}
+		}
 		g_atomic_int_set(&audiobridge->destroyed, 0);
 		janus_mutex_init(&audiobridge->mutex);
 		if(groups != NULL && json_array_size(groups) > 0) {
@@ -3573,6 +3594,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				janus_config_add(config, c, janus_config_item_create("secret", audiobridge->room_secret));
 			if(audiobridge->room_pin)
 				janus_config_add(config, c, janus_config_item_create("pin", audiobridge->room_pin));
+			if(audiobridge->signed_tokens)
+				janus_config_add(config, c, janus_config_item_create("signed_tokens", "true"));
 			if(audiobridge->audiolevel_ext) {
 				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "true"));
 				if(audiobridge->audiolevel_event)
@@ -3754,6 +3777,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				janus_config_add(config, c, janus_config_item_create("secret", audiobridge->room_secret));
 			if(audiobridge->room_pin)
 				janus_config_add(config, c, janus_config_item_create("pin", audiobridge->room_pin));
+			if(audiobridge->signed_tokens)
+				janus_config_add(config, c, janus_config_item_create("signed_tokens", "true"));
 			if(audiobridge->audiolevel_ext) {
 				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "true"));
 				if(audiobridge->audiolevel_event)
@@ -6707,6 +6732,21 @@ static void *janus_audiobridge_handler(void *data) {
 				g_snprintf(error_cause, 512, "Plain RTP participants not allowed in this room");
 				goto error;
 			}
+			/* Signed tokens are enforced, so they precede any pin validation */
+			if(gateway->auth_is_signed() && audiobridge->signed_tokens) {
+				json_t *stoken = json_object_get(root, "token");
+				char room_descriptor[100];
+				g_snprintf(room_descriptor, sizeof(room_descriptor), "room=%s", room_id_str);
+				if(!gateway->auth_signature_contains(&janus_audiobridge_plugin, json_string_value(stoken), room_descriptor)) {
+					JANUS_LOG(LOG_ERR, "Unauthorized (wrong token)\n");
+					error_code = JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED;
+					g_snprintf(error_cause, 512, "Unauthorized (wrong token)");
+					janus_mutex_unlock(&audiobridge->mutex);
+					janus_refcount_decrease(&audiobridge->ref);
+					janus_mutex_unlock(&sessions_mutex);
+					goto error;
+				}
+			}
 			/* A pin may be required for this action */
 			JANUS_CHECK_SECRET(audiobridge->room_pin, root, "pin", error_code, error_cause,
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
@@ -7593,6 +7633,21 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			janus_refcount_increase(&audiobridge->ref);
 			janus_mutex_lock(&audiobridge->mutex);
+			/* Signed tokens are enforced, so they precede any pin validation */
+			if(gateway->auth_is_signed() && audiobridge->signed_tokens) {
+				json_t *stoken = json_object_get(root, "token");
+				char room_descriptor[100];
+				g_snprintf(room_descriptor, sizeof(room_descriptor), "room=%s", room_id_str);
+				if(!gateway->auth_signature_contains(&janus_audiobridge_plugin, json_string_value(stoken), room_descriptor)) {
+					JANUS_LOG(LOG_ERR, "Unauthorized (wrong token)\n");
+					error_code = JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED;
+					g_snprintf(error_cause, 512, "Unauthorized (wrong token)");
+					janus_mutex_unlock(&audiobridge->mutex);
+					janus_refcount_decrease(&audiobridge->ref);
+					janus_mutex_unlock(&rooms_mutex);
+					goto error;
+				}
+			}
 			/* A pin may be required for this action */
 			JANUS_CHECK_SECRET(audiobridge->room_pin, root, "pin", error_code, error_cause,
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
