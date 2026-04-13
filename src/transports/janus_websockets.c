@@ -116,7 +116,7 @@ static GHashTable *clients = NULL, *writable_clients = NULL;
 static janus_mutex writable_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* JSON serialization options */
-static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+static size_t json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 
 /* Parameter validation (for tweaking and queries via Admin API) */
 static struct janus_json_parameter request_parameters[] = {
@@ -571,8 +571,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				/* Compact, so no spaces between separators */
 				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 			} else {
-				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
-				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (compact)\n", item->value);
+				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 			}
 		}
 
