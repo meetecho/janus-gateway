@@ -729,7 +729,7 @@ static void *janus_textroom_handler(void *data);
 static void janus_textroom_hangup_media_internal(janus_plugin_session *handle);
 
 /* JSON serialization options */
-static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+static size_t json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 
 
 typedef struct janus_textroom_room {
@@ -959,8 +959,8 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 				/* Compact, so no spaces between separators */
 				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 			} else {
-				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
-				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (compact)\n", item->value);
+				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 			}
 		}
 		/* Any admin key to limit who can "create"? */

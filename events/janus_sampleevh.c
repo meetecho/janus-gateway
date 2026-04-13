@@ -79,7 +79,7 @@ static void *janus_sampleevh_handler(void *data);
 static janus_mutex evh_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* JSON serialization options */
-static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+static size_t json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 
 /* Compression, if any */
 static gboolean compress = FALSE;
@@ -215,8 +215,8 @@ int janus_sampleevh_init(const char *config_path) {
 						/* Compact, so no spaces between separators */
 						json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 					} else {
-						JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
-						json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+						JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (compact)\n", item->value);
+						json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 					}
 				}
 				/* Check if we need any compression */

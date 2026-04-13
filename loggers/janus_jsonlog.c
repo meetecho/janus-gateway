@@ -74,7 +74,7 @@ static GThread *logger_thread = NULL;
 static void *janus_jsonlog_thread(void *data);
 
 /* JSON serialization options */
-static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+static size_t json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 
 /* Queue of log lines to handle */
 static GAsyncQueue *loglines = NULL;
@@ -168,8 +168,8 @@ int janus_jsonlog_init(const char *server_name, const char *config_path) {
 					/* Compact, so no spaces between separators */
 					json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 				} else {
-					JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
-					json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+					JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (compact)\n", item->value);
+					json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 				}
 			}
 			/* Done */

@@ -12,7 +12,7 @@ general: {
 							# in. Valid values are none, sessions, handles, jsep, webrtc,
 							# media, plugins, transports, core, external and all. By
 							# default we subscribe to everything (all)
-	json = "indented"		# Whether the JSON messages should be indented (default),
+	json = "compact"		# Whether the JSON messages should be indented (pretty),
 							# plain (no indentation) or compact (no indentation and no spaces)
 
 	url = "tcp://localhost:1883"	# The URL of the MQTT server. "tcp://" and "ssl://" protocols are supported.
