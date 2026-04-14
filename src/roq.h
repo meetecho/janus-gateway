@@ -184,11 +184,14 @@ typedef struct janus_roq_server {
  * @param[in] id The unique server ID to assign as part of the context
  * @param[in] host The address to bind the RoQ server to
  * @param[in] port The port to bind the RoQ server to
+ * @param[in] raw_quic Whether the RoQ server should offer raw QUIC support
+ * @param[in] webtransport Whether the RoQ server should offer webtransport support
  * @param[in] new_roq_client The function to invoke when a new client connects
  * @param[in] incoming_rtp The function to invoke when an RTP packet is received
  * @param[in] roq_client_gone The function to invoke when an existing client disconnects
  * @returns A pointer to a valid janus_roq_forwarder instance, if successful, NULL otherwise */
-janus_roq_server *janus_roq_server_create(const char *ctx, const char *id, const char *host, int port,
+janus_roq_server *janus_roq_server_create(const char *ctx, const char *id,
+	const char *host, int port, gboolean raw_quic, gboolean webtransport,
 	void (*new_roq_client)(struct janus_roq_server *rs, imquic_connection *conn),
 	void (*incoming_rtp)(struct janus_roq_server *rs, imquic_connection *conn,
 		imquic_roq_multiplexing multiplexing, uint64_t flow_id, char *buffer, int len),
