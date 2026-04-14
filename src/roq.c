@@ -359,12 +359,13 @@ static void janus_roq_servers_connection_gone(imquic_connection *conn, uint64_t 
 	}
 }
 
-janus_roq_server *janus_roq_server_create(const char *ctx, const char *id, const char *host, int port,
+janus_roq_server *janus_roq_server_create(const char *ctx, const char *id,
+		const char *host, int port, gboolean raw_quic, gboolean webtransport,
 		void (*new_roq_client)(struct janus_roq_server *rs, imquic_connection *conn),
 		void (*incoming_rtp)(struct janus_roq_server *rs, imquic_connection *conn,
 			imquic_roq_multiplexing multiplexing, uint64_t flow_id, char *buffer, int len),
 		void (*roq_client_gone)(struct janus_roq_server *rs, imquic_connection *conn)) {
-	if(!roq_enabled || roq_cert_pem == NULL || roq_cert_key == NULL)
+	if(!roq_enabled || roq_cert_pem == NULL || roq_cert_key == NULL || (!raw_quic && !webtransport))
 		return NULL;
 	janus_mutex_lock(&roqsrvs_mutex);
 	if(ctx == NULL)
@@ -388,8 +389,8 @@ janus_roq_server *janus_roq_server_create(const char *ctx, const char *id, const
 		IMQUIC_CONFIG_TLS_KEY, roq_cert_key,
 		IMQUIC_CONFIG_LOCAL_BIND, host,
 		IMQUIC_CONFIG_LOCAL_PORT, port,
-		IMQUIC_CONFIG_RAW_QUIC, TRUE,
-		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
+		IMQUIC_CONFIG_RAW_QUIC, raw_quic,
+		IMQUIC_CONFIG_WEBTRANSPORT, webtransport,
 		IMQUIC_CONFIG_USER_DATA, rs,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(rs->roq_server == NULL) {

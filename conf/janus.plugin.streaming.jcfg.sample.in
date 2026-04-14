@@ -132,6 +132,21 @@ general: {
 }
 
 #
+# In case you're interested in feeding mountpoints via RoQ, you need to
+# create a RoQ server that mountpoints can refer to. These RoQ servers
+# are created in the 'roq' category, indexed by their name and specifying
+# IP/port to bind to, plus whether to use raw QUIC and/or WebTransport.
+#
+#roq: {
+#	test-roq: {
+#		quic = true
+#		webtransport = true
+#		ip = "127.0.0.1"
+#		port = 9000
+#	}
+#}
+
+#
 # This is an example of an RTP source stream, which is what you'll need
 # in the vast majority of cases: here, the Streaming plugin will bind to
 # some ports, and expect media to be sent by an external source (e.g.,

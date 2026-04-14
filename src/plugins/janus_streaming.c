@@ -1226,6 +1226,8 @@ static struct janus_json_parameter roq_create_parameters[] = {
 	{"name", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"ip", JSON_STRING, 0},
 	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"quic", JANUS_JSON_BOOL, 0},
+	{"webtransport", JANUS_JSON_BOOL, 0},
 };
 static struct janus_json_parameter roq_destroy_parameters[] = {
 	{"name", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -2186,7 +2188,11 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				cl = cl->next;
 				continue;
 			}
-			janus_roq_server *rs = janus_roq_server_create(JANUS_STREAMING_PACKAGE, cat->name, ip->value, port_num,
+			janus_config_item *quic = janus_config_get(config, cat, janus_config_type_item, "quic");
+			gboolean do_quic = quic && quic->value && janus_is_true(quic->value);
+			janus_config_item *webtransport = janus_config_get(config, cat, janus_config_type_item, "webtransport");
+			gboolean do_wt = webtransport && webtransport->value && janus_is_true(webtransport->value);
+			janus_roq_server *rs = janus_roq_server_create(JANUS_STREAMING_PACKAGE, cat->name, ip->value, port_num, do_quic, do_wt,
 				janus_streaming_roq_new_client, janus_streaming_roq_incoming_rtp, janus_streaming_roq_client_gone);
 			if(rs == NULL) {
 				JANUS_LOG(LOG_WARN, "  -- Error creating RoQ server '%s' instance, skipping...\n", cat->name);
@@ -5704,7 +5710,9 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		/* Create a new RoQ server */
 		const char *ip = json_string_value(json_object_get(root, "ip"));
 		uint16_t port = json_integer_value(json_object_get(root, "port"));
-		janus_roq_server *rs = janus_roq_server_create(JANUS_STREAMING_PACKAGE, name, ip, port,
+		gboolean quic = json_is_true(json_object_get(root, "quic"));
+		gboolean wt = json_is_true(json_object_get(root, "webtransport"));
+		janus_roq_server *rs = janus_roq_server_create(JANUS_STREAMING_PACKAGE, name, ip, port, quic, wt,
 			janus_streaming_roq_new_client, janus_streaming_roq_incoming_rtp, janus_streaming_roq_client_gone);
 		if(rs == NULL) {
 			janus_mutex_unlock(&roq_mutex);
