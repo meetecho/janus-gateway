@@ -126,9 +126,10 @@ static void janus_roq_forwarders_connection_gone(imquic_connection *conn, uint64
 }
 
 /* Create a new forwarder */
-janus_roq_forwarder *janus_roq_forwarder_create(const char *ctx, uint32_t id, const char *host, int port,
+janus_roq_forwarder *janus_roq_forwarder_create(const char *ctx, uint32_t id,
+		const char *host, int port, gboolean raw_quic, gboolean webtransport,
 		void (*incoming_rtcp)(janus_roq_forwarder *rf, uint64_t flow_id, char *buffer, int len)) {
-	if(!roq_enabled)
+	if(!roq_enabled || (!raw_quic && !webtransport))
 		return NULL;
 	janus_mutex_lock(&roqfwds_mutex);
 	if(ctx == NULL)
@@ -158,8 +159,8 @@ janus_roq_forwarder *janus_roq_forwarder_create(const char *ctx, uint32_t id, co
 		IMQUIC_CONFIG_INIT,
 		IMQUIC_CONFIG_REMOTE_HOST, host,
 		IMQUIC_CONFIG_REMOTE_PORT, port,
-		IMQUIC_CONFIG_RAW_QUIC, TRUE,
-		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
+		IMQUIC_CONFIG_RAW_QUIC, raw_quic,
+		IMQUIC_CONFIG_WEBTRANSPORT, webtransport,
 		IMQUIC_CONFIG_USER_DATA, rf,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(rf->roq_client == NULL) {

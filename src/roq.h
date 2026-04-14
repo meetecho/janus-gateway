@@ -94,9 +94,12 @@ typedef struct janus_roq_forwarder_flow {
  * @param[in] id The unique forwarder ID to assign as part of the context (0=autogenerate)
  * @param[in] host The RoQ server address
  * @param[in] port The RoQ server port
+ * @param[in] raw_quic Whether we should offer raw QUIC support when connecting
+ * @param[in] webtransport Whether we should offer webtransport support when connecting
  * @param[in] incoming_rtcp The function to invoke when RTCP feedback is received
  * @returns A pointer to a valid janus_roq_forwarder instance, if successful, NULL otherwise */
-janus_roq_forwarder *janus_roq_forwarder_create(const char *ctx, uint32_t id, const char *host, int port,
+janus_roq_forwarder *janus_roq_forwarder_create(const char *ctx, uint32_t id,
+	const char *host, int port, gboolean raw_quic, gboolean webtransport,
 	void (*incoming_rtcp)(janus_roq_forwarder *rf, uint64_t flow_id, char *buffer, int len));
 /*! \brief Helper method to add a new flow to an existing RoQ forwarder
  * @param[in] rf The janus_roq_forwarder instance to add the flow to
