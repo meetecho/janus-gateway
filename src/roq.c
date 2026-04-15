@@ -269,7 +269,8 @@ void janus_roq_forwarder_send_rtp_full(janus_roq_forwarder *rf, uint64_t flow_id
 	if(flow->ssrc > 0)
 		rtp->ssrc = htonl(flow->ssrc);
 	/* FIXME Send the packet */
-	if(imquic_roq_send_rtp(rf->roq_conn, IMQUIC_ROQ_DATAGRAM, flow->flow_id, (uint8_t *)buffer, len, FALSE) == 0) {
+	if(imquic_roq_send_rtp(rf->roq_conn, (flow->is_video ? IMQUIC_ROQ_STREAM : IMQUIC_ROQ_DATAGRAM),
+			flow->flow_id, (uint8_t *)buffer, len, TRUE) == 0) {
 		JANUS_LOG(LOG_WARN, "[RoQ][%s-%"SCNu32"][%"SCNu64"] Couldn't send RTP packet...\n",
 			rf->context, rf->id, flow->flow_id);
 	}
