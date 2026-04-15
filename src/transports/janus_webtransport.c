@@ -152,8 +152,9 @@ static imquic_server *janus_webtransport_create_wt_server(
 {
 	/* Is this for the Janus or Admin API? */
 	const char *prefix = (admin ? "admin_wt" : "wt");
-	const char *name = (admin ? "WT-Admin" : "WT-Janus");
 	const char *type = (admin ? "Admin API" : "Janus API");
+	char name[50];
+	g_snprintf(name, sizeof(name), "%s/%s", JANUS_WEBTRANSPORT_PACKAGE, type);
 
 	/* Parse the configuration */
 	janus_config_item *item = NULL;
