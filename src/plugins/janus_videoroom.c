@@ -1525,6 +1525,7 @@ room-<unique room ID>: {
 #include "../rtpsrtp.h"
 #include "../rtcp.h"
 #include "../rtpfwd.h"
+#include "../roq.h"
 #include "../record.h"
 #include "../sdp-utils.h"
 #include "../utils.h"
@@ -1806,6 +1807,31 @@ static struct janus_json_parameter stop_rtp_forward_parameters[] = {
 	{"secret", JSON_STRING, 0},
 	{"stream_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
+#ifdef HAVE_IMQUIC
+static struct janus_json_parameter roq_forward_parameters[] = {
+	{"secret", JSON_STRING, 0},
+	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"quic", JANUS_JSON_BOOL, 0},
+	{"webtransport", JANUS_JSON_BOOL, 0},
+	{"streams", JANUS_JSON_ARRAY, JANUS_JSON_PARAM_REQUIRED},
+};
+static struct janus_json_parameter roq_forward_stream_parameters[] = {
+	{"secret", JSON_STRING, 0},
+	{"mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"flow_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"ssrc", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"pt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"simulcast", JANUS_JSON_BOOL, 0},
+};
+static struct janus_json_parameter stop_roq_forward_parameters[] = {
+	{"secret", JSON_STRING, 0},
+	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"flow_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
+#endif
 static struct janus_json_parameter publisher_parameters[] = {
 	{"display", JSON_STRING, 0}
 };
@@ -2145,6 +2171,9 @@ typedef struct janus_videoroom_publisher {
 	volatile gint remote_leaving;
 	/* Index of RTP (or data) forwarders for this participant (all streams), if any */
 	GHashTable *rtp_forwarders;
+#ifdef HAVE_IMQUIC
+	GHashTable *roq_forwarders;
+#endif
 	janus_mutex rtp_forwarders_mutex;
 	int udp_sock; /* The udp socket on which to forward rtp packets */
 	gboolean kicked;	/* Whether this participant has been kicked */
@@ -2197,6 +2226,9 @@ typedef struct janus_videoroom_publisher_stream {
 	janus_rtp_simulcasting_context rec_simctx;
 	/* RTP (or data) forwarders for this stream, if any */
 	GHashTable *rtp_forwarders;
+#ifdef HAVE_IMQUIC
+	GList *roq_forwarders;
+#endif
 	janus_mutex rtp_forwarders_mutex;
 	/* In case this is a stream from a remote publisher */
 	volatile gint need_pli;		/* Whether we need to send a PLI later */
@@ -2217,6 +2249,18 @@ static janus_rtp_forwarder *janus_videoroom_rtp_forwarder_add_helper(janus_video
 static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_rtp_forwarder *rf, char *buffer, int len);
 static json_t *janus_videoroom_rtp_forwarder_summary(janus_rtp_forwarder *f);
 static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashTable *streams);
+#ifdef HAVE_IMQUIC
+typedef struct janus_videoroom_roq_forwarder {
+	janus_roq_forwarder *rf;
+	char *server;
+	uint64_t flow_id;
+} janus_videoroom_roq_forwarder;
+static janus_videoroom_roq_forwarder *janus_videoroom_roq_forwarder_add_helper(janus_videoroom_publisher *p,
+	janus_videoroom_publisher_stream *ps, janus_roq_forwarder *rf, char *server, uint64_t flow_id);
+static void janus_videoroom_roq_incoming_rtcp(janus_roq_forwarder *rf, uint64_t flow_id, char *buffer, int len);
+static json_t *janus_videoroom_roq_forwarder_summary(janus_videoroom_publisher_stream *ps, janus_videoroom_roq_forwarder *f);
+static void janus_videoroom_roq_forwarder_destroy(janus_videoroom_roq_forwarder *f);
+#endif
 
 /* We support remote publishers as well, for which we use plain RTP,
  * which means we need to create and work with generic file descriptors */
@@ -2409,6 +2453,10 @@ static void janus_videoroom_publisher_stream_free(const janus_refcount *ps_ref) 
 	janus_recorder_destroy(ps->rc);
 	g_hash_table_destroy(ps->rtp_forwarders);
 	ps->rtp_forwarders = NULL;
+#ifdef HAVE_IMQUIC
+	g_list_free_full(ps->roq_forwarders, (GDestroyNotify)janus_videoroom_roq_forwarder_destroy);
+	ps->roq_forwarders = NULL;
+#endif
 	janus_mutex_destroy(&ps->rtp_forwarders_mutex);
 	g_slist_free(ps->subscribers);
 	janus_mutex_destroy(&ps->subscribers_mutex);
@@ -2442,6 +2490,10 @@ static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 				ps = (janus_videoroom_publisher_stream *)temp->data;
 				janus_refcount_increase(&ps->ref);
 				janus_mutex_lock(&ps->rtp_forwarders_mutex);
+#ifdef HAVE_IMQUIC
+				g_list_free_full(ps->roq_forwarders, (GDestroyNotify)janus_videoroom_roq_forwarder_destroy);
+				ps->roq_forwarders = NULL;
+#endif
 				if(g_hash_table_size(ps->rtp_forwarders) == 0) {
 					janus_mutex_unlock(&ps->rtp_forwarders_mutex);
 					janus_refcount_decrease(&ps->ref);
@@ -2485,6 +2537,9 @@ static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 		close(p->udp_sock);
 	g_hash_table_destroy(p->remote_recipients);
 	g_hash_table_destroy(p->rtp_forwarders);
+#ifdef HAVE_IMQUIC
+	g_hash_table_destroy(p->roq_forwarders);
+#endif
 	g_slist_free(p->subscriptions);
 
 	if(p->remote_fd > 0)
@@ -2779,6 +2834,66 @@ static json_t *janus_videoroom_rtp_forwarder_summary(janus_rtp_forwarder *f) {
 	return json;
 }
 
+#ifdef HAVE_IMQUIC
+/* RoQ forwarder helpers */
+static janus_videoroom_roq_forwarder *janus_videoroom_roq_forwarder_add_helper(janus_videoroom_publisher *p,
+		janus_videoroom_publisher_stream *ps, janus_roq_forwarder *rf, char *server, uint64_t flow_id) {
+	if(!p || !ps || !rf || !server)
+		return NULL;
+	janus_refcount_increase(&p->ref);
+	janus_refcount_increase(&ps->ref);
+	/* Create a new RoQ flow forwarder instance */
+	janus_videoroom_roq_forwarder *f = g_malloc(sizeof(janus_videoroom_roq_forwarder));
+	f->rf = rf;
+	f->server = g_strdup(server);
+	f->flow_id = flow_id;
+	janus_refcount_increase(&rf->ref);
+	/* Add the forwarder to the ones we have for the publisher stream */
+	janus_mutex_lock(&ps->rtp_forwarders_mutex);
+	ps->roq_forwarders = g_list_prepend(ps->roq_forwarders, f);
+	janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+	/* Done */
+	janus_refcount_decrease(&ps->ref);
+	janus_refcount_decrease(&p->ref);
+	JANUS_LOG(LOG_VERB, "Added roq_forward to participant %s %s flow_id: %"SCNu64"\n",
+		p->user_id_str, server, f->flow_id);
+	return f;
+}
+
+static void janus_videoroom_roq_incoming_rtcp(janus_roq_forwarder *rf, uint64_t flow_id, char *buffer, int len) {
+	if(len > 0 && janus_is_rtcp(buffer, len)) {
+		JANUS_LOG(LOG_WARN, "[RoQ][%"SCNu64"] Got RTCP packet: %d bytes\n", flow_id, len);
+		/* We only handle incoming video PLIs or FIR at the moment */
+		if(!janus_rtcp_has_fir(buffer, len) && !janus_rtcp_has_pli(buffer, len))
+			return;
+		/* TODO */
+		//~ janus_videoroom_reqpli((janus_videoroom_publisher_stream *)rf->source, "RTCP from RoQ forwarder");
+	}
+}
+
+static json_t *janus_videoroom_roq_forwarder_summary(janus_videoroom_publisher_stream *ps, janus_videoroom_roq_forwarder *f) {
+	if(ps == NULL || f == NULL)
+		return NULL;
+	/* FIXME */
+	json_t *json = json_object();
+	json_object_set_new(json, "server", json_string(f->server));
+	json_object_set_new(json, "flow_id", json_integer(f->flow_id));
+	json_object_set_new(json, "media", json_string(janus_videoroom_media_str(ps->type)));
+	json_object_set_new(json, "codec", json_string(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO ?
+		janus_videocodec_name(ps->vcodec) : janus_audiocodec_name(ps->acodec)));
+	return json;
+}
+
+static void janus_videoroom_roq_forwarder_destroy(janus_videoroom_roq_forwarder *f) {
+	if(f) {
+		if(f->rf)
+			janus_refcount_decrease(&f->rf->ref);
+		g_free(f->server);
+		g_free(f);
+	}
+}
+#endif
+
 /* Helper to create a dummy publisher, with placeholder streams for each supported codec */
 static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashTable *streams) {
 	if(room == NULL || !room->dummy_publisher)
@@ -2817,6 +2932,10 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, GHashT
 	publisher->remote_recipients = g_hash_table_new_full(g_str_hash, g_str_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)janus_videoroom_remote_recipient_free);
 	publisher->rtp_forwarders = g_hash_table_new(NULL, NULL);
+#ifdef HAVE_IMQUIC
+	publisher->roq_forwarders = g_hash_table_new_full(g_str_hash, g_str_equal,
+		(GDestroyNotify)g_free, (GDestroyNotify)janus_roq_forwarder_destroy);
+#endif
 	publisher->udp_sock = -1;
 	g_atomic_int_set(&publisher->destroyed, 0);
 	janus_mutex_init(&publisher->mutex);
@@ -6123,6 +6242,357 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			gateway->notify_event(&janus_videoroom_plugin, NULL, info);
 		}
 		goto prepare_response;
+#ifdef HAVE_IMQUIC
+	} else if(!strcasecmp(request_text, "roq_forward")) {
+		JANUS_VALIDATE_JSON_OBJECT(root, roq_forward_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, pid_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, pidstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		if(lock_rtpfwd && admin_key != NULL) {
+			/* An admin key was specified: make sure it was provided, and that it's valid */
+			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto prepare_response;
+			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+			if(error_code != 0)
+				goto prepare_response;
+		}
+		json_t *room = json_object_get(root, "room");
+		json_t *pub_id = json_object_get(root, "publisher_id");
+		json_t *roq_host = json_object_get(root, "host");
+		const char *host = json_string_value(roq_host);
+		json_t *roq_port = json_object_get(root, "port");
+		uint16_t port = json_integer_value(roq_port);
+		gboolean raw_quic = json_is_true(json_object_get(root, "quic"));
+		gboolean webtransport = json_is_true(json_object_get(root, "webtransport"));
+		if(!raw_quic && !webtransport) {
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, sizeof(error_cause), "Invalid element (at least one between quic and webtransport must be true)");
+			goto prepare_response;
+		}
+		/* We use the provided host/port as key */
+		char key[200];
+		g_snprintf(key, sizeof(key), "roq://%s:%"SCNu16, host, port);
+		/* Get room and publisher ID */
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
+		guint64 publisher_id = 0;
+		char publisher_id_num[30], *publisher_id_str = NULL;
+		if(!string_ids) {
+			publisher_id = json_integer_value(pub_id);
+			g_snprintf(publisher_id_num, sizeof(publisher_id_num), "%"SCNu64, publisher_id);
+			publisher_id_str = publisher_id_num;
+		} else {
+			publisher_id_str = (char *)json_string_value(pub_id);
+		}
+		/* Iterate on the streams objects and validate them all */
+		json_t *streams = json_object_get(root, "streams");
+		size_t i = 0;
+		for(i=0; i<json_array_size(streams); i++) {
+			json_t *s = json_array_get(streams, i);
+			JANUS_VALIDATE_JSON_OBJECT(s, roq_forward_stream_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto prepare_response;
+		}
+		/* Look for room and publisher */
+		janus_mutex_lock(&rooms_mutex);
+		janus_videoroom *videoroom = NULL;
+		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&videoroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&videoroom->mutex);
+		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
+			string_ids ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
+		if(publisher == NULL) {
+			janus_mutex_unlock(&videoroom->mutex);
+			janus_refcount_decrease(&videoroom->ref);
+			JANUS_LOG(LOG_ERR, "No such publisher (%s)\n", publisher_id_str);
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+			g_snprintf(error_cause, 512, "No such feed (%s)", publisher_id_str);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&publisher->ref);	/* This is just to handle the request for now */
+		janus_mutex_lock(&publisher->rtp_forwarders_mutex);
+		janus_roq_forwarder *rf = g_hash_table_lookup(publisher->roq_forwarders, key);
+		if(rf == NULL) {
+			/* FIXME */
+			rf = janus_roq_forwarder_create(JANUS_VIDEOROOM_PACKAGE, janus_random_uint32(),
+				host, port, raw_quic, webtransport, janus_videoroom_roq_incoming_rtcp);
+			if(rf == NULL) {
+				janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
+				janus_refcount_decrease(&publisher->ref);
+				janus_mutex_unlock(&videoroom->mutex);
+				janus_refcount_decrease(&videoroom->ref);
+				JANUS_LOG(LOG_ERR, "Could not create RoQ forwarder for publisher (%s)\n", publisher_id_str);
+				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Could not create RoQ forwarder");
+				goto prepare_response;
+			}
+			g_hash_table_insert(publisher->roq_forwarders, g_strdup(key), rf);
+		}
+		/* Add all the flows we need */
+		response = json_object();
+		janus_videoroom_publisher_stream *ps = NULL;
+		janus_videoroom_roq_forwarder *f = NULL;
+		json_t *new_forwarders = json_array();
+		for(i=0; i<json_array_size(streams); i++) {
+			json_t *s = json_array_get(streams, i);
+			json_t *stream_mid = json_object_get(s, "mid");
+			const char *mid = json_string_value(stream_mid);
+			janus_mutex_lock(&publisher->streams_mutex);
+			ps = g_hash_table_lookup(publisher->streams_bymid, mid);
+			janus_mutex_unlock(&publisher->streams_mutex);
+			if(ps == NULL) {
+				/* FIXME Should we return an error instead? */
+				JANUS_LOG(LOG_WARN, "No such stream with mid '%s', skipping RoQ forwarder...\n", mid);
+				continue;
+			}
+			if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA) {
+				/* FIXME Should we return an error instead? */
+				JANUS_LOG(LOG_WARN, "mid '%s' is a datachannel, skipping RoQ forwarder...\n", mid);
+				continue;
+			}
+			/* If we got here, it's RTP media, check the other properties too */
+			json_t *flow = json_object_get(s, "flow_id");
+			uint64_t flow_id = json_integer_value(flow);
+			json_t *stream_pt = json_object_get(s, "pt");
+			json_t *stream_ssrc = json_object_get(s, "ssrc");
+			json_t *stream_simulcast = (ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO ? json_object_get(s, "simulcast") : NULL);
+			json_t *stream_substream = (ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO ? json_object_get(s, "substream") : NULL);
+			if(janus_roq_forwarder_add_flow(rf, flow_id,
+					json_integer_value(stream_ssrc), json_integer_value(stream_pt),
+					json_is_true(stream_simulcast), json_integer_value(stream_substream),
+					ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) < 0) {
+				/* FIXME Should we return an error instead? */
+				JANUS_LOG(LOG_WARN, "flow ID %"SCNu64", skipping RoQ forwarder for mid '%s...\n", flow_id, mid);
+				continue;
+			}
+			f = janus_videoroom_roq_forwarder_add_helper(publisher, ps, rf, key, flow_id);
+			if(f) {
+				json_t *roq_f = janus_videoroom_roq_forwarder_summary(ps, f);
+				json_array_append_new(new_forwarders, roq_f);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = janus_videoroom_roq_forwarder_summary(ps, f);
+					json_object_set_new(info, "event", json_string("roq_forward"));
+					json_object_set_new(info, "room",
+						string_ids ? json_string(room_id_str) : json_integer(room_id));
+					json_object_set_new(info, "publisher_id",
+						string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+					gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+				}
+			}
+		}
+		janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
+		janus_mutex_unlock(&videoroom->mutex);
+		/* These two unrefs are related to the message handling */
+		janus_refcount_decrease(&publisher->ref);
+		janus_refcount_decrease(&videoroom->ref);
+		json_object_set_new(response, "videoroom", json_string("roq_forward"));
+		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
+		json_object_set_new(response, "publisher_id", string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+		if(new_forwarders != NULL)
+			json_object_set_new(response, "forwarders", new_forwarders);
+		goto prepare_response;
+	} else if(!strcasecmp(request_text, "stop_roq_forward")) {
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, pid_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, pidstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		JANUS_VALIDATE_JSON_OBJECT(root, stop_roq_forward_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		if(lock_rtpfwd && admin_key != NULL) {
+			/* An admin key was specified: make sure it was provided, and that it's valid */
+			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto prepare_response;
+			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+			if(error_code != 0)
+				goto prepare_response;
+		}
+		json_t *room = json_object_get(root, "room");
+		json_t *pub_id = json_object_get(root, "publisher_id");
+		json_t *roq_host = json_object_get(root, "host");
+		const char *host = json_string_value(roq_host);
+		json_t *roq_port = json_object_get(root, "port");
+		uint16_t port = json_integer_value(roq_port);
+		json_t *roq_flow_id = json_object_get(root, "flow_id");
+		uint64_t flow_id = json_integer_value(roq_flow_id);
+
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
+		guint64 publisher_id = 0;
+		char publisher_id_num[30], *publisher_id_str = NULL;
+		if(!string_ids) {
+			publisher_id = json_integer_value(pub_id);
+			g_snprintf(publisher_id_num, sizeof(publisher_id_num), "%"SCNu64, publisher_id);
+			publisher_id_str = publisher_id_num;
+		} else {
+			publisher_id_str = (char *)json_string_value(pub_id);
+		}
+		janus_mutex_lock(&rooms_mutex);
+		janus_videoroom *videoroom = NULL;
+		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&videoroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&videoroom->mutex);
+		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
+			string_ids ? (gpointer)publisher_id_str : (gpointer)&publisher_id);
+		if(publisher == NULL) {
+			janus_mutex_unlock(&videoroom->mutex);
+			janus_refcount_decrease(&videoroom->ref);
+			JANUS_LOG(LOG_ERR, "No such publisher (%s)\n", publisher_id_str);
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+			g_snprintf(error_cause, 512, "No such feed (%s)", publisher_id_str);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&publisher->ref);	/* Just to handle the message now */
+		janus_mutex_lock(&publisher->rtp_forwarders_mutex);
+		/* Find the forwarder using the host/port as a key */
+		char key[200];
+		g_snprintf(key, sizeof(key), "roq://%s:%"SCNu16, host, port);
+		janus_roq_forwarder *rf = g_hash_table_lookup(publisher->roq_forwarders, key);
+		if(rf == NULL) {
+			janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
+			janus_refcount_decrease(&publisher->ref);
+			janus_mutex_unlock(&videoroom->mutex);
+			janus_refcount_decrease(&videoroom->ref);
+			JANUS_LOG(LOG_ERR, "No such RoQ forwarder\n");
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+			g_snprintf(error_cause, 512, "No such RoQ forwarder");
+			goto prepare_response;
+		}
+		/* Remove the forwarder flow from the participant stream */
+		gboolean found = FALSE;
+		GList *temp = publisher->streams;
+		while(!found && temp) {
+			janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+			janus_refcount_increase(&ps->ref);
+			janus_mutex_lock(&ps->rtp_forwarders_mutex);
+			GList *ftemp = ps->roq_forwarders;
+			while(!found && ftemp) {
+				janus_videoroom_roq_forwarder *f = (janus_videoroom_roq_forwarder *)ftemp->data;
+				if(f && f->server && !strcasecmp(f->server, key) && f->flow_id == flow_id) {
+					/* Found */
+					found = TRUE;
+					ps->roq_forwarders = g_list_remove(ps->roq_forwarders, f);
+					janus_videoroom_roq_forwarder_destroy(f);
+					break;
+				}
+				ftemp = ftemp->next;
+			}
+			janus_mutex_unlock(&ps->rtp_forwarders_mutex);
+			temp = temp->next;
+		}
+		/* Remove the forwarded stream by its flow ID */
+		if(janus_roq_forwarder_remove_flow(rf, flow_id) < 0) {
+			janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
+			janus_refcount_decrease(&publisher->ref);
+			janus_mutex_unlock(&videoroom->mutex);
+			janus_refcount_decrease(&videoroom->ref);
+			JANUS_LOG(LOG_ERR, "No such flow (%"SCNu64")\n", flow_id);
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+			g_snprintf(error_cause, 512, "No such flow (%"SCNu64")", flow_id);
+			goto prepare_response;
+		}
+		janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
+		janus_refcount_decrease(&publisher->ref);
+		janus_mutex_unlock(&videoroom->mutex);
+		janus_refcount_decrease(&videoroom->ref);
+		response = json_object();
+		json_object_set_new(response, "videoroom", json_string("stop_roq_forward"));
+		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
+		json_object_set_new(response, "publisher_id", string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+		json_object_set_new(response, "host", json_string(host));
+		json_object_set_new(response, "port", json_integer(port));
+		json_object_set_new(response, "flow_id", json_integer(flow_id));
+		/* Also notify event handlers */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("stop_roq_forward"));
+			json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
+			json_object_set_new(info, "publisher_id", string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
+			json_object_set_new(info, "host", json_string(host));
+			json_object_set_new(info, "port", json_integer(port));
+			json_object_set_new(info, "flow_id", json_integer(flow_id));
+			gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+		}
+		goto prepare_response;
+#endif
 	} else if(!strcasecmp(request_text, "exists")) {
 		/* Check whether a given room exists or not, returns true/false */
 		if(!string_ids) {
@@ -7412,6 +7882,10 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		publisher->remote_recipients = g_hash_table_new_full(g_str_hash, g_str_equal,
 			(GDestroyNotify)g_free, (GDestroyNotify)janus_videoroom_remote_recipient_free);
 		publisher->rtp_forwarders = g_hash_table_new(NULL, NULL);
+#ifdef HAVE_IMQUIC
+		publisher->roq_forwarders = g_hash_table_new_full(g_str_hash, g_str_equal,
+			(GDestroyNotify)g_free, (GDestroyNotify)janus_roq_forwarder_destroy);
+#endif
 		publisher->udp_sock = -1;
 		g_atomic_int_set(&publisher->destroyed, 0);
 		janus_mutex_init(&publisher->mutex);
@@ -8258,6 +8732,20 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 			janus_rtp_forwarder_send_rtp_full(rtp_forward, buf, len, sc,
 				ps->vssrc, ps->rid, ps->vcodec, &ps->rid_mutex);
 		}
+#ifdef HAVE_IMQUIC
+		/* Check if we have RoQ forwarders too */
+		GList *temp = ps->roq_forwarders;
+		while(temp) {
+			janus_videoroom_roq_forwarder *roq_f = (janus_videoroom_roq_forwarder *)temp->data;
+			if(roq_f->rf == NULL) {
+				temp = temp->next;
+				continue;
+			}
+			janus_roq_forwarder_send_rtp_full(roq_f->rf, roq_f->flow_id, buf, len, sc,
+				ps->vssrc, ps->rid, ps->vcodec, &ps->rid_mutex);
+			temp = temp->next;
+		}
+#endif
 		janus_mutex_unlock(&ps->rtp_forwarders_mutex);
 		/* Set the payload type of the publisher */
 		rtp->type = ps->pt;
@@ -9214,6 +9702,10 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->remote_recipients = g_hash_table_new_full(g_str_hash, g_str_equal,
 					(GDestroyNotify)g_free, (GDestroyNotify)janus_videoroom_remote_recipient_free);
 				publisher->rtp_forwarders = g_hash_table_new(NULL, NULL);
+#ifdef HAVE_IMQUIC
+				publisher->roq_forwarders = g_hash_table_new_full(g_str_hash, g_str_equal,
+					(GDestroyNotify)g_free, (GDestroyNotify)janus_roq_forwarder_destroy);
+#endif
 				publisher->udp_sock = -1;
 				/* Finally, generate a private ID: this is only needed in case the participant
 				 * wants to allow the plugin to know which subscriptions belong to them */
