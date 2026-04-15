@@ -885,7 +885,7 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 
 			g_rw_lock_reader_unlock(&janus_mqtt_transaction_states_lock);
 
-			// If this is a terminal response (success/error/ack), we can clean up the transaction state
+			/* If this is a terminal response (success/error/ack), we can clean up the transaction state */
 			const char *janus_type = json_string_value(json_object_get(message, "janus"));
 			if(janus_type && (!strcmp(janus_type, "success") || !strcmp(janus_type, "error") || !strcmp(janus_type, "ack"))) {
 				g_rw_lock_writer_lock(&janus_mqtt_transaction_states_lock);
@@ -1154,9 +1154,7 @@ int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicL
 			const gchar *transaction = json_string_value(json_object_get(root, "transaction"));
 			if(transaction == NULL) {
 				JANUS_LOG(LOG_WARN, "`transaction` is missing or not a string\n");
-				if(root) {
-					json_decref(root);
-				}
+				if(root) json_decref(root);
 				goto done;
 			}
 
@@ -1540,9 +1538,7 @@ int janus_mqtt_client_publish_message5(janus_mqtt_context *ctx, char *payload, g
 	msg.payloadlen = strlen(payload);
 	msg.qos = ctx->publish.qos;
 	msg.retained = FALSE;
-	if(properties != NULL) {
-		msg.properties = *properties;
-	}
+	if(properties != NULL) msg.properties = *properties;
 
 	char *topic;
 	if(custom_topic) {
