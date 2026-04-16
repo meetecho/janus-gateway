@@ -2,7 +2,7 @@
 # should use, and so on.
 general: {
 	#events = true					# Whether to notify event handlers about transport events (default=true)
-	json = "indented"				# Whether the JSON messages should be indented (default),
+	json = "compact"				# Whether the JSON messages should be indented (default),
 									# plain (no indentation) or compact (no indentation and no spaces)
 
 	wt = true						# Whether to enable the WebTransport API
