@@ -870,7 +870,7 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 	if(ctx->connect.mqtt_version == MQTTVERSION_5) {
 		char *response_topic = NULL;
 		MQTTProperties properties = MQTTProperties_initializer;
-		char *transaction = g_strdup(json_string_value(json_object_get(message, "transaction")));
+		char *transaction = json_string_value(json_object_get(message, "transaction"));
 		janus_mqtt_transaction_state *state = NULL;
 
 		if(transaction != NULL) {
@@ -884,6 +884,14 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 			}
 
 			g_rw_lock_reader_unlock(&janus_mqtt_transaction_states_lock);
+
+			/* If this is a terminal response (success/error/ack), we can clean up the transaction state */
+			const char *janus_type = json_string_value(json_object_get(message, "janus"));
+			if(janus_type && (!strcmp(janus_type, "success") || !strcmp(janus_type, "error") || !strcmp(janus_type, "ack"))) {
+				g_rw_lock_writer_lock(&janus_mqtt_transaction_states_lock);
+				g_hash_table_remove(janus_mqtt_transaction_states, transaction);
+				g_rw_lock_writer_unlock(&janus_mqtt_transaction_states_lock);
+			}
 		}
 
 		rc = janus_mqtt_client_publish_message5(ctx, payload, admin, &properties, response_topic);
@@ -918,7 +926,7 @@ void janus_mqtt_proxy_properties(janus_mqtt_transaction_state *state, GArray *us
 	if(corr_data_req_prop != NULL) {
 		MQTTProperty corr_data_resp_prop;
 		corr_data_resp_prop.identifier = MQTTPROPERTY_CODE_CORRELATION_DATA;
-		corr_data_resp_prop.value.data.data = g_strndup(corr_data_req_prop->value.data.data, corr_data_req_prop->value.data.len);
+		corr_data_resp_prop.value.data.data = corr_data_req_prop->value.data.data;
 		corr_data_resp_prop.value.data.len = corr_data_req_prop->value.data.len;
 
 		int rc = MQTTProperties_add(properties, &corr_data_resp_prop);
@@ -945,7 +953,7 @@ void janus_mqtt_proxy_properties(janus_mqtt_transaction_state *state, GArray *us
 				response_prop.identifier = MQTTPROPERTY_CODE_USER_PROPERTY;
 				response_prop.value.data.data = key;
 				response_prop.value.data.len = key_len;
-				response_prop.value.value.data = g_strndup(request_prop.value.value.data, request_prop.value.value.len);
+				response_prop.value.value.data = request_prop.value.value.data;
 				response_prop.value.value.len = request_prop.value.value.len;
 
 				int rc = MQTTProperties_add(properties, &response_prop);
@@ -1127,7 +1135,7 @@ void janus_mqtt_client_connection_lost(void *context, char *cause) {
 }
 
 int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicLen, MQTTAsync_message *message) {
-	int ret = FALSE;
+	int ret = TRUE;
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
 	gchar *topic = g_strndup(topicName, topicLen);
 	const gboolean janus = janus_mqtt_api_enabled_ && !strcasecmp(topic, ctx->subscribe.topic);
@@ -1143,9 +1151,10 @@ int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicL
 #ifdef MQTTVERSION_5
 		if(ctx->connect.mqtt_version == MQTTVERSION_5 && !admin) {
 			/* Save MQTT 5 properties copy to the state */
-			const gchar *transaction = g_strdup(json_string_value(json_object_get(root, "transaction")));
+			const gchar *transaction = json_string_value(json_object_get(root, "transaction"));
 			if(transaction == NULL) {
 				JANUS_LOG(LOG_WARN, "`transaction` is missing or not a string\n");
+				if(root) json_decref(root);
 				goto done;
 			}
 
@@ -1157,7 +1166,7 @@ int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicL
 			state->created_at = janus_get_monotonic_time();
 
 			g_rw_lock_writer_lock(&janus_mqtt_transaction_states_lock);
-			g_hash_table_insert(janus_mqtt_transaction_states, (gpointer) transaction, (gpointer) state);
+			g_hash_table_insert(janus_mqtt_transaction_states, g_strdup(transaction), (gpointer) state);
 			g_rw_lock_writer_unlock(&janus_mqtt_transaction_states_lock);
 		}
 #endif
@@ -1529,7 +1538,7 @@ int janus_mqtt_client_publish_message5(janus_mqtt_context *ctx, char *payload, g
 	msg.payloadlen = strlen(payload);
 	msg.qos = ctx->publish.qos;
 	msg.retained = FALSE;
-	msg.properties = MQTTProperties_copy(properties);
+	if(properties != NULL) msg.properties = *properties;
 
 	char *topic;
 	if(custom_topic) {
