@@ -32,7 +32,7 @@ var myColor = "white";
 var myFont = "20pt Calibri";
 var myX = 15, myY = 460;
 // As the "watermark", we'll use a smaller version of the Janus logo
-var logoUrl = "./janus-logo-small.png";
+var logoUrl = "../janus-logo-small.png";
 var logoW = 340, logoH = 110;
 var logoS = 0.4;
 var logoX = 640 - logoW*logoS - 15, logoY = 15;
@@ -412,6 +412,7 @@ function createCanvas() {
 					canvasTracks.push({ type: 'audio', capture: canvasStream.getAudioTracks()[0], recv: true });
 				if(canvasStream.getVideoTracks().length > 0)
 					canvasTracks.push({ type: 'video', capture: canvasStream.getVideoTracks()[0], recv: true });
+				Janus.warn(canvasTracks);
 				echotest.createOffer(
 					{
 						tracks: canvasTracks,

@@ -360,9 +360,9 @@ static void janus_duktape_session_free(const janus_refcount *session_ref) {
 	janus_recorder_destroy(session->arc);
 	janus_recorder_destroy(session->vrc);
 	janus_recorder_destroy(session->drc);
-	janus_mutex_destroy(&session->rid_mutex);
-	janus_mutex_destroy(&session->recipients_mutex);
 	janus_mutex_destroy(&session->rec_mutex);
+	janus_mutex_destroy(&session->recipients_mutex);
+	janus_mutex_destroy(&session->rid_mutex);
 	janus_rtp_simulcasting_cleanup(NULL, NULL, session->rid, NULL);
 	g_free(session);
 }
@@ -413,6 +413,7 @@ static void *janus_duktape_async_event_helper(void *data) {
 	g_free(asev->transaction);
 	janus_refcount_decrease(&asev->session->ref);
 	g_free(asev);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
@@ -1842,11 +1843,12 @@ int janus_duktape_get_version(void) {
 	/* Check if the JS script wants to override this method and return info itself */
 	if(has_get_version) {
 		/* Yep, pass the request to the JS script and return the info */
+		janus_mutex_lock(&duktape_mutex);
 		if(duktape_script_version != -1) {
 			/* Unless we asked already */
+			janus_mutex_unlock(&duktape_mutex);
 			return duktape_script_version;
 		}
-		janus_mutex_lock(&duktape_mutex);
 		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
 		duk_get_global_string(t, "getVersion");
@@ -1873,11 +1875,12 @@ const char *janus_duktape_get_version_string(void) {
 	/* Check if the JS script wants to override this method and return info itself */
 	if(has_get_version_string) {
 		/* Yep, pass the request to the JS script and return the info */
+		janus_mutex_lock(&duktape_mutex);
 		if(duktape_script_version_string != NULL) {
 			/* Unless we asked already */
+			janus_mutex_unlock(&duktape_mutex);
 			return duktape_script_version_string;
 		}
-		janus_mutex_lock(&duktape_mutex);
 		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
 		duk_get_global_string(t, "getVersionString");
@@ -1906,11 +1909,12 @@ const char *janus_duktape_get_description(void) {
 	/* Check if the JS script wants to override this method and return info itself */
 	if(has_get_description) {
 		/* Yep, pass the request to the JS script and return the info */
+		janus_mutex_lock(&duktape_mutex);
 		if(duktape_script_description != NULL) {
 			/* Unless we asked already */
+			janus_mutex_unlock(&duktape_mutex);
 			return duktape_script_description;
 		}
-		janus_mutex_lock(&duktape_mutex);
 		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
 		duk_get_global_string(t, "getDescription");
@@ -1939,11 +1943,12 @@ const char *janus_duktape_get_name(void) {
 	/* Check if the JS script wants to override this method and return info itself */
 	if(has_get_name) {
 		/* Yep, pass the request to the JS script and return the info */
+		janus_mutex_lock(&duktape_mutex);
 		if(duktape_script_name != NULL) {
 			/* Unless we asked already */
+			janus_mutex_unlock(&duktape_mutex);
 			return duktape_script_name;
 		}
-		janus_mutex_lock(&duktape_mutex);
 		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
 		duk_get_global_string(t, "getName");
@@ -1972,11 +1977,12 @@ const char *janus_duktape_get_author(void) {
 	/* Check if the JS script wants to override this method and return info itself */
 	if(has_get_author) {
 		/* Yep, pass the request to the JS script and return the info */
+		janus_mutex_lock(&duktape_mutex);
 		if(duktape_script_author != NULL) {
 			/* Unless we asked already */
+			janus_mutex_unlock(&duktape_mutex);
 			return duktape_script_author;
 		}
-		janus_mutex_lock(&duktape_mutex);
 		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
 		duk_get_global_string(t, "getAuthor");
@@ -2005,11 +2011,12 @@ const char *janus_duktape_get_package(void) {
 	/* Check if the JS script wants to override this method and return info itself */
 	if(has_get_package) {
 		/* Yep, pass the request to the JS script and return the info */
+		janus_mutex_lock(&duktape_mutex);
 		if(duktape_script_package != NULL) {
 			/* Unless we asked already */
+			janus_mutex_unlock(&duktape_mutex);
 			return duktape_script_package;
 		}
-		janus_mutex_lock(&duktape_mutex);
 		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
 		duk_get_global_string(t, "getPackage");
@@ -2068,6 +2075,8 @@ void janus_duktape_create_session(janus_plugin_session *handle, int *error) {
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
 	session->rid_extmap_id = -1;
 	janus_mutex_init(&session->rid_mutex);
+	janus_mutex_init(&session->recipients_mutex);
+	janus_mutex_init(&session->rec_mutex);
 	session->vcodec = JANUS_VIDEOCODEC_NONE;
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);

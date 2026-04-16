@@ -150,7 +150,7 @@ static void janus_pp_handle_signal(int signum) {
 
 /* Main Code */
 int main(int argc, char *argv[]) {
-	janus_log_init(FALSE, TRUE, NULL);
+	janus_log_init(FALSE, TRUE, NULL, NULL);
 	atexit(janus_log_destroy);
 
 	JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);

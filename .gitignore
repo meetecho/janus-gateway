@@ -2,6 +2,7 @@ cmdline.c
 cmdline.h
 version.c
 docs/html/
+janus-gateway.pc
 
 janus
 janus-cfgconv
@@ -61,6 +62,8 @@ npm/src
 .deps
 .dirstamp
 
+cov-int
+
 # OS X
 .DS_Store
 
@@ -69,3 +72,4 @@ npm/src
 
 .vscode
 node_modules
+.venv

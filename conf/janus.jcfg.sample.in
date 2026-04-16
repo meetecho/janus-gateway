@@ -14,6 +14,10 @@ general: {
 	#log_to_stdout = false					# Whether the Janus output should be written
 											# to stdout or not (default=true)
 	#log_to_file = "/path/to/janus.log"		# Whether to use a log file or not
+	#log_rotate_sig = "SIGUSR1"				# Signal to handle for log rotation, valid values
+											# are "SIGUSR1" and "SIGHUP".
+											# Default is no setting, which disables the
+											# signal handler for log rotation.
 	debug_level = 4							# Debug/logging level, valid values are 0-7
 	#debug_timestamps = true				# Whether to show a timestamp for each log line
 	#debug_colors = false					# Whether colors should be disabled in the log
@@ -29,6 +33,22 @@ general: {
 											# or not (default=run in foreground)
 	#pid_file = "/path/to/janus.pid"		# PID file to create when Janus has been
 											# started, and to destroy at shutdown
+
+		# This is where you can check, at startup, the limits to how many file
+		# descriptors Janus can open. This has an impact on network sockets,
+		# threads, actual files, and so on. It's an important aspect of configuring
+		# Janus, since if it opens more file descriptors than it is allowed to, it will
+		# crash. This is well explained and addressed in the FAQ on configuring ulimit:
+		#     https://janus.conf.meetecho.com/docs/FAQ.html#ulimit
+		# The 'check_openfiles_limit' property can help ensure you are not caught by surprise,
+		# since depending on how Janus is configured (e.g., with respect to event loops),
+		# the number of PeerConnections/mountpoints, the media topology, etc., the
+		# maximum number of open files may be reached way later than Janus was started,
+		# and catch you by surprise. More precisely, 'check_openfiles_limit' can be used
+		# to ensure the current limit to open file descriptors is at least the value
+		# you want: if not, Janus will immediately shutdown, allowing you to go and fix
+		# that externally (e.g., via ulimit, before starting Janus, as explained in the FAQ).
+	#check_openfiles_limit = 500000
 
 		# There are different ways you can authenticate the Janus and Admin APIs
 	#api_secret = "janusrocks"		# String that all Janus requests must contain
@@ -281,12 +301,11 @@ media: {
 # sticking to 0.1.18 until the issue is addressed upstream). Finally,
 # you can also enable ICE-TCP support (beware that this may lead to problems
 # if you do not enable ICE Lite as well), choose which interfaces should
-# be used for gathering candidates, and enable or disable the
-# internal libnice debugging, if needed.
+# be used for gathering candidates.
 nat: {
 	#stun_server = "stun.voip.eutelia.it"
 	#stun_port = 3478
-	nice_debug = false
+	#nice_debug = "nice_debug option is NOT SUPPORTED ANYMORE! Please set NICE_DEBUG and G_MESSAGES_DEBUG env vars when starting Janus"
 	#full_trickle = true
 	#ice_nomination = "regular"
 	#ice_consent_freshness = true
@@ -453,12 +472,12 @@ loggers: {
 
 # Event handlers allow you to receive live events from Janus happening
 # in core and/or plugins. Since this can require some more resources,
-# the feature is disabled by default. Setting broadcast to yes will
+# the feature is disabled by default. Setting 'broadcast' to 'true' will
 # enable them. You can then choose which of the available event handlers
 # should be loaded or not. Use the 'disable' directive to prevent Janus
 # from loading one or more event handlers: use a comma separated list of
 # file names to identify the event handlers to disable. By default, if
-# broadcast is set to yes all available event handlers are enabled and
+# broadcast is set to 'true' all available event handlers are enabled and
 # loaded at startup. Finally, you can choose how often media statistics
 # (packets sent/received, losses, etc.) should be sent: by default it's
 # once per second (audio and video statistics sent separately), but may
@@ -469,7 +488,7 @@ loggers: {
 # not other media-related events). By default Janus sends single media
 # statistic events per media (audio, video and simulcast layers as separate
 # events): if you'd rather receive a single containing all media stats in a
-# single array, set 'combine_media_stats' to true.
+# single array, set 'combine_media_stats' to 'true'.
 events: {
 	#broadcast = true
 	#combine_media_stats = true

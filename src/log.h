@@ -2,11 +2,11 @@
  * \author   Jay Ridgeway <jayridge@gmail.com>
  * \copyright GNU General Public License v3
  * \brief    Buffered logging (headers)
- * \details  Implementation of a simple buffered logger designed to remove
- * I/O wait from threads that may be sensitive to such delays. Buffers are
- * saved and reused to reduce allocation calls. The logger output can then
- * be printed to stdout and/or a log file. If external loggers are added
- * to the core, the logger output is passed to those as well.
+ * \details   Implementation of a simple buffered logger designed to remove
+ * I/O wait from threads that may be sensitive to such delays. Each time
+ * there's stuff to be written (to stdout, log files, or external loggers),
+ * it's added to an async queue, which is consumed from a dedicated thread
+ * that then actually takes care of I/O.
  *
  * \ingroup core
  * \ref core
@@ -30,11 +30,11 @@ void janus_vprintf(const char *format, ...) G_GNUC_PRINTF(1, 2);
 * @param daemon Whether the Janus is running as a daemon or not
 * @param console Whether the output should be printed on stdout or not
 * @param logfile Log file to save the output to, if any
+* @param loggers Hash table of external loggers registered in the core, if any
 * @returns 0 in case of success, a negative integer otherwise */
-int janus_log_init(gboolean daemon, gboolean console, const char *logfile);
-/*! \brief Method to add a list of external loggers to the log management
- * @param loggers Hash table of external loggers registered in the core */
-void janus_log_set_loggers(GHashTable *loggers);
+int janus_log_init(gboolean daemon, gboolean console, const char *logfile, GHashTable *loggers);
+/*! \brief Reopen log file (log rotation) */
+void janus_log_reload(void);
 /*! \brief Log destruction */
 void janus_log_destroy(void);
 

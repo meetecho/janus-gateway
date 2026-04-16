@@ -143,6 +143,17 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len) {
 				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
 				return ntohl(rtcpfb->media);
 			}
+			case RTCP_PSFB: {
+				/* PSFB, Payload-specific FB message (rfc4585) */
+				if(rtcp->rc == 1) {
+					/* PLI has no FCI data */
+					if (!janus_rtcp_check_fci(rtcp, total, 0))
+						break;
+					janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
+					return ntohl(rtcpfb->media);
+				}
+				break;
+			}
 			default:
 				break;
 		}
@@ -1143,6 +1154,12 @@ gboolean janus_rtcp_has_fir(char *packet, int len) {
 		switch(rtcp->type) {
 			case RTCP_FIR:
 				return TRUE;
+			case RTCP_PSFB: {
+				gint fmt = rtcp->rc;
+				if(fmt == 4)
+					return TRUE;
+				break;
+			}
 			default:
 				break;
 		}
@@ -1189,12 +1206,11 @@ gboolean janus_rtcp_has_pli(char *packet, int len) {
 	return FALSE;
 }
 
-GSList *janus_rtcp_get_nacks(char *packet, int len) {
-	if(packet == NULL || len == 0)
-		return NULL;
+void janus_rtcp_get_nacks(char *packet, int len, GQueue *nacks_queue) {
+	if(packet == NULL || len == 0 || nacks_queue == NULL)
+		return;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	/* FIXME Get list of sequence numbers we should send again */
-	GSList *list = NULL;
+	g_queue_clear(nacks_queue);
 	int total = len;
 	gboolean error = FALSE;
 	while(rtcp) {
@@ -1226,13 +1242,13 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 					for(i=0; i< nacks; i++) {
 						nack = (janus_rtcp_nack *)rtcpfb->fci + i;
 						pid = ntohs(nack->pid);
-						list = g_slist_prepend(list, GUINT_TO_POINTER(pid));
+						g_queue_push_head(nacks_queue, GUINT_TO_POINTER(pid));
 						blp = ntohs(nack->blp);
 						memset(bitmask, 0, 20);
 						for(j=0; j<16; j++) {
 							bitmask[j] = (blp & ( 1 << j )) >> j ? '1' : '0';
 							if((blp & ( 1 << j )) >> j)
-								list = g_slist_prepend(list, GUINT_TO_POINTER(pid+j+1));
+								g_queue_push_head(nacks_queue, GUINT_TO_POINTER(pid+j+1));
 						}
 						bitmask[16] = '\n';
 						JANUS_LOG(LOG_DBG, "[%d] %"SCNu16" / %s\n", i, pid, bitmask);
@@ -1250,12 +1266,8 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 			break;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
-	if (error && list) {
-		g_slist_free(list);
-		list = NULL;
-	}
-	list = g_slist_reverse(list);
-	return list;
+	if(error)
+		g_queue_clear(nacks_queue);
 }
 
 int janus_rtcp_remove_nacks(char *packet, int len) {

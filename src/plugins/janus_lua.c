@@ -360,9 +360,9 @@ static void janus_lua_session_free(const janus_refcount *session_ref) {
 	janus_recorder_destroy(session->arc);
 	janus_recorder_destroy(session->vrc);
 	janus_recorder_destroy(session->drc);
-	janus_mutex_destroy(&session->rid_mutex);
-	janus_mutex_destroy(&session->recipients_mutex);
 	janus_mutex_destroy(&session->rec_mutex);
+	janus_mutex_destroy(&session->recipients_mutex);
+	janus_mutex_destroy(&session->rid_mutex);
 	janus_rtp_simulcasting_cleanup(NULL, NULL, session->rid, NULL);
 	g_free(session);
 }
@@ -413,6 +413,7 @@ static void *janus_lua_async_event_helper(void *data) {
 	g_free(asev->transaction);
 	janus_refcount_decrease(&asev->session->ref);
 	g_free(asev);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
@@ -1611,11 +1612,12 @@ int janus_lua_get_version(void) {
 	/* Check if the Lua script wants to override this method and return info itself */
 	if(has_get_version) {
 		/* Yep, pass the request to the Lua script and return the info */
+		janus_mutex_lock(&lua_mutex);
 		if(lua_script_version != -1) {
 			/* Unless we asked already */
+			janus_mutex_unlock(&lua_mutex);
 			return lua_script_version;
 		}
-		janus_mutex_lock(&lua_mutex);
 		lua_State *t = lua_newthread(lua_state);
 		lua_getglobal(t, "getVersion");
 		lua_call(t, 0, 1);
@@ -1632,11 +1634,12 @@ const char *janus_lua_get_version_string(void) {
 	/* Check if the Lua script wants to override this method and return info itself */
 	if(has_get_version_string) {
 		/* Yep, pass the request to the Lua script and return the info */
+		janus_mutex_lock(&lua_mutex);
 		if(lua_script_version_string != NULL) {
 			/* Unless we asked already */
+			janus_mutex_unlock(&lua_mutex);
 			return lua_script_version_string;
 		}
-		janus_mutex_lock(&lua_mutex);
 		lua_State *t = lua_newthread(lua_state);
 		lua_getglobal(t, "getVersionString");
 		lua_call(t, 0, 1);
@@ -1655,11 +1658,12 @@ const char *janus_lua_get_description(void) {
 	/* Check if the Lua script wants to override this method and return info itself */
 	if(has_get_description) {
 		/* Yep, pass the request to the Lua script and return the info */
+		janus_mutex_lock(&lua_mutex);
 		if(lua_script_description != NULL) {
 			/* Unless we asked already */
+			janus_mutex_unlock(&lua_mutex);
 			return lua_script_description;
 		}
-		janus_mutex_lock(&lua_mutex);
 		lua_State *t = lua_newthread(lua_state);
 		lua_getglobal(t, "getDescription");
 		lua_call(t, 0, 1);
@@ -1678,11 +1682,12 @@ const char *janus_lua_get_name(void) {
 	/* Check if the Lua script wants to override this method and return info itself */
 	if(has_get_name) {
 		/* Yep, pass the request to the Lua script and return the info */
+		janus_mutex_lock(&lua_mutex);
 		if(lua_script_name != NULL) {
 			/* Unless we asked already */
+			janus_mutex_unlock(&lua_mutex);
 			return lua_script_name;
 		}
-		janus_mutex_lock(&lua_mutex);
 		lua_State *t = lua_newthread(lua_state);
 		lua_getglobal(t, "getName");
 		lua_call(t, 0, 1);
@@ -1701,11 +1706,12 @@ const char *janus_lua_get_author(void) {
 	/* Check if the Lua script wants to override this method and return info itself */
 	if(has_get_author) {
 		/* Yep, pass the request to the Lua script and return the info */
+		janus_mutex_lock(&lua_mutex);
 		if(lua_script_author != NULL) {
 			/* Unless we asked already */
+			janus_mutex_unlock(&lua_mutex);
 			return lua_script_author;
 		}
-		janus_mutex_lock(&lua_mutex);
 		lua_State *t = lua_newthread(lua_state);
 		lua_getglobal(t, "getAuthor");
 		lua_call(t, 0, 1);
@@ -1724,11 +1730,12 @@ const char *janus_lua_get_package(void) {
 	/* Check if the Lua script wants to override this method and return info itself */
 	if(has_get_package) {
 		/* Yep, pass the request to the Lua script and return the info */
+		janus_mutex_lock(&lua_mutex);
 		if(lua_script_package != NULL) {
 			/* Unless we asked already */
+			janus_mutex_unlock(&lua_mutex);
 			return lua_script_package;
 		}
-		janus_mutex_lock(&lua_mutex);
 		lua_State *t = lua_newthread(lua_state);
 		lua_getglobal(t, "getPackage");
 		lua_call(t, 0, 1);
@@ -1777,6 +1784,8 @@ void janus_lua_create_session(janus_plugin_session *handle, int *error) {
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
 	session->rid_extmap_id = -1;
 	janus_mutex_init(&session->rid_mutex);
+	janus_mutex_init(&session->recipients_mutex);
+	janus_mutex_init(&session->rec_mutex);
 	session->vcodec = JANUS_VIDEOCODEC_NONE;
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);

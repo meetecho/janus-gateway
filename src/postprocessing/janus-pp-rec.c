@@ -207,7 +207,7 @@ static char *janus_pp_extensions_string(const char **allowed, char *supported, s
 
 /* Main Code */
 int main(int argc, char *argv[]) {
-	janus_log_init(FALSE, TRUE, NULL);
+	janus_log_init(FALSE, TRUE, NULL, NULL);
 	atexit(janus_log_destroy);
 
 	/* Initialize some command line options defaults */
@@ -319,6 +319,8 @@ int main(int argc, char *argv[]) {
 			JANUS_LOG(LOG_INFO, "Video orientation extension ID: %d\n", options.video_orient_extmap_id);
 		if(options.silence_distance > 0)
 			JANUS_LOG(LOG_INFO, "RTP silence suppression distance: %d\n", options.silence_distance);
+		if(options.ignore_rtp_ts)
+			JANUS_LOG(LOG_INFO, "Will ignore RTP timestamps, and use arrival times for timing\n");
 		JANUS_LOG(LOG_INFO, "\n");
 		if(source != NULL)
 			JANUS_LOG(LOG_INFO, "Source file: %s\n", source);
@@ -345,7 +347,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if(options.faststart && strcasecmp(extension, "mp4")) {
-		JANUS_LOG(LOG_ERR, "Faststart only supported for MP4");
+		JANUS_LOG(LOG_ERR, "Faststart only supported for MP4\n");
 		janus_pprec_options_destroy();
 		exit(1);
 	}
@@ -830,7 +832,7 @@ int main(int argc, char *argv[]) {
 			gint64 when = 0;
 			bytes = fread(&when, 1, sizeof(gint64), file);
 			if(bytes < (int)sizeof(gint64)) {
-				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
+				JANUS_LOG(LOG_WARN, "Missing data timestamp header\n");
 				break;
 			}
 			when = ntohll((uint64_t)when);
@@ -922,9 +924,9 @@ int main(int argc, char *argv[]) {
 				rtp_header_len += rtp_read_n;
 			}
 			if(options.audio_level_extmap_id > 0)
-				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, len, options.audio_level_extmap_id, &audiolevel);
+				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, rtp_header_len, options.audio_level_extmap_id, &audiolevel);
 			if(options.video_orient_extmap_id > 0) {
-				janus_pp_rtp_header_extension_parse_video_orientation(prebuffer, len, options.video_orient_extmap_id, &rotation);
+				janus_pp_rtp_header_extension_parse_video_orientation(prebuffer, rtp_header_len, options.video_orient_extmap_id, &rotation);
 				if(rotation != -1 && rotation != last_rotation) {
 					if(!extjson_only)
 						last_rotation = rotation;
@@ -1154,14 +1156,34 @@ int main(int argc, char *argv[]) {
 		rate = 8000;
 	else if(l16 && !l16_48k)
 		rate = 16000;
-	double ts = 0.0, pts = 0.0;
+	double ts = 0.0, pts = 0.0, orig_ts = 0.0;
+	uint64_t orig_rtp_ts = 0, last_rtp_ts = 0, new_rtp_ts = list ? list->ts : 0;
 	while(tmp) {
 		count++;
 		if(!data) {
 			ts = (double)(tmp->ts - list->ts)/(double)rate;
 			pts = (double)tmp->p_ts/1000;
-			JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%.2fs pts=%.2fs\n",
-				tmp->offset, tmp->len, tmp->seq, tmp->ts, ts, pts);
+			if(!options.ignore_rtp_ts) {
+				JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%.2fs pts=%.2fs\n",
+					tmp->offset, tmp->len, tmp->seq, tmp->ts, ts, pts);
+			} else {
+				/* We need to rewrite the timestamps so that they match
+				 * the actual interarrival of packets, all taking into
+				 * account the fact that, for video, we'll need some
+				 * packets to have all the same RTP pseudo-timestamps */
+				orig_rtp_ts = tmp->ts;
+				orig_ts = ts;
+				if(orig_rtp_ts != last_rtp_ts) {
+					/* Calculate a new RTP timestamp */
+					new_rtp_ts = list->ts + ((uint64_t)tmp->p_ts * (rate/1000));
+				}
+				tmp->ts = new_rtp_ts;
+				ts = (double)(tmp->ts - list->ts)/(double)rate;
+				JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64" (orig=%"SCNu64"), time=%.2fs (orig=%.2fs) pts=%.2fs\n",
+					tmp->offset, tmp->len, tmp->seq, tmp->ts, orig_rtp_ts, ts, orig_ts, pts);
+				if(orig_rtp_ts != last_rtp_ts)
+					last_rtp_ts = orig_rtp_ts;
+			}
 		} else {
 			ts = (double)tmp->ts/G_USEC_PER_SEC;
 			JANUS_LOG(LOG_VERB, "[%10lu][%4d] time=%.2fs\n", tmp->offset, tmp->len, ts);
@@ -1243,7 +1265,7 @@ int main(int argc, char *argv[]) {
 	if(extjson_only) {
 		/* Print the extended header and leave */
 		char *info_text = json_dumps(info, JSON_COMPACT | JSON_PRESERVE_ORDER);
-		JANUS_PRINT("%s\n", info_text);
+		JANUS_PRINT("%s\n", info_text ? info_text : "");
 		free(info_text);
 		json_decref(info);
 		g_free(metadata);
@@ -1310,6 +1332,7 @@ int main(int argc, char *argv[]) {
 
 					/* Update current packet ts with new ts */
 					tmp->ts = new_ts;
+					tmp->restamped = 1;
 
 					JANUS_LOG(LOG_WARN, "Timestamp gap detected. Restamping packets from here. Seq: %d\n", tmp->seq);
 					JANUS_LOG(LOG_INFO, "latency=%.2f mavg=%.2f original_ts=%.ld new_ts=%.ld offset=%.ld\n", current_latency, moving_avg_latency, original_ts, tmp->ts, restamping_offset);
@@ -1543,22 +1566,28 @@ int main(int argc, char *argv[]) {
 
 /* Static helper to quickly find the extension data */
 static int janus_pp_rtp_header_extension_find(char *buf, int len, int id,
-		uint8_t *byte, uint32_t *word, char **ref) {
-	if(!buf || len < 12)
+		uint8_t *byte, uint32_t *word, char **ref, uint8_t *idlen) {
+	if(idlen == NULL)
 		return -1;
+	*idlen = 0;
+	if(!buf || len < 12)
+		return -2;
 	janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)buf;
+	if(rtp->version != 2) {
+		return -3;
+	}
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
-	if(rtp->extension) {
+	if(rtp->extension && (len > hlen + (int)sizeof(janus_pp_rtp_header_extension))) {
 		janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(buf+hlen);
 		int extlen = ntohs(ext->length)*4;
 		hlen += 4;
 		if(len > (hlen + extlen)) {
-			/* 1-Byte extension */
 			if(ntohs(ext->type) == 0xBEDE) {
+				/* 1-Byte extension */
 				const uint8_t padding = 0x00, reserved = 0xF;
-				uint8_t extid = 0, idlen;
+				uint8_t extid = 0;
 				int i = 0;
 				while(i < extlen) {
 					extid = (uint8_t)buf[hlen+i] >> 4;
@@ -1568,18 +1597,51 @@ static int janus_pp_rtp_header_extension_find(char *buf, int len, int id,
 						i++;
 						continue;
 					}
-					idlen = ((uint8_t)buf[hlen+i] & 0xF)+1;
-					if(extid == id) {
+					*idlen = ((uint8_t)buf[hlen+i] & 0xF)+1;
+					i++;
+					if(extid == id && ((i+*idlen) <= extlen)) {
 						/* Found! */
 						if(byte)
-							*byte = (uint8_t)buf[hlen+i+1];
-						if(word)
-							*word = ntohl(*(uint32_t *)(buf+hlen+i));
+							*byte = (uint8_t)buf[hlen+i];
+						if(word && *idlen >= 4 && (i+4) < extlen) {
+							memcpy(word, buf+hlen+i, sizeof(uint32_t));
+							*word = ntohl(*word);
+						}
 						if(ref)
 							*ref = &buf[hlen+i];
 						return 0;
 					}
-					i += 1 + idlen;
+					i += *idlen;
+				}
+			} else if(ntohs(ext->type) == 0x1000) {
+				/* 2-Byte extension */
+				const uint8_t padding = 0x00;
+				uint8_t extid = 0;
+				int i = 0;
+				while(i < extlen) {
+					if((extlen-i) < 2)
+						break;
+					extid = buf[hlen+i];
+					if(extid == padding) {
+						i += 2;
+						continue;
+					}
+					i++;
+					*idlen = buf[hlen+i];
+					i++;
+					if(extid == id && ((i+*idlen) <= extlen)) {
+						/* Found! */
+						if(byte)
+							*byte = (uint8_t)buf[hlen+i];
+						if(word && *idlen >= 4 && (i+4) < extlen) {
+							memcpy(word, buf+hlen+i, sizeof(uint32_t));
+							*word = ntohl(*word);
+						}
+						if(ref)
+							*ref = &buf[hlen+i];
+						return 0;
+					}
+					i += *idlen;
 				}
 			}
 			hlen += extlen;
@@ -1589,8 +1651,8 @@ static int janus_pp_rtp_header_extension_find(char *buf, int len, int id,
 }
 
 static int janus_pp_rtp_header_extension_parse_audio_level(char *buf, int len, int id, int *level) {
-	uint8_t byte = 0;
-	if(janus_pp_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL) < 0)
+	uint8_t byte = 0, idlen = 0;
+	if(janus_pp_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL, &idlen) < 0)
 		return -1;
 	/* a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
 	int value = byte & 0x7F;
@@ -1600,8 +1662,8 @@ static int janus_pp_rtp_header_extension_parse_audio_level(char *buf, int len, i
 }
 
 static int janus_pp_rtp_header_extension_parse_video_orientation(char *buf, int len, int id, int *rotation) {
-	uint8_t byte = 0;
-	if(janus_pp_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL) < 0)
+	uint8_t byte = 0, idlen = 0;
+	if(janus_pp_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL, &idlen) < 0)
 		return -1;
 	/* a=extmap:4 urn:3gpp:video-orientation */
 	gboolean r1bit = (byte & 0x02) >> 1;
@@ -1652,8 +1714,8 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 		exit_status = -1;
 	} else {
 		context->target_ts = 0;
-		/* Do not execute analysis for out of order packets or multi-packets frame */
-		if (context->last_seq == context->prev_seq + 1 && context->last_ts != context->prev_ts) {
+		/* Do not execute analysis for out of order packets or multi-packets frame or if pts < start_time */
+		if (context->last_seq == context->prev_seq + 1 && context->last_ts != context->prev_ts && pts >= context->start_time) {
 			/* Evaluate the local RTP timestamp according to the local clock */
 			guint64 expected_ts = ((pts - context->start_time) * akhz) + context->start_ts;
 			/* Evaluate current delay */

@@ -91,10 +91,10 @@ static int compression = 6; /* Z_DEFAULT_COMPRESSION */
 static volatile gint initialized = 0, stopping = 0;
 static GThread *handler_thread;
 static void *janus_gelfevh_handler(void *data);
-static janus_mutex evh_mutex;
+static janus_mutex evh_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* JSON serialization options */
-static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+static size_t json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 
 /* Queue of events to handle */
 static GAsyncQueue *events = NULL;
@@ -201,10 +201,10 @@ static int janus_gelfevh_send(char *message) {
 	if(transport == JANUS_GELFEVH_SOCKET_TYPE_TCP) {
 		/* TCP */
 		int out_bytes = 0;
-		int length = strlen(message);
+		int length = strlen(message) + 1;
 		char *buffer = message;
 		while(length > 0) {
-			out_bytes = send(sockfd, buffer, length + 1, 0);
+			out_bytes = send(sockfd, buffer, length, 0);
 			if(out_bytes <= 0) {
 				JANUS_LOG(LOG_WARN, "Sending TCP message failed, dropping event: %d (%s)\n", errno, g_strerror(errno));
 				close(sockfd);
@@ -384,7 +384,6 @@ done:
 
 	/* Initialize the events queue */
 	events = g_async_queue_new_full((GDestroyNotify) janus_gelfevh_event_free);
-	janus_mutex_init(&evh_mutex);
 
 	g_atomic_int_set(&initialized, 1);
 

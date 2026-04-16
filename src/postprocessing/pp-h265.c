@@ -154,9 +154,11 @@ static uint32_t janus_pp_h265_eg_decode(uint8_t *base, uint32_t *offset) {
 	while(janus_pp_h265_eg_getbit(base, (*offset)++) == 0)
 		zeros++;
 	uint32_t res = 1 << zeros;
-	int32_t i = 0;
-	for(i=zeros-1; i>=0; i--) {
-		res |= janus_pp_h265_eg_getbit(base, (*offset)++) << i;
+	if(zeros > 0) {
+		int32_t i = 0;
+		for(i=zeros-1; i>=0; i--) {
+			res |= janus_pp_h265_eg_getbit(base, (*offset)++) << i;
+		}
 	}
 	return res-1;
 }
@@ -636,10 +638,10 @@ void janus_pp_h265_close(void) {
 		av_write_trailer(fctx);
 #ifdef USE_CODECPAR
 	if(vEncoder != NULL)
-		avcodec_close(vEncoder);
+		avcodec_free_context(&vEncoder);
 #else
 	if(vStream != NULL && vStream->codec != NULL)
-		avcodec_close(vStream->codec);
+		avcodec_free_context(&(vStream->codec));
 #endif
 		avio_close(fctx->pb);
 		avformat_free_context(fctx);

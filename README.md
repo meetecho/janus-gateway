@@ -99,17 +99,13 @@ If you want to make use of BoringSSL instead of OpenSSL (e.g., because you want 
 	# Build
 	mkdir -p build
 	cd build
-	cmake -DCMAKE_CXX_FLAGS="-lrt" ..
+	cmake -DCMAKE_INSTALL_PREFIX=/opt/boringssl -DCMAKE_CXX_FLAGS="-lrt" ..
 	make
-	cd ..
-	# Install
-	sudo mkdir -p /opt/boringssl
-	sudo cp -R include /opt/boringssl/
-	sudo mkdir -p /opt/boringssl/lib
-	sudo cp build/ssl/libssl.a /opt/boringssl/lib/
-	sudo cp build/crypto/libcrypto.a /opt/boringssl/lib/
+	sudo make install
 
 Once the library is installed, you'll have to pass an additional `--enable-boringssl` flag to the configure script, as by default Janus will be built assuming OpenSSL will be used. By default, Janus expects BoringSSL to be installed in `/opt/boringssl` -- if it's installed in another location, pass the path to the configure script as such: `--enable-boringssl=/path/to/boringssl` If you were using OpenSSL and want to switch to BoringSSL, make sure you also do a `make clean` in the Janus folder before compiling with the new BoringSSL support. If you enabled BoringSSL support and also want Janus to detect and react to DTLS timeouts with faster retransmissions, then pass `--enable-dtls-settimeout` to the configure script too.
+
+* *Note:* as explained in [this issue](https://github.com/meetecho/janus-gateway/issues/3456), building Janus with more recent versions of BoringSSL may require you to pass a `CCLD=c++` for any `make` command to build Janus itself.
 
 For what concerns usrsctp, which is needed for Data Channels support, it is usually not available in repositories, so if you're interested in them (support is optional) you'll have to install it manually. It is a pretty easy and standard process:
 
@@ -289,8 +285,6 @@ or on the command line:
                                   (experimental)  (default=off)
 	-O, --ipv6-link-local         Whether IPv6 link-local candidates should be
                                   gathered as well  (default=off)
-	-l, --libnice-debug           Whether to enable libnice debugging or not
-                                  (default=off)
 	-f, --full-trickle            Do full-trickle instead of half-trickle
                                   (default=off)
 	-I, --ice-lite                Whether to enable the ICE Lite mode or not
