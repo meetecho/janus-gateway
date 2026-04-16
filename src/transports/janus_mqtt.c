@@ -870,7 +870,7 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 	if(ctx->connect.mqtt_version == MQTTVERSION_5) {
 		char *response_topic = NULL;
 		MQTTProperties properties = MQTTProperties_initializer;
-		char *transaction = json_string_value(json_object_get(message, "transaction"));
+		const char *transaction = json_string_value(json_object_get(message, "transaction"));
 		janus_mqtt_transaction_state *state = NULL;
 
 		if(transaction != NULL) {
