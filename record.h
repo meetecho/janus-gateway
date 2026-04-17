@@ -73,6 +73,8 @@ typedef struct janus_recorder {
 	volatile gint destroyed;
 	/*! \brief Reference counter for this instance */
 	janus_refcount ref;
+	/*! \brief Used to flush the page cache every n packets */
+	int unflushed_count;
 } janus_recorder;
 
 /*! \brief Initialize the recorder code
