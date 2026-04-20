@@ -3354,6 +3354,8 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 #endif
 	}
 	json_object_set_new(c, "dtls", d);
+	if(g_atomic_int_get(&component->too_large) > 0)
+		json_object_set_new(c, "too-large", json_integer(g_atomic_int_get(&component->too_large)));
 	json_object_set_new(c, "in_stats", in_stats);
 	json_object_set_new(c, "out_stats", out_stats);
 	return c;

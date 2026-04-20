@@ -2542,7 +2542,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		/* FIXME Is this overly strict? We're basically always going to be bound
 		 * by the MTU, are these scenarios where this might not need to be true?
 		 * As it is, this check helps protecting some assumptions in SIP/NoSIP plugins */
-		JANUS_LOG(LOG_WARN, "[%"SCNu64"] RTP/RTCP packet too large (%u bytes)\n", handle->handle_id, len);
+		g_atomic_int_inc(&component->too_large);
+		JANUS_LOG(LOG_DBG, "[%"SCNu64"] RTP/RTCP packet too large (%u bytes)\n", handle->handle_id, len);
 		return;
 	}
 	if(janus_is_rtp(buf, len)) {
