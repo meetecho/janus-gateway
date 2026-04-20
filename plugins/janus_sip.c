@@ -1922,14 +1922,25 @@ static void janus_sip_parse_custom_headers(json_t *root, char *custom_headers, s
 			void *iter = json_object_iter(headers);
 			while(iter != NULL) {
 				key = json_object_iter_key(iter);
+				if(strchr(key, '\r') || strchr(key, '\n')) {
+					JANUS_LOG(LOG_WARN, "Skipping header '%s': header name contains CR and/or LF\n", key);
+					iter = json_object_iter_next(headers, iter);
+					continue;
+				}
 				value = json_object_get(headers, key);
 				if(value == NULL || !json_is_string(value)) {
 					JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
 					iter = json_object_iter_next(headers, iter);
 					continue;
 				}
+				const char *value_str = json_string_value(value);
+				if(strchr(value_str, '\r') || strchr(value_str, '\n')) {
+					JANUS_LOG(LOG_WARN, "Skipping header '%s': value contains CR and/or LF\n", key);
+					iter = json_object_iter_next(headers, iter);
+					continue;
+				}
 				char h[2048];
-				g_snprintf(h, sizeof(h), "%s: %s", key, json_string_value(value));
+				g_snprintf(h, sizeof(h), "%s: %s", key, value_str);
 				JANUS_LOG(LOG_VERB, "Adding custom header, %s\n", h);
 				janus_strlcat(custom_headers, h, size - 2);
 				janus_strlcat(custom_headers, "\r\n", size);

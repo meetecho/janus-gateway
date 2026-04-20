@@ -1709,6 +1709,18 @@ static void janus_streaming_parse_sprop(janus_streaming_rtp_source *source, char
 	}
 }
 
+/* Helper method to check if a file has a specific extension */
+static gboolean janus_streaming_check_extension(const char *filename, const char *extension) {
+	if(filename == NULL || extension == NULL)
+		return FALSE;
+	size_t flen = strlen(filename);
+	size_t elen = strlen(extension);
+	if(flen == 0 || elen == 0 || flen < elen)
+		return FALSE;
+	const char *suffix = filename + flen - elen;
+	return (strstr(suffix, extension) == suffix);
+}
+
 /* Error codes */
 #define JANUS_STREAMING_ERROR_NO_MESSAGE			450
 #define JANUS_STREAMING_ERROR_INVALID_JSON			451
@@ -2176,11 +2188,19 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					cl = cl->next;
 					continue;
 				}
+				if(strstr(file->value, "../") != NULL) {
+					JANUS_LOG(LOG_ERR, "Can't add 'live' mountpoint '%s', can't use relative paths\n", cat->name);
+					cl = cl->next;
+					continue;
+				}
 #ifdef HAVE_LIBOGG
-				if(!strstr(file->value, ".opus") && !strstr(file->value, ".alaw") && !strstr(file->value, ".mulaw")) {
+				if(!janus_streaming_check_extension(file->value, ".opus") &&
+						!janus_streaming_check_extension(file->value, ".alaw") &&
+						!janus_streaming_check_extension(file->value, ".mulaw")) {
 					JANUS_LOG(LOG_ERR, "Can't add 'live' mountpoint '%s', unsupported format (we only support Opus and raw mu-Law/a-Law files right now)\n", cat->name);
 #else
-				if(!strstr(file->value, ".alaw") && !strstr(file->value, ".mulaw")) {
+				if(!janus_streaming_check_extension(file->value, ".alaw") &&
+						!strstr(file->janus_streaming_check_extension, ".mulaw")) {
 					JANUS_LOG(LOG_ERR, "Can't add 'live' mountpoint '%s', unsupported format (we only support raw mu-Law and a-Law files right now)\n", cat->name);
 #endif
 					cl = cl->next;
@@ -2243,11 +2263,19 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					cl = cl->next;
 					continue;
 				}
+				if(strstr(file->value, "../") != NULL) {
+					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' mountpoint '%s', can't use relative paths\n", cat->name);
+					cl = cl->next;
+					continue;
+				}
 #ifdef HAVE_LIBOGG
-				if(!strstr(file->value, ".opus") && !strstr(file->value, ".alaw") && !strstr(file->value, ".mulaw")) {
+				if(!janus_streaming_check_extension(file->value, ".opus") &&
+						!janus_streaming_check_extension(file->value, ".alaw") &&
+						!janus_streaming_check_extension(file->value, ".mulaw")) {
 					JANUS_LOG(LOG_ERR, "Can't add 'live' mountpoint '%s', unsupported format (we only support Opus and raw mu-Law/a-Law files right now)\n", cat->name);
 #else
-				if(!strstr(file->value, ".alaw") && !strstr(file->value, ".mulaw")) {
+				if(!janus_streaming_check_extension(file->value, ".alaw") &&
+						!janus_streaming_check_extension(file->value, ".mulaw")) {
 					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' mountpoint '%s', unsupported format (we only support raw mu-Law and a-Law files right now)\n", cat->name);
 #endif
 					cl = cl->next;
@@ -3281,11 +3309,23 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				goto prepare_response;
 			}
 			char *filename = (char *)json_string_value(file);
+			if(strstr(filename, "../") != NULL) {
+				JANUS_LOG(LOG_ERR, "Can't add 'live' stream, can't use relative paths\n");
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				g_snprintf(error_cause, 512, "Can't add 'live' stream, can't use relative paths");
+				janus_mutex_lock(&mountpoints_mutex);
+				g_hash_table_remove(mountpoints_temp, string_ids ? (gpointer)mpid_str : (gpointer)&mpid);
+				janus_mutex_unlock(&mountpoints_mutex);
+				goto prepare_response;
+			}
 #ifdef HAVE_LIBOGG
-			if(!strstr(filename, ".opus") && !strstr(filename, ".alaw") && !strstr(filename, ".mulaw")) {
+			if(!janus_streaming_check_extension(filename, ".opus") &&
+					!janus_streaming_check_extension(filename, ".alaw") &&
+					!janus_streaming_check_extension(filename, ".mulaw")) {
 				JANUS_LOG(LOG_ERR, "Can't add 'live' stream, unsupported format (we only support Opus and raw mu-Law/a-Law files right now)\n");
 #else
-			if(!strstr(filename, ".alaw") && !strstr(filename, ".mulaw")) {
+			if(!janus_streaming_check_extension(filename, ".alaw") &&
+					!janus_streaming_check_extension(filename, ".mulaw")) {
 				JANUS_LOG(LOG_ERR, "Can't add 'live' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
 #endif
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
@@ -3365,11 +3405,23 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				goto prepare_response;
 			}
 			char *filename = (char *)json_string_value(file);
+			if(strstr(filename, "../") != NULL) {
+				JANUS_LOG(LOG_ERR, "Can't add 'live' stream, can't use relative paths\n");
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				g_snprintf(error_cause, 512, "Can't add 'live' stream, can't use relative paths");
+				janus_mutex_lock(&mountpoints_mutex);
+				g_hash_table_remove(mountpoints_temp, string_ids ? (gpointer)mpid_str : (gpointer)&mpid);
+				janus_mutex_unlock(&mountpoints_mutex);
+				goto prepare_response;
+			}
 #ifdef HAVE_LIBOGG
-			if(!strstr(filename, ".opus") && !strstr(filename, ".alaw") && !strstr(filename, ".mulaw")) {
+			if(!janus_streaming_check_extension(filename, ".opus") &&
+					!janus_streaming_check_extension(filename, ".alaw") &&
+					!janus_streaming_check_extension(filename, ".mulaw")) {
 				JANUS_LOG(LOG_ERR, "Can't add 'live' stream, unsupported format (we only support Opus and raw mu-Law/a-Law files right now)\n");
 #else
-			if(!strstr(filename, ".alaw") && !strstr(filename, ".mulaw")) {
+			if(!janus_streaming_check_extension(filename, ".alaw") &&
+					!janus_streaming_check_extension(filename, ".mulaw")) {
 				JANUS_LOG(LOG_ERR, "Can't add 'live' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
 #endif
 				JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
@@ -6858,10 +6910,13 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	}
 	/* TODO We should support something more than raw a-Law and mu-Law streams... */
 #ifdef HAVE_LIBOGG
-	if(!strstr(filename, ".opus") && !strstr(filename, ".alaw") && !strstr(filename, ".mulaw")) {
+	if(!janus_streaming_check_extension(filename, ".opus") &&
+			!janus_streaming_check_extension(filename, ".alaw") &&
+			!janus_streaming_check_extension(filename, ".mulaw")) {
 		JANUS_LOG(LOG_ERR, "Can't add 'file' stream, unsupported format (we only support Opus and raw mu-Law/a-Law files right now)\n");
 #else
-	if(!strstr(filename, ".alaw") && !strstr(filename, ".mulaw")) {
+	if(!janus_streaming_check_extension(filename, ".alaw") &&
+			!janus_streaming_check_extension(filename, ".mulaw")) {
 		JANUS_LOG(LOG_ERR, "Can't add 'file' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
 #endif
 		janus_mutex_lock(&mountpoints_mutex);
@@ -6870,7 +6925,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 		return NULL;
 	}
 #ifdef HAVE_LIBOGG
-	if(strstr(filename, ".opus") && (artpmap == NULL || strstr(artpmap, "opus/48000") == NULL)) {
+	if(janus_streaming_check_extension(filename, ".opus") && (artpmap == NULL || strstr(artpmap, "opus/48000") == NULL)) {
 		JANUS_LOG(LOG_ERR, "Can't add 'file' stream, opus file is not associated with an opus rtpmap\n");
 		janus_mutex_lock(&mountpoints_mutex);
 		g_hash_table_remove(mountpoints_temp, &id);
@@ -6909,14 +6964,14 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	file_source_source->filename = g_strdup(filename);
 	file_source->source = file_source_source;
 	file_source->source_destroy = (GDestroyNotify)janus_streaming_file_source_free;
-	if(strstr(filename, ".opus")) {
+	if(janus_streaming_check_extension(filename, ".opus")) {
 		file_source_source->opus = TRUE;
 		file_source->codecs.audio_pt = acodec;
 		file_source->codecs.audio_rtpmap = g_strdup(artpmap);
 		file_source->codecs.audio_fmtp = afmtp ? g_strdup(afmtp) : NULL;
 	} else {
-		file_source->codecs.audio_pt = strstr(filename, ".alaw") ? 8 : 0;
-		file_source->codecs.audio_rtpmap = g_strdup(strstr(filename, ".alaw") ? "PCMA/8000" : "PCMU/8000");
+		file_source->codecs.audio_pt = janus_streaming_check_extension(filename, ".alaw") ? 8 : 0;
+		file_source->codecs.audio_rtpmap = g_strdup(janus_streaming_check_extension(filename, ".alaw") ? "PCMA/8000" : "PCMU/8000");
 	}
 	file_source->codecs.video_pt = -1;	/* FIXME We don't support video for this type yet */
 	file_source->codecs.video_rtpmap = NULL;
