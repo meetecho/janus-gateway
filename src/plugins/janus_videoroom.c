@@ -8648,6 +8648,11 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 		 * now subscribe; if this is a subscriber, instead, ask the publisher a FIR */
 		if(session->participant_type == janus_videoroom_p_type_publisher) {
 			janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
+			if(participant == NULL) {
+				/* No publisher instance? Shouldn't happen at this stage */
+				janus_refcount_decrease(&session->ref);
+				return;
+			}
 			/* Notify all other participants that there's a new boy in town */
 			janus_videoroom *room = participant->room;
 			if(room && !g_atomic_int_get(&room->destroyed)) {
@@ -9342,6 +9347,11 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
 		janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
+		if(participant == NULL) {
+			/* No cleanup needed */
+			g_atomic_int_set(&session->hangingup, 0);
+			return;
+		}
 		/* Get rid of the recorders, if available */
 		janus_mutex_lock(&participant->rec_mutex);
 		g_free(participant->recording_base);
@@ -13448,7 +13458,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* If we got here, update the RTP header and send the packet */
 			janus_rtp_header_update(packet->data, &stream->context, TRUE, 0);
 			char vp8pd[6];
-			if(ps->vcodec == JANUS_VIDEOCODEC_VP8) {
+			if(ps->vcodec == JANUS_VIDEOCODEC_VP8 && plen >= (int)sizeof(vp8pd)) {
 				/* For VP8, we save the original payload descriptor, to restore it after */
 				memcpy(vp8pd, payload, sizeof(vp8pd));
 				janus_vp8_simulcast_descriptor_update(payload, plen, &stream->vp8_context,
@@ -13467,7 +13477,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* Restore the timestamp and sequence number to what the publisher set them to */
 			packet->data->timestamp = htonl(packet->timestamp);
 			packet->data->seq_number = htons(packet->seq_number);
-			if(ps->vcodec == JANUS_VIDEOCODEC_VP8) {
+			if(ps->vcodec == JANUS_VIDEOCODEC_VP8 && plen >= (int)sizeof(vp8pd)) {
 				/* Restore the original payload descriptor as well, as it will be needed by the next viewer */
 				memcpy(payload, vp8pd, sizeof(vp8pd));
 			}

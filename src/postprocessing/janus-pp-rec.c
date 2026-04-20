@@ -482,6 +482,12 @@ int main(int argc, char *argv[]) {
 			offset += 2;
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
+				if(len >= sizeof(prebuffer)) {
+					JANUS_LOG(LOG_FATAL, "JSON header too large (%d bytes)\n", len);
+					json_decref(info);
+					janus_pprec_options_destroy();
+					exit(1);
+				}
 				bytes = fread(prebuffer, sizeof(char), len, file);
 				parsed_header = TRUE;
 				prebuffer[len] = '\0';
@@ -914,6 +920,10 @@ int main(int argc, char *argv[]) {
 			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=0x%"PRIX16", length=%"SCNu16")\n",
 				ntohs(ext->type), ntohs(ext->length));
 			rtp_read_n = ntohs(ext->length)*4;
+			if(rtp_header_len + rtp_read_n >= (int)sizeof(prebuffer)) {
+				JANUS_LOG(LOG_WARN, "RTP extension too large (%d bytes), skipping packet\n", rtp_read_n);
+				break;
+			}
 			skip += 4 + rtp_read_n;
 			bytes = fread(prebuffer+rtp_header_len, sizeof(char), rtp_read_n, file);
 			if(bytes < rtp_read_n) {

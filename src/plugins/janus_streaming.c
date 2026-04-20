@@ -10644,7 +10644,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				/* If we got here, update the RTP header and send the packet */
 				janus_rtp_header_update(packet->data, &s->context, TRUE, 0);
 				char vp8pd[6];
-				if(packet->codec == JANUS_VIDEOCODEC_VP8) {
+				if(packet->codec == JANUS_VIDEOCODEC_VP8 && plen >= (int)sizeof(vp8pd)) {
 					/* For VP8, we save the original payload descriptor, to restore it after */
 					memcpy(vp8pd, payload, sizeof(vp8pd));
 					janus_vp8_simulcast_descriptor_update(payload, plen, &s->vp8_context,
@@ -10672,7 +10672,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				packet->data->type = packet->ptype;
 				packet->data->timestamp = htonl(packet->timestamp);
 				packet->data->seq_number = htons(packet->seq_number);
-				if(packet->codec == JANUS_VIDEOCODEC_VP8) {
+				if(packet->codec == JANUS_VIDEOCODEC_VP8 && plen >= (int)sizeof(vp8pd)) {
 					/* Restore the original payload descriptor as well, as it will be needed by the next viewer */
 					memcpy(payload, vp8pd, sizeof(vp8pd));
 				}
