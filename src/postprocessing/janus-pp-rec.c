@@ -484,7 +484,6 @@ int main(int argc, char *argv[]) {
 				/* This is the info header */
 				if(len >= sizeof(prebuffer)) {
 					JANUS_LOG(LOG_FATAL, "JSON header too large (%d bytes)\n", len);
-					json_decref(info);
 					janus_pprec_options_destroy();
 					exit(1);
 				}
