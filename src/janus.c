@@ -3285,6 +3285,8 @@ json_t *janus_admin_peerconnection_summary(janus_ice_peerconnection *pc) {
 	if(pc->transport_wide_cc_ext_id >= 0)
 		json_object_set_new(bwe, "twcc-ext-id", json_integer(pc->transport_wide_cc_ext_id));
 	json_object_set_new(w, "bwe", bwe);
+	if(g_atomic_int_get(&pc->too_large) > 0)
+		json_object_set_new(w, "too-large", json_integer(g_atomic_int_get(&pc->too_large)));
 	json_t *media = json_object();
 	/* Iterate on all media */
 	janus_ice_peerconnection_medium *medium = NULL;
