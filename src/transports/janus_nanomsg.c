@@ -94,7 +94,7 @@ static janus_transport_callbacks *gateway = NULL;
 static gboolean notify_events = TRUE;
 
 /* JSON serialization options */
-static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+static size_t json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 
 #define BUFFER_SIZE		8192
 
@@ -176,8 +176,8 @@ int janus_nanomsg_init(janus_transport_callbacks *callback, const char *config_p
 				/* Compact, so no spaces between separators */
 				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 			} else {
-				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
-				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (compact)\n", item->value);
+				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 			}
 		}
 

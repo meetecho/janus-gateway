@@ -107,7 +107,7 @@ static volatile gint initialized = 0, stopping = 0;
 #define JANUS_MQTTEVH_DEFAULT_WILL_QOS	 			0
 #define JANUS_MQTTEVH_DEFAULT_BASETOPIC	 			"/janus/events"
 #define JANUS_MQTTEVH_DEFAULT_MQTTURL				"tcp://localhost:1883"
-#define JANUS_MQTTEVH_DEFAULT_JSON_FORMAT			JSON_INDENT(3) | JSON_PRESERVE_ORDER
+#define JANUS_MQTTEVH_DEFAULT_JSON_FORMAT			JSON_COMPACT | JSON_PRESERVE_ORDER
 #define JANUS_MQTTEVH_DEFAULT_TLS_ENABLE			FALSE
 #define JANUS_MQTTEVH_DEFAULT_TLS_VERIFY_PEER		FALSE
 #define JANUS_MQTTEVH_DEFAULT_TLS_VERIFY_HOST		FALSE
@@ -790,7 +790,7 @@ static int janus_mqttevh_init(const char *config_path) {
 			/* Compact, so no spaces between separators */
 			json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 		} else {
-			JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", json_item->value);
+			JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (compact)\n", json_item->value);
 			json_format = JANUS_MQTTEVH_DEFAULT_JSON_FORMAT;
 		}
 	}

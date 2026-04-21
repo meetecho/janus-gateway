@@ -100,7 +100,7 @@ static void janus_rabbitmqevh_event_free(json_t *event) {
 }
 
 /* JSON serialization options */
-static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+static size_t json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 
 #define JANUS_RABBITMQEVH_EXCHANGE_TYPE "fanout"
 
@@ -185,8 +185,8 @@ int janus_rabbitmqevh_init(const char *config_path) {
 			/* Compact, so no spaces between separators */
 			json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 		} else {
-			JANUS_LOG(LOG_WARN, "RabbitMQEventHandler: Unsupported JSON format option '%s', using default (indented)\n", item->value);
-			json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			JANUS_LOG(LOG_WARN, "RabbitMQEventHandler: Unsupported JSON format option '%s', using default (compact)\n", item->value);
+			json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 		}
 	}
 
@@ -423,7 +423,7 @@ int janus_rabbitmqevh_connect(void) {
 		}
 	}
 
-	JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: Connected successfully");
+	JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: Connected successfully\n");
 
 	return 0;
 }
