@@ -81,7 +81,7 @@
 		"event" : "generated",
 		"type" : "<offer|answer, depending on the nature of the provided JSEP>",
 		"sdp" : "<barebone SDP content>",
-		"unique_id" : "<unique UUID of this session in this plugin, needed for some requests>
+		"unique_id" : "<unique UUID of this session in this plugin, needed for some requests>"
 	}
 }
 \endverbatim
@@ -111,7 +111,7 @@
 	"result" : {
 		"event" : "processed",
 		"srtp" : "<whether the barebone SDP mandates (sdes_mandatory) or offers (sdes_optional) SRTP support; optional>",
-		"unique_id" : "<unique UUID of this session in this plugin, needed for some requests>
+		"unique_id" : "<unique UUID of this session in this plugin, needed for some requests>"
 	}
 }
 \endverbatim
@@ -205,12 +205,33 @@
  * is relayed out of context, using a specific API that is part of the
  * NoSIP plugin itself. RTP forwarders will need an ongoing call to
  * operate, though, as they'll be associated to existing media streams
- * in an existing call; more specifically, forwarding requests must
- * be performed on the handle that's handling the call that should be
- * the target of its operations, which is why the related requests don't
- * need any identifier (the scope is automatically obtained from the
- * context of the handle). Forwarders that were created while a call
- * was active will automatically be destroyed when the call is hung up
+ * in an existing call. When the call is hung up, all associated
+ * forwarders are automatically destroyed.
+ *
+ * The syntax of RTP forwarding requests changes a bit, depending on
+ * where they're sent. When used within the context of a specific handle
+ * connected to the SIP plugin, they by default address the call that is
+ * managed by the handle itself, meaning that this specific call is
+ * implicitly addressed by context; it is possible to override this by
+ * specifying the \c unique_id of a different handle, though, so that
+ * the RTP forwarding request impacts a different call instead. This
+ * \c unique_id property becomes mandatory when you use the Admin API
+ * to send the request, instead, as in that case there is no session to
+ * derive context from. It's also important to mention that all RTP
+ * forwarding requests are asynchronous when sent using the Janus API
+ * (results are provided in events), while they're synchronous when sent
+ * using the Admin API instead.
+ *
+ * Notice that, in general, all users can create and manage forwarders.
+ * If you want to limit this functionality (and you probably do), you can
+ * configure an admin \c admin_key in the plugin settings. When configured,
+ * all RTP forwarding requests \b MUST include the correct \c admin_key
+ * value in an "admin_key" property, independently of whether Janus or
+ * Admin API are used for the request. An invalud or missing \c admin_key
+ * will result in the request to be rejected. This will allow you to
+ * only allow trusted clients (e.g., a controlled application server)
+ * to use that feature on behalf of users using some custom logic.
+
  *
  * To setup new RTP forwarders, you can use the \c rtp_forward request,
  * which must be formatted as follows:
@@ -218,6 +239,7 @@
 \verbatim
 {
 	"request" : "rtp_forward",
+	"unique_id" : "<if provided, impacts a different session than the one sending the request: optional, but mandatory when used via Admin API>",
 	"streams" : [
 		{
 			"type": "<what we want forward: must be one of audio, video, peer_audio, peer_video>",
@@ -268,13 +290,18 @@
  * The \c stream_id property returned for each forwarder is what will
  * need to be used for managing it, i.e., to destroy it once done.
  *
- * To stop a previously created RTP forwarder and stop it, you can use
- * the \c stop_rtp_forward request, which has to be formatted as follows:
+ * To stop one or more previously created RTP forwarders and stop them,
+ * you can use the \c stop_rtp_forward request, which has to be formatted as follows:
  *
 \verbatim
 {
 	"request" : "stop_rtp_forward",
-	"stream_id" : <unique numeric ID of the RTP forwarder>
+	"unique_id" : "<if provided, impacts a different session than the one sending the request: optional, but mandatory when used via Admin API>",
+	"streams" : [
+		<unique numeric ID of RTP forwarder #1>,
+		<unique numeric ID of RTP forwarder #2>,
+		...
+	]
 }
 \endverbatim
  *
@@ -285,7 +312,7 @@
 	"nosip" : "event",
 	"result" : {
 		"event" : "stop_rtp_forward",
-		"stream_id" : <unique numeric ID, same as request>
+		"streams" : [ .. array of stopped IDs; subset if not all were stopped for any reason .. ]
 	}
 }
 \endverbatim
@@ -296,7 +323,8 @@
  *
 \verbatim
 {
-	"request" : "listforwarders"
+	"request" : "listforwarders",
+	"unique_id" : "<if provided, impacts a different session than the one sending the request: optional, but mandatory when used via Admin API>",
 }
 \endverbatim
  *
@@ -372,6 +400,7 @@ const char *janus_nosip_get_author(void);
 const char *janus_nosip_get_package(void);
 void janus_nosip_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_nosip_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
+json_t *janus_nosip_handle_admin_message(json_t *message);
 void janus_nosip_setup_media(janus_plugin_session *handle);
 void janus_nosip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
 void janus_nosip_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
@@ -395,6 +424,7 @@ static janus_plugin janus_nosip_plugin =
 
 		.create_session = janus_nosip_create_session,
 		.handle_message = janus_nosip_handle_message,
+		.handle_admin_message = janus_nosip_handle_admin_message,
 		.setup_media = janus_nosip_setup_media,
 		.incoming_rtp = janus_nosip_incoming_rtp,
 		.incoming_rtcp = janus_nosip_incoming_rtcp,
@@ -412,6 +442,9 @@ janus_plugin *create(void) {
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
 	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter adminkey_parameters[] = {
+	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter generate_parameters[] = {
 	{"info", JSON_STRING, 0},
@@ -439,6 +472,9 @@ static struct janus_json_parameter keyframe_parameters[] = {
 	{"user", JANUS_JSON_BOOL, 0},
 	{"peer", JANUS_JSON_BOOL, 0}
 };
+static struct janus_json_parameter unique_id_parameters[] = {
+	{"unique_id", JSON_STRING, 0},
+};
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"streams", JANUS_JSON_ARRAY, JANUS_JSON_PARAM_REQUIRED},
 };
@@ -453,7 +489,8 @@ static struct janus_json_parameter rtp_forward_stream_parameters[] = {
 	{"srtp_crypto", JSON_STRING, 0}
 };
 static struct janus_json_parameter stop_rtp_forward_parameters[] = {
-	{"stream_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"stream_id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"streams", JANUS_JSON_ARRAY, 0},
 };
 
 /* Useful stuff */
@@ -461,6 +498,8 @@ static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static gboolean ipv6_disabled = FALSE;
 static janus_callbacks *gateway = NULL;
+
+static char *admin_key = NULL;
 
 static char *local_ip = NULL, *sdp_ip = NULL;
 static janus_network_address janus_network_local_ip = { 0 };
@@ -876,6 +915,7 @@ static void janus_nosip_media_cleanup(janus_nosip_session *session);
 
 /* Error codes */
 #define JANUS_NOSIP_ERROR_UNKNOWN_ERROR			499
+#define JANUS_NOSIP_ERROR_UNAUTHORIZED			490
 #define JANUS_NOSIP_ERROR_NO_MESSAGE			440
 #define JANUS_NOSIP_ERROR_INVALID_JSON			441
 #define JANUS_NOSIP_ERROR_INVALID_REQUEST		442
@@ -888,6 +928,7 @@ static void janus_nosip_media_cleanup(janus_nosip_session *session);
 #define JANUS_NOSIP_ERROR_RECORDING_ERROR		449
 #define JANUS_NOSIP_ERROR_TOO_STRICT			450
 #define JANUS_NOSIP_ERROR_NO_SUCH_STREAM		451
+#define JANUS_NOSIP_ERROR_NO_SUCH_UID			452
 
 
 /* Plugin implementation */
@@ -1026,6 +1067,11 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
+		/* Check if we need an admin key to limit, e.g., RTP forwarding */
+		item = janus_config_get(config, config_general, janus_config_type_item, "admin_key");
+		if(item != NULL && item->value != NULL)
+			admin_key = g_strdup(item->value);
+
 		janus_config_destroy(config);
 	}
 	config = NULL;
@@ -1110,6 +1156,7 @@ void janus_nosip_destroy(void) {
 
 	g_free(local_ip);
 	g_free(sdp_ip);
+	g_free(admin_key);
 
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_NOSIP_NAME);
 }
@@ -1327,6 +1374,451 @@ struct janus_plugin_result *janus_nosip_handle_message(janus_plugin_session *han
 
 	/* All the requests to this plugin are handled asynchronously */
 	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
+}
+
+/* Helper method to process synchronous requests (Admin API only) */
+static json_t *janus_nosip_process_synchronous_request(janus_nosip_session *session, json_t *message) {
+	json_t *request = json_object_get(message, "request");
+	const char *request_text = json_string_value(request);
+
+	/* Parse the message */
+	int error_code = 0;
+	char error_cause[512];
+	json_t *root = message;
+	json_t *response = NULL;
+
+	if(!strcasecmp(request_text, "rtp_forward")) {
+		if(admin_key != NULL) {
+			/* An admin key was specified: make sure it was provided, and that it's valid */
+			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto prepare_response;
+			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+				JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT, JANUS_NOSIP_ERROR_UNAUTHORIZED);
+			if(error_code != 0)
+				goto prepare_response;
+		}
+		JANUS_VALIDATE_JSON_OBJECT(root, rtp_forward_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		/* We can address specific sessions via their ID */
+		JANUS_VALIDATE_JSON_OBJECT(root, unique_id_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		const char *unique_id = json_string_value(json_object_get(root, "unique_id"));
+		if(unique_id == NULL && session == NULL) {
+			error_code = JANUS_NOSIP_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, sizeof(error_cause), "Missing mandatory element (unique_id)");
+			goto prepare_response;
+		}
+		if(unique_id != NULL) {
+			janus_mutex_lock(&sessions_mutex);
+			session = g_hash_table_lookup(unique_ids, unique_id);
+			if(session == NULL) {
+				janus_mutex_unlock(&sessions_mutex);
+				error_code = JANUS_NOSIP_ERROR_NO_SUCH_UID;
+				g_snprintf(error_cause, sizeof(error_cause), "No such session");
+				goto prepare_response;
+			}
+			janus_mutex_unlock(&sessions_mutex);
+		}
+		/* Iterate on the provided streams array */
+		json_t *streams = json_object_get(root, "streams");
+		if(streams == NULL || json_array_size(streams) == 0) {
+			error_code = JANUS_NOSIP_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, sizeof(error_cause), "Missing mandatory element streams, or empty array");
+			goto prepare_response;
+		}
+		/* Iterate on the streams objects and validate them all */
+		size_t i = 0;
+		for(i=0; i<json_array_size(streams); i++) {
+			json_t *s = json_array_get(streams, i);
+			JANUS_VALIDATE_JSON_OBJECT(s, rtp_forward_stream_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto prepare_response;
+			const char *type = json_string_value(json_object_get(s, "type"));
+			if(strcasecmp(type, "audio") && strcasecmp(type, "video") &&
+					strcasecmp(type, "peer_audio") && strcasecmp(type, "peer_video")) {
+				error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, sizeof(error_cause), "Invalid element (type)");
+				goto prepare_response;
+			}
+			/* Make sure we have a host attribute, either global or stream-specific */
+			json_t *stream_host = json_object_get(s, "host");
+			const char *s_host = json_string_value(stream_host), *resolved_host = NULL;
+			json_t *stream_host_family = json_object_get(s, "host_family");
+			const char *s_host_family = json_string_value(stream_host_family);
+			int s_family = AF_INET;
+			if(s_host_family) {
+				if(!strcasecmp(s_host_family, "ipv4")) {
+					s_family = AF_INET;
+				} else if(!strcasecmp(s_host_family, "ipv6")) {
+					s_family = AF_INET6;
+				} else {
+					JANUS_LOG(LOG_ERR, "Unsupported protocol family (%s)\n", s_host_family);
+					error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Unsupported protocol family (%s)", s_host_family);
+					goto prepare_response;
+				}
+			}
+			struct addrinfo *res = NULL, *start = NULL;
+			janus_network_address addr;
+			janus_network_address_string_buffer addr_buf;
+			struct addrinfo hints;
+			memset(&hints, 0, sizeof(hints));
+			if(s_family != 0)
+				hints.ai_family = s_family;
+			if(getaddrinfo(s_host, NULL, s_family != 0 ? &hints : NULL, &res) == 0) {
+				start = res;
+				while(res != NULL) {
+					if(janus_network_address_from_sockaddr(res->ai_addr, &addr) == 0 &&
+							janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
+						/* Resolved */
+						resolved_host = janus_network_address_string_from_buffer(&addr_buf);
+						freeaddrinfo(start);
+						start = NULL;
+						break;
+					}
+					res = res->ai_next;
+				}
+			}
+			if(resolved_host == NULL) {
+				if(start)
+					freeaddrinfo(start);
+				JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", s_host);
+				error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Could not resolve address (%s)...", s_host);
+				goto prepare_response;
+			}
+			/* Add the resolved address to the JSON object, so that we can use it later */
+			json_object_set_new(s, "host", json_string(resolved_host));
+			/* We may need to SRTP-encrypt this stream */
+			int srtp_suite = 0;
+			const char *srtp_crypto = NULL;
+			json_t *s_suite = json_object_get(s, "srtp_suite");
+			json_t *s_crypto = json_object_get(s, "srtp_crypto");
+			if(s_suite && s_crypto) {
+				srtp_suite = json_integer_value(s_suite);
+				if(srtp_suite != 32 && srtp_suite != 80) {
+					JANUS_LOG(LOG_ERR, "Invalid SRTP suite (%d)\n", srtp_suite);
+					error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid SRTP suite (%d)", srtp_suite);
+					goto prepare_response;
+				}
+				srtp_crypto = json_string_value(s_crypto);
+				if(srtp_crypto == NULL) {
+					JANUS_LOG(LOG_ERR, "Invalid SRTP crypto\n");
+					error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid SRTP crypto");
+					goto prepare_response;
+				}
+			}
+		}
+		janus_refcount_increase(&session->ref);	/* This is just to handle the request for now */
+		janus_mutex_lock(&session->rtp_forwarders_mutex);
+		if(session->udp_sock <= 0) {
+			session->udp_sock = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+			int v6only = 0;
+			if(session->udp_sock <= 0 ||
+					(!ipv6_disabled && setsockopt(session->udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)) {
+				janus_mutex_unlock(&session->rtp_forwarders_mutex);
+				janus_refcount_decrease(&session->ref);
+				JANUS_LOG(LOG_ERR, "Could not open UDP socket for RTP forwarder, %d (%s)\n",
+					errno, g_strerror(errno));
+				error_code = JANUS_NOSIP_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Could not open UDP socket for RTP forwarder");
+				goto prepare_response;
+			}
+		}
+		/* Iterate on all objects, and create the related forwarder(s) */
+		response = json_object();
+		json_t *new_forwarders = json_array();
+		for(i=0; i<json_array_size(streams); i++) {
+			json_t *s = json_array_get(streams, i);
+			const char *type = json_string_value(json_object_get(s, "type"));
+			json_t *stream_host = json_object_get(s, "host");
+			const char *host = json_string_value(stream_host);
+			json_t *stream_port = json_object_get(s, "port");
+			uint16_t port = json_integer_value(stream_port);
+			json_t *stream_pt = json_object_get(s, "pt");
+			json_t *stream_ssrc = json_object_get(s, "ssrc");
+			int srtp_suite = 0;
+			const char *srtp_crypto = NULL;
+			json_t *s_suite = json_object_get(s, "srtp_suite");
+			json_t *s_crypto = json_object_get(s, "srtp_crypto");
+			if(s_suite && s_crypto) {
+				srtp_suite = json_integer_value(s_suite);
+				srtp_crypto = json_string_value(s_crypto);
+			}
+			/* Create the forwarder */
+			janus_rtp_forwarder *f = janus_nosip_rtp_forwarder_add_helper(session, type,
+				host, port, json_integer_value(stream_pt), json_integer_value(stream_ssrc), srtp_suite, srtp_crypto);
+			if(f) {
+				json_t *rtpf = janus_nosip_rtp_forwarder_summary(f);
+				json_array_append_new(new_forwarders, rtpf);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = janus_nosip_rtp_forwarder_summary(f);
+					json_object_set_new(info, "event", json_string("rtp_forward"));
+					json_object_set_new(info, "unique_id", json_string(session->unique_id));
+					json_object_set_new(info, "type", json_string(type));
+					json_object_set_new(info, "stream_id", json_integer(f->stream_id));
+					json_object_set_new(info, "host", json_string(host));
+					json_object_set_new(info, "port", json_integer(port));
+					gateway->notify_event(&janus_nosip_plugin, NULL, info);
+				}
+			}
+		}
+		janus_mutex_unlock(&session->rtp_forwarders_mutex);
+		janus_refcount_decrease(&session->ref);
+		if(new_forwarders != NULL)
+			json_object_set_new(response, "forwarders", new_forwarders);
+		json_object_set_new(response, "event", json_string("rtp_forward"));
+		/* Done */
+		goto prepare_response;
+	} else if(!strcasecmp(request_text, "stop_rtp_forward")) {
+		if(admin_key != NULL) {
+			/* An admin key was specified: make sure it was provided, and that it's valid */
+			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto prepare_response;
+			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+				JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT, JANUS_NOSIP_ERROR_UNAUTHORIZED);
+			if(error_code != 0)
+				goto prepare_response;
+		}
+		JANUS_VALIDATE_JSON_OBJECT(root, stop_rtp_forward_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		/* We can address specific sessions via their ID */
+		JANUS_VALIDATE_JSON_OBJECT(root, unique_id_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		const char *unique_id = json_string_value(json_object_get(root, "unique_id"));
+		if(unique_id == NULL && session == NULL) {
+			error_code = JANUS_NOSIP_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, sizeof(error_cause), "Missing mandatory element (unique_id)");
+			goto prepare_response;
+		}
+		if(unique_id != NULL) {
+			janus_mutex_lock(&sessions_mutex);
+			session = g_hash_table_lookup(unique_ids, unique_id);
+			if(session == NULL) {
+				janus_mutex_unlock(&sessions_mutex);
+				error_code = JANUS_NOSIP_ERROR_NO_SUCH_UID;
+				g_snprintf(error_cause, sizeof(error_cause), "No such session");
+				goto prepare_response;
+			}
+			janus_mutex_unlock(&sessions_mutex);
+		}
+		/* The new syntax expects an array of stream IDs, but for backwards
+		 * compatibility we still also support the old legacy stream_id */
+		json_t *streams = json_object_get(root, "streams");
+		json_t *id = json_object_get(root, "stream_id");
+		if(id == NULL && (streams == NULL || json_array_size(streams) == 0)) {
+			error_code = JANUS_NOSIP_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, sizeof(error_cause), "Missing mandatory element streams, or empty array");
+			goto prepare_response;
+		}
+		janus_refcount_increase(&session->ref);	/* Just to handle the message now */
+		janus_mutex_lock(&session->rtp_forwarders_mutex);
+		if(id != NULL) {
+			/* Legacy syntax, find the forwarder by iterating on all the streams */
+			JANUS_LOG(LOG_WARN, "Handling legacy stop_rtp_forward request: in the future, use streams instead\n");
+			guint32 stream_id = json_integer_value(id);
+			gboolean found = g_hash_table_remove(session->audio_forwarders, GUINT_TO_POINTER(stream_id));
+			if(!found)
+				found = g_hash_table_remove(session->video_forwarders, GUINT_TO_POINTER(stream_id));
+			if(!found)
+				found = g_hash_table_remove(session->peer_audio_forwarders, GUINT_TO_POINTER(stream_id));
+			if(!found)
+				found = g_hash_table_remove(session->peer_video_forwarders, GUINT_TO_POINTER(stream_id));
+			if(found)
+				g_hash_table_remove(session->all_forwarders, GUINT_TO_POINTER(stream_id));
+			if(!found) {
+				janus_mutex_unlock(&session->rtp_forwarders_mutex);
+				janus_refcount_decrease(&session->ref);
+				JANUS_LOG(LOG_ERR, "No such stream (%"SCNu32")\n", stream_id);
+				error_code = JANUS_NOSIP_ERROR_NO_SUCH_STREAM;
+				g_snprintf(error_cause, 512, "No such stream (%"SCNu32")", stream_id);
+				goto prepare_response;
+			}
+			response = json_object();
+			json_object_set_new(response, "event", json_string("stop_rtp_forward"));
+			json_object_set_new(response, "stream_id", json_integer(stream_id));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("stop_rtp_forward"));
+				json_object_set_new(info, "unique_id", json_string(session->unique_id));
+				json_object_set_new(info, "stream_id", json_integer(stream_id));
+				gateway->notify_event(&janus_nosip_plugin, NULL, info);
+			}
+		} else {
+			/* New syntax, iterate on all streams */
+			size_t i = 0;
+			json_t *list = json_array();
+			for(i=0; i<json_array_size(streams); i++) {
+				json_t *s = json_array_get(streams, i);
+				if(json_is_null(s) || !json_is_integer(s)) {
+					JANUS_LOG(LOG_WARN, "Skipping invalid stream ID in stop_rtp_forward request (not an integer)\n");
+					continue;
+				}
+				guint32 stream_id = json_integer_value(s);
+				gboolean found = g_hash_table_remove(session->audio_forwarders, GUINT_TO_POINTER(stream_id));
+				if(!found)
+					found = g_hash_table_remove(session->video_forwarders, GUINT_TO_POINTER(stream_id));
+				if(!found)
+					found = g_hash_table_remove(session->peer_audio_forwarders, GUINT_TO_POINTER(stream_id));
+				if(!found)
+					found = g_hash_table_remove(session->peer_video_forwarders, GUINT_TO_POINTER(stream_id));
+				if(found)
+					g_hash_table_remove(session->all_forwarders, GUINT_TO_POINTER(stream_id));
+				if(!found) {
+					JANUS_LOG(LOG_WARN, "Skipping unknown stream (%"SCNu32") in stop_rtp_forward request\n", stream_id);
+					continue;
+				}
+				/* Append to the list of removed forwarders */
+				json_array_append_new(list, json_integer(stream_id));
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("stop_rtp_forward"));
+					json_object_set_new(info, "unique_id", json_string(session->unique_id));
+					json_object_set_new(info, "stream_id", json_integer(stream_id));
+					gateway->notify_event(&janus_nosip_plugin, NULL, info);
+				}
+			}
+			response = json_object();
+			json_object_set_new(response, "event", json_string("stop_rtp_forward"));
+			json_object_set_new(response, "streams", list);
+		}
+		janus_mutex_unlock(&session->rtp_forwarders_mutex);
+		janus_refcount_decrease(&session->ref);
+		/* Done */
+		goto prepare_response;
+	} else if(!strcasecmp(request_text, "listforwarders")) {
+		if(admin_key != NULL) {
+			/* An admin key was specified: make sure it was provided, and that it's valid */
+			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto prepare_response;
+			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+				JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT, JANUS_NOSIP_ERROR_UNAUTHORIZED);
+			if(error_code != 0)
+				goto prepare_response;
+		}
+		/* We can address specific sessions via their ID */
+		JANUS_VALIDATE_JSON_OBJECT(root, unique_id_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		const char *unique_id = json_string_value(json_object_get(root, "unique_id"));
+		if(unique_id == NULL && session == NULL) {
+			error_code = JANUS_NOSIP_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, sizeof(error_cause), "Missing mandatory element (unique_id)");
+			goto prepare_response;
+		}
+		if(unique_id != NULL) {
+			janus_mutex_lock(&sessions_mutex);
+			session = g_hash_table_lookup(unique_ids, unique_id);
+			if(session == NULL) {
+				janus_mutex_unlock(&sessions_mutex);
+				error_code = JANUS_NOSIP_ERROR_NO_SUCH_UID;
+				g_snprintf(error_cause, sizeof(error_cause), "No such session");
+				goto prepare_response;
+			}
+			janus_mutex_unlock(&sessions_mutex);
+		}
+		/* Return a list of all forwarders for this call */
+		json_t *list = json_array();
+		GHashTableIter iter;
+		gpointer value;
+		janus_mutex_lock(&session->rtp_forwarders_mutex);
+		g_hash_table_iter_init(&iter, session->all_forwarders);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_rtp_forwarder *rf = (janus_rtp_forwarder *)value;
+			json_t *fl = janus_nosip_rtp_forwarder_summary(rf);
+			json_array_append_new(list, fl);
+		}
+		janus_mutex_unlock(&session->rtp_forwarders_mutex);
+		response = json_object();
+		json_object_set_new(response, "event", json_string("forwarders"));
+		json_object_set_new(response, "rtp_forwarders", list);
+		/* Done */
+		goto prepare_response;
+	} else {
+		/* Not a request we recognize or is supported via Admin API, don't do anything */
+		return NULL;
+	}
+
+prepare_response:
+		{
+			if(error_code == 0 && !response) {
+				error_code = JANUS_NOSIP_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Invalid response");
+			}
+			if(error_code != 0) {
+				/* Prepare JSON error event */
+				response = json_object();
+				json_object_set_new(response, "nosip", json_string("event"));
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
+		}
+}
+
+json_t *janus_nosip_handle_admin_message(json_t *message) {
+	/* Some requests (e.g., those related to RTP forwarders) can be handled via Admin API */
+	int error_code = 0;
+	char error_cause[512];
+	json_t *response = NULL;
+
+	JANUS_VALIDATE_JSON_OBJECT(message, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto admin_response;
+	json_t *request = json_object_get(message, "request");
+	const char *request_text = json_string_value(request);
+	if((response = janus_nosip_process_synchronous_request(NULL, message)) != NULL) {
+		/* We got a response, send it back */
+		goto admin_response;
+	} else {
+		JANUS_LOG(LOG_VERB, "Request '%s' unsupported on Admin API\n", request_text);
+		error_code = JANUS_NOSIP_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Request '%s' unsupported on Admin API", request_text);
+	}
+
+admin_response:
+		{
+			if(!response) {
+				/* Prepare JSON error event */
+				response = json_object();
+				json_object_set_new(response, "nosip", json_string("event"));
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
+		}
 }
 
 void janus_nosip_setup_media(janus_plugin_session *handle) {
@@ -2065,218 +2557,14 @@ static void *janus_nosip_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "event", json_string("keyframesent"));
 		} else if(!strcasecmp(request_text, "rtp_forward")) {
-			JANUS_VALIDATE_JSON_OBJECT(root, rtp_forward_parameters,
-				error_code, error_cause, TRUE,
-				JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
-			if(error_code != 0)
-				goto error;
-			/* Iterate on the provided streams array */
-			json_t *streams = json_object_get(root, "streams");
-			if(streams == NULL || json_array_size(streams) == 0) {
-				error_code = JANUS_NOSIP_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, sizeof(error_cause), "Missing mandatory element streams, or empty array");
-				goto error;
-			}
-			/* Iterate on the streams objects and validate them all */
-			size_t i = 0;
-			for(i=0; i<json_array_size(streams); i++) {
-				json_t *s = json_array_get(streams, i);
-				JANUS_VALIDATE_JSON_OBJECT(s, rtp_forward_stream_parameters,
-					error_code, error_cause, TRUE,
-					JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
-				if(error_code != 0)
-					goto error;
-				const char *type = json_string_value(json_object_get(s, "type"));
-				if(strcasecmp(type, "audio") && strcasecmp(type, "video") &&
-						strcasecmp(type, "peer_audio") && strcasecmp(type, "peer_video")) {
-					error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, sizeof(error_cause), "Invalid element (type)");
-					goto error;
-				}
-				/* Make sure we have a host attribute, either global or stream-specific */
-				json_t *stream_host = json_object_get(s, "host");
-				const char *s_host = json_string_value(stream_host), *resolved_host = NULL;
-				json_t *stream_host_family = json_object_get(s, "host_family");
-				const char *s_host_family = json_string_value(stream_host_family);
-				int s_family = AF_INET;
-				if(s_host_family) {
-					if(!strcasecmp(s_host_family, "ipv4")) {
-						s_family = AF_INET;
-					} else if(!strcasecmp(s_host_family, "ipv6")) {
-						s_family = AF_INET6;
-					} else {
-						JANUS_LOG(LOG_ERR, "Unsupported protocol family (%s)\n", s_host_family);
-						error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Unsupported protocol family (%s)", s_host_family);
-						goto error;
-					}
-				}
-				struct addrinfo *res = NULL, *start = NULL;
-				janus_network_address addr;
-				janus_network_address_string_buffer addr_buf;
-				struct addrinfo hints;
-				memset(&hints, 0, sizeof(hints));
-				if(s_family != 0)
-					hints.ai_family = s_family;
-				if(getaddrinfo(s_host, NULL, s_family != 0 ? &hints : NULL, &res) == 0) {
-					start = res;
-					while(res != NULL) {
-						if(janus_network_address_from_sockaddr(res->ai_addr, &addr) == 0 &&
-								janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
-							/* Resolved */
-							resolved_host = janus_network_address_string_from_buffer(&addr_buf);
-							freeaddrinfo(start);
-							start = NULL;
-							break;
-						}
-						res = res->ai_next;
-					}
-				}
-				if(resolved_host == NULL) {
-					if(start)
-						freeaddrinfo(start);
-					JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", s_host);
-					error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Could not resolve address (%s)...", s_host);
-					goto error;
-				}
-				/* Add the resolved address to the JSON object, so that we can use it later */
-				json_object_set_new(s, "host", json_string(resolved_host));
-				/* We may need to SRTP-encrypt this stream */
-				int srtp_suite = 0;
-				const char *srtp_crypto = NULL;
-				json_t *s_suite = json_object_get(s, "srtp_suite");
-				json_t *s_crypto = json_object_get(s, "srtp_crypto");
-				if(s_suite && s_crypto) {
-					srtp_suite = json_integer_value(s_suite);
-					if(srtp_suite != 32 && srtp_suite != 80) {
-						JANUS_LOG(LOG_ERR, "Invalid SRTP suite (%d)\n", srtp_suite);
-						error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid SRTP suite (%d)", srtp_suite);
-						goto error;
-					}
-					srtp_crypto = json_string_value(s_crypto);
-					if(srtp_crypto == NULL) {
-						JANUS_LOG(LOG_ERR, "Invalid SRTP crypto\n");
-						error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid SRTP crypto");
-						goto error;
-					}
-				}
-			}
-			janus_refcount_increase(&session->ref);	/* This is just to handle the request for now */
-			janus_mutex_lock(&session->rtp_forwarders_mutex);
-			if(session->udp_sock <= 0) {
-				session->udp_sock = socket(!ipv6_disabled ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-				int v6only = 0;
-				if(session->udp_sock <= 0 ||
-						(!ipv6_disabled && setsockopt(session->udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)) {
-					janus_mutex_unlock(&session->rtp_forwarders_mutex);
-					janus_refcount_decrease(&session->ref);
-					JANUS_LOG(LOG_ERR, "Could not open UDP socket for RTP forwarder, %d (%s)\n",
-						errno, g_strerror(errno));
-					error_code = JANUS_NOSIP_ERROR_UNKNOWN_ERROR;
-					g_snprintf(error_cause, 512, "Could not open UDP socket for RTP forwarder");
-					goto error;
-				}
-			}
-			/* Iterate on all objects, and create the related forwarder(s) */
-			result = json_object();
-			json_t *new_forwarders = json_array();
-			for(i=0; i<json_array_size(streams); i++) {
-				json_t *s = json_array_get(streams, i);
-				const char *type = json_string_value(json_object_get(s, "type"));
-				json_t *stream_host = json_object_get(s, "host");
-				const char *host = json_string_value(stream_host);
-				json_t *stream_port = json_object_get(s, "port");
-				uint16_t port = json_integer_value(stream_port);
-				json_t *stream_pt = json_object_get(s, "pt");
-				json_t *stream_ssrc = json_object_get(s, "ssrc");
-				int srtp_suite = 0;
-				const char *srtp_crypto = NULL;
-				json_t *s_suite = json_object_get(s, "srtp_suite");
-				json_t *s_crypto = json_object_get(s, "srtp_crypto");
-				if(s_suite && s_crypto) {
-					srtp_suite = json_integer_value(s_suite);
-					srtp_crypto = json_string_value(s_crypto);
-				}
-				/* Create the forwarder */
-				janus_rtp_forwarder *f = janus_nosip_rtp_forwarder_add_helper(session, type,
-					host, port, json_integer_value(stream_pt), json_integer_value(stream_ssrc), srtp_suite, srtp_crypto);
-				if(f) {
-					json_t *rtpf = janus_nosip_rtp_forwarder_summary(f);
-					json_array_append_new(new_forwarders, rtpf);
-					/* Also notify event handlers */
-					if(notify_events && gateway->events_is_enabled()) {
-						json_t *info = janus_nosip_rtp_forwarder_summary(f);
-						json_object_set_new(info, "event", json_string("rtp_forward"));
-						json_object_set_new(info, "type", json_string(type));
-						json_object_set_new(info, "stream_id", json_integer(f->stream_id));
-						json_object_set_new(info, "host", json_string(host));
-						json_object_set_new(info, "port", json_integer(port));
-						gateway->notify_event(&janus_nosip_plugin, NULL, info);
-					}
-				}
-			}
-			janus_mutex_unlock(&session->rtp_forwarders_mutex);
-			janus_refcount_decrease(&session->ref);
-			if(new_forwarders != NULL)
-				json_object_set_new(result, "forwarders", new_forwarders);
-			json_object_set_new(result, "event", json_string("rtp_forward"));
+			/* This may be handled synchronously too, via Admin API */
+			result = janus_nosip_process_synchronous_request(session, root);
 		} else if(!strcasecmp(request_text, "stop_rtp_forward")) {
-			JANUS_VALIDATE_JSON_OBJECT(root, stop_rtp_forward_parameters,
-				error_code, error_cause, TRUE,
-				JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
-			if(error_code != 0)
-				goto error;
-			json_t *id = json_object_get(root, "stream_id");
-			guint32 stream_id = json_integer_value(id);
-			janus_refcount_increase(&session->ref);	/* Just to handle the message now */
-			janus_mutex_lock(&session->rtp_forwarders_mutex);
-			/* Find the forwarder by iterating on all the streams */
-			gboolean found = g_hash_table_remove(session->audio_forwarders, GUINT_TO_POINTER(stream_id));
-			if(!found)
-				found = g_hash_table_remove(session->video_forwarders, GUINT_TO_POINTER(stream_id));
-			if(!found)
-				found = g_hash_table_remove(session->peer_audio_forwarders, GUINT_TO_POINTER(stream_id));
-			if(!found)
-				found = g_hash_table_remove(session->peer_video_forwarders, GUINT_TO_POINTER(stream_id));
-			if(found)
-				g_hash_table_remove(session->all_forwarders, GUINT_TO_POINTER(stream_id));
-			janus_mutex_unlock(&session->rtp_forwarders_mutex);
-			janus_refcount_decrease(&session->ref);
-			if(!found) {
-				JANUS_LOG(LOG_ERR, "No such stream (%"SCNu32")\n", stream_id);
-				error_code = JANUS_NOSIP_ERROR_NO_SUCH_STREAM;
-				g_snprintf(error_cause, 512, "No such stream (%"SCNu32")", stream_id);
-				goto error;
-			}
-			result = json_object();
-			json_object_set_new(result, "event", json_string("stop_rtp_forward"));
-			json_object_set_new(result, "stream_id", json_integer(stream_id));
-			/* Also notify event handlers */
-			if(notify_events && gateway->events_is_enabled()) {
-				json_t *info = json_object();
-				json_object_set_new(info, "event", json_string("stop_rtp_forward"));
-				json_object_set_new(info, "stream_id", json_integer(stream_id));
-				gateway->notify_event(&janus_nosip_plugin, NULL, info);
-			}
+			/* This may be handled synchronously too, via Admin API */
+			result = janus_nosip_process_synchronous_request(session, root);
 		} else if(!strcasecmp(request_text, "listforwarders")) {
-			/* Return a list of all forwarders for this call */
-			json_t *list = json_array();
-			GHashTableIter iter;
-			gpointer value;
-			janus_mutex_lock(&session->rtp_forwarders_mutex);
-			g_hash_table_iter_init(&iter, session->all_forwarders);
-			while(g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_rtp_forwarder *rf = (janus_rtp_forwarder *)value;
-				json_t *fl = janus_nosip_rtp_forwarder_summary(rf);
-				json_array_append_new(list, fl);
-			}
-			janus_mutex_unlock(&session->rtp_forwarders_mutex);
-			result = json_object();
-			json_object_set_new(result, "event", json_string("forwarders"));
-			json_object_set_new(result, "rtp_forwarders", list);
+			/* This may be handled synchronously too, via Admin API */
+			result = janus_nosip_process_synchronous_request(session, root);
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request (%s)\n", request_text);
 			error_code = JANUS_NOSIP_ERROR_INVALID_REQUEST;
