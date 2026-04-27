@@ -2575,6 +2575,14 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		return;
 	}
 	/* Not DTLS... RTP or RTCP? (http://tools.ietf.org/html/rfc5761#section-4) */
+	if(len > 1500) {
+		/* FIXME Is this overly strict? We're basically always going to be bound
+		 * by the MTU, are these scenarios where this might not need to be true?
+		 * As it is, this check helps protecting some assumptions in SIP/NoSIP plugins */
+		g_atomic_int_inc(&pc->too_large);
+		JANUS_LOG(LOG_DBG, "[%"SCNu64"] RTP/RTCP packet too large (%u bytes)\n", handle->handle_id, len);
+		return;
+	}
 	if(janus_is_rtp(buf, len)) {
 		/* This is RTP */
 		if(janus_is_webrtc_encryption_enabled() && (!pc->dtls || !pc->dtls->srtp_valid || !pc->dtls->srtp_in)) {
@@ -2726,7 +2734,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					header->type = medium->payload_type;
 					packet_ssrc = medium->ssrc_peer[vindex];
 					header->ssrc = htonl(packet_ssrc);
-					if(plen > 0) {
+					if(plen >= 2) {
 						memcpy(&header->seq_number, payload, 2);
 						/* Finally, remove the original sequence number from the payload: move the whole
 						 * payload back two bytes rather than shifting the header forward (avoid misaligned access) */

@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v1.4.1] - 2026-04-20
+
+- Fixed a few vulnerability issues (thanks to Haruto Kimura (Stella) and Kelvin Mbogo (Add Content) for reporting them and suggesting fixes!) [[PR-3636](https://github.com/meetecho/janus-gateway/pull/3636)] [[PR-3637](https://github.com/meetecho/janus-gateway/pull/3637)]
+- Add configurable startup check on open files ulimits
+- Change default JSON serialization to compact wherever applicable [[PR-3633](https://github.com/meetecho/janus-gateway/pull/3633)]
+- Fixed a few memory leaks in the MQTT transport (thanks @amnonbb!) [[PR-3634](https://github.com/meetecho/janus-gateway/pull/3634)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v1.4.0] - 2026-02-06
 
 - Generate a pkg-config .pc file when installing Janus [[PR-3596](https://github.com/meetecho/janus-gateway/pull/3596)]

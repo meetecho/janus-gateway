@@ -528,6 +528,8 @@ struct janus_ice_peerconnection {
 	GQueue *nacks_queue;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gboolean noerrorlog;
+	/*! \brief Flag to count how many too large packets we discarded, if any */
+	volatile gint too_large;
 	/*! \brief Mutex to lock/unlock this stream */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */

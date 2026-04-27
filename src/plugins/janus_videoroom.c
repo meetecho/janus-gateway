@@ -1022,7 +1022,8 @@ room-<unique room ID>: {
 	"videoroom" : "event",
 	"room" : <room ID>,
 	"leaving : <unique ID of the participant who left>,
-	"display" : "<display name of the leaving participant, if any>"
+	"display" : "<display name of the leaving participant, if any>",
+	"metadata" : <valid json object of metadata, if any>
 }
 \endverbatim
  *
@@ -1120,6 +1121,7 @@ room-<unique room ID>: {
 			"feed_id" : <unique ID of the publisher originating this stream>,
 			"feed_mid" : "<unique mid of this publisher's stream>",
 			"feed_display" : "<display name of this publisher, if any>",
+			"feed_metadata" : <valid json object of metadata of this publisher, if any>,
 			"send" : <true|false; whether we configured the stream to relay media>,
 			"codec" : "<codec used by this stream>",
 			"h264-profile" : "<in case H.264 is used by the stream, the negotiated profile>",
@@ -1227,6 +1229,7 @@ room-<unique room ID>: {
 			"feed_id" : <unique ID of the publisher originating this stream>,
 			"feed_mid" : "<unique mid of this publisher's stream>",
 			"feed_display" : "<display name of this publisher, if any>",
+			"feed_metadata" : <valid json object of metadata of this publisher, if any>,
 			"send" : <true|false; whether we configured the stream to relay media>,
 			"ready" : <true|false; whether this stream is ready to start sending media (will be false at the beginning)>
 		},
@@ -1605,6 +1608,7 @@ room-<unique room ID>: {
 	"id" : <unique ID to register for the remote publisher; optional, will be chosen by the plugin if missing; doesn't need to be the same as the source one>,
 	"secret" : "<password required to edit the room, mandatory if configured in the room>",
 	"display" : "<display name for the remote publisher; optional>",
+	"metadata" : <valid json object of metadata; optional>,
 	"mcast" : "<multicast group port for receiving RTP packets, if any>",
 	"iface" : "<network interface or IP address to bind to, if any (binds to all otherwise)>",
 	"port" : <local port for receiving all RTP packets; 0 will bind to a random one (default)>,
@@ -3566,11 +3570,15 @@ static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscr
 				json_object_set_new(m, "feed_id", string_ids ? json_string(ps->publisher->user_id_str) : json_integer(ps->publisher->user_id));
 				if(ps->publisher->display)
 					json_object_set_new(m, "feed_display", json_string(ps->publisher->display));
+				if(ps->publisher->metadata)
+					json_object_set_new(m, "feed_metadata", json_deep_copy(ps->publisher->metadata));
 				/* If this is a legacy subscription, put the info in the generic part too */
 				if(legacy && event) {
 					json_object_set_new(event, "id", string_ids ? json_string(ps->publisher->user_id_str) : json_integer(ps->publisher->user_id));
 					if(ps->publisher->display)
 						json_object_set_new(event, "display", json_string(ps->publisher->display));
+					if(ps->publisher->metadata)
+						json_object_set_new(event, "metadata", json_deep_copy(ps->publisher->metadata));
 				}
 			}
 			if(ps->mid)
@@ -8640,6 +8648,11 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 		 * now subscribe; if this is a subscriber, instead, ask the publisher a FIR */
 		if(session->participant_type == janus_videoroom_p_type_publisher) {
 			janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
+			if(participant == NULL) {
+				/* No publisher instance? Shouldn't happen at this stage */
+				janus_refcount_decrease(&session->ref);
+				return;
+			}
 			/* Notify all other participants that there's a new boy in town */
 			janus_videoroom *room = participant->room;
 			if(room && !g_atomic_int_get(&room->destroyed)) {
@@ -9334,6 +9347,11 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
 		janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
+		if(participant == NULL) {
+			/* No cleanup needed */
+			g_atomic_int_set(&session->hangingup, 0);
+			return;
+		}
 		/* Get rid of the recorders, if available */
 		janus_mutex_lock(&participant->rec_mutex);
 		g_free(participant->recording_base);
@@ -11084,6 +11102,8 @@ static void *janus_videoroom_handler(void *data) {
 						json_object_set_new(display_event, "id", string_ids ?
 							json_string(participant->user_id_str) : json_integer(participant->user_id));
 						json_object_set_new(display_event, "display", json_string(participant->display));
+						if(participant->metadata)
+							json_object_set_new(display_event, "metadata", json_deep_copy(participant->metadata));
 						if(participant->room && !g_atomic_int_get(&participant->room->destroyed)) {
 							janus_videoroom_notify_participants(participant, display_event, FALSE);
 						}
@@ -13438,7 +13458,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* If we got here, update the RTP header and send the packet */
 			janus_rtp_header_update(packet->data, &stream->context, TRUE, 0);
 			char vp8pd[6];
-			if(ps->vcodec == JANUS_VIDEOCODEC_VP8) {
+			if(ps->vcodec == JANUS_VIDEOCODEC_VP8 && plen >= (int)sizeof(vp8pd)) {
 				/* For VP8, we save the original payload descriptor, to restore it after */
 				memcpy(vp8pd, payload, sizeof(vp8pd));
 				janus_vp8_simulcast_descriptor_update(payload, plen, &stream->vp8_context,
@@ -13457,7 +13477,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* Restore the timestamp and sequence number to what the publisher set them to */
 			packet->data->timestamp = htonl(packet->timestamp);
 			packet->data->seq_number = htons(packet->seq_number);
-			if(ps->vcodec == JANUS_VIDEOCODEC_VP8) {
+			if(ps->vcodec == JANUS_VIDEOCODEC_VP8 && plen >= (int)sizeof(vp8pd)) {
 				/* Restore the original payload descriptor as well, as it will be needed by the next viewer */
 				memcpy(payload, vp8pd, sizeof(vp8pd));
 			}

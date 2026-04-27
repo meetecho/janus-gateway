@@ -95,7 +95,7 @@ static void janus_wsevh_event_free(json_t *event) {
 }
 
 /* JSON serialization options */
-static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+static size_t json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 
 
 /* Parameter validation (for tweaking via Admin API) */
@@ -291,8 +291,8 @@ int janus_wsevh_init(const char *config_path) {
 			/* Compact, so no spaces between separators */
 			json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 		} else {
-			JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
-			json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (compact)\n", item->value);
+			json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 		}
 	}
 

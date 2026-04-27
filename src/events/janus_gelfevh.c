@@ -94,7 +94,7 @@ static void *janus_gelfevh_handler(void *data);
 static janus_mutex evh_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* JSON serialization options */
-static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+static size_t json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 
 /* Queue of events to handle */
 static GAsyncQueue *events = NULL;
