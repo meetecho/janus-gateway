@@ -458,6 +458,7 @@ $(document).ready(function() {
 													if(mst)
 														mst.stop();
 												}
+											// eslint-disable-next-line no-unused-vars
 											} catch(e) {}
 										}
 										if(track.kind === "video") {
@@ -1425,6 +1426,7 @@ function addHelper(helperCreated) {
 								if(mst)
 									mst.stop();
 							}
+						// eslint-disable-next-line no-unused-vars
 						} catch(e) {}
 					}
 					if(track.kind === "video") {

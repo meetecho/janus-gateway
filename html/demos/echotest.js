@@ -211,6 +211,22 @@ $(document).ready(function() {
 										}
 										// We just received notice that there's been a switch, update the buttons
 										updateSimulcastSvcButtons(substream, temporal);
+										// See if we need to update the UI
+										let totTl = msg["tot_temporal_layers"];
+										if(totTl !== null && totTl !== undefined) {
+											if(totTl < 3 && !$('#tl-2').hasClass('hide'))
+												$('#tl-2').addClass('hide');
+											else if(totTl >= 3)
+												$('#tl-2').removeClass('hide');
+											if(totTl < 2 && !$('#tl-1').hasClass('hide'))
+												$('#tl-1').addClass('hide');
+											else if(totTl >= 2)
+												$('#tl-1').removeClass('hide');
+											if(totTl < 1 && !$('#tl-0').hasClass('hide'))
+												$('#tl-0').addClass('hide');
+											else if(totTl >= 1)
+												$('#tl-0').removeClass('hide');
+										}
 									}
 									// Or maybe SVC?
 									let spatial = msg["spatial_layer"];
@@ -222,6 +238,36 @@ $(document).ready(function() {
 										}
 										// We just received notice that there's been a switch, update the buttons
 										updateSimulcastSvcButtons(spatial, temporal);
+										let totSl = msg["tot_spatial_layers"];
+										if(totSl !== null && totSl !== undefined) {
+											if(totSl < 3 && !$('#sl-2').hasClass('hide'))
+												$('#sl-2').addClass('hide');
+											else if(totSl >= 3)
+												$('#sl-2').removeClass('hide');
+											if(totSl < 2 && !$('#sl-1').hasClass('hide'))
+												$('#sl-1').addClass('hide');
+											else if(totSl >= 2)
+												$('#sl-1').removeClass('hide');
+											if(totSl < 1 && !$('#sl-0').hasClass('hide'))
+												$('#sl-0').addClass('hide');
+											else if(totSl >= 1)
+												$('#sl-0').removeClass('hide');
+										}
+										let totTl = msg["tot_temporal_layers"];
+										if(totTl !== null && totTl !== undefined) {
+											if(totTl < 3 && !$('#tl-2').hasClass('hide'))
+												$('#tl-2').addClass('hide');
+											else if(totTl >= 3)
+												$('#tl-2').removeClass('hide');
+											if(totTl < 2 && !$('#tl-1').hasClass('hide'))
+												$('#tl-1').addClass('hide');
+											else if(totTl >= 2)
+												$('#tl-1').removeClass('hide');
+											if(totTl < 1 && !$('#tl-0').hasClass('hide'))
+												$('#tl-0').addClass('hide');
+											else if(totTl >= 1)
+												$('#tl-0').removeClass('hide');
+										}
 									}
 								},
 								onlocaltrack: function(track, on) {
@@ -239,6 +285,7 @@ $(document).ready(function() {
 													if(mst)
 														mst.stop();
 												}
+											// eslint-disable-next-line no-unused-vars
 											} catch(e) {}
 										}
 										if(track.kind === "video") {
@@ -491,7 +538,7 @@ function sendData() {
 
 // Helper to parse query string
 function getQueryStringValue(name) {
-	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+	name = name.replace(/[[]/, "\\[").replace(/[\]]/, "\\]");
 	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
@@ -514,10 +561,6 @@ function addSimulcastSvcButtons(temporal) {
 		'		<button id="tl-0" type="button" class="btn btn-primary" data-bs-toggle="tooltip" title="Cap to temporal layer 0">TL 0</button>' +
 		'	</div>' +
 		'</div>');
-	if(simulcastStarted && Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
-		// Chromium-based browsers only have two temporal layers, when doing simulcast
-		$('#tl-2').remove();
-	}
 	// Enable the simulcast selection buttons
 	$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {

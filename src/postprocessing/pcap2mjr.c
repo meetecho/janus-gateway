@@ -98,12 +98,12 @@ static GOptionEntry opt_entries[] = {
 	{ "ssrc", 's', 0, G_OPTION_ARG_INT64, &ssrc64, "SSRC of the packets in the pcap file to save (pass 0 to autodetect)", NULL },
 	{ "warnings", 'w', 0, G_OPTION_ARG_NONE, &show_warnings, "Show warnings for skipped packets (e.g., not RTP or wrong SSRC)", NULL },
 	{ G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &paths, NULL, NULL },
-	{ NULL },
+	{ NULL, 0, 0, 0, NULL, NULL, NULL },
 };
 
 /* Main Code */
 int main(int argc, char *argv[]) {
-	janus_log_init(FALSE, TRUE, NULL);
+	janus_log_init(FALSE, TRUE, NULL, NULL);
 	atexit(janus_log_destroy);
 
 	JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
@@ -170,7 +170,7 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 	int link = pcap_datalink(pcap);
-	if(link != DLT_LINUX_SLL && link != DLT_EN10MB) {
+	if(link != DLT_LINUX_SLL && link != DLT_LINUX_SLL2 && link != DLT_EN10MB) {
 		JANUS_LOG(LOG_ERR, "Unsupported link type %d (%s) in capture\n",
 			link, pcap_datalink_val_to_name(link));
 		g_option_context_free(opts);
@@ -210,6 +210,7 @@ int main(int argc, char *argv[]) {
 	gint64 start_ts = 0, pkt_ts = 0;
     pcap2mjr_ethernet_header eth;
     struct sll_header lcc;
+    struct sll2_header lcc2;
     struct ip v4;
     struct ip6_hdr v6;
     janus_pp_rtp_header rtp;
@@ -241,12 +242,18 @@ int main(int argc, char *argv[]) {
 			protocol = ntohs(eth.type);
 			temp += sizeof(pcap2mjr_ethernet_header);
 			pkt_size -= sizeof(pcap2mjr_ethernet_header);
-		} else {
+		} else if(link == DLT_LINUX_SLL) {
 			/* Linux Cooked Capture */
 			memcpy(&lcc, temp, sizeof(struct sll_header));
 			protocol = ntohs(lcc.sll_protocol);
 			temp += sizeof(struct sll_header);
 			pkt_size -= sizeof(struct sll_header);
+		} else {
+			/* Linux Cooked Capture v2 */
+			memcpy(&lcc2, temp, sizeof(struct sll2_header));
+			protocol = ntohs(lcc2.sll2_protocol);
+			temp += sizeof(struct sll2_header);
+			pkt_size -= sizeof(struct sll2_header);
 		}
 		if(protocol == 0x0800) {
 			/* IPv4 */

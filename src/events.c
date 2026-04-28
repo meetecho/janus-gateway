@@ -175,7 +175,7 @@ void janus_events_notify_handlers(int type, int subtype, guint64 session_id, ...
 			char *opaque_id = va_arg(args, char *);
 			if(opaque_id != NULL) {
 				json_object_set_new(event, "opaque_id", json_string(opaque_id));
-				/* We add it to the body as well for backwards compatbility, as
+				/* We add it to the body as well for backwards compatibility, as
 				 * that's the only place we had the opaque_id present before */
 				json_object_set_new(body, "opaque_id", json_string(opaque_id));
 			}

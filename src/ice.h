@@ -225,20 +225,13 @@ int janus_ice_get_event_stats_period(void);
  * @returns The current number of active PeerConnections */
 int janus_ice_get_peerconnection_num(void);
 
-/*! \brief Method to define wether the media stats shall be dispatched in one event (true) or in dedicated single events (false - default)
+/*! \brief Method to define whether the media stats shall be dispatched in one event (true) or in dedicated single events (false - default)
  * @param[in] combine_media_stats_to_one_event true to combine media statistics in on event or false to send dedicated events */
 void janus_ice_event_set_combine_media_stats(gboolean combine_media_stats_to_one_event);
-/*! \brief Method to retrieve wether media statistic events shall be dispatched combined or in single events
+/*! \brief Method to retrieve whether media statistic events shall be dispatched combined or in single events
  * @returns true to combine events */
 gboolean janus_ice_event_get_combine_media_stats(void);
 
-/*! \brief Method to check whether libnice debugging has been enabled (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html)
- * @returns True if libnice debugging is enabled, FALSE otherwise */
-gboolean janus_ice_is_ice_debugging_enabled(void);
-/*! \brief Method to enable libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
-void janus_ice_debugging_enable(void);
-/*! \brief Method to disable libnice debugging (the default) */
-void janus_ice_debugging_disable(void);
 /*! \brief Method to enable opaque ID in Janus API responses/events */
 void janus_enable_opaqueid_in_api(void);
 /*! \brief Method to check whether opaque ID have to be added to Janus API responses/events
@@ -448,7 +441,7 @@ struct janus_ice_peerconnection {
 	/*! \brief libnice ICE component ID */
 	guint component_id;
 	/*! \brief Whether this stream is ready to be used */
-	gint cdone:1;
+	gboolean cdone;
 	/*! \brief libnice ICE component state */
 	guint state;
 	/*! \brief Monotonic time of when gathering has completed */
@@ -489,6 +482,8 @@ struct janus_ice_peerconnection {
 	gint abs_send_time_ext_id;
 	/*! \brief Absolute Capture Time ext ID */
 	gint abs_capture_time_ext_id;
+	/*! \brief Video Layers Allocation ext ID */
+	gint videolayers_ext_id;
 	/*! \brief Whether we do transport wide cc */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
@@ -511,7 +506,7 @@ struct janus_ice_peerconnection {
 	janus_dtls_role dtls_role;
 	/*! \brief Data exchanged for DTLS handshakes and messages */
 	janus_ice_stats dtls_in_stats, dtls_out_stats;
-	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
+	/*! \brief Hashing algorithm used by the peer for the DTLS certificate (e.g., "SHA-256") */
 	gchar *remote_hashing;
 	/*! \brief Hashed fingerprint of the peer's certificate, as parsed in SDP */
 	gchar *remote_fingerprint;
@@ -538,8 +533,12 @@ struct janus_ice_peerconnection {
 	GHashTable *rtx_payload_types;
 	/*! \brief Reverse mapping of rtx payload types to actual media-related packet types */
 	GHashTable *rtx_payload_types_rev;
+	/*! \brief Helper queue for storing requested packets from NACKs */
+	GQueue *nacks_queue;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gboolean noerrorlog;
+	/*! \brief Flag to count how many too large packets we discarded, if any */
+	volatile gint too_large;
 	/*! \brief Bandwidth estimation context */
 	janus_bwe_context *bwe;
 	/*! \brief Mutex to lock/unlock this stream */
@@ -715,7 +714,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle);
  * @param[in] reason A description of why this happened */
 void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason);
 /*! \brief Method to only free resources related to a specific Webrtc PeerConnection allocated by a Janus ICE handle
- * @param[in] component The Janus ICE component instance to free */
+ * @param[in] pc The Janus ICE component instance to free */
 void janus_ice_peerconnection_destroy(janus_ice_peerconnection *pc);
 ///@}
 

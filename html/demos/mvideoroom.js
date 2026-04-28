@@ -276,7 +276,7 @@ $(document).ready(function() {
 											toastr.warning("Our video stream has been rejected, viewers won't see us");
 											// Hide the webcam video
 											$('#myvideo').addClass('hide');
-											$('#videolocal').append(
+											$('#videolocal').prepend(
 												'<div class="no-video-container">' +
 													'<i class="fa-solid fa-video fa-xl no-video-icon" style="height: 100%;"></i>' +
 													'<span class="no-video-text" style="font-size: 16px;">Video rejected, no webcam</span>' +
@@ -300,6 +300,7 @@ $(document).ready(function() {
 													if(mst)
 														mst.stop();
 												}
+											// eslint-disable-next-line no-unused-vars
 											} catch(e) {}
 										}
 										if(track.kind === "video") {
@@ -308,7 +309,7 @@ $(document).ready(function() {
 											if(localVideos === 0) {
 												// No video, at least for now: show a placeholder
 												if($('#videolocal .no-video-container').length === 0) {
-													$('#videolocal').append(
+													$('#videolocal').prepend(
 														'<div class="no-video-container">' +
 															'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 															'<span class="no-video-text">No webcam available</span>' +
@@ -339,7 +340,7 @@ $(document).ready(function() {
 										if(localVideos === 0) {
 											// No video, at least for now: show a placeholder
 											if($('#videolocal .no-video-container').length === 0) {
-												$('#videolocal').append(
+												$('#videolocal').prepend(
 													'<div class="no-video-container">' +
 														'<i class="fa-solid fa-video fa-xl no-video-icon"></i>' +
 														'<span class="no-video-text">No webcam available</span>' +
@@ -355,7 +356,7 @@ $(document).ready(function() {
 										Janus.log("Created local stream:", stream);
 										Janus.log(stream.getTracks());
 										Janus.log(stream.getVideoTracks());
-										$('#videolocal').append('<video class="rounded centered" id="myvideo' + trackId + '" width=100% autoplay playsinline muted="muted"/>');
+										$('#videolocal').prepend('<video class="rounded centered" id="myvideo' + trackId + '" width=100% autoplay playsinline muted="muted"/>');
 										Janus.attachMediaStream($('#myvideo' + trackId).get(0), stream);
 									}
 									if(sfutest.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -910,7 +911,7 @@ function unsubscribeFrom(id) {
 
 // Helper to parse query string
 function getQueryStringValue(name) {
-	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+	name = name.replace(/[[]/, "\\[").replace(/[\]]/, "\\]");
 	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));

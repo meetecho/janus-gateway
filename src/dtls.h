@@ -70,7 +70,7 @@ typedef struct janus_dtls_srtp {
 	janus_dtls_role dtls_role;
 	/*! \brief DTLS state of this component: -1=failed, 0=nothing, 1=trying, 2=connected */
 	janus_dtls_state dtls_state;
-	/*! \brief Monotonic time of when the DTLS handhake has started */
+	/*! \brief Monotonic time of when the DTLS handshake has started */
 	gint64 dtls_started;
 	/*! \brief Monotonic time of when the DTLS state has switched to connected */
 	gint64 dtls_connected;

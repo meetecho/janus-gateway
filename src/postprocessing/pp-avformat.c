@@ -64,7 +64,11 @@ AVStream *janus_pp_new_audio_avstream(AVFormatContext *fctx, int codec_id, int s
 	c->codec_id = codec_id;
 	c->codec_type = AVMEDIA_TYPE_AUDIO;
 	c->sample_rate = samplerate;
+#ifdef NEW_CHANNEL_LAYOUT
+	c->ch_layout.nb_channels = channels;
+#else
 	c->channels = channels;
+#endif
 	if(extradata) {
 		c->extradata_size = size;
 		c->extradata = av_memdup(extradata, size);

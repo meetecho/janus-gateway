@@ -114,7 +114,7 @@ int janus_network_prepare_device_query_default(const char *user_value, janus_net
 const struct ifaddrs *janus_network_query_devices(const struct ifaddrs *ifas, const janus_network_query_config *query);
 
 /*!
- * \brief Copies the IPv4 address from a network inteface description to the given result structure.
+ * \brief Copies the IPv4 address from a network interface description to the given result structure.
  * \param ifa The network interface description to grab the IPv4 address from. It should be obtained with `janus_network_query_devices()`.
  * \param query A description of the criteria to look for when determining whether or not a network interface is a match
  * \param result Pointer to a structure to populate with the IPv4 address of the given network interface
@@ -125,7 +125,7 @@ const struct ifaddrs *janus_network_query_devices(const struct ifaddrs *ifas, co
 int janus_network_get_devices_ipv4(const struct ifaddrs *ifa, const janus_network_query_config *query, struct in_addr *result);
 
 /*!
- * \brief Copies the IPv6 address from a network inteface description to the given result structure.
+ * \brief Copies the IPv6 address from a network interface description to the given result structure.
  * \param ifa The network interface description to grab the IPv6 address from. It should be obtained with `janus_network_query_devices()`.
  * \param query A description of the criteria to look for when determining whether or not a network interface is a match
  * \param result Pointer to a structure to populate with the IPv6 address of the given network interface

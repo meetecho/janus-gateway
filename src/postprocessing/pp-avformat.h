@@ -40,6 +40,11 @@
 #define USE_CODECPAR
 #endif
 
+/* https://github.com/FFmpeg/FFmpeg/commit/cdba98bb80e2ab73d34659c610771b020afc6a77 */
+#if LIBAVCODEC_VER_AT_LEAST(59, 24)
+#define NEW_CHANNEL_LAYOUT
+#endif
+
 void janus_pp_setup_avformat(void);
 
 AVFormatContext *janus_pp_create_avformatcontext(const char *format, const char *metadata, const char *destination);

@@ -45,7 +45,7 @@ janus_logger *create(void) {
  * - \c get_description(): this method should return a verbose description of your logger plugin (e.g., "This is a logger that saves log lines on a database");
  * - \c get_name(): this method should return a short display name for your logger plugin (e.g., "My Amazing Logger");
  * - \c get_package(): this method should return a unique package identifier for your logger plugin (e.g., "janus.logger.mylogger");
- * - \c incoming_logline(): this callack informs the logger that a log line is available for consumption.
+ * - \c incoming_logline(): this callback informs the logger that a log line is available for consumption.
  *
  * All the above methods and callbacks are mandatory: the Janus core will
  * reject al logger plugin that doesn't implement any of the mandatory callbacks.

@@ -1,6 +1,6 @@
 /*! \file    mutex.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
- * \brief    Semaphors, Mutexes and Conditions
+ * \brief    Semaphores, Mutexes and Conditions
  * \details  Implementation (based on GMutex or pthread_mutex) of a locking mechanism based on mutexes and conditions.
  *
  * \ingroup core

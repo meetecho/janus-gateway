@@ -24,6 +24,7 @@
 #include <openssl/rand.h>
 
 #include "utils.h"
+#include "rtp.h"
 #include "debug.h"
 #include "mutex.h"
 
@@ -31,10 +32,20 @@
 #include "mach_gettime.h"
 #endif
 
-gint64 janus_get_monotonic_time(void) {
+gint64 janus_get_monotonic_time_internal(void) {
 	struct timespec ts;
 	clock_gettime (CLOCK_MONOTONIC, &ts);
 	return (ts.tv_sec*G_GINT64_CONSTANT(1000000)) + (ts.tv_nsec/G_GINT64_CONSTANT(1000));
+}
+
+static gint64 janus_started = 0;
+void janus_mark_started(void) {
+	if(janus_started == 0)
+		janus_started = janus_get_monotonic_time_internal();
+}
+
+gint64 janus_get_monotonic_time(void) {
+	return janus_get_monotonic_time_internal() - janus_started;
 }
 
 gint64 janus_get_real_time(void) {
@@ -215,9 +226,7 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 	if(strlen(old_string) == strlen(new_string)) {	/* Just overwrite */
 		char *outgoing = message;
 		char *pos = strstr(outgoing, old_string), *tmp = NULL;
-		int i = 0;
 		while(pos) {
-			i++;
 			memcpy(pos, new_string, strlen(new_string));
 			pos += strlen(old_string);
 			tmp = strstr(pos, old_string);
@@ -927,6 +936,24 @@ gboolean janus_h265_is_keyframe(const char *buffer, int len) {
 	return FALSE;
 }
 
+gboolean janus_is_keyframe(int codec, const char *buffer, int len) {
+	switch(codec) {
+		case JANUS_VIDEOCODEC_VP8:
+			return janus_vp8_is_keyframe(buffer, len);
+		case JANUS_VIDEOCODEC_VP9:
+			return janus_vp9_is_keyframe(buffer, len);
+		case JANUS_VIDEOCODEC_H264:
+			return janus_h264_is_keyframe(buffer, len);
+		case JANUS_VIDEOCODEC_AV1:
+			return janus_av1_is_keyframe(buffer, len);
+		case JANUS_VIDEOCODEC_H265:
+			return janus_h265_is_keyframe(buffer, len);
+		default:
+			break;
+	}
+	return FALSE;
+}
+
 int janus_vp8_parse_descriptor(char *buffer, int len,
 		gboolean *m, uint16_t *picid, uint8_t *tl0picidx, uint8_t *tid, uint8_t *y, uint8_t *keyidx) {
 	if(!buffer || len < 6)
@@ -1262,13 +1289,11 @@ GList *janus_red_parse_blocks(char *buffer, int len) {
 	}
 	/* Go through the blocks, iterating on the lengths to get a pointer to the data */
 	if(blocks != NULL) {
-		int tot_gens = gens;
 		gens = 0;
 		uint16_t length = 0;
 		GList *temp = blocks;
 		while(temp != NULL) {
 			gens++;
-			tot_gens--;
 			rb = (janus_red_block *)temp->data;
 			length = rb->length;
 			if(length > plen) {

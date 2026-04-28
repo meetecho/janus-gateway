@@ -37,6 +37,7 @@ typedef struct janus_pprec_options {
 	int restamp_multiplier;
 	int restamp_min_th;
 	int restamp_packets;
+	gboolean ignore_rtp_ts;
 	char **paths;
 } janus_pprec_options;
 

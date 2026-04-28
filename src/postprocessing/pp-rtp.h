@@ -57,17 +57,18 @@ typedef struct janus_pp_rtp_header_extension {
 
 typedef struct janus_pp_frame_packet {
 	janus_pp_rtp_header *header; /* Pointer to RTP header */
-	int version;	/* Version of the .mjr file (2=has timestamps) */
-	uint32_t p_ts;	/* Packet timestamp as saved by Janus (if available) */
-	uint16_t seq;	/* RTP Sequence number */
-	uint64_t ts;	/* RTP Timestamp */
-	uint16_t len;	/* Length of the data */
-	int pt;			/* Payload type of the data */
-	long offset;	/* Offset of the data in the file */
-	int skip;		/* Bytes to skip, besides the RTP header */
-	uint8_t drop;	/* Whether this packet can be dropped (e.g., padding)*/
-	int audiolevel;	/* Value of audio level in RTP extension, if parsed */
-	int rotation;	/* Value of rotation in RTP extension, if parsed */
+	int version;		/* Version of the .mjr file (2=has timestamps) */
+	uint32_t p_ts;		/* Packet timestamp as saved by Janus (if available) */
+	uint16_t seq;		/* RTP Sequence number */
+	uint64_t ts;		/* RTP Timestamp */
+	uint16_t len;		/* Length of the data */
+	int pt;				/* Payload type of the data */
+	long offset;		/* Offset of the data in the file */
+	int skip;			/* Bytes to skip, besides the RTP header */
+	uint8_t drop;	  	/* Whether this packet can be dropped (e.g., padding)*/
+	uint8_t restamped;	/* Whether this packet has been restamped */
+	int audiolevel;		/* Value of audio level in RTP extension, if parsed */
+	int rotation;		/* Value of rotation in RTP extension, if parsed */
 	struct janus_pp_frame_packet *next;
 	struct janus_pp_frame_packet *prev;
 } janus_pp_frame_packet;

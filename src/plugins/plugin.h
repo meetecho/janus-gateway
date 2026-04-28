@@ -95,7 +95,7 @@ janus_plugin *create(void) {
  * on the \c janus_config helpers for the purpose) but again, if you prefer
  * a different format (XML, JSON, etc.) that's up to you.
  *
- * Both the the Janus core and a plugin can have several different sessions
+ * Both the Janus core and a plugin can have several different sessions
  * with the same and/or different peers: to match a specific session,
  * a plugin can rely on a mapping called janus_plugin_session that
  * is what all the communication between the plugins and the core
@@ -159,7 +159,7 @@ janus_plugin *create(void) {
 
 #include <glib.h>
 
-#include "refcount.h"
+#include "../refcount.h"
 
 
 /*! \brief Version of the API, to match the one plugins were compiled against
@@ -171,7 +171,7 @@ janus_plugin *create(void) {
  * Janus instance or it will crash.
  *
  */
-#define JANUS_PLUGIN_API_VERSION	104
+#define JANUS_PLUGIN_API_VERSION	106
 
 /*! \brief Initialization of all plugin properties to NULL
  *
@@ -284,6 +284,10 @@ struct janus_plugin {
 	 * @param[out] error An integer that may contain information about any error */
 	void (* const create_session)(janus_plugin_session *handle, int *error);
 	/*! \brief Method to handle an incoming message/request from a peer
+	 * @note The Janus core leaves ownership of both the \c message and \c jsep
+	 * json_t objects to plugins. This means that you'll have to decrease your own
+	 * reference yourself with a \c json_decref when you're done with them.
+	 * You'll also have to free \c transaction with \c g_free
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[in] transaction The transaction identifier for this message/request
 	 * @param[in] message The json_t object containing the message/request JSON
@@ -360,9 +364,9 @@ struct janus_plugin {
 /*! \brief Callbacks to contact the Janus core */
 struct janus_callbacks {
 	/*! \brief Callback to push events/messages to a peer
-	 * @note The Janus core increases the references to both the message and jsep
+	 * @note The Janus core increases the references to both the \c message and \c jsep
 	 * json_t objects. This means that you'll have to decrease your own
-	 * reference yourself with a \c json_decref after calling push_event.
+	 * reference yourself with a \c json_decref after calling \c push_event
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[in] plugin The plugin instance that is sending the message/event
 	 * @param[in] transaction The transaction identifier this message refers to
@@ -509,7 +513,7 @@ struct janus_plugin_result {
 	 * It MUST be a valid JSON payload (even when returning application
 	 * level errors). Its reference is decremented automatically when destroying
 	 * the janus_plugin_result instance, so if your plugin wants to re-use the
-	 * same object for multiple responses, you jave to \c json_incref the object before
+	 * same object for multiple responses, you have to \c json_incref the object before
 	 * passing it to the core, and \c json_decref it when you're done with it. */
 	json_t *content;
 };
@@ -522,8 +526,7 @@ struct janus_plugin_result {
 janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *text, json_t *content);
 
 /*! \brief Helper to quickly destroy a janus_plugin_result instance
- * @param[in] result The janus_plugin_result instance to destroy
- * @returns A valid janus_plugin_result instance, if successful, or NULL otherwise */
+ * @param[in] result The janus_plugin_result instance to destroy */
 void janus_plugin_result_destroy(janus_plugin_result *result);
 ///@}
 
@@ -601,6 +604,8 @@ struct janus_plugin_rtp_extensions {
 	uint8_t dd_content[256];
 	/*! \brief Absolute Capture Time timestamp */
 	uint64_t abs_capture_ts;
+	/*! \brief Spatial and temporal layers, if available in a video-layers-allocation; -1 means no extension */
+	int8_t spatial_layers, temporal_layers;
 };
 /*! \brief Helper method to initialise/reset the RTP extensions field
  * @note This is important because each of the supported extensions may
