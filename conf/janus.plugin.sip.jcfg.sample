@@ -52,4 +52,17 @@ general: {
 	# engine (default 32000 milliseconds)
 	sip_timer_t1x64 = 32000
 
+	# In case you want to configure the SIP plugin to create a trunk with
+	# an external provider or PBX (e.g., to automatically receive all
+	# INVITEs meant for a range of addresses without the need for users
+	# to perform any REGISTER), uncomment and fill the following section
+	# with the related configuration info. Notice that, in order to have
+	# users use the trunk, you'll need to use the 'trunk' register type:
+	# regular REGISTER won't work with the trunk. See the documentation
+	# for more info on what this means and how it works.
+	#sip_trunk = {
+	#	local = "0.0.0.0:5090"
+	#	peer = "1.2.3.4:5060"
+	#}
+
 }
