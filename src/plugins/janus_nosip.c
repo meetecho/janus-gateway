@@ -616,6 +616,14 @@ static void janus_nosip_message_free(janus_nosip_message *msg) {
 	g_free(msg);
 }
 
+static void janus_nosip_media_line_destroy(janus_nosip_media_line *mline) {
+	if(mline) {
+		if(mline->forwarders)
+			g_hash_table_destroy(mline->forwarders);
+		if(mline->peer_forwarders)
+			g_hash_table_destroy(mline->peer_forwarders);
+	}
+}
 
 /* SRTP stuff (in case we need SDES) */
 static int janus_nosip_srtp_set_local(janus_nosip_session *session, int mindex, gboolean video, char **profile, char **crypto) {
@@ -1144,7 +1152,8 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.pipefd[0] = -1;
 	session->media.pipefd[1] = -1;
 	session->media.updated = FALSE;
-	session->media_byfd = g_hash_table_new(NULL, NULL);
+	session->media_byfd = g_hash_table_new_full(NULL, NULL,
+		NULL, (GDestroyNotify)janus_nosip_media_line_destroy);
 	janus_mutex_init(&session->rec_mutex);
 	janus_mutex_init(&session->rtp_forwarders_mutex);
 	session->all_forwarders = g_hash_table_new(NULL, NULL);
@@ -1330,14 +1339,16 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pa
 		if(session->media.mlines[packet->mindex].rtp_fd != -1) {
 			/* Check if there are forwarders interested in this traffic */
 			janus_mutex_lock(&session->rtp_forwarders_mutex);
-			GHashTableIter iter;
-			gpointer value;
-			g_hash_table_iter_init(&iter, session->media.mlines[packet->mindex].forwarders);
-			while(session->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_rtp_forwarder *rtp_forward = (janus_rtp_forwarder *)value;
-				if((!video && rtp_forward->is_video) || (video && !rtp_forward->is_video))
-					continue;
-				janus_rtp_forwarder_send_rtp(rtp_forward, buf, len, 0);
+			if(session->media.mlines[packet->mindex].forwarders != NULL) {
+				GHashTableIter iter;
+				gpointer value;
+				g_hash_table_iter_init(&iter, session->media.mlines[packet->mindex].forwarders);
+				while(session->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
+					janus_rtp_forwarder *rtp_forward = (janus_rtp_forwarder *)value;
+					if((!video && rtp_forward->is_video) || (video && !rtp_forward->is_video))
+						continue;
+					janus_rtp_forwarder_send_rtp(rtp_forward, buf, len, 0);
+				}
 			}
 			janus_mutex_unlock(&session->rtp_forwarders_mutex);
 			/* Save the frame if we're recording */
@@ -1556,8 +1567,12 @@ static void janus_nosip_hangup_media_internal(janus_plugin_session *handle) {
 	/* Get rid of RTP forwarders, if any */
 	janus_mutex_lock(&session->rtp_forwarders_mutex);
 	for(i=0; i<NOSIP_MAX_MLINES; i++) {
-		g_hash_table_remove_all(session->media.mlines[i].forwarders);
-		g_hash_table_remove_all(session->media.mlines[i].peer_forwarders);
+		if(session->media.mlines[i].forwarders)
+			g_hash_table_destroy(session->media.mlines[i].forwarders);
+		session->media.mlines[i].forwarders = NULL;
+		if(session->media.mlines[i].peer_forwarders)
+			g_hash_table_destroy(session->media.mlines[i].peer_forwarders);
+		session->media.mlines[i].peer_forwarders = NULL;
 	}
 	g_hash_table_remove_all(session->all_forwarders);
 	janus_mutex_unlock(&session->rtp_forwarders_mutex);
@@ -2053,7 +2068,7 @@ static void *janus_nosip_handler(void *data) {
 					g_snprintf(error_cause, sizeof(error_cause), "Invalid element (type)");
 					goto error;
 				}
-				gboolean video = !strcasecmp(type, "video") || strcasecmp(type, "peer_video");
+				gboolean video = !strcasecmp(type, "video") || !strcasecmp(type, "peer_video");
 				/* Check if a mindex was provided */
 				json_t *m = json_object_get(s, "mindex");
 				if(m) {
@@ -2194,6 +2209,7 @@ static void *janus_nosip_handler(void *data) {
 					if(notify_events && gateway->events_is_enabled()) {
 						json_t *info = janus_nosip_rtp_forwarder_summary(f);
 						json_object_set_new(info, "event", json_string("rtp_forward"));
+						json_object_set_new(info, "mindex", json_integer(mindex));
 						json_object_set_new(info, "type", json_string(type));
 						json_object_set_new(info, "stream_id", json_integer(f->stream_id));
 						json_object_set_new(info, "host", json_string(host));
@@ -2981,14 +2997,16 @@ static void *janus_nosip_relay_thread(void *data) {
 					janus_rtp_header_update(header, &mline->context, video, 0);
 					/* Check if there are forwarders interested in this traffic */
 					janus_mutex_lock(&session->rtp_forwarders_mutex);
-					GHashTableIter iter;
-					gpointer value;
-					g_hash_table_iter_init(&iter, mline->peer_forwarders);
-					while(session->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
-						janus_rtp_forwarder *rtp_forward = (janus_rtp_forwarder *)value;
-						if((!video && rtp_forward->is_video) || (video && !rtp_forward->is_video))
-							continue;
-						janus_rtp_forwarder_send_rtp(rtp_forward, buffer, bytes, 0);
+					if(mline->peer_forwarders != NULL) {
+						GHashTableIter iter;
+						gpointer value;
+						g_hash_table_iter_init(&iter, mline->peer_forwarders);
+						while(session->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
+							janus_rtp_forwarder *rtp_forward = (janus_rtp_forwarder *)value;
+							if((!video && rtp_forward->is_video) || (video && !rtp_forward->is_video))
+								continue;
+							janus_rtp_forwarder_send_rtp(rtp_forward, buffer, bytes, 0);
+						}
 					}
 					janus_mutex_unlock(&session->rtp_forwarders_mutex);
 					/* Save the frame if we're recording */
@@ -3136,7 +3154,7 @@ static janus_rtp_forwarder *janus_nosip_rtp_forwarder_add_helper(janus_nosip_ses
 	if(!is_peer) {
 		if(session->media.mlines[mindex].forwarders == NULL) {
 			session->media.mlines[mindex].forwarders = g_hash_table_new_full(NULL, NULL,
-				NULL, (GDestroyNotify)janus_rtp_forwarder_destroy);;
+				NULL, (GDestroyNotify)janus_rtp_forwarder_destroy);
 		}
 		g_hash_table_insert(session->media.mlines[mindex].forwarders, GUINT_TO_POINTER(rf->stream_id), rf);
 		if(is_video)
