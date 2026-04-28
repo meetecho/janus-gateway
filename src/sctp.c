@@ -123,7 +123,7 @@ void janus_sctp_handle_notification(janus_sctp_association *sctp, union sctp_not
 
 /* We need to keep a map of associations with random IDs, as usrsctp will
  * use the pointer to our structures in the actual messages instead */
-static janus_mutex sctp_mutex;
+static janus_mutex sctp_mutex = JANUS_MUTEX_INITIALIZER;
 static GHashTable *sctp_ids = NULL;
 static void janus_sctp_association_unref(janus_sctp_association *sctp);
 
@@ -142,7 +142,6 @@ int janus_sctp_init(void) {
 #endif
 
 	/* Create a map of local IDs too, to map them to our SCTP associations */
-	janus_mutex_init(&sctp_mutex);
 	sctp_ids = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sctp_association_unref);
 
 	return 0;
@@ -993,8 +992,9 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	}
 	/* Read label, if available */
 	char *label = NULL;
+	size_t hdr_sz = sizeof(janus_datachannel_open_request);
 	guint len = ntohs(req->label_length);
-	if(len > 0 && len < length) {
+	if(len > 0 && len <= (length-hdr_sz)) {
 		label = g_malloc(len+1);
 		memcpy(label, req->label, len);
 		label[len] = '\0';
@@ -1002,7 +1002,7 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	}
 	char *protocol = NULL;
 	guint plen = ntohs(req->protocol_length);
-	if(plen > 0 && plen < length) {
+	if(plen > 0 && (len+plen) < (length-hdr_sz)) {
 		protocol = g_malloc(plen+1);
 		memcpy(protocol, req->label+len, plen);
 		protocol[plen] = '\0';

@@ -28,6 +28,7 @@ typedef struct janus_log_buffer {
 	char *str;
 } janus_log_buffer;
 static janus_log_buffer exit_message;
+static janus_log_buffer reload_message;
 static void janus_log_buffer_free(janus_log_buffer *b) {
 	if(b == NULL || b == &exit_message)
 		return;
@@ -89,6 +90,24 @@ static void *janus_log_thread(void *ctx) {
 		b = g_async_queue_pop(janus_log_queue);
 		if(b == NULL || b == &exit_message)
 			break;
+		if(b == &reload_message) {
+			JANUS_PRINT("Got a log reload request.\n");
+			/* Ensure everything in the buffer has been written before reopening the file */
+			while((b = g_async_queue_try_pop(janus_log_queue)) != NULL) {
+				if(b->str != NULL)
+					janus_log_print_buffer(b);
+				janus_log_buffer_free(b);
+			}
+			fflush(janus_log_file);
+			fclose(janus_log_file);
+			/* Now let's start using the log file again */
+			janus_log_file = fopen(janus_log_filepath, "awt");
+			if(janus_log_file == NULL) {
+				JANUS_PRINT("Error opening log file %s: %s\n", janus_log_filepath, g_strerror(errno));
+				continue;
+			}
+			continue;
+		}
 		if(b->str == NULL) {
 			janus_log_buffer_free(b);
 			continue;
@@ -187,6 +206,12 @@ error:
 	g_atomic_int_set(&initialized, 0);
 	janus_log_destroy();
 	return -1;
+}
+
+void janus_log_reload(void) {
+	if(janus_log_file == NULL || log_thread == NULL)
+		return;
+	g_async_queue_push(janus_log_queue, &reload_message);
 }
 
 void janus_log_destroy(void) {

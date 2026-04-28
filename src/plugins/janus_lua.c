@@ -360,9 +360,9 @@ static void janus_lua_session_free(const janus_refcount *session_ref) {
 	janus_recorder_destroy(session->arc);
 	janus_recorder_destroy(session->vrc);
 	janus_recorder_destroy(session->drc);
-	janus_mutex_destroy(&session->rid_mutex);
-	janus_mutex_destroy(&session->recipients_mutex);
 	janus_mutex_destroy(&session->rec_mutex);
+	janus_mutex_destroy(&session->recipients_mutex);
+	janus_mutex_destroy(&session->rid_mutex);
 	janus_rtp_simulcasting_cleanup(NULL, NULL, session->rid, NULL);
 	g_free(session);
 }
@@ -1784,6 +1784,8 @@ void janus_lua_create_session(janus_plugin_session *handle, int *error) {
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
 	session->rid_extmap_id = -1;
 	janus_mutex_init(&session->rid_mutex);
+	janus_mutex_init(&session->recipients_mutex);
+	janus_mutex_init(&session->rec_mutex);
 	session->vcodec = JANUS_VIDEOCODEC_NONE;
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
@@ -2460,7 +2462,7 @@ static void janus_lua_relay_rtp_packet(gpointer data, gpointer user_data) {
 		/* If we got here, update the RTP header and send the packet */
 		janus_rtp_header_update(packet->data, &session->vrtpctx, TRUE, 0);
 		char vp8pd[6];
-		if(sender->vcodec == JANUS_VIDEOCODEC_VP8) {
+		if(sender->vcodec == JANUS_VIDEOCODEC_VP8 && plen >= (int)sizeof(vp8pd)) {
 			/* For VP8, we save the original payload descriptor, to restore it after */
 			memcpy(vp8pd, payload, sizeof(vp8pd));
 			janus_vp8_simulcast_descriptor_update(payload, plen, &session->vp8_context,
@@ -2476,7 +2478,7 @@ static void janus_lua_relay_rtp_packet(gpointer data, gpointer user_data) {
 		/* Restore the timestamp and sequence number to what the publisher set them to */
 		packet->data->timestamp = htonl(packet->timestamp);
 		packet->data->seq_number = htons(packet->seq_number);
-		if(sender->vcodec == JANUS_VIDEOCODEC_VP8) {
+		if(sender->vcodec == JANUS_VIDEOCODEC_VP8 && plen >= (int)sizeof(vp8pd)) {
 			/* Restore the original payload descriptor as well, as it will be needed by the next viewer */
 			memcpy(payload, vp8pd, sizeof(vp8pd));
 		}

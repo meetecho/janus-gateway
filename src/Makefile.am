@@ -462,8 +462,8 @@ plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags) $(LIBCURL_LDFLAGS) $(
 plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd) $(LIBCURL_LIBADD) $(OGG_LIBADD)
 conf_DATA += ../conf/janus.plugin.streaming.jcfg.sample
 stream_DATA += \
-	plugins/streams/music.mulaw \
 	plugins/streams/radio.alaw \
+	plugins/streams/remembrance.opus \
 	plugins/streams/test_gstreamer.sh \
 	plugins/streams/test_gstreamer1.sh \
 	plugins/streams/test_gstreamer_multistream.sh \

@@ -1,2 +1,2 @@
-websockets==8.1
-aiortc==0.9.26
+websockets==15.0
+aiortc==1.10.1
