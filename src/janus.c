@@ -3285,6 +3285,8 @@ json_t *janus_admin_peerconnection_summary(janus_ice_peerconnection *pc) {
 	if(pc->transport_wide_cc_ext_id >= 0)
 		json_object_set_new(bwe, "twcc-ext-id", json_integer(pc->transport_wide_cc_ext_id));
 	json_object_set_new(w, "bwe", bwe);
+	if(g_atomic_int_get(&pc->too_large) > 0)
+		json_object_set_new(w, "too-large", json_integer(g_atomic_int_get(&pc->too_large)));
 	json_t *media = json_object();
 	/* Iterate on all media */
 	janus_ice_peerconnection_medium *medium = NULL;
@@ -4787,6 +4789,28 @@ gint main(int argc, char *argv[]) {
 		else if(options.debug_level > LOG_MAX)
 			options.debug_level = LOG_MAX;
 		janus_log_level = options.debug_level;
+	}
+
+	/* Let's check if there are limits we need to check */
+	uint64_t check_openfiles_limit = 0;
+	if(options.check_openfiles_limit > 0) {
+		check_openfiles_limit = options.check_openfiles_limit;
+	} else {
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "check_openfiles_limit");
+		if(item && item->value)
+			check_openfiles_limit = g_ascii_strtoull(item->value, 0, 10);
+	}
+	if(check_openfiles_limit > 0) {
+		struct rlimit limits = { 0 };
+		if(getrlimit(RLIMIT_NOFILE, &limits) < 0) {
+			JANUS_LOG(LOG_FATAL, "Error calling getrlimit: %d (%s)\n", errno, g_strerror(errno));
+			exit(1);
+		}
+		if(limits.rlim_cur < check_openfiles_limit) {
+			JANUS_LOG(LOG_FATAL, "Maximum number of open file descriptors check failed: %"SCNi64" < %"SCNi64" (hard limit: %"SCNi64")\n",
+				limits.rlim_cur, check_openfiles_limit, limits.rlim_max);
+			exit(1);
+		}
 	}
 
 	/* Any PID we need to create? */

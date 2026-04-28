@@ -3,6 +3,8 @@
 # is_private = true|false (whether this room should be in the public list, default=true)
 # secret = "<optional password needed for manipulating (e.g. destroying) the room>"
 # pin = "<optional password needed for joining the room>"
+# signed_tokens = true|false (whether access to the room requires signed tokens; default=false,
+#		only works if signed tokens are used in the core as well)
 # sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 # spatial_audio = true|false (if true, the mix will be stereo to spatially place users, default=false)
 # audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must

@@ -14,7 +14,7 @@ general: {
 						# (one or more per HTTP POST, JSON array with objects)
 						# The default is 'yes' to limit the number of connections.
 
-	json = "indented"	# Whether the JSON messages should be indented (default),
+	json = "compact"	# Whether the JSON messages should be indented (pretty),
 						# plain (no indentation) or compact (no indentation and no spaces)
 
 						# Address the plugin will send all events to as WebSocket

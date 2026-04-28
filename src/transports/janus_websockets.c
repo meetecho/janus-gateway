@@ -116,7 +116,7 @@ static GHashTable *clients = NULL, *writable_clients = NULL;
 static janus_mutex writable_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* JSON serialization options */
-static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+static size_t json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 
 /* Parameter validation (for tweaking and queries via Admin API) */
 static struct janus_json_parameter request_parameters[] = {
@@ -339,10 +339,25 @@ static void janus_websockets_allow_address(const char *ip, gboolean admin) {
 		return;
 	/* Is this an IP or an interface? */
 	janus_mutex_lock(&access_list_mutex);
-	if(!admin)
-		janus_websockets_access_list = g_list_append(janus_websockets_access_list, (gpointer)ip);
-	else
-		janus_websockets_admin_access_list = g_list_append(janus_websockets_admin_access_list, (gpointer)ip);
+	if(!admin) {
+		janus_websockets_access_list = g_list_append(janus_websockets_access_list, g_strdup(ip));
+		if(strstr(ip, ":") == NULL) {
+			/* Add a ::ffff: prefixed address too, which we may need if the server
+			 * supports IPV6 too, and so IPv4 addresses will look different */
+			char pfx_ip[50];
+			g_snprintf(pfx_ip, sizeof(pfx_ip), "::ffff:%s", ip);
+			janus_websockets_access_list = g_list_append(janus_websockets_access_list, g_strdup(pfx_ip));
+		}
+	} else {
+		janus_websockets_admin_access_list = g_list_append(janus_websockets_admin_access_list, g_strdup(ip));
+		if(strstr(ip, ":") == NULL) {
+			/* Add a ::ffff: prefixed address too, which we may need if the server
+			 * supports IPV6 too, and so IPv4 addresses will look different */
+			char pfx_ip[50];
+			g_snprintf(pfx_ip, sizeof(pfx_ip), "::ffff:%s", ip);
+			janus_websockets_admin_access_list = g_list_append(janus_websockets_admin_access_list, g_strdup(pfx_ip));
+		}
+	}
 	janus_mutex_unlock(&access_list_mutex);
 }
 static gboolean janus_websockets_is_allowed(const char *ip, gboolean admin) {
@@ -360,7 +375,7 @@ static gboolean janus_websockets_is_allowed(const char *ip, gboolean admin) {
 	GList *temp = admin ? janus_websockets_admin_access_list : janus_websockets_access_list;
 	while(temp) {
 		const char *allowed = (const char *)temp->data;
-		if(allowed != NULL && strstr(ip, allowed)) {
+		if(allowed != NULL && strstr(ip, allowed) == ip) {
 			janus_mutex_unlock(&access_list_mutex);
 			return TRUE;
 		}
@@ -571,8 +586,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				/* Compact, so no spaces between separators */
 				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 			} else {
-				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
-				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (compact)\n", item->value);
+				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 			}
 		}
 
@@ -822,6 +837,9 @@ void janus_websockets_destroy(void) {
 	writable_clients = NULL;
 	janus_mutex_unlock(&writable_mutex);
 #endif
+
+	g_list_free_full(janus_websockets_access_list, (GDestroyNotify)g_free);
+	g_list_free_full(janus_websockets_admin_access_list, (GDestroyNotify)g_free);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
