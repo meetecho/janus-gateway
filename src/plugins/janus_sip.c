@@ -3031,7 +3031,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *pa
 				/* Fix SSRCs as the Janus core does */
 				JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 					session->media.video_ssrc, session->media.video_ssrc_peer);
-				janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
+				janus_rtcp_fix_ssrc(NULL, NULL, (char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
 				/* Is SRTP involved? */
 				if(session->media.has_srtp_local_video) {
 					char sbuf[2048];
@@ -3061,7 +3061,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *pa
 				/* Fix SSRCs as the Janus core does */
 				JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 					session->media.audio_ssrc, session->media.audio_ssrc_peer);
-				janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
+				janus_rtcp_fix_ssrc(NULL, NULL, (char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
 				/* Is SRTP involved? */
 				if(session->media.has_srtp_local_audio) {
 					char sbuf[2048];
@@ -8404,7 +8404,7 @@ static void janus_sip_rtcp_pli_send(janus_sip_session *session) {
 	/* Fix SSRCs as the Janus core does */
 	JANUS_LOG(LOG_HUGE, "[SIP-%s] Fixing SSRCs (local %u, peer %u)\n",
 		session->account.username, session->media.video_ssrc, session->media.video_ssrc_peer);
-	janus_rtcp_fix_ssrc(NULL, (char *)rtcp_buf, rtcp_len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
+	janus_rtcp_fix_ssrc(NULL, NULL, (char *)rtcp_buf, rtcp_len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
 	/* Is SRTP involved? */
 	if(session->media.has_srtp_local_video) {
 		char sbuf[50];
