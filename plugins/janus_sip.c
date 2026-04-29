@@ -7354,9 +7354,9 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 	 * producing an output seq that is lower than what srtp_protect already
 	 * saw and causing it to fail with replay_old. */
 	if(!old_audio_recv && session->media.audio_recv)
-		session->media.acontext.seq_reset = TRUE;
+		session->media.context.a_seq_reset = TRUE;
 	if(!old_video_recv && session->media.video_recv)
-		session->media.vcontext.seq_reset = TRUE;
+		session->media.context.v_seq_reset = TRUE;
 }
 
 char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gboolean answer) {
