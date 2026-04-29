@@ -7179,6 +7179,10 @@ void janus_sip_save_reason(sip_t const *sip, janus_sip_session *session) {
 void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean answer, gboolean update, gboolean *changed) {
 	if(!session || !sdp)
 		return;
+	/* Remember the previous media reception state, so we can detect a hold->resume
+	 * transition and reset the RTP switching context accordingly */
+	gboolean old_audio_recv = session->media.audio_recv;
+	gboolean old_video_recv = session->media.video_recv;
 	/* c= */
 	int opusred_pt = answer ? janus_sdp_get_opusred_pt(sdp, -1) : -1;
 	if(sdp->c_addr) {
@@ -7351,6 +7355,16 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 			} while(res == -1 && errno == EINTR);
 		}
 	}
+	/* If media reception transitioned from disabled (e.g. hold) to enabled
+	 * (e.g. unhold), reset the RTP switching context so the next outbound
+	 * sequence number is monotonic relative to the last one we sent. Without
+	 * this, after a long hold the peer's RTP seq may have wrapped uint16,
+	 * producing an output seq that is lower than what srtp_protect already
+	 * saw and causing it to fail with replay_old. */
+	if(!old_audio_recv && session->media.audio_recv)
+		session->media.acontext.seq_reset = TRUE;
+	if(!old_video_recv && session->media.video_recv)
+		session->media.vcontext.seq_reset = TRUE;
 }
 
 char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gboolean answer) {
