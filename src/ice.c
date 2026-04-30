@@ -3101,13 +3101,13 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				/* Is this audio or video? */
 				int video = 0, vindex = 0;
 				/* Bundled streams, should we check the SSRCs? */
-				guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, buflen);
+				guint32 rtcp_ssrc = janus_rtcp_get_receiver_ssrc(buf, buflen);
 				janus_ice_peerconnection_medium *medium = g_hash_table_lookup(pc->media_byssrc, GINT_TO_POINTER(rtcp_ssrc));
 				if(medium == NULL) {
-					/* We don't know the remote SSRC: this can happen for recvonly clients
+					/* We don't know the local SSRC: this can happen for unidirectional streams
 					 * (see https://groups.google.com/forum/#!topic/discuss-webrtc/5yuZjV7lkNc)
-					 * Check the local SSRC, compare it to what we have */
-					rtcp_ssrc = janus_rtcp_get_receiver_ssrc(buf, buflen);
+					 * Check the remote SSRC, compare it to what we have */
+					rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, buflen);
 					medium = g_hash_table_lookup(pc->media_byssrc, GINT_TO_POINTER(rtcp_ssrc));
 					if(medium == NULL) {
 						if(rtcp_ssrc > 0) {
