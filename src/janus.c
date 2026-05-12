@@ -710,7 +710,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 			if(timeout == -1)
 				timeout = (gint64)global_session_timeout;
 			if((timeout > 0 && (now - session->last_activity >= timeout * G_USEC_PER_SEC)) ||
-					((g_atomic_int_get(&session->transport_gone) && now - session->last_activity >= (gint64)reclaim_session_timeout * G_USEC_PER_SEC))) {
+					((g_atomic_int_get(&session->transport_gone) && now - session->transport_gone_time >= (gint64)reclaim_session_timeout * G_USEC_PER_SEC))) {
 				if(g_atomic_int_compare_and_exchange(&session->timedout, 0, 1)) {
 					JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
 					/* Mark the session as over, we'll deal with it later */
@@ -797,6 +797,7 @@ janus_session *janus_session_create(guint64 session_id) {
 	g_atomic_int_set(&session->timedout, 0);
 	g_atomic_int_set(&session->transport_gone, 0);
 	session->last_activity = janus_get_monotonic_time();
+	session->transport_gone_time = 0;
 	session->ice_handles = NULL;
 	janus_mutex_init(&session->mutex);
 	janus_mutex_lock(&sessions_mutex);
@@ -1374,6 +1375,7 @@ int janus_process_incoming_request(janus_request *request) {
 		session->source->transport->session_claimed(session->source->instance, session->session_id);
 		/* Previous transport may be gone, clear flag */
 		g_atomic_int_set(&session->transport_gone, 0);
+		session->transport_gone_time = 0;
 		janus_mutex_unlock(&session->mutex);
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
@@ -3507,6 +3509,7 @@ void janus_transport_gone(janus_transport *plugin, janus_transport_session *tran
 					g_hash_table_iter_remove(&iter);
 				} else {
 					/* Set flag for transport_gone. The Janus sessions watchdog will clean this up if not reclaimed */
+					session->transport_gone_time = janus_get_monotonic_time();
 					g_atomic_int_set(&session->transport_gone, 1);
 				}
 			}
