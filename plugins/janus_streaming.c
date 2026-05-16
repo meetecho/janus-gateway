@@ -2200,7 +2200,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					JANUS_LOG(LOG_ERR, "Can't add 'live' mountpoint '%s', unsupported format (we only support Opus and raw mu-Law/a-Law files right now)\n", cat->name);
 #else
 				if(!janus_streaming_check_extension(file->value, ".alaw") &&
-						!strstr(file->janus_streaming_check_extension, ".mulaw")) {
+						!janus_streaming_check_extension(file->value, ".mulaw")) {
 					JANUS_LOG(LOG_ERR, "Can't add 'live' mountpoint '%s', unsupported format (we only support raw mu-Law and a-Law files right now)\n", cat->name);
 #endif
 					cl = cl->next;
