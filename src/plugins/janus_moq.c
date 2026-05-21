@@ -221,14 +221,14 @@ static void janus_moq_connection_gone(imquic_connection *conn, uint64_t error_co
 static void janus_moq_moq_ready(imquic_connection *conn);
 static void janus_moq_moq_publish_namespace_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *params);
 static void janus_moq_moq_publish_namespace_error(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
-static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
-	imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
+	imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters);
 static void janus_moq_moq_incoming_unsubscribe(imquic_connection *conn, uint64_t request_id);
 static void janus_moq_moq_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
 	imquic_moq_request_parameters *parameters, GList *track_extensions);
 static void janus_moq_moq_subscribe_error(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
 static void janus_moq_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason);
 static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_object *object);
 
@@ -1237,7 +1237,7 @@ static void janus_moq_moq_ready(imquic_connection *conn) {
 		};
 		imquic_moq_request_parameters params;
 		imquic_moq_request_parameters_init_defaults(&params);
-		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), 0, &tns, &params);
+		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), &tns, &params);
 	} else {
 		/* Let's subscribe to the provided namespace/name(s) */
 		imquic_moq_namespace tns = {
@@ -1252,20 +1252,20 @@ static void janus_moq_moq_ready(imquic_connection *conn) {
 		if(session->audio_track.track) {
 			JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s/%s, using ID %"SCNu64"/%"SCNu64"\n", imquic_get_connection_name(conn),
 				session->track_namespace, session->audio_track.track, session->audio_track.request_id, session->audio_track.track_alias);
-			imquic_moq_name tn = {
+			imquic_moq_track tn = {
 				.buffer = (uint8_t *)session->audio_track.track,
 				.length = strlen(session->audio_track.track)
 			};
-			imquic_moq_subscribe(conn, session->audio_track.request_id, session->audio_track.track_alias, &tns, &tn, &params);
+			imquic_moq_subscribe(conn, session->audio_track.request_id, &tns, &tn, &params);
 		}
 		if(session->video_track.track) {
 			JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s/%s, using ID %"SCNu64"/%"SCNu64"\n", imquic_get_connection_name(conn),
 				session->track_namespace, session->video_track.track, session->video_track.request_id, session->video_track.track_alias);
-			imquic_moq_name tn = {
+			imquic_moq_track tn = {
 				.buffer = (uint8_t *)session->video_track.track,
 				.length = strlen(session->video_track.track)
 			};
-			imquic_moq_subscribe(conn, session->video_track.request_id, session->video_track.track_alias, &tns, &tn, &params);
+			imquic_moq_subscribe(conn, session->video_track.request_id, &tns, &tn, &params);
 		}
 	}
 }
@@ -1276,14 +1276,14 @@ static void janus_moq_moq_publish_namespace_accepted(imquic_connection *conn, ui
 }
 
 static void janus_moq_moq_publish_namespace_error(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
+		imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
 	JANUS_LOG(LOG_INFO, "[%s] Got an error publishing namespace via ID '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* TODO Stop here */
 }
 
-static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
+static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters) {
 	/* Accept the subscription, if it's for something we know */
 	char namespace[100], track[100];
 	namespace[0] = '\0';
@@ -1359,7 +1359,7 @@ static void janus_moq_moq_subscribe_accepted(imquic_connection *conn, uint64_t r
 }
 
 static void janus_moq_moq_subscribe_error(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
+		imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
 	JANUS_LOG(LOG_INFO, "[%s] Got an error subscribing to ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* TODO Stop here */
