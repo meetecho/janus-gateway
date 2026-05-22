@@ -5581,6 +5581,10 @@ gint main(int argc, char *argv[]) {
 	if(enable_roq)
 		JANUS_LOG(LOG_WARN, "imquic support not compiled, RTP over QUIC (RoQ) not available\n");
 #else
+	const char *keylog_file = NULL;
+	item = janus_config_get(config, config_quic, janus_config_type_item, "keylog_file");
+	if(item && item->value)
+		keylog_file = item->value;
 	const char *roq_server_pem = NULL;
 	item = janus_config_get(config, config_quic, janus_config_type_item, "cert_pem");
 	if(item && item->value)
@@ -5589,7 +5593,7 @@ gint main(int argc, char *argv[]) {
 	item = janus_config_get(config, config_quic, janus_config_type_item, "cert_key");
 	if(item && item->value)
 		roq_server_key = item->value;
-	if(janus_roq_init(enable_roq, roq_server_pem, roq_server_key) < 0) {
+	if(janus_roq_init(enable_roq, keylog_file, roq_server_pem, roq_server_key) < 0) {
 		janus_options_destroy();
 		exit(1);
 	}

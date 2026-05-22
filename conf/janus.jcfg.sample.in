@@ -457,6 +457,11 @@ quic: {
 	# To enable it, uncomment this property and set it to true.
 	#enable_roq = true
 
+	# In case you want to debug QUIC/RoQ connections, you can specify
+	# a keylog file to save the secrets to, which will allow you to,
+	# e.g., use Wireshark to inspect and debug the encrypted traffic.
+	#keylog_file = /path/to/key_log.log
+
 	# In case you want plugins to be able to expose a RoQ server (e.g.,
 	# to feed a Streaming plugin mountpoint), you can specify the
 	# certificate info they'll use for the QUIC connectivity here.

@@ -675,9 +675,9 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 						.delivery = IMQUIC_MOQ_USE_SUBGROUP,
 						.end_of_stream = TRUE
 					};
-					g_list_free(exts);
 					session->video_track.object_id++;
 					imquic_moq_send_object(conn, &object);
+					g_list_free(exts);
 					/* Done, process the new packet */
 					session->video_track.last_ts = ts;
 					session->video_track.offset = 0;

@@ -59,11 +59,11 @@ static void janus_roq_log_cb(int level, const char *format, ...) {
 
 /* \brief RoQ code initialization
  * @returns 0 in case of success, a negative integer on errors */
-int janus_roq_init(gboolean enable_roq, const char *cert_pem, const char *cert_key) {
+int janus_roq_init(gboolean enable_roq, const char *keylog_file, const char *cert_pem, const char *cert_key) {
 	/* Initialize imquic */
 	imquic_set_log_function(janus_roq_log_cb);
 	imquic_set_log_level(IMQUIC_LOG_INFO);
-	if(imquic_init(NULL) < 0)
+	if(imquic_init(keylog_file) < 0)
 		return -1;
 	roq_enabled = enable_roq;
 	if(!roq_enabled) {

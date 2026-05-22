@@ -28,10 +28,11 @@
 
 /*! \brief RoQ code initialization
  * @param enable_roq Whether the RoQ support should be enabled or not
+ * @param keylog_file The (optional) keylog file to save keys to (for Wireshark debugging)
  * @param cert_pem The certificate to use for RoQ servers
  * @param cert_key The certificate key to use for RoQ servers
  * @returns 0 in case of success, a negative integer on errors */
-int janus_roq_init(gboolean enable_roq, const char *cert_pem, const char *cert_key);
+int janus_roq_init(gboolean enable_roq, const char *keylog_file, const char *cert_pem, const char *cert_key);
 /*! \brief RoQ code de-initialization */
 void janus_roq_deinit(void);
 
