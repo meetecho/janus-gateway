@@ -52,4 +52,9 @@ general: {
 	# engine (default 32000 milliseconds)
 	sip_timer_t1x64 = 32000
 
+	# If you want to avoid reusable SIP password to leak to final user, you can use secret_encryption_key.
+	# If used it will requires that secrets send for SIP registartions and calls to be AES encoded using AES-256-ECB.
+	# Hexadecimal string for the key (64 characters for AES-256)
+	#secret_encryption_key = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+
 }
