@@ -102,6 +102,7 @@ static struct janus_json_parameter bridge_parameters[] = {
 	{"path", JANUS_JSON_STRING, 0},
 	{"role", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"namespace", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"use_catalog", JANUS_JSON_BOOL, 0},
 	{"audio_track", JANUS_JSON_STRING, 0},
 	{"video_track", JANUS_JSON_STRING, 0},
 	{"auth_info", JANUS_JSON_STRING, 0},
@@ -151,13 +152,13 @@ typedef struct janus_moq_moq_rtp {
 typedef struct janus_moq_session {
 	janus_plugin_session *handle;
 	imquic_endpoint *quic_endpoint;
-	gboolean moqsub, moqpub;
+	gboolean moqsub, moqpub, use_catalog;
 	imquic_moq_catalog *catalog;
 	char *track_namespace, *auth_info;
 	janus_moq_moq_rtp catalog_track, audio_track, video_track;
 	GHashTable *media, *ptypes;
 	int audio_pt, video_pt;
-	GList *connections;
+	imquic_connection *conn;
 	janus_mutex mutex;
 	uint16_t pli_freq;
 	gint64 pli_latest;
@@ -189,7 +190,6 @@ static void janus_moq_session_free(const janus_refcount *session_ref) {
 	g_free(session->auth_info);
 	g_hash_table_unref(session->media);
 	g_hash_table_unref(session->ptypes);
-	g_list_free(session->connections);
 	janus_mutex_destroy(&session->mutex);
 	g_free(session);
 }
@@ -499,7 +499,42 @@ void janus_moq_setup_media(janus_plugin_session *handle) {
 	}
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_unlock(&sessions_mutex);
-	/* We really don't care, as we only send RTP/RTCP we get in the first place back anyway */
+	/* If this related to a subscriber, actually subscribe to the audio/video tracks now */
+	if(session->moqsub && session->conn) {
+		imquic_moq_namespace tns = {
+			.buffer = (uint8_t *)session->track_namespace,
+			.length = strlen(session->track_namespace),
+			.next = NULL
+		};
+		imquic_moq_request_parameters params;
+		imquic_moq_request_parameters_init_defaults(&params);
+		params.subscription_filter_set = TRUE;
+		params.subscription_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+		/* Audio track, if any */
+		if(session->audio_track.track) {
+			session->audio_track.request_id = imquic_moq_get_next_request_id(session->conn);
+			JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s/%s, using ID %"SCNu64"\n",
+				imquic_get_connection_name(session->conn),
+				session->track_namespace, session->audio_track.track, session->audio_track.request_id);
+			imquic_moq_track tn = {
+				.buffer = (uint8_t *)session->audio_track.track,
+				.length = strlen(session->audio_track.track)
+			};
+			imquic_moq_subscribe(session->conn, session->audio_track.request_id, &tns, &tn, &params);
+		}
+		/* Video track, if any */
+		if(session->video_track.track) {
+			session->video_track.request_id = imquic_moq_get_next_request_id(session->conn);
+			JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s/%s, using ID %"SCNu64"\n",
+				imquic_get_connection_name(session->conn),
+				session->track_namespace, session->video_track.track, session->video_track.request_id);
+			imquic_moq_track tn = {
+				.buffer = (uint8_t *)session->video_track.track,
+				.length = strlen(session->video_track.track)
+			};
+			imquic_moq_subscribe(session->conn, session->video_track.request_id, &tns, &tn, &params);
+		}
+	}
 }
 
 void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
@@ -513,170 +548,197 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 		}
 		if(g_atomic_int_get(&session->destroyed))
 			return;
-		if(!session->moqpub || session->connections == NULL || packet->buffer == NULL || packet->length == 0)
+		if(!session->moqpub || session->conn == NULL || packet->buffer == NULL || packet->length == 0)
 			return;
 		int plen = 0;
 		char *payload = janus_rtp_payload((char *)packet->buffer, packet->length, &plen);
 		if(payload == NULL || plen == 0)
 			return;
-		GList *temp = session->connections;
-		imquic_connection *conn = NULL;
-		while(temp) {
-			conn = (imquic_connection *)temp->data;
-			/* Send as a MoQ object */
-			if(!packet->video && session->audio_track.track && session->audio_track.active) {
-				/* Each audio frame is self contained, write the LOC info first as properties */
+		/* Send as a MoQ object */
+		if(!packet->video && session->audio_track.track && session->audio_track.active) {
+			/* Each audio frame is self contained, write the LOC info first as properties */
+			GList *props = NULL;
+			imquic_moq_property timescale = { 0 };
+			timescale.id = IMQUIC_MOQ_LOC_TIMESCALE;
+			timescale.value.number = G_USEC_PER_SEC;
+			props = g_list_append(props, &timescale);
+			imquic_moq_property timestamp = { 0 };
+			timestamp.id = IMQUIC_MOQ_LOC_TIMESTAMP;
+			timestamp.value.number = session->audio_track.timestamp;
+			props = g_list_append(props, &timestamp);
+			session->audio_track.timestamp += 20000;	/* FIXME */
+			/* Prepare a MoQ object and send it */
+			imquic_moq_object object = {
+				.request_id = session->audio_track.request_id,
+				.track_alias = session->audio_track.track_alias,
+				.group_id = session->audio_track.group_id++,
+				.subgroup_id = 0,	/* FIXME */
+				.object_id = session->audio_track.object_id,
+				.payload = (uint8_t *)payload,
+				.payload_len = plen,
+				.properties = props,
+				.delivery = IMQUIC_MOQ_USE_DATAGRAM,
+				.end_of_stream = TRUE
+			};
+			imquic_moq_send_object(session->conn, &object);
+			g_list_free(props);
+		} else if(packet->video && session->video_track.track && session->video_track.active) {
+			/* Buffer until we have a complete frame */
+			if(session->video_track.buffer == NULL) {
+				session->video_track.size = 10000;
+				session->video_track.buffer = g_malloc(session->video_track.size);
+				session->video_track.offset = 0;
+				session->video_track.timestamp = session->video_track.timestamp_start = janus_get_monotonic_time();
+				session->video_track.group_id = 0;
+				session->video_track.object_id = 0;
+			}
+			janus_rtp_header *rtp = (janus_rtp_header *)packet->buffer;
+			uint32_t ts = ntohl(rtp->timestamp);
+			if(session->video_track.last_ts == 0)
+				session->video_track.last_ts = ts;
+			if(session->video_track.last_ts != ts && session->video_track.offset > 0) {
+				/* Buffer is complete, convert Annex-B to AVC1 and send */
+				if(session->video_track.nal_added) {
+					uint32_t nal_size = session->video_track.offset - session->video_track.nal_offset - 4;
+					JANUS_LOG(LOG_HUGE, "NAL has size %"SCNu32"\n", nal_size);
+					nal_size = htonl(nal_size);
+					memcpy(session->video_track.buffer + session->video_track.nal_offset, &nal_size, 4);
+				}
+				JANUS_LOG(LOG_HUGE, "[%s] Need to send video frame of %zu bytes\n",
+					imquic_get_connection_name(session->conn), session->video_track.offset);
+				/* Write the LOC info first as properties */
 				GList *props = NULL;
 				imquic_moq_property timescale = { 0 };
 				timescale.id = IMQUIC_MOQ_LOC_TIMESCALE;
 				timescale.value.number = G_USEC_PER_SEC;
 				props = g_list_append(props, &timescale);
+				int64_t now = g_get_monotonic_time();
+				uint64_t pts = now - session->video_track.timestamp_start;
 				imquic_moq_property timestamp = { 0 };
 				timestamp.id = IMQUIC_MOQ_LOC_TIMESTAMP;
-				timestamp.value.number = session->audio_track.timestamp;
+				timestamp.value.number = pts;
 				props = g_list_append(props, &timestamp);
-				session->audio_track.timestamp += 20000;	/* FIXME */
+				imquic_moq_property extradata = { 0 };
+				if(session->video_track.extradata_len > 0) {
+					extradata.id = IMQUIC_MOQ_LOC_VIDEO_CONFIG;
+					extradata.value.data.buffer = session->video_track.extradata;
+					extradata.value.data.length = session->video_track.extradata_len;
+					props = g_list_append(props, &extradata);
+					session->video_track.extradata_len = 0;
+				}
 				/* Prepare a MoQ object and send it */
 				imquic_moq_object object = {
-					.request_id = session->audio_track.request_id,
-					.track_alias = session->audio_track.track_alias,
-					.group_id = session->audio_track.group_id++,
+					.request_id = session->video_track.request_id,
+					.track_alias = session->video_track.track_alias,
+					.group_id = session->video_track.group_id,
 					.subgroup_id = 0,	/* FIXME */
-					.object_id = session->audio_track.object_id,
-					.payload = (uint8_t *)payload,
-					.payload_len = plen,
+					.object_id = session->video_track.object_id,
+					.payload = session->video_track.buffer,
+					.payload_len = session->video_track.offset,
 					.properties = props,
-					.delivery = IMQUIC_MOQ_USE_DATAGRAM,
+					.delivery = IMQUIC_MOQ_USE_SUBGROUP,
 					.end_of_stream = TRUE
 				};
-				imquic_moq_send_object(conn, &object);
+				session->video_track.object_id++;
+				imquic_moq_send_object(session->conn, &object);
 				g_list_free(props);
-			} else if(packet->video && session->video_track.track && session->video_track.active) {
-				/* Buffer until we have a complete frame */
-				if(session->video_track.buffer == NULL) {
-					session->video_track.size = 10000;
-					session->video_track.buffer = g_malloc(session->video_track.size);
-					session->video_track.offset = 0;
-					session->video_track.timestamp = session->video_track.timestamp_start = janus_get_monotonic_time();
-					session->video_track.group_id = 0;
-					session->video_track.object_id = 0;
-				}
-				janus_rtp_header *rtp = (janus_rtp_header *)packet->buffer;
-				uint32_t ts = ntohl(rtp->timestamp);
-				if(session->video_track.last_ts == 0)
-					session->video_track.last_ts = ts;
-				if(session->video_track.last_ts != ts && session->video_track.offset > 0) {
-					/* Buffer is complete, convert Annex-B to AVC1 and send */
-					if(session->video_track.nal_added) {
-						uint32_t nal_size = session->video_track.offset - session->video_track.nal_offset - 4;
-						JANUS_LOG(LOG_HUGE, "NAL has size %"SCNu32"\n", nal_size);
-						nal_size = htonl(nal_size);
-						memcpy(session->video_track.buffer + session->video_track.nal_offset, &nal_size, 4);
+				/* Done, process the new packet */
+				session->video_track.last_ts = ts;
+				session->video_track.offset = 0;
+				session->video_track.keyframe = FALSE;
+				session->video_track.nal_added = FALSE;
+				session->video_track.nal_offset = 0;
+			}
+			/* If we're here, we're just buffering */
+			if(session->video_track.offset + plen > session->video_track.size) {
+				session->video_track.size = session->video_track.offset + plen;
+				session->video_track.buffer = g_realloc(session->video_track.buffer, session->video_track.size);
+			}
+			/* Depacketize H.264 */
+			JANUS_LOG(LOG_HUGE, "[%s] Depacketizing payload (%d bytes)\n",
+				imquic_get_connection_name(session->conn), plen);
+			uint8_t fragment = *payload & 0x1F;
+			uint8_t nal = *(payload+1) & 0x1F;
+			uint8_t start_bit = *(payload+1) & 0x80;
+			int len = plen, jump = 0;
+			if(fragment == 7) {
+				/* SPS, see if we can extract the width/height as well */
+				//~ session->video_track.metadata = janus_moq_h264_parse_sps(payload, plen, &session->video_track.width, &session->video_track.height);
+				//~ JANUS_LOG(LOG_INFO, "[%s] Video has resolution %dx%d (%p)\n", imquic_get_connection_name(session->conn),
+					//~ session->video_track.width, session->video_track.height, session->video_track.metadata);
+			} else if(fragment == 24) {
+				/* May we find an SPS in this STAP-A? */
+				char *temp = payload;
+				temp++;
+				int tot = len-1;
+				uint16_t psize = 0;
+				while(tot > 0) {
+					memcpy(&psize, temp, 2);
+					psize = ntohs(psize);
+					temp += 2;
+					tot -= 2;
+					int nal = *temp & 0x1F;
+					if(nal == 7) {
+						session->video_track.extradata_len = janus_moq_h264_parse_sps(session->video_track.extradata,
+							temp - 2, tot + 2, &session->video_track.width, &session->video_track.height);
+						JANUS_LOG(LOG_HUGE, "[%s]   -- Video has resolution %dx%d (%zu bytes of extradata)\n",
+							imquic_get_connection_name(session->conn),
+							session->video_track.width, session->video_track.height, session->video_track.extradata_len);
 					}
-					JANUS_LOG(LOG_HUGE, "[%s] Need to send video frame of %zu bytes\n",
-						imquic_get_connection_name(conn), session->video_track.offset);
-					/* Write the LOC info first as properties */
-					GList *props = NULL;
-					imquic_moq_property timescale = { 0 };
-					timescale.id = IMQUIC_MOQ_LOC_TIMESCALE;
-					timescale.value.number = G_USEC_PER_SEC;
-					props = g_list_append(props, &timescale);
-					int64_t now = g_get_monotonic_time();
-					uint64_t pts = now - session->video_track.timestamp_start;
-					imquic_moq_property timestamp = { 0 };
-					timestamp.id = IMQUIC_MOQ_LOC_TIMESTAMP;
-					timestamp.value.number = pts;
-					props = g_list_append(props, &timestamp);
-					imquic_moq_property extradata = { 0 };
-					if(session->video_track.extradata_len > 0) {
-						extradata.id = IMQUIC_MOQ_LOC_VIDEO_CONFIG;
-						extradata.value.data.buffer = session->video_track.extradata;
-						extradata.value.data.length = session->video_track.extradata_len;
-						props = g_list_append(props, &extradata);
-						session->video_track.extradata_len = 0;
-					}
-					/* Prepare a MoQ object and send it */
-					imquic_moq_object object = {
-						.request_id = session->video_track.request_id,
-						.track_alias = session->video_track.track_alias,
-						.group_id = session->video_track.group_id,
-						.subgroup_id = 0,	/* FIXME */
-						.object_id = session->video_track.object_id,
-						.payload = session->video_track.buffer,
-						.payload_len = session->video_track.offset,
-						.properties = props,
-						.delivery = IMQUIC_MOQ_USE_SUBGROUP,
-						.end_of_stream = TRUE
-					};
-					session->video_track.object_id++;
-					imquic_moq_send_object(conn, &object);
-					g_list_free(props);
-					/* Done, process the new packet */
-					session->video_track.last_ts = ts;
-					session->video_track.offset = 0;
-					session->video_track.keyframe = FALSE;
-					session->video_track.nal_added = FALSE;
-					session->video_track.nal_offset = 0;
+					temp += psize;
+					tot -= psize;
 				}
-				/* If we're here, we're just buffering */
-				if(session->video_track.offset + plen > session->video_track.size) {
-					session->video_track.size = session->video_track.offset + plen;
-					session->video_track.buffer = g_realloc(session->video_track.buffer, session->video_track.size);
+				len = tot;
+			}
+			if(fragment == 28 || fragment == 29) {
+				JANUS_LOG(LOG_HUGE, "[%s]   -- Fragment=%d, NAL=%d, Start=%d (len=%d, frame_len=%zu)\n",
+					imquic_get_connection_name(session->conn), fragment, nal, start_bit, len, session->video_track.offset);
+			} else {
+				JANUS_LOG(LOG_HUGE, "[%s]   -- Fragment=%d (len=%d, frame_len=%zu)\n",
+					imquic_get_connection_name(session->conn), fragment, len, session->video_track.offset);
+			}
+			if(fragment == 5 ||
+					((fragment == 28 || fragment == 29) && nal == 5 && start_bit == 128)) {
+				JANUS_LOG(LOG_HUGE, "[%s]   -- Key frame (seq=%"SCNu16", ts=%"SCNu32", fragment=%d)\n",
+					imquic_get_connection_name(session->conn), ntohs(rtp->seq_number), ntohl(rtp->timestamp), fragment);
+				session->video_track.keyframe = TRUE;
+				session->video_track.group_id++;
+				session->video_track.object_id = 0;
+			}
+			/* Frame manipulation */
+			if((fragment > 0) && (fragment < 24)) {
+				/* Add a start code */
+				JANUS_LOG(LOG_HUGE, "[%s]   -- -- Adding a start code (fragment=%d)\n",
+					imquic_get_connection_name(session->conn), fragment);
+				uint8_t *temp = session->video_track.buffer + session->video_track.offset;
+				memset(temp, 0x00, 1);
+				memset(temp + 1, 0x00, 1);
+				memset(temp + 2, 0x00, 1);
+				memset(temp + 3, 0x01, 1);
+				if(session->video_track.nal_added) {
+					uint32_t nal_size = session->video_track.offset - session->video_track.nal_offset - 4;
+					JANUS_LOG(LOG_HUGE, "[%s]  -- NAL has size %"SCNu32"\n",
+						imquic_get_connection_name(session->conn), nal_size);
+					nal_size = htonl(nal_size);
+					memcpy(session->video_track.buffer + session->video_track.nal_offset, &nal_size, 4);
 				}
-				/* Depacketize H.264 */
-				JANUS_LOG(LOG_HUGE, "[%s] Depacketizing payload (%d bytes)\n", imquic_get_connection_name(conn), plen);
-				uint8_t fragment = *payload & 0x1F;
-				uint8_t nal = *(payload+1) & 0x1F;
-				uint8_t start_bit = *(payload+1) & 0x80;
-				int len = plen, jump = 0;
-				if(fragment == 7) {
-					/* SPS, see if we can extract the width/height as well */
-					//~ session->video_track.metadata = janus_moq_h264_parse_sps(payload, plen, &session->video_track.width, &session->video_track.height);
-					//~ JANUS_LOG(LOG_INFO, "[%s] Video has resolution %dx%d (%p)\n", imquic_get_connection_name(conn),
-						//~ session->video_track.width, session->video_track.height, session->video_track.metadata);
-				} else if(fragment == 24) {
-					/* May we find an SPS in this STAP-A? */
-					char *temp = payload;
-					temp++;
-					int tot = len-1;
-					uint16_t psize = 0;
-					while(tot > 0) {
-						memcpy(&psize, temp, 2);
-						psize = ntohs(psize);
-						temp += 2;
-						tot -= 2;
-						int nal = *temp & 0x1F;
-						if(nal == 7) {
-							session->video_track.extradata_len = janus_moq_h264_parse_sps(session->video_track.extradata,
-								temp - 2, tot + 2, &session->video_track.width, &session->video_track.height);
-							JANUS_LOG(LOG_HUGE, "[%s]   -- Video has resolution %dx%d (%zu bytes of extradata)\n", imquic_get_connection_name(conn),
-								session->video_track.width, session->video_track.height, session->video_track.extradata_len);
-						}
-						temp += psize;
-						tot -= psize;
-					}
-					len = tot;
-				}
-				if(fragment == 28 || fragment == 29) {
-					JANUS_LOG(LOG_HUGE, "[%s]   -- Fragment=%d, NAL=%d, Start=%d (len=%d, frame_len=%zu)\n",
-						imquic_get_connection_name(conn), fragment, nal, start_bit, len, session->video_track.offset);
-				} else {
-					JANUS_LOG(LOG_HUGE, "[%s]   -- Fragment=%d (len=%d, frame_len=%zu)\n",
-						imquic_get_connection_name(conn), fragment, len, session->video_track.offset);
-				}
-				if(fragment == 5 ||
-						((fragment == 28 || fragment == 29) && nal == 5 && start_bit == 128)) {
-					JANUS_LOG(LOG_HUGE, "[%s]   -- Key frame (seq=%"SCNu16", ts=%"SCNu32", fragment=%d)\n",
-						imquic_get_connection_name(conn), ntohs(rtp->seq_number), ntohl(rtp->timestamp), fragment);
-					session->video_track.keyframe = TRUE;
-					session->video_track.group_id++;
-					session->video_track.object_id = 0;
-				}
-				/* Frame manipulation */
-				if((fragment > 0) && (fragment < 24)) {
-					/* Add a start code */
-					JANUS_LOG(LOG_HUGE, "[%s]   -- -- Adding a start code (fragment=%d)\n",
-						imquic_get_connection_name(conn), fragment);
+				if(!session->video_track.nal_added)
+					session->video_track.nal_added = TRUE;
+				session->video_track.nal_offset = session->video_track.offset;
+				session->video_track.offset += 4;
+			} else if(fragment == 24) {	/* STAP-A */
+				/* De-aggregate the NALs and write each of them separately */
+				payload++;
+				int tot = len-1;
+				uint16_t psize = 0;
+				while(tot > 0) {
+					memcpy(&psize, payload, 2);
+					psize = ntohs(psize);
+					payload += 2;
+					tot -= 2;
+					/* Now we have a single NAL */
+					JANUS_LOG(LOG_HUGE, "[%s]   -- -- Adding a start code (aggregated fragment=%d)\n",
+						imquic_get_connection_name(session->conn), fragment);
 					uint8_t *temp = session->video_track.buffer + session->video_track.offset;
 					memset(temp, 0x00, 1);
 					memset(temp + 1, 0x00, 1);
@@ -685,7 +747,7 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 					if(session->video_track.nal_added) {
 						uint32_t nal_size = session->video_track.offset - session->video_track.nal_offset - 4;
 						JANUS_LOG(LOG_HUGE, "[%s]  -- NAL has size %"SCNu32"\n",
-							imquic_get_connection_name(conn), nal_size);
+							imquic_get_connection_name(session->conn), nal_size);
 						nal_size = htonl(nal_size);
 						memcpy(session->video_track.buffer + session->video_track.nal_offset, &nal_size, 4);
 					}
@@ -693,83 +755,52 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 						session->video_track.nal_added = TRUE;
 					session->video_track.nal_offset = session->video_track.offset;
 					session->video_track.offset += 4;
-				} else if(fragment == 24) {	/* STAP-A */
-					/* De-aggregate the NALs and write each of them separately */
-					payload++;
-					int tot = len-1;
-					uint16_t psize = 0;
-					while(tot > 0) {
-						memcpy(&psize, payload, 2);
-						psize = ntohs(psize);
-						payload += 2;
-						tot -= 2;
-						/* Now we have a single NAL */
-						JANUS_LOG(LOG_HUGE, "[%s]   -- -- Adding a start code (aggregated fragment=%d)\n",
-							imquic_get_connection_name(conn), fragment);
-						uint8_t *temp = session->video_track.buffer + session->video_track.offset;
-						memset(temp, 0x00, 1);
-						memset(temp + 1, 0x00, 1);
-						memset(temp + 2, 0x00, 1);
-						memset(temp + 3, 0x01, 1);
-						if(session->video_track.nal_added) {
-							uint32_t nal_size = session->video_track.offset - session->video_track.nal_offset - 4;
-							JANUS_LOG(LOG_HUGE, "[%s]  -- NAL has size %"SCNu32"\n",
-								imquic_get_connection_name(conn), nal_size);
-							nal_size = htonl(nal_size);
-							memcpy(session->video_track.buffer + session->video_track.nal_offset, &nal_size, 4);
-						}
-						if(!session->video_track.nal_added)
-							session->video_track.nal_added = TRUE;
-						session->video_track.nal_offset = session->video_track.offset;
-						session->video_track.offset += 4;
-						memcpy(session->video_track.buffer + session->video_track.offset, payload, psize);
-						session->video_track.offset += psize;
-						/* Go on */
-						payload += psize;
-						tot -= psize;
-					}
-				} else if((fragment == 28) || (fragment == 29)) {	/* FIXME true fr FU-A, not FU-B */
-					uint8_t indicator = *payload;
-					uint8_t header = *(payload+1);
-					jump = 2;
-					len -= 2;
-					if(header & 0x80) {
-						/* First part of fragmented packet (S bit set) */
-						JANUS_LOG(LOG_HUGE, "[%s]   -- -- Adding a start code (fragmented fragment=%d)\n",
-							imquic_get_connection_name(conn), fragment);
-						uint8_t *temp = session->video_track.buffer + session->video_track.offset;
-						memset(temp, 0x00, 1);
-						memset(temp + 1, 0x00, 1);
-						memset(temp + 2, 0x00, 1);
-						memset(temp + 3, 0x01, 1);
-						memset(temp + 4, (indicator & 0xE0) | (header & 0x1F), 1);
-						if(session->video_track.nal_added) {
-							uint32_t nal_size = session->video_track.offset - session->video_track.nal_offset - 4;
-							JANUS_LOG(LOG_HUGE, "[%s]  -- NAL has size %"SCNu32"\n",
-								imquic_get_connection_name(conn), nal_size);
-							nal_size = htonl(nal_size);
-							memcpy(session->video_track.buffer + session->video_track.nal_offset, &nal_size, 4);
-						}
-						if(!session->video_track.nal_added)
-							session->video_track.nal_added = TRUE;
-						session->video_track.nal_offset = session->video_track.offset;
-						session->video_track.offset += 5;
-					} else if (header & 0x40) {
-						/* Last part of fragmented packet (E bit set) */
-					}
+					memcpy(session->video_track.buffer + session->video_track.offset, payload, psize);
+					session->video_track.offset += psize;
+					/* Go on */
+					payload += psize;
+					tot -= psize;
 				}
-				/* Frame manipulation: append the actual payload to the buffer */
-				if(len > 0) {
-					if(session->video_track.offset + len > session->video_track.size) {
-						JANUS_LOG(LOG_HUGE, "[%s]   -- Frame exceeds buffer size...\n",
-							imquic_get_connection_name(conn));
-					} else {
-						memcpy(session->video_track.buffer + session->video_track.offset, payload+jump, len);
-						session->video_track.offset += len;
+			} else if((fragment == 28) || (fragment == 29)) {	/* FIXME true fr FU-A, not FU-B */
+				uint8_t indicator = *payload;
+				uint8_t header = *(payload+1);
+				jump = 2;
+				len -= 2;
+				if(header & 0x80) {
+					/* First part of fragmented packet (S bit set) */
+					JANUS_LOG(LOG_HUGE, "[%s]   -- -- Adding a start code (fragmented fragment=%d)\n",
+						imquic_get_connection_name(session->conn), fragment);
+					uint8_t *temp = session->video_track.buffer + session->video_track.offset;
+					memset(temp, 0x00, 1);
+					memset(temp + 1, 0x00, 1);
+					memset(temp + 2, 0x00, 1);
+					memset(temp + 3, 0x01, 1);
+					memset(temp + 4, (indicator & 0xE0) | (header & 0x1F), 1);
+					if(session->video_track.nal_added) {
+						uint32_t nal_size = session->video_track.offset - session->video_track.nal_offset - 4;
+						JANUS_LOG(LOG_HUGE, "[%s]  -- NAL has size %"SCNu32"\n",
+							imquic_get_connection_name(session->conn), nal_size);
+						nal_size = htonl(nal_size);
+						memcpy(session->video_track.buffer + session->video_track.nal_offset, &nal_size, 4);
 					}
+					if(!session->video_track.nal_added)
+						session->video_track.nal_added = TRUE;
+					session->video_track.nal_offset = session->video_track.offset;
+					session->video_track.offset += 5;
+				} else if (header & 0x40) {
+					/* Last part of fragmented packet (E bit set) */
 				}
 			}
-			temp = temp->next;
+			/* Frame manipulation: append the actual payload to the buffer */
+			if(len > 0) {
+				if(session->video_track.offset + len > session->video_track.size) {
+					JANUS_LOG(LOG_HUGE, "[%s]   -- Frame exceeds buffer size...\n",
+						imquic_get_connection_name(session->conn));
+				} else {
+					memcpy(session->video_track.buffer + session->video_track.offset, payload+jump, len);
+					session->video_track.offset += len;
+				}
+			}
 		}
 		gint64 now = janus_get_monotonic_time();
 		if(session->pli_freq > 0 && ((now-session->pli_latest) >= ((gint64)session->pli_freq*G_USEC_PER_SEC))) {
@@ -849,7 +880,7 @@ static void janus_moq_hangup_media_internal(janus_plugin_session *handle) {
 	memset(&session->video_track, 0, sizeof(session->video_track));
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
-	json_object_set_new(event, "quic", json_string("event"));
+	json_object_set_new(event, "moq", json_string("event"));
 	json_object_set_new(event, "result", json_string("done"));
 	int ret = gateway->push_event(handle, &janus_moq_plugin, NULL, event, NULL);
 	JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -917,21 +948,6 @@ static void *janus_moq_handler(void *data) {
 				JANUS_MOQ_ERROR_MISSING_ELEMENT, JANUS_MOQ_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
-			/* Any SDP to handle? If not, something's wrong */
-			const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
-			const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
-			if(!msg_sdp) {
-				JANUS_LOG(LOG_ERR, "Missing SDP\n");
-				error_code = JANUS_MOQ_ERROR_MISSING_SDP;
-				g_snprintf(error_cause, 512, "Missing SDP");
-				goto error;
-			}
-			if(!msg_sdp_type || strcasecmp(msg_sdp_type, "offer")) {
-				JANUS_LOG(LOG_ERR, "Not an SDP offer\n");
-				error_code = JANUS_MOQ_ERROR_INVALID_SDP;
-				g_snprintf(error_cause, 512, "Missing or invalid SDP type");
-				goto error;
-			}
 			janus_mutex_lock(&session->mutex);
 			if(session->quic_endpoint) {
 				janus_mutex_unlock(&session->mutex);
@@ -952,6 +968,8 @@ static void *janus_moq_handler(void *data) {
 			const char *path = json_string_value(json_object_get(root, "path"));
 			const char *role = json_string_value(json_object_get(root, "role"));
 			const char *namespace = json_string_value(json_object_get(root, "namespace"));
+			json_t *uc = json_object_get(root, "use_catalog");
+			gboolean use_catalog = uc ? json_is_true(uc) : TRUE;
 			const char *audio_track = json_string_value(json_object_get(root, "audio_track"));
 			const char *video_track = json_string_value(json_object_get(root, "video_track"));
 			const char *auth_info = json_string_value(json_object_get(root, "auth_info"));
@@ -963,13 +981,33 @@ static void *janus_moq_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing MoQ role");
 				goto error;
 			}
-			if(strcasecmp(role, "publisher") && strcasecmp(role, "subscriber")) {
+			gboolean moqpub = !strcasecmp(role, "publisher");
+			gboolean moqsub = !strcasecmp(role, "subscriber");
+			if(!moqpub && !moqsub) {
 				/* Invalid role */
 				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Invalid MoQ role\n");
 				error_code = JANUS_MOQ_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid MoQ role");
 				goto error;
+			}
+			const char *msg_sdp_type = NULL, *msg_sdp = NULL;
+			if(moqpub) {
+				/* Any SDP to handle? If not, something's wrong */
+				msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
+				msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+				if(!msg_sdp) {
+					JANUS_LOG(LOG_ERR, "Missing SDP\n");
+					error_code = JANUS_MOQ_ERROR_MISSING_SDP;
+					g_snprintf(error_cause, 512, "Missing SDP");
+					goto error;
+				}
+				if(!msg_sdp_type || strcasecmp(msg_sdp_type, "offer")) {
+					JANUS_LOG(LOG_ERR, "Not an SDP offer\n");
+					error_code = JANUS_MOQ_ERROR_INVALID_SDP;
+					g_snprintf(error_cause, 512, "Missing or invalid SDP type");
+					goto error;
+				}
 			}
 			if(namespace == NULL) {
 				/* Missing namespace */
@@ -979,32 +1017,40 @@ static void *janus_moq_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing MoQ namespace");
 				goto error;
 			}
-			if(audio_track == NULL && video_track == NULL) {
+			if(moqpub && audio_track == NULL && video_track == NULL) {
 				/* Missing audio or video track */
 				janus_mutex_unlock(&session->mutex);
-				JANUS_LOG(LOG_ERR, "At least one track (audio or video) must be provided\n");
+				JANUS_LOG(LOG_ERR, "At least one track (audio or video) must be provided for publishers\n");
 				error_code = JANUS_MOQ_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "At least one track (audio or video) must be provided");
+				g_snprintf(error_cause, 512, "At least one track (audio or video) must be provided for publishers");
+				goto error;
+			} else if(moqsub && !use_catalog && audio_track == NULL && video_track == NULL) {
+				/* Missing audio or video track */
+				janus_mutex_unlock(&session->mutex);
+				JANUS_LOG(LOG_ERR, "At least one track (audio or video) must be provided for subscribers not using the catalog\n");
+				error_code = JANUS_MOQ_ERROR_MISSING_ELEMENT;
+				g_snprintf(error_cause, 512, "At least one track (audio or video) must be provided for subscribers not using the catalog");
 				goto error;
 			}
 			char name[50];
 			/* Create the imquic endpoint (client) */
 			imquic_endpoint *quic_endpoint = NULL;
-			session->moqpub = !strcasecmp(role, "publisher");
-			session->moqsub = !session->moqpub;
-			memset(&session->catalog_track, 0, sizeof(session->catalog_track));
-			memset(&session->audio_track, 0, sizeof(session->audio_track));
-			memset(&session->video_track, 0, sizeof(session->video_track));
+			session->moqpub = moqpub;
+			session->moqsub = moqsub;
+			session->use_catalog = moqsub && use_catalog;
 			session->track_namespace = g_strdup(namespace);
 			/* Catalog track */
+			memset(&session->catalog_track, 0, sizeof(session->catalog_track));
 			session->catalog_track.track = g_strdup("catalog");
 			/* Audio track, if any */
-			if(audio_track != NULL) {
+			memset(&session->audio_track, 0, sizeof(session->audio_track));
+			if(audio_track != NULL && (moqpub || (moqsub && !use_catalog))) {
 				session->audio_track.track = g_strdup(audio_track);
 				session->audio_track.ssrc = janus_random_uint32();
 			}
 			/* Video track, if any */
-			if(video_track != NULL) {
+			memset(&session->video_track, 0, sizeof(session->video_track));
+			if(video_track != NULL && (moqpub || (moqsub && !use_catalog))) {
 				session->video_track.track = g_strdup(video_track);
 				session->video_track.ssrc = janus_random_uint32();
 			}
@@ -1049,72 +1095,113 @@ static void *janus_moq_handler(void *data) {
 			session->quic_endpoint = quic_endpoint;
 			imquic_start_endpoint(quic_endpoint);
 			janus_mutex_unlock(&session->mutex);
-			/* Parse the SDP we got one */
-			char sdperror[100];
-			janus_sdp *offer = janus_sdp_parse(msg_sdp, sdperror, sizeof(sdperror));
-			if(!offer) {
-				JANUS_LOG(LOG_ERR, "Error parsing SDP: %s\n", sdperror);
-				error_code = JANUS_MOQ_ERROR_INVALID_SDP;
-				g_snprintf(error_cause, 512, "Error parsing SDP: %s", sdperror);
-				goto error;
-			}
-			/* Generate an answer */
-			janus_sdp *answer = janus_sdp_generate_answer(offer);
-			GList *temp = offer->m_lines;
-			while(temp) {
-				janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-				if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
-					janus_sdp_generate_answer_mline(offer, answer, m,
-						JANUS_SDP_OA_MLINE, m->type,
-							JANUS_SDP_OA_DIRECTION, (session->moqsub ? JANUS_SDP_SENDONLY : JANUS_SDP_RECVONLY),
-							JANUS_SDP_OA_CODEC, (m->type == JANUS_SDP_VIDEO ? "h264" : NULL),
-							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
-							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
-						JANUS_SDP_OA_DONE);
-					janus_sdp_mline *am = janus_sdp_mline_find_by_index(answer, m->index);
-					int pt = am->ptypes ? GPOINTER_TO_INT(am->ptypes->data) : -1;
-					if(m->type == JANUS_SDP_AUDIO)
-						session->audio_pt = pt;
-					else
-						session->video_pt = pt;
+			/* If this is a MoQ publisher, we parse the SDP in order to provide an
+			 * answer back: for subscribers, we'll generate an offer ourselves later */
+			if(moqpub) {
+				/* Parse the SDP we got one */
+				char sdperror[100];
+				janus_sdp *offer = janus_sdp_parse(msg_sdp, sdperror, sizeof(sdperror));
+				if(!offer) {
+					JANUS_LOG(LOG_ERR, "Error parsing SDP: %s\n", sdperror);
+					error_code = JANUS_MOQ_ERROR_INVALID_SDP;
+					g_snprintf(error_cause, 512, "Error parsing SDP: %s", sdperror);
+					goto error;
 				}
-				temp = temp->next;
-			}
-			janus_sdp_destroy(offer);
-			char *sdp = janus_sdp_write(answer);
-			janus_sdp_destroy(answer);
-			JANUS_LOG(LOG_VERB, "Prepared SDP answer\n%s", sdp);
-			g_atomic_int_set(&session->hangingup, 0);
-			/* Prepare a MoQ catalog too, if we're publishing */
-			if(session->moqpub && session->catalog == NULL) {
-				session->catalog = imquic_moq_catalog_create(1);
-				if(session->audio_track.track != NULL) {
-					/* FIXME Add the audio track to the catalog */
-					imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(session->track_namespace,
-						session->audio_track.track, "loc", TRUE);
-					track->role = g_strdup("audio");
-					track->render_group = 1;
-					track->target_latency = 200;
-					track->codec = g_strdup("opus");
-					track->samplerate = 48000;
-					imquic_moq_catalog_add_track(session->catalog, track);
+				/* Generate an answer */
+				janus_sdp *answer = janus_sdp_generate_answer(offer);
+				GList *temp = offer->m_lines;
+				while(temp) {
+					janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+					if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
+						janus_sdp_generate_answer_mline(offer, answer, m,
+							JANUS_SDP_OA_MLINE, m->type,
+								JANUS_SDP_OA_DIRECTION, (session->moqsub ? JANUS_SDP_SENDONLY : JANUS_SDP_RECVONLY),
+								JANUS_SDP_OA_CODEC, (m->type == JANUS_SDP_VIDEO ? "h264" : NULL),
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
+							JANUS_SDP_OA_DONE);
+						janus_sdp_mline *am = janus_sdp_mline_find_by_index(answer, m->index);
+						int pt = am->ptypes ? GPOINTER_TO_INT(am->ptypes->data) : -1;
+						if(m->type == JANUS_SDP_AUDIO)
+							session->audio_pt = pt;
+						else
+							session->video_pt = pt;
+					}
+					temp = temp->next;
 				}
-				if(session->video_track.track != NULL) {
-					/* FIXME Add the video track to the catalog */
-					imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(session->track_namespace,
-						session->video_track.track, "loc", TRUE);
-					track->role = g_strdup("video");
-					track->render_group = 1;
-					track->target_latency = 200;
-					track->codec = g_strdup("avc1.42001F");
-					imquic_moq_catalog_add_track(session->catalog, track);
+				janus_sdp_destroy(offer);
+				char *sdp = janus_sdp_write(answer);
+				janus_sdp_destroy(answer);
+				JANUS_LOG(LOG_VERB, "Prepared SDP answer\n%s", sdp);
+				g_atomic_int_set(&session->hangingup, 0);
+				/* Prepare a MoQ catalog too, if we're publishing */
+				if(session->moqpub && session->catalog == NULL) {
+					session->catalog = imquic_moq_catalog_create(1);
+					if(session->audio_track.track != NULL) {
+						/* FIXME Add the audio track to the catalog */
+						imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(session->track_namespace,
+							session->audio_track.track, "loc", TRUE);
+						track->role = g_strdup("audio");
+						track->render_group = 1;
+						track->target_latency = 200;
+						track->codec = g_strdup("opus");
+						track->samplerate = 48000;
+						imquic_moq_catalog_add_track(session->catalog, track);
+					}
+					if(session->video_track.track != NULL) {
+						/* FIXME Add the video track to the catalog */
+						imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(session->track_namespace,
+							session->video_track.track, "loc", TRUE);
+						track->role = g_strdup("video");
+						track->render_group = 1;
+						track->target_latency = 200;
+						track->codec = g_strdup("avc1.42001F");
+						imquic_moq_catalog_add_track(session->catalog, track);
+					}
 				}
+				localjsep = json_pack("{ssss}", "type", "answer", "sdp", sdp);
+				g_free(sdp);
 			}
-			/* Send SDP to the browser */
+			/* Send an answer back to the browser */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("bridging"));
-			localjsep = json_pack("{ssss}", "type", "answer", "sdp", sdp);
-			g_free(sdp);
+		} else if(!strcasecmp(request_text, "start")) {
+			if(!session->moqsub) {
+				/* This command can only be sent by subscriberss */
+				janus_mutex_unlock(&session->mutex);
+				JANUS_LOG(LOG_ERR, "Invalid MoQ role request\n");
+				error_code = JANUS_MOQ_ERROR_INVALID_REQUEST;
+				g_snprintf(error_cause, 512, "Invalid MoQ role request");
+				goto error;
+			}
+			const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
+			const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+			if(msg_sdp) {
+				if(!msg_sdp_type || strcasecmp(msg_sdp_type, "answer")) {
+					JANUS_LOG(LOG_ERR, "Not an SDP answer\n");
+					error_code = JANUS_MOQ_ERROR_INVALID_SDP;
+					g_snprintf(error_cause, 512, "Missing or invalid SDP type");
+					goto error;
+				}
+				char error_str[512];
+				janus_sdp *answer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
+				GList *temp = answer->m_lines;
+				while(temp) {
+					janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+					if(m->direction != JANUS_SDP_INACTIVE) {
+						int pt = m->ptypes ? GPOINTER_TO_INT(m->ptypes->data) : -1;
+						if(m->type == JANUS_SDP_AUDIO)
+							session->audio_pt = pt;
+						else
+							session->video_pt = pt;
+					}
+					temp = temp->next;
+				}
+				janus_sdp_destroy(answer);
+			}
+			/* Send an answer back to the browser */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("starting"));
 		} else if(!strcasecmp(request_text, "hangup")) {
 			/* Get rid of an ongoing session */
 			gateway->close_pc(session->handle);
@@ -1129,7 +1216,7 @@ static void *janus_moq_handler(void *data) {
 
 		/* Prepare JSON event */
 		json_t *event = json_object();
-		json_object_set_new(event, "quic", json_string("event"));
+		json_object_set_new(event, "moq", json_string("event"));
 		if(result != NULL)
 			json_object_set_new(event, "result", result);
 		int ret = gateway->push_event(msg->handle, &janus_moq_plugin, msg->transaction, event, localjsep);
@@ -1144,7 +1231,7 @@ error:
 		{
 			/* Prepare JSON error event */
 			json_t *event = json_object();
-			json_object_set_new(event, "quic", json_string("event"));
+			json_object_set_new(event, "moq", json_string("event"));
 			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
 			int ret = gateway->push_event(msg->handle, &janus_moq_plugin, msg->transaction, event, NULL);
@@ -1166,7 +1253,7 @@ static void janus_moq_new_connection(imquic_connection *conn, void *user_data) {
 	janus_moq_session *session = (janus_moq_session *)user_data;
 	janus_mutex_lock(&connections_mutex);
 	janus_refcount_increase(&session->ref);
-	session->connections = g_list_prepend(session->connections, conn);
+	session->conn = conn;
 	g_hash_table_insert(connections, conn, session);
 	janus_mutex_unlock(&connections_mutex);
 	if(session->moqpub || session->moqsub)
@@ -1186,7 +1273,7 @@ static void janus_moq_connection_gone(imquic_connection *conn, uint64_t error_co
 			janus_refcount_decrease(&session->ref);
 		return;
 	}
-	session->connections = g_list_remove(session->connections, conn);
+	session->conn = NULL;
 	g_hash_table_remove(connections, conn);
 	janus_mutex_unlock(&connections_mutex);
 	imquic_connection_unref(conn);
@@ -1202,7 +1289,7 @@ static void janus_moq_moq_ready(imquic_connection *conn) {
 		janus_mutex_unlock(&connections_mutex);
 		return;
 	}
-	JANUS_LOG(LOG_INFO, "[%s] Advertising as a MoQ %s\n", imquic_get_connection_name(conn), session->moqpub ? "publisher" : "subscriber");
+	JANUS_LOG(LOG_INFO, "[%s] Connected as a MoQ %s\n", imquic_get_connection_name(conn), session->moqpub ? "publisher" : "subscriber");
 	if(session->moqpub) {
 		/* Let's publish_namespace our namespace */
 		JANUS_LOG(LOG_INFO, "[%s] Announcing namespace '%s'\n", imquic_get_connection_name(conn), session->track_namespace);
@@ -1214,16 +1301,13 @@ static void janus_moq_moq_ready(imquic_connection *conn) {
 		imquic_moq_request_parameters_init_defaults(&params);
 		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), &tns, &params);
 	} else {
-		/* Let's subscribe to the provided namespace/name(s) */
+		/* Let's subscribe to the catalog track: we may want to only subscribe
+		 * to the audio/video track when we've obtained a catalog back */
 		imquic_moq_namespace tns = {
 			.buffer = (uint8_t *)session->track_namespace,
 			.length = strlen(session->track_namespace),
 			.next = NULL
 		};
-		imquic_moq_request_parameters params;
-		imquic_moq_request_parameters_init_defaults(&params);
-		params.subscription_filter_set = TRUE;
-		params.subscription_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 		/* Catalog track */
 		session->catalog_track.request_id = imquic_moq_get_next_request_id(conn);
 		JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s/%s, using ID %"SCNu64"\n", imquic_get_connection_name(conn),
@@ -1232,28 +1316,57 @@ static void janus_moq_moq_ready(imquic_connection *conn) {
 			.buffer = (uint8_t *)session->catalog_track.track,
 			.length = strlen(session->catalog_track.track)
 		};
-		imquic_moq_subscribe(conn, session->catalog_track.request_id, &tns, &ctn, &params);
-		/* Audio track, if any */
-		if(session->audio_track.track) {
-			session->audio_track.request_id = imquic_moq_get_next_request_id(conn);
-			JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s/%s, using ID %"SCNu64"\n", imquic_get_connection_name(conn),
-				session->track_namespace, session->audio_track.track, session->audio_track.request_id);
-			imquic_moq_track tn = {
-				.buffer = (uint8_t *)session->audio_track.track,
-				.length = strlen(session->audio_track.track)
-			};
-			imquic_moq_subscribe(conn, session->audio_track.request_id, &tns, &tn, &params);
-		}
-		/* Video track, if any */
-		if(session->video_track.track) {
-			session->video_track.request_id = imquic_moq_get_next_request_id(conn);
-			JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s/%s, using ID %"SCNu64"\n", imquic_get_connection_name(conn),
-				session->track_namespace, session->video_track.track, session->video_track.request_id);
-			imquic_moq_track tn = {
-				.buffer = (uint8_t *)session->video_track.track,
-				.length = strlen(session->video_track.track)
-			};
-			imquic_moq_subscribe(conn, session->video_track.request_id, &tns, &tn, &params);
+		imquic_moq_subscribe(conn, session->catalog_track.request_id, &tns, &ctn, NULL);
+		if(session->use_catalog) {
+			/* We'll wait for the catalog to know what tracks to subscribe to */
+			JANUS_LOG(LOG_INFO, "[%s]   -- Waiting for catalog\n", imquic_get_connection_name(conn));
+		} else {
+			/* We've been asked not to use the catalog: let's prepare
+			 * an SDP offer for the track names we've been told about */
+			JANUS_LOG(LOG_INFO, "[%s]   -- Preparing SDP offer to kickstart subscriptions\n",
+				imquic_get_connection_name(conn));
+			janus_sdp *offer = janus_sdp_generate_offer("imquic",
+				"0.0.0.0", JANUS_SDP_OA_DONE);
+			if(session->audio_track.track) {
+				/* FIXME Audio track */
+				session->audio_pt = janus_audiocodec_pt(JANUS_AUDIOCODEC_OPUS);
+				janus_sdp_generate_offer_mline(offer,
+					JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+					JANUS_SDP_OA_MID, "a",
+					JANUS_SDP_OA_PT, session->audio_pt,
+					JANUS_SDP_OA_CODEC, janus_audiocodec_name(JANUS_AUDIOCODEC_OPUS),
+					JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
+					JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_MID, janus_rtp_extension_id(JANUS_RTP_EXTMAP_MID),
+					JANUS_SDP_OA_DONE);
+			}
+			if(session->video_track.track) {
+				/* FIXME Video track */
+				session->video_pt = janus_videocodec_pt(JANUS_VIDEOCODEC_H264);
+				janus_sdp_generate_offer_mline(offer,
+					JANUS_SDP_OA_MLINE, JANUS_SDP_VIDEO,
+					JANUS_SDP_OA_MID, "v",
+					JANUS_SDP_OA_PT, session->video_pt,
+					JANUS_SDP_OA_CODEC, janus_videocodec_name(JANUS_VIDEOCODEC_H264),
+					JANUS_SDP_OA_H264_PROFILE, "42e01f",
+					JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
+					JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_MID, janus_rtp_extension_id(JANUS_RTP_EXTMAP_MID),
+					JANUS_SDP_OA_DONE);
+			}
+			/* Send the offer to the WebRTC subscriber */
+			char *sdp = janus_sdp_write(offer);
+			janus_sdp_destroy(offer);
+			json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", sdp);
+			g_free(sdp);
+			json_t *event = json_object();
+			json_object_set_new(event, "moq", json_string("event"));
+			json_t *result = json_object();
+			json_object_set_new(result, "event", json_string("offering"));
+			json_object_set_new(event, "result", result);
+			gint64 start = janus_get_monotonic_time();
+			int res = gateway->push_event(session->handle, &janus_moq_plugin, NULL, event, jsep);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
+			json_decref(event);
+			json_decref(jsep);
 		}
 	}
 }
@@ -1385,6 +1498,20 @@ static void janus_moq_moq_subscribe_accepted(imquic_connection *conn, uint64_t r
 		JANUS_LOG(LOG_INFO, "[%s]   -- Catalog track will use track alias '%"SCNu64"\n",
 			imquic_get_connection_name(conn), track_alias);
 		session->catalog_track.track_alias = track_alias;
+		if(parameters && parameters->largest_object_set) {
+			/* There's a largest object, send a Joining FETCH */
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
+				imquic_get_connection_name(conn),
+				parameters->largest_object.group, parameters->largest_object.object);
+			/* Send a Joining Fetch referencing this subscription */
+			imquic_moq_request_parameters fparams;
+			imquic_moq_request_parameters_init_defaults(&fparams);
+			uint64_t catalog_fetch_request_id = imquic_moq_get_next_request_id(conn);
+			int join_offset = parameters->largest_object.group;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending Joining Fetch for subscription %"SCNu64", using ID %"SCNu64" (offset=%d)\n",
+				imquic_get_connection_name(conn), request_id, catalog_fetch_request_id, join_offset);
+			imquic_moq_joining_fetch(conn, catalog_fetch_request_id, request_id, FALSE, join_offset, &fparams);
+		}
 	} else if(session->audio_track.track && session->audio_track.request_id == request_id) {
 		/* Audio track */
 		JANUS_LOG(LOG_INFO, "[%s]   -- Audio track will use track alias '%"SCNu64"\n",
@@ -1448,7 +1575,62 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 			/* Something went wrong */
 			return;
 		}
-		/* TODO Use catalog to create subscription dynamically */
+		/* Check if we're relying on the catalog to discover tracks */
+		if(session->moqsub && session->use_catalog) {
+			/* Use catalog to generate an offer for this subscriber */
+			JANUS_LOG(LOG_INFO, "[%s]   -- Using catalog to prepare SDP offer\n",
+				imquic_get_connection_name(conn));
+			janus_sdp *offer = janus_sdp_generate_offer("imquic",
+				"0.0.0.0", JANUS_SDP_OA_DONE);
+			GList *temp = session->catalog->tracks;
+			while(temp) {
+				imquic_moq_catalog_track *track = (imquic_moq_catalog_track *)temp->data;
+				if(track->role && !strcasecmp(track->role, "audio")) {
+					/* FIXME Audio track */
+					session->audio_track.track = g_strdup(track->track_name);
+					session->audio_track.ssrc = janus_random_uint32();
+					session->audio_pt = janus_audiocodec_pt(JANUS_AUDIOCODEC_OPUS);
+					janus_sdp_generate_offer_mline(offer,
+						JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+						JANUS_SDP_OA_MID, "a",
+						JANUS_SDP_OA_PT, session->audio_pt,
+						JANUS_SDP_OA_CODEC, janus_audiocodec_name(JANUS_AUDIOCODEC_OPUS),
+						JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
+						JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_MID, janus_rtp_extension_id(JANUS_RTP_EXTMAP_MID),
+						JANUS_SDP_OA_DONE);
+				} else if(track->role && !strcasecmp(track->role, "video")) {
+					/* FIXME Video track */
+					session->video_track.track = g_strdup(track->track_name);
+					session->video_track.ssrc = janus_random_uint32();
+					session->video_pt = janus_videocodec_pt(JANUS_VIDEOCODEC_H264);
+					janus_sdp_generate_offer_mline(offer,
+						JANUS_SDP_OA_MLINE, JANUS_SDP_VIDEO,
+						JANUS_SDP_OA_MID, "v",
+						JANUS_SDP_OA_PT, session->video_pt,
+						JANUS_SDP_OA_CODEC, janus_videocodec_name(JANUS_VIDEOCODEC_H264),
+						JANUS_SDP_OA_H264_PROFILE, "42e01f",
+						JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
+						JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_MID, janus_rtp_extension_id(JANUS_RTP_EXTMAP_MID),
+						JANUS_SDP_OA_DONE);
+				}
+				temp = temp->next;
+			}
+			/* Send the offer to the WebRTC subscriber */
+			char *sdp = janus_sdp_write(offer);
+			janus_sdp_destroy(offer);
+			json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", sdp);
+			g_free(sdp);
+			json_t *event = json_object();
+			json_object_set_new(event, "moq", json_string("event"));
+			json_t *result = json_object();
+			json_object_set_new(result, "event", json_string("offering"));
+			json_object_set_new(event, "result", result);
+			gint64 start = janus_get_monotonic_time();
+			int res = gateway->push_event(session->handle, &janus_moq_plugin, NULL, event, jsep);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
+			json_decref(event);
+			json_decref(jsep);
+		}
 		return;
 	}
 	/* FIXME Assuming LOC from https://www.ietf.org/archive/id/draft-ietf-moq-loc-02.html */
