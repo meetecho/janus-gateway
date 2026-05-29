@@ -105,6 +105,8 @@ static struct janus_json_parameter bridge_parameters[] = {
 	{"use_catalog", JANUS_JSON_BOOL, 0},
 	{"audio_track", JANUS_JSON_STRING, 0},
 	{"video_track", JANUS_JSON_STRING, 0},
+	{"video_codec", JANUS_JSON_STRING, 0},
+	{"annexb", JANUS_JSON_BOOL, 0},
 	{"auth_info", JANUS_JSON_STRING, 0},
 };
 
@@ -117,7 +119,7 @@ static void *janus_moq_handler(void *data);
 static void janus_moq_hangup_media_internal(janus_plugin_session *handle);
 
 /* MTU to assume when (optionally) packetizing H.264 in RTP (for MoQ subscribers) */
-static int mtu = 1200;
+static size_t mtu = 1200;
 
 typedef struct janus_moq_message {
 	janus_plugin_session *handle;
@@ -151,17 +153,24 @@ typedef struct janus_moq_moq_rtp {
 /* Plugin session */
 typedef struct janus_moq_session {
 	janus_plugin_session *handle;
+	/* QUIC/MoQ */
 	imquic_endpoint *quic_endpoint;
+	imquic_connection *conn;
 	gboolean moqsub, moqpub, use_catalog;
 	imquic_moq_catalog *catalog;
 	char *track_namespace, *auth_info;
 	janus_moq_moq_rtp catalog_track, audio_track, video_track;
+	/* RTP/RTCP */
 	GHashTable *media, *ptypes;
 	int audio_pt, video_pt;
-	imquic_connection *conn;
-	janus_mutex mutex;
 	uint16_t pli_freq;
 	gint64 pli_latest;
+	/* Encoding */
+	janus_videocodec vcodec;
+	gboolean annexb;
+	uint16_t pid;
+	/* Utils */
+	janus_mutex mutex;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -240,18 +249,19 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 /* Helpers to parse SPS/PPS (needed for Annex-B to AVC1 translation) */
 static uint32_t janus_moq_h264_eg_getbit(uint8_t *base, uint32_t offset);
 static uint32_t janus_moq_h264_eg_decode(uint8_t *base, uint32_t *offset);
-static size_t janus_moq_h264_parse_sps(uint8_t *avcc_data, char *buffer, int len, int *width, int *height);
+static size_t janus_moq_h264_parse_sps(uint8_t *extradata, size_t extradata_len,
+	gboolean annexb, uint8_t *buffer, size_t len, int *width, int *height);
 
 /* Error codes */
 #define JANUS_MOQ_ERROR_NO_MESSAGE		410
-#define JANUS_MOQ_ERROR_INVALID_JSON		412
+#define JANUS_MOQ_ERROR_INVALID_JSON	412
 #define JANUS_MOQ_ERROR_INVALID_REQUEST	412
 #define JANUS_MOQ_ERROR_MISSING_ELEMENT	413
 #define JANUS_MOQ_ERROR_INVALID_ELEMENT	414
 #define JANUS_MOQ_ERROR_MISSING_SDP		415
 #define JANUS_MOQ_ERROR_INVALID_SDP		416
 #define JANUS_MOQ_ERROR_WRONG_STATE		417
-#define JANUS_MOQ_ERROR_IMQUIC_ERROR		418
+#define JANUS_MOQ_ERROR_IMQUIC_ERROR	418
 
 
 /* Plugin implementation */
@@ -282,13 +292,9 @@ int janus_moq_init(janus_callbacks *callback, const char *config_path) {
 		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 		config = janus_config_parse(filename);
 	}
-	char *sslkeylog = NULL;
 	if(config != NULL) {
 		janus_config_print(config);
 		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
-		janus_config_item *skl = janus_config_get(config, config_general, janus_config_type_item, "sslkeylog");
-		if(skl != NULL && skl->value != NULL)
-			sslkeylog = g_strdup(skl->value);
 		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
@@ -301,11 +307,7 @@ int janus_moq_init(janus_callbacks *callback, const char *config_path) {
 
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_moq_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_moq_message_free);
-	/* imquic */
-	//~ imquic_init(sslkeylog);
-	//~ imquic_set_log_level(IMQUIC_LOG_INFO);
 	connections = g_hash_table_new_full(NULL, NULL, NULL, NULL);
-	g_free(sslkeylog);
 
 	/* This is the callback we'll need to invoke to contact the server */
 	gateway = callback;
@@ -313,10 +315,10 @@ int janus_moq_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Launch the thread that will handle incoming messages */
 	GError *error = NULL;
-	handler_thread = g_thread_try_new("quic handler", janus_moq_handler, NULL, &error);
+	handler_thread = g_thread_try_new("moq handler", janus_moq_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the QUIC handler thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the MoQ handler thread...\n", error->code, error->message ? error->message : "??");
 		g_error_free(error);
 		return -1;
 	}
@@ -396,6 +398,8 @@ void janus_moq_create_session(janus_plugin_session *handle, int *error) {
 	session->ptypes = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	session->audio_pt = -1;
 	session->video_pt = -1;
+	session->vcodec = JANUS_VIDEOCODEC_H264;
+	session->annexb = FALSE;	/* By default we use AVCC */
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
 	janus_mutex_init(&session->mutex);
@@ -421,9 +425,9 @@ void janus_moq_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -2;
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "Removing QUIC session...\n");
+	JANUS_LOG(LOG_VERB, "Removing MoQ session...\n");
 	janus_moq_hangup_media_internal(handle);
-	/* If there's a QUIC server running, get rid of it */
+	/* If there's an imquic endpoint running, get rid of it */
 	if(session->quic_endpoint != NULL)
 		imquic_shutdown_endpoint(session->quic_endpoint);
 	session->quic_endpoint = NULL;
@@ -477,7 +481,7 @@ struct janus_plugin_result *janus_moq_handle_message(janus_plugin_session *handl
 
 json_t *janus_moq_handle_admin_message(json_t *message) {
 	/* Just here as a proof of concept: since there's nothing to configure,
-	 * as an QUIC plugin we echo this Admin request back as well */
+	 * as a test plugin we simply echo this Admin request back as well */
 	json_t *response = json_deep_copy(message);
 	return response;
 }
@@ -597,7 +601,7 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 			if(session->video_track.last_ts == 0)
 				session->video_track.last_ts = ts;
 			if(session->video_track.last_ts != ts && session->video_track.offset > 0) {
-				/* Buffer is complete, convert Annex-B to AVC1 and send */
+				/* Buffer is complete, convert Annex-B to AVC1 (if needed) and send */
 				if(session->video_track.nal_added) {
 					uint32_t nal_size = session->video_track.offset - session->video_track.nal_offset - 4;
 					JANUS_LOG(LOG_HUGE, "NAL has size %"SCNu32"\n", nal_size);
@@ -654,151 +658,342 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 				session->video_track.size = session->video_track.offset + plen;
 				session->video_track.buffer = g_realloc(session->video_track.buffer, session->video_track.size);
 			}
-			/* Depacketize H.264 */
-			JANUS_LOG(LOG_HUGE, "[%s] Depacketizing payload (%d bytes)\n",
-				imquic_get_connection_name(session->conn), plen);
-			uint8_t fragment = *payload & 0x1F;
-			uint8_t nal = *(payload+1) & 0x1F;
-			uint8_t start_bit = *(payload+1) & 0x80;
-			int len = plen, jump = 0;
-			if(fragment == 7) {
-				/* SPS, see if we can extract the width/height as well */
-				//~ session->video_track.metadata = janus_moq_h264_parse_sps(payload, plen, &session->video_track.width, &session->video_track.height);
-				//~ JANUS_LOG(LOG_INFO, "[%s] Video has resolution %dx%d (%p)\n", imquic_get_connection_name(session->conn),
-					//~ session->video_track.width, session->video_track.height, session->video_track.metadata);
-			} else if(fragment == 24) {
-				/* May we find an SPS in this STAP-A? */
-				char *temp = payload;
-				temp++;
-				int tot = len-1;
-				uint16_t psize = 0;
-				while(tot > 0) {
-					memcpy(&psize, temp, 2);
-					psize = ntohs(psize);
-					temp += 2;
-					tot -= 2;
-					int nal = *temp & 0x1F;
-					if(nal == 7) {
-						session->video_track.extradata_len = janus_moq_h264_parse_sps(session->video_track.extradata,
-							temp - 2, tot + 2, &session->video_track.width, &session->video_track.height);
-						JANUS_LOG(LOG_HUGE, "[%s]   -- Video has resolution %dx%d (%zu bytes of extradata)\n",
-							imquic_get_connection_name(session->conn),
-							session->video_track.width, session->video_track.height, session->video_track.extradata_len);
+			/* Depacketization depends on the codec */
+			if(session->vcodec == JANUS_VIDEOCODEC_VP8) {
+				/* Depacketize VP8 */
+				JANUS_LOG(LOG_HUGE, "[%s] Depacketizing VP8 payload (%d bytes)\n",
+					imquic_get_connection_name(session->conn), plen);
+				/* Read the first octet (VP8 Payload Descriptor) */
+				char *buffer = payload;
+				int bytes = plen-1;
+				uint8_t vp8pd = *buffer;
+				uint8_t xbit = (vp8pd & 0x80);
+				uint8_t sbit = (vp8pd & 0x10);
+				/* Read the Extended control bits octet */
+				if(xbit) {
+					buffer++;
+					bytes--;
+					vp8pd = *buffer;
+					uint8_t ibit = (vp8pd & 0x80);
+					uint8_t lbit = (vp8pd & 0x40);
+					uint8_t tbit = (vp8pd & 0x20);
+					uint8_t kbit = (vp8pd & 0x10);
+					if(ibit) {
+						/* Read the PictureID octet */
+						buffer++;
+						bytes--;
+						vp8pd = *buffer;
+						uint16_t picid = vp8pd, wholepicid = picid;
+						uint8_t mbit = (vp8pd & 0x80);
+						if(mbit) {
+							memcpy(&picid, buffer, sizeof(uint16_t));
+							wholepicid = ntohs(picid);
+							picid = (wholepicid & 0x7FFF);
+							buffer++;
+							bytes--;
+						}
 					}
-					temp += psize;
-					tot -= psize;
+					if(lbit) {
+						/* Read the TL0PICIDX octet */
+						buffer++;
+						bytes--;
+					}
+					if(tbit || kbit) {
+						/* Read the TID/KEYIDX octet */
+						buffer++;
+						bytes--;
+					}
 				}
-				len = tot;
-			}
-			if(fragment == 28 || fragment == 29) {
-				JANUS_LOG(LOG_HUGE, "[%s]   -- Fragment=%d, NAL=%d, Start=%d (len=%d, frame_len=%zu)\n",
-					imquic_get_connection_name(session->conn), fragment, nal, start_bit, len, session->video_track.offset);
-			} else {
-				JANUS_LOG(LOG_HUGE, "[%s]   -- Fragment=%d (len=%d, frame_len=%zu)\n",
-					imquic_get_connection_name(session->conn), fragment, len, session->video_track.offset);
-			}
-			if(fragment == 5 ||
-					((fragment == 28 || fragment == 29) && nal == 5 && start_bit == 128)) {
-				JANUS_LOG(LOG_HUGE, "[%s]   -- Key frame (seq=%"SCNu16", ts=%"SCNu32", fragment=%d)\n",
-					imquic_get_connection_name(session->conn), ntohs(rtp->seq_number), ntohl(rtp->timestamp), fragment);
-				session->video_track.keyframe = TRUE;
-				session->video_track.group_id++;
-				session->video_track.object_id = 0;
-			}
-			/* Frame manipulation */
-			if((fragment > 0) && (fragment < 24)) {
-				/* Add a start code */
-				JANUS_LOG(LOG_HUGE, "[%s]   -- -- Adding a start code (fragment=%d)\n",
-					imquic_get_connection_name(session->conn), fragment);
-				uint8_t *temp = session->video_track.buffer + session->video_track.offset;
-				memset(temp, 0x00, 1);
-				memset(temp + 1, 0x00, 1);
-				memset(temp + 2, 0x00, 1);
-				memset(temp + 3, 0x01, 1);
-				if(session->video_track.nal_added) {
-					uint32_t nal_size = session->video_track.offset - session->video_track.nal_offset - 4;
-					JANUS_LOG(LOG_HUGE, "[%s]  -- NAL has size %"SCNu32"\n",
-						imquic_get_connection_name(session->conn), nal_size);
-					nal_size = htonl(nal_size);
-					memcpy(session->video_track.buffer + session->video_track.nal_offset, &nal_size, 4);
+				buffer++;
+				if(sbit) {
+					unsigned long int vp8ph = 0;
+					memcpy(&vp8ph, buffer, 4);
+					vp8ph = ntohl(vp8ph);
+					uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
+					if(!pbit) {
+						/* Keyframe? */
+						unsigned char *c = (unsigned char *)buffer+3;
+						/* vet via sync code */
+						if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
+							JANUS_LOG(LOG_WARN, "[%s] First 3-bytes after header not what they're supposed to be?\n",
+								imquic_get_connection_name(session->conn));
+						} else {
+							/* This is a keyframe */
+							JANUS_LOG(LOG_HUGE, "[%s]   -- Key frame (seq=%"SCNu16", ts=%"SCNu32")\n",
+								imquic_get_connection_name(session->conn), ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+							session->video_track.keyframe = TRUE;
+							session->video_track.group_id++;
+							session->video_track.object_id = 0;
+						}
+					}
 				}
-				if(!session->video_track.nal_added)
-					session->video_track.nal_added = TRUE;
-				session->video_track.nal_offset = session->video_track.offset;
-				session->video_track.offset += 4;
-			} else if(fragment == 24) {	/* STAP-A */
-				/* De-aggregate the NALs and write each of them separately */
-				payload++;
-				int tot = len-1;
-				uint16_t psize = 0;
-				while(tot > 0) {
-					memcpy(&psize, payload, 2);
-					psize = ntohs(psize);
-					payload += 2;
-					tot -= 2;
-					/* Now we have a single NAL */
-					JANUS_LOG(LOG_HUGE, "[%s]   -- -- Adding a start code (aggregated fragment=%d)\n",
+				/* Frame manipulation: append the actual payload to the buffer */
+				if(bytes > 0) {
+					if(session->video_track.offset + bytes > session->video_track.size) {
+						JANUS_LOG(LOG_WARN, "[%s] Frame exceeds buffer size...\n",
+							imquic_get_connection_name(session->conn));
+					} else {
+						memcpy(session->video_track.buffer + session->video_track.offset, buffer, bytes);
+						session->video_track.offset += bytes;
+					}
+				}
+			} else if(session->vcodec == JANUS_VIDEOCODEC_VP9) {
+				/* Depacketize VP9 */
+				JANUS_LOG(LOG_HUGE, "[%s] Depacketizing VP9 payload (%d bytes)\n",
+					imquic_get_connection_name(session->conn), plen);
+				/* Read the first octet (VP9 Payload Descriptor) */
+				char *buffer = payload;
+				int bytes = plen;
+				uint8_t vp9pd = *buffer;
+				uint8_t ibit = (vp9pd & 0x80);
+				uint8_t pbit = (vp9pd & 0x40);
+				uint8_t lbit = (vp9pd & 0x20);
+				uint8_t fbit = (vp9pd & 0x10);
+				uint8_t vbit = (vp9pd & 0x02);
+				/* Move to the next octet and see what's there */
+				buffer++;
+				bytes--;
+				if(ibit) {
+					/* Read the PictureID octet */
+					vp9pd = *buffer;
+					uint16_t picid = vp9pd, wholepicid = picid;
+					uint8_t mbit = (vp9pd & 0x80);
+					if(!mbit) {
+						buffer++;
+						bytes--;
+					} else {
+						memcpy(&picid, buffer, sizeof(uint16_t));
+						wholepicid = ntohs(picid);
+						picid = (wholepicid & 0x7FFF);
+						buffer += 2;
+						bytes -= 2;
+					}
+				}
+				if(lbit) {
+					buffer++;
+					bytes--;
+					if(!fbit) {
+						/* Non-flexible mode, skip TL0PICIDX */
+						buffer++;
+						bytes--;
+					}
+				}
+				if(fbit && pbit) {
+					/* Skip reference indices */
+					uint8_t nbit = 1;
+					while(nbit) {
+						vp9pd = *buffer;
+						nbit = (vp9pd & 0x01);
+						buffer++;
+						bytes--;
+					}
+				}
+				if(vbit) {
+					/* Parse and skip SS */
+					vp9pd = *buffer;
+					uint n_s = (vp9pd & 0xE0) >> 5;
+					n_s++;
+					uint8_t ybit = (vp9pd & 0x10);
+					uint8_t gbit = (vp9pd & 0x08);
+					if(ybit) {
+						/* Iterate on all spatial layers and get resolution */
+						buffer++;
+						bytes--;
+						uint i=0;
+						gboolean kf = FALSE;
+						for(i=0; i<n_s; i++) {
+							buffer += 4;
+							bytes -= 4;
+							kf = TRUE;
+						}
+						if(kf) {
+							/* This is a keyframe */
+							JANUS_LOG(LOG_HUGE, "[%s]   -- Key frame (seq=%"SCNu16", ts=%"SCNu32")\n",
+								imquic_get_connection_name(session->conn), ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+							session->video_track.keyframe = TRUE;
+							session->video_track.group_id++;
+							session->video_track.object_id = 0;
+						}
+					}
+					if(gbit) {
+						if(!ybit) {
+							buffer++;
+							bytes--;
+						}
+						uint8_t n_g = *buffer;
+						buffer++;
+						bytes--;
+						if(n_g > 0) {
+							uint i=0;
+							for(i=0; i<n_g; i++) {
+								/* Read the R bits */
+								vp9pd = *buffer;
+								int r = (vp9pd & 0x0C) >> 2;
+								if(r > 0) {
+									/* Skip reference indices */
+									buffer += r;
+									bytes -= r;
+								}
+								buffer++;
+								bytes--;
+							}
+						}
+					}
+				}
+				/* Frame manipulation: append the actual payload to the buffer */
+				if(bytes > 0) {
+					if(session->video_track.offset + bytes > session->video_track.size) {
+						JANUS_LOG(LOG_WARN, "[%s] Frame exceeds buffer size...\n",
+							imquic_get_connection_name(session->conn));
+					} else {
+						memcpy(session->video_track.buffer + session->video_track.offset, buffer, bytes);
+						session->video_track.offset += bytes;
+					}
+				}
+			} else if(session->vcodec == JANUS_VIDEOCODEC_H264) {
+				/* Depacketize H.264 */
+				JANUS_LOG(LOG_HUGE, "[%s] Depacketizing H.264 payload (%d bytes)\n",
+					imquic_get_connection_name(session->conn), plen);
+				uint8_t fragment = *payload & 0x1F;
+				uint8_t nal = *(payload+1) & 0x1F;
+				uint8_t start_bit = *(payload+1) & 0x80;
+				int len = plen, jump = 0;
+				if(fragment == 24) {
+					/* May we find an SPS in this STAP-A? */
+					char *temp = payload;
+					temp++;
+					int tot = len-1;
+					uint16_t psize = 0;
+					while(tot > 0) {
+						memcpy(&psize, temp, 2);
+						psize = ntohs(psize);
+						temp += 2;
+						tot -= 2;
+						int nal = *temp & 0x1F;
+						if(nal == 7) {
+							/* We're using AVCC, so create an extradata for the video config */
+							session->video_track.extradata_len = janus_moq_h264_parse_sps(session->video_track.extradata,
+								session->video_track.extradata_len, session->annexb, (uint8_t *)temp - 2, tot + 2,
+								&session->video_track.width, &session->video_track.height);
+							JANUS_LOG(LOG_HUGE, "[%s]   -- Video has resolution %dx%d (%zu bytes of extradata)\n",
+								imquic_get_connection_name(session->conn),
+								session->video_track.width, session->video_track.height, session->video_track.extradata_len);
+						}
+						temp += psize;
+						tot -= psize;
+					}
+					len = tot;
+				}
+				if(fragment == 28 || fragment == 29) {
+					JANUS_LOG(LOG_HUGE, "[%s]   -- Fragment=%d, NAL=%d, Start=%d (len=%d, frame_len=%zu)\n",
+						imquic_get_connection_name(session->conn), fragment, nal, start_bit, len, session->video_track.offset);
+				} else {
+					JANUS_LOG(LOG_HUGE, "[%s]   -- Fragment=%d (len=%d, frame_len=%zu)\n",
+						imquic_get_connection_name(session->conn), fragment, len, session->video_track.offset);
+				}
+				if(fragment == 5 ||
+						((fragment == 28 || fragment == 29) && nal == 5 && start_bit == 128)) {
+					JANUS_LOG(LOG_HUGE, "[%s]   -- Key frame (seq=%"SCNu16", ts=%"SCNu32", fragment=%d)\n",
+						imquic_get_connection_name(session->conn), ntohs(rtp->seq_number), ntohl(rtp->timestamp), fragment);
+					session->video_track.keyframe = TRUE;
+					session->video_track.group_id++;
+					session->video_track.object_id = 0;
+				}
+				/* Frame manipulation */
+				if((fragment > 0) && (fragment < 24)) {
+					/* Add a start code */
+					JANUS_LOG(LOG_HUGE, "[%s]   -- -- Adding a start code (fragment=%d)\n",
 						imquic_get_connection_name(session->conn), fragment);
 					uint8_t *temp = session->video_track.buffer + session->video_track.offset;
 					memset(temp, 0x00, 1);
 					memset(temp + 1, 0x00, 1);
 					memset(temp + 2, 0x00, 1);
 					memset(temp + 3, 0x01, 1);
-					if(session->video_track.nal_added) {
+					if(!session->annexb && session->video_track.nal_added) {
 						uint32_t nal_size = session->video_track.offset - session->video_track.nal_offset - 4;
 						JANUS_LOG(LOG_HUGE, "[%s]  -- NAL has size %"SCNu32"\n",
 							imquic_get_connection_name(session->conn), nal_size);
 						nal_size = htonl(nal_size);
 						memcpy(session->video_track.buffer + session->video_track.nal_offset, &nal_size, 4);
 					}
-					if(!session->video_track.nal_added)
+					if(!session->annexb && !session->video_track.nal_added)
 						session->video_track.nal_added = TRUE;
 					session->video_track.nal_offset = session->video_track.offset;
 					session->video_track.offset += 4;
-					memcpy(session->video_track.buffer + session->video_track.offset, payload, psize);
-					session->video_track.offset += psize;
-					/* Go on */
-					payload += psize;
-					tot -= psize;
-				}
-			} else if((fragment == 28) || (fragment == 29)) {	/* FIXME true fr FU-A, not FU-B */
-				uint8_t indicator = *payload;
-				uint8_t header = *(payload+1);
-				jump = 2;
-				len -= 2;
-				if(header & 0x80) {
-					/* First part of fragmented packet (S bit set) */
-					JANUS_LOG(LOG_HUGE, "[%s]   -- -- Adding a start code (fragmented fragment=%d)\n",
-						imquic_get_connection_name(session->conn), fragment);
-					uint8_t *temp = session->video_track.buffer + session->video_track.offset;
-					memset(temp, 0x00, 1);
-					memset(temp + 1, 0x00, 1);
-					memset(temp + 2, 0x00, 1);
-					memset(temp + 3, 0x01, 1);
-					memset(temp + 4, (indicator & 0xE0) | (header & 0x1F), 1);
-					if(session->video_track.nal_added) {
-						uint32_t nal_size = session->video_track.offset - session->video_track.nal_offset - 4;
-						JANUS_LOG(LOG_HUGE, "[%s]  -- NAL has size %"SCNu32"\n",
-							imquic_get_connection_name(session->conn), nal_size);
-						nal_size = htonl(nal_size);
-						memcpy(session->video_track.buffer + session->video_track.nal_offset, &nal_size, 4);
+				} else if(fragment == 24) {	/* STAP-A */
+					/* De-aggregate the NALs and write each of them separately */
+					payload++;
+					int tot = len-1;
+					uint16_t psize = 0;
+					while(tot > 0) {
+						memcpy(&psize, payload, 2);
+						psize = ntohs(psize);
+						payload += 2;
+						tot -= 2;
+						/* Now we have a single NAL */
+						JANUS_LOG(LOG_HUGE, "[%s]   -- -- Adding a start code (aggregated fragment=%d)\n",
+							imquic_get_connection_name(session->conn), fragment);
+						uint8_t *temp = session->video_track.buffer + session->video_track.offset;
+						memset(temp, 0x00, 1);
+						memset(temp + 1, 0x00, 1);
+						memset(temp + 2, 0x00, 1);
+						memset(temp + 3, 0x01, 1);
+						if(!session->annexb && session->video_track.nal_added) {
+							uint32_t nal_size = session->video_track.offset - session->video_track.nal_offset - 4;
+							JANUS_LOG(LOG_HUGE, "[%s]  -- NAL has size %"SCNu32"\n",
+								imquic_get_connection_name(session->conn), nal_size);
+							nal_size = htonl(nal_size);
+							memcpy(session->video_track.buffer + session->video_track.nal_offset, &nal_size, 4);
+						}
+						if(!session->annexb && !session->video_track.nal_added)
+							session->video_track.nal_added = TRUE;
+						session->video_track.nal_offset = session->video_track.offset;
+						session->video_track.offset += 4;
+						memcpy(session->video_track.buffer + session->video_track.offset, payload, psize);
+						session->video_track.offset += psize;
+						/* Go on */
+						payload += psize;
+						tot -= psize;
 					}
-					if(!session->video_track.nal_added)
-						session->video_track.nal_added = TRUE;
-					session->video_track.nal_offset = session->video_track.offset;
-					session->video_track.offset += 5;
-				} else if (header & 0x40) {
-					/* Last part of fragmented packet (E bit set) */
+				} else if((fragment == 28) || (fragment == 29)) {	/* FIXME true fr FU-A, not FU-B */
+					uint8_t indicator = *payload;
+					uint8_t header = *(payload+1);
+					jump = 2;
+					len -= 2;
+					if(header & 0x80) {
+						/* First part of fragmented packet (S bit set) */
+						JANUS_LOG(LOG_HUGE, "[%s]   -- -- Adding a start code (fragmented fragment=%d)\n",
+							imquic_get_connection_name(session->conn), fragment);
+						uint8_t *temp = session->video_track.buffer + session->video_track.offset;
+						memset(temp, 0x00, 1);
+						memset(temp + 1, 0x00, 1);
+						memset(temp + 2, 0x00, 1);
+						memset(temp + 3, 0x01, 1);
+						memset(temp + 4, (indicator & 0xE0) | (header & 0x1F), 1);
+						if(!session->annexb && session->video_track.nal_added) {
+							uint32_t nal_size = session->video_track.offset - session->video_track.nal_offset - 4;
+							JANUS_LOG(LOG_HUGE, "[%s]  -- NAL has size %"SCNu32"\n",
+								imquic_get_connection_name(session->conn), nal_size);
+							nal_size = htonl(nal_size);
+							memcpy(session->video_track.buffer + session->video_track.nal_offset, &nal_size, 4);
+						}
+						if(!session->annexb && !session->video_track.nal_added)
+							session->video_track.nal_added = TRUE;
+						session->video_track.nal_offset = session->video_track.offset;
+						session->video_track.offset += 5;
+					} else if (header & 0x40) {
+						/* Last part of fragmented packet (E bit set) */
+					}
 				}
-			}
-			/* Frame manipulation: append the actual payload to the buffer */
-			if(len > 0) {
-				if(session->video_track.offset + len > session->video_track.size) {
-					JANUS_LOG(LOG_HUGE, "[%s]   -- Frame exceeds buffer size...\n",
-						imquic_get_connection_name(session->conn));
-				} else {
-					memcpy(session->video_track.buffer + session->video_track.offset, payload+jump, len);
-					session->video_track.offset += len;
+				/* Frame manipulation: append the actual payload to the buffer */
+				if(len > 0) {
+					if(session->video_track.offset + len > session->video_track.size) {
+						JANUS_LOG(LOG_WARN, "[%s] Frame exceeds buffer size...\n",
+							imquic_get_connection_name(session->conn));
+					} else {
+						memcpy(session->video_track.buffer + session->video_track.offset, payload+jump, len);
+						session->video_track.offset += len;
+					}
 				}
 			}
 		}
@@ -859,7 +1054,7 @@ static void janus_moq_hangup_media_internal(janus_plugin_session *handle) {
 	g_hash_table_remove_all(session->ptypes);
 	session->audio_pt = -1;
 	session->video_pt = -1;
-	/* If there's a QUIC server running, get rid of it */
+	/* If there's an imquic endpoint running, get rid of it */
 	if(session->quic_endpoint != NULL)
 		imquic_shutdown_endpoint(session->quic_endpoint);
 	session->quic_endpoint = NULL;
@@ -870,12 +1065,15 @@ static void janus_moq_hangup_media_internal(janus_plugin_session *handle) {
 	session->auth_info = NULL;
 	session->catalog = NULL;
 	g_free(session->catalog_track.track);
+	g_free(session->catalog_track.buffer);
 	session->catalog_track.track = NULL;
 	memset(&session->catalog_track, 0, sizeof(session->catalog_track));
 	g_free(session->audio_track.track);
+	g_free(session->audio_track.buffer);
 	session->audio_track.track = NULL;
 	memset(&session->audio_track, 0, sizeof(session->audio_track));
 	g_free(session->video_track.track);
+	g_free(session->video_track.buffer);
 	session->video_track.track = NULL;
 	memset(&session->video_track, 0, sizeof(session->video_track));
 	/* Send an event to the browser and tell it's over */
@@ -890,7 +1088,7 @@ static void janus_moq_hangup_media_internal(janus_plugin_session *handle) {
 
 /* Thread to handle incoming messages */
 static void *janus_moq_handler(void *data) {
-	JANUS_LOG(LOG_VERB, "Joining QUIC handler thread\n");
+	JANUS_LOG(LOG_VERB, "Joining MoQ handler thread\n");
 	janus_moq_message *msg = NULL;
 	int error_code = 0;
 	char error_cause[512];
@@ -957,7 +1155,7 @@ static void *janus_moq_handler(void *data) {
 				g_snprintf(error_cause, 512, "Session already established");
 				goto error;
 			}
-			/* Initiate the QUIC endpoint */
+			/* Initiate the imquic endpoint */
 			uint16_t port = json_integer_value(json_object_get(root, "port"));
 			const char *remote_host = json_string_value(json_object_get(root, "remote_host"));
 			uint16_t remote_port = json_integer_value(json_object_get(root, "remote_port"));
@@ -972,6 +1170,9 @@ static void *janus_moq_handler(void *data) {
 			gboolean use_catalog = uc ? json_is_true(uc) : TRUE;
 			const char *audio_track = json_string_value(json_object_get(root, "audio_track"));
 			const char *video_track = json_string_value(json_object_get(root, "video_track"));
+			const char *video_codec = json_string_value(json_object_get(root, "video_codec"));
+			json_t *ab = json_object_get(root, "annexb");
+			gboolean annexb = ab ? json_is_true(ab) : FALSE;
 			const char *auth_info = json_string_value(json_object_get(root, "auth_info"));
 			if(role == NULL) {
 				/* Missing role */
@@ -1032,6 +1233,20 @@ static void *janus_moq_handler(void *data) {
 				g_snprintf(error_cause, 512, "At least one track (audio or video) must be provided for subscribers not using the catalog");
 				goto error;
 			}
+			/* Check if we're overriding the video codec */
+			if(video_codec && (moqpub || (moqsub && !use_catalog))) {
+				janus_videocodec vcodec = janus_videocodec_from_name(video_codec);
+				if(vcodec == JANUS_VIDEOCODEC_NONE || vcodec == JANUS_VIDEOCODEC_AV1) {
+					/* Unsupported video codec */
+					janus_mutex_unlock(&session->mutex);
+					JANUS_LOG(LOG_ERR, "Unsupported video codec\n");
+					error_code = JANUS_MOQ_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Unsupported video codec");
+					goto error;
+				}
+				session->vcodec = vcodec;
+			}
+			session->annexb = annexb;	/* Ignored unless it's H.264 */
 			char name[50];
 			/* Create the imquic endpoint (client) */
 			imquic_endpoint *quic_endpoint = NULL;
@@ -1115,8 +1330,9 @@ static void *janus_moq_handler(void *data) {
 					if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 						janus_sdp_generate_answer_mline(offer, answer, m,
 							JANUS_SDP_OA_MLINE, m->type,
-								JANUS_SDP_OA_DIRECTION, (session->moqsub ? JANUS_SDP_SENDONLY : JANUS_SDP_RECVONLY),
-								JANUS_SDP_OA_CODEC, (m->type == JANUS_SDP_VIDEO ? "h264" : NULL),
+								JANUS_SDP_OA_DIRECTION, JANUS_SDP_RECVONLY,
+								JANUS_SDP_OA_CODEC, (m->type == JANUS_SDP_VIDEO ?
+									janus_videocodec_name(session->vcodec) : janus_audiocodec_name(JANUS_AUDIOCODEC_OPUS)),
 								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
 							JANUS_SDP_OA_DONE);
@@ -1148,14 +1364,18 @@ static void *janus_moq_handler(void *data) {
 						track->samplerate = 48000;
 						imquic_moq_catalog_add_track(session->catalog, track);
 					}
-					if(session->video_track.track != NULL) {
+					if(session->video_track.track != NULL && session->vcodec != JANUS_VIDEOCODEC_NONE) {
 						/* FIXME Add the video track to the catalog */
 						imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(session->track_namespace,
 							session->video_track.track, "loc", TRUE);
 						track->role = g_strdup("video");
 						track->render_group = 1;
 						track->target_latency = 200;
-						track->codec = g_strdup("avc1.42001F");
+						/* FIXME Codec name */
+						if(session->vcodec == JANUS_VIDEOCODEC_H264)
+							track->codec = g_strdup(session->annexb ? "annexb.42001F" : "avc1.42001F");
+						else
+							track->codec = g_strdup(janus_videocodec_name(session->vcodec));
 						imquic_moq_catalog_add_track(session->catalog, track);
 					}
 				}
@@ -1241,7 +1461,7 @@ error:
 			json_decref(event);
 		}
 	}
-	JANUS_LOG(LOG_VERB, "Leaving QUIC handler thread\n");
+	JANUS_LOG(LOG_VERB, "Leaving MoQ handler thread\n");
 	return NULL;
 }
 
@@ -1600,14 +1820,33 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 						JANUS_SDP_OA_DONE);
 				} else if(track->role && !strcasecmp(track->role, "video")) {
 					/* FIXME Video track */
+					if(track->codec) {
+						if(strstr(track->codec, "avc1") != NULL) {
+							session->vcodec = JANUS_VIDEOCODEC_H264;
+							session->annexb = FALSE;
+						} else if(strstr(track->codec, "annexb") != NULL) {
+							session->vcodec = JANUS_VIDEOCODEC_H264;
+							session->annexb = TRUE;
+						} else if(strstr(track->codec, "vp8") != NULL) {
+							session->vcodec = JANUS_VIDEOCODEC_VP8;
+						} else if(strstr(track->codec, "vp9") != NULL) {
+							session->vcodec = JANUS_VIDEOCODEC_VP9;
+						}
+					}
+					if(session->vcodec == JANUS_VIDEOCODEC_NONE || session->vcodec == JANUS_VIDEOCODEC_AV1) {
+						/* Unsupported codec */
+						JANUS_LOG(LOG_WARN, "Unsupported video codec '%s', skipping video subscription\n", track->codec);
+						temp = temp->next;
+						continue;
+					}
 					session->video_track.track = g_strdup(track->track_name);
 					session->video_track.ssrc = janus_random_uint32();
-					session->video_pt = janus_videocodec_pt(JANUS_VIDEOCODEC_H264);
+					session->video_pt = janus_videocodec_pt(session->vcodec);
 					janus_sdp_generate_offer_mline(offer,
 						JANUS_SDP_OA_MLINE, JANUS_SDP_VIDEO,
 						JANUS_SDP_OA_MID, "v",
 						JANUS_SDP_OA_PT, session->video_pt,
-						JANUS_SDP_OA_CODEC, janus_videocodec_name(JANUS_VIDEOCODEC_H264),
+						JANUS_SDP_OA_CODEC, janus_videocodec_name(session->vcodec),
 						JANUS_SDP_OA_H264_PROFILE, "42e01f",
 						JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
 						JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_MID, janus_rtp_extension_id(JANUS_RTP_EXTMAP_MID),
@@ -1633,50 +1872,56 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 		}
 		return;
 	}
+	if((session->audio_track.track && object->track_alias != session->audio_track.track_alias) &&
+			(session->video_track.track && object->track_alias != session->video_track.track_alias)) {
+		/* We don't know this track alias (yet?), for now we drop the object
+		 * but we should really buffer it (it may be, e.g., a video keyframe) */
+		JANUS_LOG(LOG_WARN, "[%s] Unknown track_alias %"SCNu64", dropping object\n",
+			imquic_get_connection_name(conn), object->track_alias);
+		return;
+	}
 	/* FIXME Assuming LOC from https://www.ietf.org/archive/id/draft-ietf-moq-loc-02.html */
 	uint64_t timestamp = 0, timescale = 0;
 	struct imquic_moq_property_data *loc_extradata = NULL;
-	if((session->audio_track.track && object->track_alias == session->audio_track.track_alias) ||
-			(session->video_track.track && object->track_alias == session->video_track.track_alias)) {
-		/* Parse the properties to get access to the LOC info */
-		JANUS_LOG(LOG_HUGE, "  -- Processing %d properties:\n", num_props);
-		GList *temp = object->properties;
-		while(temp) {
-			imquic_moq_property *prop = (imquic_moq_property *)temp->data;
-			switch(prop->id) {
-				case IMQUIC_MOQ_LOC_TIMESCALE: {
-					timescale = prop->value.number;
-					JANUS_LOG(LOG_HUGE, "  -- -- %s: %"SCNu64"\n",
-						imquic_moq_property_type_str(moq_version, prop->id), timescale);
-					break;
-				}
-				case IMQUIC_MOQ_LOC_TIMESTAMP: {
-					timestamp = prop->value.number;
-					JANUS_LOG(LOG_HUGE, "  -- -- %s: %"SCNu64"\n",
-						imquic_moq_property_type_str(moq_version, prop->id), timestamp);
-					break;
-				}
-				case IMQUIC_MOQ_LOC_VIDEO_CONFIG: {
-					loc_extradata = &prop->value.data;
-					JANUS_LOG(LOG_HUGE, "  -- -- %s: %zu bytes\n",
-						imquic_moq_property_type_str(moq_version, prop->id),
-						loc_extradata->length);
-					for(size_t i=0; i<loc_extradata->length; ++i)
-						JANUS_LOG(LOG_HUGE, "%02x", loc_extradata->buffer[i]);
-					JANUS_LOG(LOG_HUGE, "\n");
-					break;
-				}
-				default: {
-					JANUS_LOG(LOG_WARN, "  -- -- Unknown property '%"SCNu32"'\n", prop->id);
-					break;
-				}
+	/* Parse the properties to get access to the LOC info */
+	JANUS_LOG(LOG_HUGE, "[%s] Processing %d properties:\n",
+		imquic_get_connection_name(conn), num_props);
+	GList *temp = object->properties;
+	while(temp) {
+		imquic_moq_property *prop = (imquic_moq_property *)temp->data;
+		switch(prop->id) {
+			case IMQUIC_MOQ_LOC_TIMESCALE: {
+				timescale = prop->value.number;
+				JANUS_LOG(LOG_HUGE, "  -- -- %s: %"SCNu64"\n",
+					imquic_moq_property_type_str(moq_version, prop->id), timescale);
+				break;
 			}
-			temp = temp->next;
+			case IMQUIC_MOQ_LOC_TIMESTAMP: {
+				timestamp = prop->value.number;
+				JANUS_LOG(LOG_HUGE, "  -- -- %s: %"SCNu64"\n",
+					imquic_moq_property_type_str(moq_version, prop->id), timestamp);
+				break;
+			}
+			case IMQUIC_MOQ_LOC_VIDEO_CONFIG: {
+				loc_extradata = &prop->value.data;
+				JANUS_LOG(LOG_HUGE, "  -- -- %s: %zu bytes\n",
+					imquic_moq_property_type_str(moq_version, prop->id),
+					loc_extradata->length);
+				for(size_t i=0; i<loc_extradata->length; ++i)
+					JANUS_LOG(LOG_HUGE, "%02x", loc_extradata->buffer[i]);
+				JANUS_LOG(LOG_HUGE, "\n");
+				break;
+			}
+			default: {
+				JANUS_LOG(LOG_WARN, "  -- -- Unknown property '%"SCNu32"'\n", prop->id);
+				break;
+			}
 		}
-		JANUS_LOG(LOG_HUGE, "  -- Payload: %zu bytes\n", object->payload_len);
+		temp = temp->next;
 	}
-	/* FIXME We currently require the timestamp to be there */
-	if(object->payload == NULL || object->payload_len == 0 || timestamp == 0)
+	JANUS_LOG(LOG_HUGE, "  -- Payload: %zu bytes\n", object->payload_len);
+	/* FIXME We currently require the timestamp to be in the properties */
+	if(object->payload == NULL || object->payload_len == 0)
 		return;
 	/* Convert LOC to RTP */
 	size_t hsize = 12;
@@ -1695,7 +1940,8 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 			session->audio_track.timestamp = timestamp;
 			session->audio_track.timestamp_start = timestamp;
 		}
-		uint64_t lts_diff = timestamp - session->audio_track.timestamp;
+		uint64_t lts_diff = (timestamp >= session->audio_track.timestamp) ?
+			timestamp - session->audio_track.timestamp : 0;
 		uint32_t ts_diff = lts_diff ? (48000 / (G_USEC_PER_SEC / lts_diff)) : 0;
 		session->audio_track.timestamp = timestamp;
 		janus_rtp_header *rtp = (janus_rtp_header *)buffer;
@@ -1710,7 +1956,7 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 		rtp->ssrc = htonl(session->audio_track.ssrc);
 		memcpy(&buffer[hsize], object->payload, object->payload_len);
 		/* Send the RTP packet */
-		janus_plugin_rtp pkt = { .mindex = 0, .video = FALSE, .buffer = buffer, .length = length };
+		janus_plugin_rtp pkt = { .mindex = -1, .video = FALSE, .buffer = buffer, .length = length };
 		janus_plugin_rtp_extensions_reset(&pkt.extensions);
 		gateway->relay_rtp(session->handle, &pkt);
 	} else if(session->video_track.track && object->track_alias == session->video_track.track_alias) {
@@ -1728,7 +1974,8 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 			session->video_track.timestamp = timestamp;
 			session->video_track.timestamp_start = timestamp;
 		}
-		uint64_t lts_diff = timestamp - session->video_track.timestamp;
+		uint64_t lts_diff = (timestamp >= session->video_track.timestamp) ?
+			timestamp - session->video_track.timestamp : 0;
 		uint32_t ts_diff = lts_diff ? (90000 / (G_USEC_PER_SEC / lts_diff)) : 0;
 		session->video_track.timestamp = timestamp;
 		janus_rtp_header *rtp = (janus_rtp_header *)buffer;
@@ -1737,188 +1984,414 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 		rtp->type = pt;
 		/* FIXME This is quite broken now */
 		session->video_track.last_ts += ts_diff;
-		rtp->timestamp = htonl(session->video_track.timestamp);
+		rtp->timestamp = htonl(session->video_track.last_ts);
 		rtp->ssrc = htonl(session->video_track.ssrc);
 		/* Create all the RTP packets we need */
 		uint8_t *data = object->payload, *start = data, *end = object->payload + object->payload_len, *tmp = start;
-		if(loc_extradata && loc_extradata->length > 0) {
-			/* We have AVCC metadata, extract the SPS/PPS and send that first */
-			uint8_t *avcc_data = loc_extradata->buffer;
-			size_t avcc_len = loc_extradata->length;
-			JANUS_LOG(LOG_HUGE, "AVCC data is %zu bytes\n  -- ", avcc_len);
-			for(size_t i=0; i<avcc_len; ++i)
-				JANUS_LOG(LOG_HUGE, "%02x", avcc_data[i]);
-			JANUS_LOG(LOG_HUGE, "\n");
-			/* Read extradata */
-			JANUS_LOG(LOG_HUGE, "Extradata:\n");
-			JANUS_LOG(LOG_HUGE, "  -- Version:       %"SCNu8"\n", avcc_data[0]);
-			JANUS_LOG(LOG_HUGE, "  -- Profile:       %"SCNu8"\n", avcc_data[1]);
-			JANUS_LOG(LOG_HUGE, "  -- Compatibility: %"SCNu8"\n", avcc_data[2]);
-			JANUS_LOG(LOG_HUGE, "  -- Level:         %"SCNu8"\n", avcc_data[3]);
-			JANUS_LOG(LOG_HUGE, "  -- NAL length -1: %"SCNu8"\n", avcc_data[4] & 0x03);
-			JANUS_LOG(LOG_HUGE, "  -- SPS number:    %"SCNu8"\n", avcc_data[5] & 0x1F);
-			/* Add NAL */
-			length = hsize;
-			buffer[length] = 0x18;
-			length++;
-			/* Extract SPS */
-			uint16_t sps_len = 0;
-			memcpy(&sps_len, &avcc_data[6], 2);
-			uint8_t *sps = &avcc_data[8];
-			JANUS_LOG(LOG_HUGE, "SPS len: %"SCNu16"\n", ntohs(sps_len));
-			/* Add SPS to the RTP packet */
-			memcpy(&buffer[length], &sps_len, 2);
-			length += 2;
-			sps_len = ntohs(sps_len);
-			memcpy(&buffer[length], sps, sps_len);
-			length += sps_len;
-			/* Extract PPS */
-			uint8_t *pps = sps + sps_len;
-			size_t pps_len = avcc_len - (pps - avcc_data);
-			JANUS_LOG(LOG_HUGE, "PPS(s) len: %zu\n", pps_len);
-			JANUS_LOG(LOG_HUGE, "  -- Num of PPS: %"SCNu8"\n", pps[0]);
-			size_t pps_index = 1;
-			for(size_t i=0; i<pps[0]; i++) {
-				size_t pps_i_len = 0;
-				memcpy(&pps_i_len, &pps[pps_index], 2);
-				pps_index += 2;
-				JANUS_LOG(LOG_HUGE, "  -- -- PPS[%zu] len %"SCNu16"/%zu\n", i, ntohs(pps_i_len), pps_len - pps_index);
-				/* Add PPS to the RTP packet */
-				memcpy(&buffer[length], &pps_i_len, 2);
-				length += 2;
-				pps_i_len = ntohs(pps_i_len);
-				memcpy(&buffer[length], &pps[pps_index], pps_i_len);
-				length += pps_i_len;
-				/* Go to the next PPS */
-				pps_index += pps_i_len;
-			}
-			/* Send the packet */
-			session->video_track.seq++;
-			rtp->seq_number = htons(session->video_track.seq);
-			janus_plugin_rtp pkt = { .mindex = 1, .video = TRUE, .buffer = buffer, .length = length };
-			janus_plugin_rtp_extensions_reset(&pkt.extensions);
-			gateway->relay_rtp(session->handle, &pkt);
-			length = 0;
-		}
-		/* Switch from AVCC to Annex-B */
-		size_t avcc_offset = 0, nal_size = 0;
-		while(object->payload_len >= avcc_offset + 4) {
-			memcpy(&nal_size, object->payload + avcc_offset, 4);
-			nal_size = ntohl(nal_size);
-			if(nal_size > 0) {
-				*(object->payload + avcc_offset) = 0x00;
-				*(object->payload + avcc_offset + 1) = 0x00;
-				*(object->payload + avcc_offset + 2) = 0x00;
-				*(object->payload + avcc_offset + 3) = 0x01;
-			}
-			avcc_offset += 4 + nal_size;
-		}
-		/* Check if we need to fragment the frame in multiple RTP packets */
-		while(TRUE) {
-			if((end-tmp) < 3)
-				break;
-			if(tmp[0] == 0 && tmp[1] == 0 && tmp[2] == 1) {
-				/* Found a start code (00 00 01) */
-				JANUS_LOG(LOG_HUGE, "[%s]   -- Found start code (offset %ld, size %ld)\n",
-					imquic_get_connection_name(conn), tmp-data, tmp-start);
-				if(tmp-start > 1) {
-					if(tmp-start > mtu)
-						break;
-					/* Create a new RTP packet */
+		/* Packetization depends on the codec */
+		if(session->vcodec == JANUS_VIDEOCODEC_VP8) {
+			/* We're using VP8 */
+			session->pid++;
+			if(session->pid == 32768)	/* PictureID is limited to 15 bits */
+				session->pid = 0;
+			/* Check if we need to split the frame in multiple RTP packets */
+			if(object->payload_len < mtu) {
+				JANUS_LOG(LOG_HUGE, "[%s] Sending packet, payload is %zu bytes\n",
+					imquic_get_connection_name(conn), object->payload_len);
+				/* Add a payload descriptor: first octet */
+				char *pd = buffer+hsize;
+				*pd |= 1 << 7;		/* X=1 */
+				*pd |= 1 << 4;		/* S=1 */
+				hsize++;
+				/* Second octet */
+				pd++;
+				*pd |= 1 << 7;		/* I=1 */
+				hsize++;
+				/* Third and fourth octet */
+				pd++;
+				uint16_t cpid = htons(session->pid);
+				memcpy(pd, &cpid, sizeof(uint16_t));
+				*pd |= 1 << 7;		/* M=1 */
+				hsize += 2;
+				/* Copy the frame data now */
+				memcpy(buffer + hsize, data, object->payload_len);
+				/* Self-contained packet, set the Marker Bit to 1 */
+				rtp->markerbit = 1;
+				/* Send the packet */
+				length = hsize + object->payload_len;
+				session->video_track.seq++;
+				rtp->seq_number = htons(session->video_track.seq);
+				janus_plugin_rtp pkt = { .mindex = -1, .video = TRUE, .buffer = buffer, .length = length };
+				janus_plugin_rtp_extensions_reset(&pkt.extensions);
+				gateway->relay_rtp(session->handle, &pkt);
+			} else {
+				size_t rest_len = object->payload_len, first_byte = 0, packet_len = 0;
+				JANUS_LOG(LOG_HUGE, "[%s] Sending all that remains, payload is %zu bytes\n",
+					imquic_get_connection_name(conn), rest_len);
+				while(rest_len > 0) {
+					/* Take part of the whole frame: not more than 'mtu' bytes */
+					packet_len = rest_len;
+					if(rest_len > mtu)
+						packet_len = mtu;
+					JANUS_LOG(LOG_HUGE, "[%s] Sending packet, payload is %zu/%zu bytes\n",
+						imquic_get_connection_name(conn), packet_len, object->payload_len);
+					/* Add a payload descriptor: first octet */
+					hsize = 12;
+					memset(buffer + hsize, 0, 4);
+					char *pd = buffer + hsize;
+					*pd = 0;
+					*pd |= 1 << 7;		/* X=1 */
+					if(rest_len == object->payload_len)
+						*pd |= 1 << 4;	/* S=1 only for the first packet */
+					hsize++;
+					/* Second octet */
+					pd++;
+					*pd |= 1 << 7;		/* I=1 */
+					hsize++;
+					/* Third and fourth octet */
+					pd++;
+					if(rest_len == object->payload_len) {
+						uint16_t cpid = htons(session->pid);
+						memcpy(pd, &cpid, sizeof(uint16_t));
+					}
+					*pd |= 1 << 7;		/* M=1 */
+					hsize += 2;
+					/* Copy the frame data now */
+					memcpy(buffer + hsize, object->payload + first_byte, packet_len);
+					/* Update counters */
+					first_byte += packet_len;
+					rest_len -= packet_len;
+					/* Marker Bit depends on whether this is the last packet or not */
+					rtp->markerbit = rest_len > 0 ? 0 : 1;
+					/* Send the packet */
+					length = hsize + packet_len;
 					session->video_track.seq++;
 					rtp->seq_number = htons(session->video_track.seq);
-					memcpy(&buffer[hsize], start, tmp-start);
-					/* Send the packet */
-					length = tmp-start+hsize;
-					janus_plugin_rtp pkt = { .mindex = 1, .video = TRUE, .buffer = buffer, .length = length };
+					janus_plugin_rtp pkt = { .mindex = -1, .video = TRUE, .buffer = buffer, .length = length };
 					janus_plugin_rtp_extensions_reset(&pkt.extensions);
 					gateway->relay_rtp(session->handle, &pkt);
 				}
-				/* Go on */
-				tmp += 3;
-				start = tmp;
-				continue;
-			} else {
-				tmp++;
 			}
-		}
-		/* Create the last RTP packet(s?) */
-		int total = end-start;
-		JANUS_LOG(LOG_HUGE, "[%s] Evaluating remaining data: %d bytes\n",
-			imquic_get_connection_name(conn), total);
-		if(total < mtu) {
-			/* The NAL fits in one RTP packet */
-			JANUS_LOG(LOG_HUGE, "[%s]   -- NAL fits (offset %ld, size %ld)\n",
-				imquic_get_connection_name(conn), start-data, tmp-start);
-			session->video_track.seq++;
-			rtp->seq_number = htons(session->video_track.seq);
-			rtp->markerbit = 1;
-			memcpy(&buffer[hsize], start, total);
-			/* Send the packet */
-			length = total+hsize;
-			janus_plugin_rtp pkt = { .mindex = 1, .video = TRUE, .buffer = buffer, .length = length };
-			janus_plugin_rtp_extensions_reset(&pkt.extensions);
-			gateway->relay_rtp(session->handle, &pkt);
-		} else {
-			/* We need to fragment the NAL (FU-A), start with the
-			 * FU indicator, common to all fragmented packets */
-			uint8_t type = *start & 0x1F;
-			uint8_t nri = *start & 0x60;
-			uint8_t indicator = nri | 28;
-			/* The first fragmented packet needs the S bit set in the FU Header */
-			uint8_t header = 0x80 + type;
-			JANUS_LOG(LOG_HUGE, "[%s]   -- FU-A: %d/%d/%d (offset %ld, size %d)\n",
-				imquic_get_connection_name(conn), indicator, type, header, start-data, mtu);
-			session->video_track.seq++;
-			rtp->seq_number = htons(session->video_track.seq);
-			rtp->markerbit = 0;
-			memcpy(&buffer[hsize+1], start, mtu);
-			memset(&buffer[hsize], indicator, 1);
-			memset(&buffer[hsize+1], header, 1);
-			/* Send the packet */
-			length = mtu+1+hsize;
-			janus_plugin_rtp pkt = { .mindex = 1, .video = TRUE, .buffer = buffer, .length = length };
-			janus_plugin_rtp_extensions_reset(&pkt.extensions);
-			gateway->relay_rtp(session->handle, &pkt);
-			/* Go on */
-			start += mtu;
-			total -= mtu;
-			while(TRUE) {
-				if(total < mtu) {
-					/* Last packet, set the E bit */
-					header = 0x40 + type;
-					JANUS_LOG(LOG_HUGE, "[%s]   -- FU-A: %d/%d/%d (offset %ld, size %d, last)\n",
-						imquic_get_connection_name(conn), indicator, type, header, start-data, total);
+		} else if(session->vcodec == JANUS_VIDEOCODEC_VP9) {
+			/* We're using VP9 */
+			session->pid++;
+			if(session->pid == 32768)	/* PictureID is limited to 15 bits */
+				session->pid = 0;
+			/* Check if we need to split the frame in multiple RTP packets */
+			if(object->payload_len < mtu) {
+				JANUS_LOG(LOG_HUGE, "[%s] Sending packet, payload is %zu bytes\n",
+					imquic_get_connection_name(conn), object->payload_len);
+				/* Add a payload descriptor: first octet */
+				char *pd = buffer+hsize;
+				*pd |= 1 << 7;		/* I=1 (PictureID present) */
+				*pd |= 1 << 3;		/* B=1 (Start of a frame) */
+				hsize++;
+				/* Second and third octet */
+				pd++;
+				uint16_t cpid = htons(session->pid);
+				memcpy(pd, &cpid, sizeof(uint16_t));
+				*pd |= 1 << 7;		/* M=1 */
+				hsize += 2;
+				/* Copy the frame data now */
+				memcpy(buffer+hsize, object->payload, object->payload_len);
+				/* Self-contained packet, set the Marker Bit to 1 */
+				rtp->markerbit = 1;
+				/* Send the packet */
+				length = hsize + object->payload_len;
+				session->video_track.seq++;
+				rtp->seq_number = htons(session->video_track.seq);
+				janus_plugin_rtp pkt = { .mindex = -1, .video = TRUE, .buffer = buffer, .length = length };
+				janus_plugin_rtp_extensions_reset(&pkt.extensions);
+				gateway->relay_rtp(session->handle, &pkt);
+			} else {
+				size_t rest_len = object->payload_len, first_byte = 0, packet_len = 0;
+				JANUS_LOG(LOG_HUGE, "[%s] Sending all that remains, payload is %zu bytes\n",
+					imquic_get_connection_name(conn), rest_len);
+				while(rest_len > 0) {
+					/* Take part of the whole frame: not more than 'mtu' bytes */
+					packet_len = rest_len;
+					if(rest_len > mtu)
+						packet_len = mtu;
+					JANUS_LOG(LOG_HUGE, "[%s]    Sending packet, payload is %zu/%zu bytes\n",
+						imquic_get_connection_name(conn), packet_len, object->payload_len);
+					/* Add a payload descriptor: first octet */
+					hsize = 12;
+					char *pd = buffer+hsize;
+					*pd = 0;
+					*pd |= 1 << 7;		/* I=1 (PictureID present) */
+					if(rest_len == object->payload_len)
+						*pd |= 1 << 3;		/* B=1 (Start of a frame) */
+					else if(rest_len <= mtu)
+						*pd |= 1 << 2;		/* E=1 (End of a frame) */
+					hsize++;
+					/* Second and third octet */
+					pd++;
+					if(rest_len == object->payload_len) {
+						uint16_t cpid = htons(session->pid);
+						memcpy(pd, &cpid, sizeof(uint16_t));
+					}
+					*pd |= 1 << 7;		/* M=1 */
+					hsize += 2;
+					/* Copy the frame data now */
+					memcpy(buffer+hsize, object->payload + first_byte, packet_len);
+					/* Update counters */
+					first_byte += packet_len;
+					rest_len -= packet_len;
+					/* Marker Bit depends on whether this is the last packet or not */
+					rtp->markerbit = rest_len > 0 ? 0 : 1;
+					/* Send the packet */
+					length = hsize + packet_len;
 					session->video_track.seq++;
 					rtp->seq_number = htons(session->video_track.seq);
-					rtp->markerbit = 1;
-					memset(&buffer[hsize], indicator, 1);
-					memset(&buffer[hsize+1], header, 1);
-					memcpy(&buffer[hsize+2], start, total);
-					/* Send the packet */
-					length = total+2+hsize;
-					janus_plugin_rtp pkt = { .mindex = 1, .video = TRUE, .buffer = buffer, .length = length };
+					janus_plugin_rtp pkt = { .mindex = -1, .video = TRUE, .buffer = buffer, .length = length };
 					janus_plugin_rtp_extensions_reset(&pkt.extensions);
 					gateway->relay_rtp(session->handle, &pkt);
-					break;
+				}
+			}
+		} else if(session->vcodec == JANUS_VIDEOCODEC_H264) {
+			/* We're using H.264 (AVCC or Annex-B) */
+			if(loc_extradata && loc_extradata->length > 0) {
+				/* We have extradata, extract the SPS/PPS and send that first */
+				uint8_t *extradata = loc_extradata->buffer;
+				size_t extradata_len = loc_extradata->length;
+				JANUS_LOG(LOG_HUGE, "[%s] %s data is %zu bytes\n  -- ",
+					imquic_get_connection_name(conn), (session->annexb ? "Annex-B" : "AVCC"), extradata_len);
+				for(size_t i=0; i<extradata_len; ++i)
+					JANUS_LOG(LOG_HUGE, "%02x", extradata[i]);
+				JANUS_LOG(LOG_HUGE, "\n");
+				/* Add NAL */
+				length = hsize;
+				buffer[length] = 0x18;
+				length++;
+				size_t offset = 0, pps_index = 0;
+				uint16_t sps_len = 0, pps_len = 0;
+				if(!session->annexb) {
+					/* Read AVCC extradata */
+					JANUS_LOG(LOG_HUGE, "Extradata:\n");
+					JANUS_LOG(LOG_HUGE, "  -- Version:       %"SCNu8"\n", extradata[0]);
+					JANUS_LOG(LOG_HUGE, "  -- Profile:       %"SCNu8"\n", extradata[1]);
+					JANUS_LOG(LOG_HUGE, "  -- Compatibility: %"SCNu8"\n", extradata[2]);
+					JANUS_LOG(LOG_HUGE, "  -- Level:         %"SCNu8"\n", extradata[3]);
+					JANUS_LOG(LOG_HUGE, "  -- NAL length -1: %"SCNu8"\n", extradata[4] & 0x03);
+					JANUS_LOG(LOG_HUGE, "  -- SPS number:    %"SCNu8"\n", extradata[5] & 0x1F);
+					offset = 6;
+					/* Extract SPS */
+					memcpy(&sps_len, &extradata[offset], 2);
+					sps_len = ntohs(sps_len);
+					offset += 2;
 				} else {
-					header = 0x00 + type;	/* Unset the S and E bits */
-					JANUS_LOG(LOG_HUGE, "[%s]   -- FU-A: %d/%d/%d (offset %ld, size %d)\n",
-						imquic_get_connection_name(conn), indicator, type, header, start-data, mtu);
-					session->video_track.seq++;
-					rtp->seq_number = htons(session->video_track.seq);
-					rtp->markerbit = 0;
-					memset(&buffer[hsize], indicator, 1);
-					memset(&buffer[hsize+1], header, 1);
-					memcpy(&buffer[hsize+2], start, mtu);
-					/* Send the packet */
-					length = mtu+2+hsize;
-					janus_plugin_rtp pkt = { .mindex = 1, .video = TRUE, .buffer = buffer, .length = length };
-					janus_plugin_rtp_extensions_reset(&pkt.extensions);
-					gateway->relay_rtp(session->handle, &pkt);
-					/* Move on */
-					start += mtu;
-					total -= mtu;
+					/* Skip the start code */
+					offset = 4;
+					/* Find the next NAL to figure out the SPS size */
+					size_t sps_index = offset, index = offset;
+					while((index + 3) < extradata_len) {
+						if(extradata[index] == 0x00 && extradata[index+1] == 0x00 && extradata[index+2] == 0x01) {
+							sps_len = index - sps_index;
+							index += 3;
+							break;
+						} else if(extradata[index] == 0x00 && extradata[index+1] == 0x00 && extradata[index+2] == 0x00 && extradata[index+3] == 0x01) {
+							sps_len = index - sps_index;
+							index += 4;
+							break;
+						}
+						index++;
+					}
+					pps_index = index;
+					pps_len = extradata_len - pps_index;
+				}
+				uint8_t *sps = &extradata[offset];
+				JANUS_LOG(LOG_HUGE, "[%s] SPS len: %"SCNu16"\n",
+					imquic_get_connection_name(conn), sps_len);
+				if(sps_len > (sizeof(buffer)-length)) {
+					/* Shouldn't happen */
+					JANUS_LOG(LOG_WARN, "[%s] Broken SPS (len: %"SCNu16")\n",
+						imquic_get_connection_name(conn), sps_len);
+					return;
+				}
+				/* Add SPS to the RTP packet */
+				sps_len = htons(sps_len);
+				memcpy(&buffer[length], &sps_len, 2);
+				length += 2;
+				sps_len = ntohs(sps_len);
+				memcpy(&buffer[length], sps, sps_len);
+				length += sps_len;
+				/* Extract PPS */
+				if(!session->annexb) {
+					uint8_t *pps = sps + sps_len;
+					size_t pps_len = extradata_len - (pps - extradata);
+					JANUS_LOG(LOG_HUGE, "[%s] PPS(s) len: %zu\n",
+						imquic_get_connection_name(conn), pps_len);
+					JANUS_LOG(LOG_HUGE, "  -- Num of PPS: %"SCNu8"\n", pps[0]);
+					pps_index = 1;
+					for(size_t i=0; i<pps[0]; i++) {
+						size_t pps_i_len = 0;
+						memcpy(&pps_i_len, &pps[pps_index], 2);
+						pps_index += 2;
+						JANUS_LOG(LOG_HUGE, "  -- -- PPS[%zu] len %"SCNu16"/%zu\n", i, ntohs(pps_i_len), pps_len - pps_index);
+						/* Add PPS to the RTP packet */
+						memcpy(&buffer[length], &pps_i_len, 2);
+						length += 2;
+						pps_i_len = ntohs(pps_i_len);
+						memcpy(&buffer[length], &pps[pps_index], pps_i_len);
+						length += pps_i_len;
+						/* Go to the next PPS */
+						pps_index += pps_i_len;
+					}
+				} else {
+					pps_len = ntohs(pps_len);
+					memcpy(&buffer[length], &pps_len, 2);
+					length += 2;
+					pps_len = htons(pps_len);
+					memcpy(&buffer[length], &extradata[pps_index], pps_len);
+					length += pps_len;
+				}
+				/* Send the packet */
+				JANUS_LOG(LOG_HUGE, "[%s] RTP packet is %zu bytes\n",
+					imquic_get_connection_name(conn), length);
+				for(size_t i=0; i<length; ++i)
+					JANUS_LOG(LOG_HUGE, "%02x", (uint8_t)buffer[i]);
+				JANUS_LOG(LOG_HUGE, "\n");
+				session->video_track.seq++;
+				rtp->seq_number = htons(session->video_track.seq);
+				JANUS_LOG(LOG_HUGE, "[%s] >> Sending RTP packet (seq=%"SCNu16", ts=%"SCNu32", payload=%zu)\n",
+					imquic_get_connection_name(conn), ntohs(rtp->seq_number), ntohl(rtp->timestamp), length-hsize);
+				janus_plugin_rtp pkt = { .mindex = -1, .video = TRUE, .buffer = buffer, .length = length };
+				janus_plugin_rtp_extensions_reset(&pkt.extensions);
+				gateway->relay_rtp(session->handle, &pkt);
+				length = 0;
+			}
+			/* Check if we need to switch from AVCC to Annex-B */
+			if(!session->annexb) {
+				size_t avcc_offset = 0, nal_size = 0;
+				while(object->payload_len >= avcc_offset + 4) {
+					memcpy(&nal_size, object->payload + avcc_offset, 4);
+					nal_size = ntohl(nal_size);
+					if(nal_size > 0) {
+						*(object->payload + avcc_offset) = 0x00;
+						*(object->payload + avcc_offset + 1) = 0x00;
+						*(object->payload + avcc_offset + 2) = 0x00;
+						*(object->payload + avcc_offset + 3) = 0x01;
+					}
+					avcc_offset += 4 + nal_size;
+				}
+			}
+			/* Check if we need to fragment the frame in multiple RTP packets */
+			while(TRUE) {
+				if((end-tmp) < 3)
+					break;
+				if(tmp[0] == 0 && tmp[1] == 0 && tmp[2] == 1) {
+					/* Found a start code (00 00 01) */
+					JANUS_LOG(LOG_HUGE, "[%s]   -- Found start code (offset %ld, size %ld)\n",
+						imquic_get_connection_name(conn), tmp-data, tmp-start);
+					if(tmp-start > 1) {
+						if((size_t)(tmp-start) > mtu)
+							break;
+						/* Create a new RTP packet */
+						session->video_track.seq++;
+						rtp->seq_number = htons(session->video_track.seq);
+						memcpy(&buffer[hsize], start, tmp-start);
+						/* Send the packet */
+						length = tmp-start+hsize;
+						JANUS_LOG(LOG_HUGE, "[%s] >> Sending RTP packet (seq=%"SCNu16", ts=%"SCNu32", payload=%zu)\n",
+							imquic_get_connection_name(conn), ntohs(rtp->seq_number), ntohl(rtp->timestamp), tmp-start);
+						janus_plugin_rtp pkt = { .mindex = -1, .video = TRUE, .buffer = buffer, .length = length };
+						janus_plugin_rtp_extensions_reset(&pkt.extensions);
+						gateway->relay_rtp(session->handle, &pkt);
+					}
+					/* Go on */
+					tmp += 3;
+					start = tmp;
+					continue;
+				} else {
+					tmp++;
+				}
+			}
+			/* Create the last RTP packet(s?) */
+			size_t total = end-start;
+			JANUS_LOG(LOG_HUGE, "[%s] Evaluating remaining data: %zu bytes\n",
+				imquic_get_connection_name(conn), total);
+			if(total < mtu) {
+				/* The NAL fits in one RTP packet */
+				JANUS_LOG(LOG_HUGE, "[%s]   -- NAL fits (offset %ld, size %ld)\n",
+					imquic_get_connection_name(conn), start-data, tmp-start);
+				session->video_track.seq++;
+				rtp->seq_number = htons(session->video_track.seq);
+				rtp->markerbit = 1;
+				memcpy(&buffer[hsize], start, total);
+				/* Send the packet */
+				length = total+hsize;
+				JANUS_LOG(LOG_HUGE, "[%s] >> Sending RTP packet (seq=%"SCNu16", ts=%"SCNu32", payload=%zu)\n",
+					imquic_get_connection_name(conn), ntohs(rtp->seq_number), ntohl(rtp->timestamp), total);
+				janus_plugin_rtp pkt = { .mindex = -1, .video = TRUE, .buffer = buffer, .length = length };
+				janus_plugin_rtp_extensions_reset(&pkt.extensions);
+				gateway->relay_rtp(session->handle, &pkt);
+			} else {
+				/* We need to fragment the NAL (FU-A), start with the
+				 * FU indicator, common to all fragmented packets */
+				uint8_t type = *start & 0x1F;
+				uint8_t nri = *start & 0x60;
+				uint8_t indicator = nri | 28;
+				/* The first fragmented packet needs the S bit set in the FU Header */
+				uint8_t header = 0x80 + type;
+				JANUS_LOG(LOG_HUGE, "[%s]   -- FU-A: %d/%d/%d (offset %ld, size %zu)\n",
+					imquic_get_connection_name(conn), indicator, type, header, start-data, mtu);
+				session->video_track.seq++;
+				rtp->seq_number = htons(session->video_track.seq);
+				rtp->markerbit = 0;
+				memcpy(&buffer[hsize+1], start, mtu);
+				memset(&buffer[hsize], indicator, 1);
+				memset(&buffer[hsize+1], header, 1);
+				/* Send the packet */
+				length = mtu+1+hsize;
+				JANUS_LOG(LOG_HUGE, "[%s] >> Sending RTP packet (seq=%"SCNu16", ts=%"SCNu32", payload=%zu)\n",
+					imquic_get_connection_name(conn), ntohs(rtp->seq_number), ntohl(rtp->timestamp), mtu+1);
+				janus_plugin_rtp pkt = { .mindex = -1, .video = TRUE, .buffer = buffer, .length = length };
+				janus_plugin_rtp_extensions_reset(&pkt.extensions);
+				gateway->relay_rtp(session->handle, &pkt);
+				/* Go on */
+				start += mtu;
+				total -= mtu;
+				while(TRUE) {
+					if(total < mtu) {
+						/* Last packet, set the E bit */
+						header = 0x40 + type;
+						JANUS_LOG(LOG_HUGE, "[%s]   -- FU-A: %d/%d/%d (offset %ld, size %zu, last)\n",
+							imquic_get_connection_name(conn), indicator, type, header, start-data, total);
+						session->video_track.seq++;
+						rtp->seq_number = htons(session->video_track.seq);
+						rtp->markerbit = 1;
+						memset(&buffer[hsize], indicator, 1);
+						memset(&buffer[hsize+1], header, 1);
+						memcpy(&buffer[hsize+2], start, total);
+						/* Send the packet */
+						length = total+2+hsize;
+						JANUS_LOG(LOG_HUGE, "[%s] >> Sending RTP packet (seq=%"SCNu16", ts=%"SCNu32", payload=%zu)\n",
+							imquic_get_connection_name(conn), ntohs(rtp->seq_number), ntohl(rtp->timestamp), total+2);
+						janus_plugin_rtp pkt = { .mindex = -1, .video = TRUE, .buffer = buffer, .length = length };
+						janus_plugin_rtp_extensions_reset(&pkt.extensions);
+						gateway->relay_rtp(session->handle, &pkt);
+						break;
+					} else {
+						header = 0x00 + type;	/* Unset the S and E bits */
+						JANUS_LOG(LOG_HUGE, "[%s]   -- FU-A: %d/%d/%d (offset %ld, size %zu)\n",
+							imquic_get_connection_name(conn), indicator, type, header, start-data, mtu);
+						session->video_track.seq++;
+						rtp->seq_number = htons(session->video_track.seq);
+						rtp->markerbit = 0;
+						memset(&buffer[hsize], indicator, 1);
+						memset(&buffer[hsize+1], header, 1);
+						memcpy(&buffer[hsize+2], start, mtu);
+						/* Send the packet */
+						length = mtu+2+hsize;
+						JANUS_LOG(LOG_HUGE, "[%s] >> Sending RTP packet (seq=%"SCNu16", ts=%"SCNu32", payload=%zu)\n",
+							imquic_get_connection_name(conn), ntohs(rtp->seq_number), ntohl(rtp->timestamp), mtu+2);
+						janus_plugin_rtp pkt = { .mindex = -1, .video = TRUE, .buffer = buffer, .length = length };
+						janus_plugin_rtp_extensions_reset(&pkt.extensions);
+						gateway->relay_rtp(session->handle, &pkt);
+						/* Move on */
+						start += mtu;
+						total -= mtu;
+					}
 				}
 			}
 		}
@@ -1942,22 +2415,32 @@ static uint32_t janus_moq_h264_eg_decode(uint8_t *base, uint32_t *offset) {
 	return res-1;
 }
 
-/* Helper to parse a SPS (only to get the video resolution) */
-static size_t janus_moq_h264_parse_sps(uint8_t *avcc_data, char *buffer, int len, int *width, int *height) {
-	/* We use this function to return a metadata JSON object for AVC1 */
-	avcc_data[0] = 1;
+/* Helper to parse a SPS to width/height and return extradata we can send via LOC */
+static size_t janus_moq_h264_parse_sps(uint8_t *extradata, size_t extradata_len,
+		gboolean annexb, uint8_t *buffer, size_t len, int *width, int *height) {
+	/* We may need the extradata to be either AVCC or Annex-B */
+	size_t index = 0, extradata_size = 0;
+	if(!annexb) {
+		/* AVCC, prepare the header */
+		extradata[0] = 1;
+		index = 3;
+	} else {
+		/* Annex-B */
+		index = 1;
+	}
 	/* Let's check if it's the right profile, first */
-	int index = 3;
 	int profile_idc = *(buffer+index);
 	if(profile_idc != 66) {
 		JANUS_LOG(LOG_HUGE, "Profile is not baseline (%d != 66)\n", profile_idc);
 	}
-	avcc_data[1] = 66;	/* FIXME */
-	avcc_data[2] = 3;	/* FIXME */
-	avcc_data[3] = 31;	/* FIXME */
-	avcc_data[4] = 3;
-	avcc_data[5] = 1;
-	size_t avcc_size = 6;
+	if(!annexb) {
+		extradata[1] = 66;	/* FIXME */
+		extradata[2] = 3;	/* FIXME */
+		extradata[3] = 31;	/* FIXME */
+		extradata[4] = 3;
+		extradata[5] = 1;
+		extradata_size = 6;
+	}
 	/* Then let's skip 2 bytes and evaluate/skip the rest */
 	index += 3;
 	uint32_t offset = 0;
@@ -2027,27 +2510,48 @@ static size_t janus_moq_h264_parse_sps(uint8_t *avcc_data, char *buffer, int len
 	if(height)
 		*height = ((2 - frame_mbs_only_flag)* (pic_height_in_map_units_minus1 +1) * 16) - (frame_crop_top_offset * 2) - (frame_crop_bottom_offset * 2);
 
-	/* Append SPS to the AVCC buffer */
+	/* Append SPS to the extradata buffer */
 	uint16_t sps_size = 0;
 	memcpy(&sps_size, buffer, 2);
 	sps_size = ntohs(sps_size);
 	JANUS_LOG(LOG_HUGE, "SPS size: %"SCNu16"\n", sps_size);
-	memcpy(&avcc_data[avcc_size], buffer, 2);
-	avcc_size += 2;
-	memcpy(&avcc_data[avcc_size], buffer + 2, sps_size);
-	avcc_size += sps_size;
-	/* Append PPS to the AVCC buffer */
-	avcc_data[avcc_size] = 1;
-	avcc_size++;
+	if(!annexb) {
+		memcpy(extradata + extradata_size, buffer, 2);
+		extradata_size += 2;
+	} else {
+		memset(extradata + extradata_size, 0x00, 1);
+		memset(extradata + extradata_size + 1, 0x00, 1);
+		memset(extradata + extradata_size + 2, 0x00, 1);
+		memset(extradata + extradata_size + 3, 0x01, 1);
+		extradata_size += 4;
+	}
+	buffer += 2;
+	memcpy(extradata + extradata_size, buffer, sps_size);
+	buffer += sps_size;
+	extradata_size += sps_size;
+
+	/* Append PPS to the extradata buffer */
 	uint16_t pps_size = 0;
-	memcpy(&pps_size, buffer + 2 + sps_size, 2);
+	memcpy(&pps_size, buffer, 2);
 	pps_size = ntohs(pps_size);
 	JANUS_LOG(LOG_HUGE, "PPS size: %"SCNu16"\n", pps_size);
-	memcpy(&avcc_data[avcc_size], buffer + 2 + sps_size, 2);
-	avcc_size += 2;
-	memcpy(&avcc_data[avcc_size], buffer + 2 + sps_size + 2, pps_size);
-	avcc_size += pps_size;
+	if(!annexb) {
+		extradata[extradata_size] = 1;	/* FIXME */
+		extradata_size++;
+		memcpy(extradata + extradata_size, buffer, 2);
+		extradata_size += 2;
+	} else {
+		memset(extradata + extradata_size, 0x00, 1);
+		memset(extradata + extradata_size + 1, 0x00, 1);
+		memset(extradata + extradata_size + 2, 0x00, 1);
+		memset(extradata + extradata_size + 3, 0x01, 1);
+		extradata_size += 4;
+	}
+	buffer += 2;
+	memcpy(extradata + extradata_size, buffer, pps_size);
+	buffer += pps_size;
+	extradata_size += pps_size;
 
 	/* Done */
-	return avcc_size;
+	return extradata_size;
 }
