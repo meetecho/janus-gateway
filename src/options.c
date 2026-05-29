@@ -56,6 +56,7 @@ gboolean janus_options_parse(janus_options *options, int argc, char *argv[]) {
 		{ "apisecret", 'a', 0, G_OPTION_ARG_STRING, &options->apisecret, "API secret all requests need to pass in order to be accepted by Janus (useful when wrapping Janus API requests in a server, none by default)", "randomstring" },
 		{ "token-auth", 'A', 0, G_OPTION_ARG_NONE, &options->token_auth, "Enable token-based authentication for all requests", NULL },
 		{ "token-auth-secret", 0, 0, G_OPTION_ARG_STRING, &options->token_auth_secret, "Secret to verify HMAC-signed tokens with, to be used with -A", "randomstring" },
+		{ "disable-info-api", 0, 0, G_OPTION_ARG_NONE, &options->disable_info_api, "Restrict the \"info\" endpoint to authenticated requests only (requires api_secret or token)", NULL },
 		{ "event-handlers", 'e', 0, G_OPTION_ARG_NONE, &options->event_handlers, "Enable event handlers", NULL },
 		{ "no-webrtc-encryption", 'w', 0, G_OPTION_ARG_NONE, &options->no_webrtc_encryption, "Disable WebRTC encryption, so no DTLS or SRTP (only for debugging!)", NULL },
 		{ "version", 'V', 0, G_OPTION_ARG_NONE, &options->print_version, "Print version and exit", NULL },
