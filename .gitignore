@@ -73,3 +73,40 @@ cov-int
 .vscode
 node_modules
 .venv
+
+# SIP.js build output
+SIP.js-0.21.2/lib/
+SIP.js-0.21.2/dist/
+SIP.js-0.21.2/temp/
+SIP.js-0.21.2/demo/bundle/
+SIP.js-0.21.2/demo/*.js
+SIP.js-0.21.2/demo/*.js.map
+!SIP.js-0.21.2/demo/demo-utils.ts
+!SIP.js-0.21.2/demo/webpack.config.cjs
+
+# Backend (Node.js/Python fraud-prevention API)
+backend/node_modules/
+backend/dist/
+backend/.env
+backend/.env.*
+
+# Environment & secrets
+.env
+.env.local
+.env.production
+*.pem
+*.key
+!conf/*.sample
+
+# Logs
+*.log
+npm-debug.log*
+
+# Redis dump
+dump.rdb
+
+# Coverage
+coverage/
+
+# TypeScript
+*.tsbuildinfo
