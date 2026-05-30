@@ -1,0 +1,33 @@
+button {
+  margin: 4px;
+}
+
+.content {
+  display: flex;
+  justify-content: center;
+}
+
+.user {
+  padding: 20px;
+}
+
+.message {
+  padding: 2px 4px;
+  margin: 0px;
+}
+
+.message-box-message {
+  width: 150px;
+}
+
+.message-box-received {
+  height: 200px;
+  width: 200px;
+  overflow-y: auto;
+  border: solid 1px;
+  margin-top: 10px;
+}
+
+.message-box-received.disabled {
+  border-color: lightgray;
+}

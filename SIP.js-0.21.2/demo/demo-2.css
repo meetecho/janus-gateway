@@ -1,0 +1,34 @@
+button {
+  margin: 4px;
+}
+
+.content {
+  display: flex;
+  justify-content: center;
+}
+
+.user {
+  padding: 20px;
+}
+
+.video {
+  display: flex;
+  background: black;
+  position: relative;
+  border: 1px solid lightgrey;
+  height: 200px;
+  width: 200px;
+  margin: 10px 0;
+}
+
+.video-local {
+  display: flex;
+  background: black;
+  position: absolute;
+  border: 1px solid lightgrey;
+  height: 40px;
+  width: 40px;
+  top: 150px;
+  left: 10px;
+  transform: scaleX(-1);
+}

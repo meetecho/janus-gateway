@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "target": "es2017",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "lib": ["es2017", "dom"],
+    "types": [] // white list to avoid the unexpected like @types/node which brings in esnext
+  },
+  "include": ["**/*.ts"]
+}

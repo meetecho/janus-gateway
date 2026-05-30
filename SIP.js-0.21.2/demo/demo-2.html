@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>SIP.js Demo 2</title>
+    <link rel="stylesheet" type="text/css" href="./demo-2.css" />
+  </head>
+
+  <body>
+    <span><a href="index.html">&lt; Index</a></span>
+
+    <h2>Demo: Video Call - Between Two Users</h2>
+
+    <div>
+      When this page was loaded, a <code>SimpleUser</code> was created for two users - Alice & Bob
+      <ol>
+        <li>Connect with SIP WebSocket Server</li>
+        <li>Register user to receive calls</li>
+        <li>Initiate a video session</li>
+        <li>End the video session</li>
+        <li>Unregister</li>
+        <li>Disconnect</li>
+      </ol>
+    </div>
+
+    <div class="content">
+      <div id="alice" class="user">
+        <h4>Alice</h4>
+        <div class="video">
+          <video id="videoRemoteAlice" width="100%" muted="muted">
+            <p>Your browser doesn't support HTML5 video.</p>
+          </video>
+          <div class="video-local">
+            <video id="videoLocalAlice" width="100%" muted="muted">
+              <p>Your browser doesn't support HTML5 video.</p>
+            </video>
+          </div>
+        </div>
+        <ol>
+          <li><button id="connectAlice" disabled>Connect</button></li>
+          <li><button id="registerAlice" disabled>Register User</button></li>
+          <li><button id="beginAlice" disabled>Initiate Video Session</button></li>
+          <li><button id="endAlice" disabled>End Video Session</button></li>
+          <li><button id="unregisterAlice" disabled>Unregister</button></li>
+          <li><button id="disconnectAlice" disabled>Disconnect</button></li>
+        </ol>
+        <div>
+          <input type="checkbox" id="holdAlice" name="holdAlice" disabled />
+          <label for="holdAlice">Hold</label>
+        </div>
+        <div>
+          <input type="checkbox" id="muteAlice" name="muteAlice" disabled />
+          <label for="muteAlice">Mute</label>
+        </div>
+      </div>
+
+      <div id="bob" class="user">
+        <h4>Bob</h4>
+        <div class="video">
+          <video id="videoRemoteBob" width="100%" muted="muted">
+            <p>Your browser doesn't support HTML5 video.</p>
+          </video>
+          <div class="video-local">
+            <video id="videoLocalBob" width="100%" muted="muted">
+              <p>Your browser doesn't support HTML5 video.</p>
+            </video>
+          </div>
+        </div>
+        <ol>
+          <li><button id="connectBob" disabled>Connect</button></li>
+          <li><button id="registerBob" disabled>Register User</button></li>
+          <li><button id="beginBob" disabled>Initiate Video Session</button></li>
+          <li><button id="endBob" disabled>End Video Session</button></li>
+          <li><button id="unregisterBob" disabled>Unregister</button></li>
+          <li><button id="disconnectBob" disabled>Disconnect</button></li>
+        </ol>
+        <div>
+          <input type="checkbox" id="holdBob" name="holdBob" disabled />
+          <label for="holdBob">Hold</label>
+        </div>
+        <div>
+          <input type="checkbox" id="muteBob" name="muteBob" disabled />
+          <label for="muteBob">Mute</label>
+        </div>
+      </div>
+    </div>
+
+    <script
+      src="./dist/demo-2.js"
+      onerror="alert('To run this demo you must first build the library and demo source! See the README.')"
+    ></script>
+  </body>
+</html>

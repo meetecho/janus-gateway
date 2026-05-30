@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig-base.json",
+  "compilerOptions": {
+    "types" : ["jasmine"] // White list (avoid the unexpected like @types/node as it brings in esnext)
+  },
+  "include": [
+    "**/*.ts"
+  ]
+}

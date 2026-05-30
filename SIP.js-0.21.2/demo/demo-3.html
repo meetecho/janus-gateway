@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+  <meta charset="utf-8" />
+  <title>SIP.js Demo 3</title>
+  <link rel="stylesheet" type="text/css" href="./demo-3.css">
+</head>
+
+<body>
+  <span><a href="index.html">&lt; Index</a></span>
+
+  <h2>Demo: Data Channel - Between Two Users</h2>
+
+  <div>
+    When this page was loaded, a <code>SimpleUser</code> was created for two users - Alice & Bob
+    <ol>
+      <li>Connect with SIP WebSocket Server</li>
+      <li>Register user to receive calls</li>
+      <li>Initiate a data session</li>
+      <li>End the data session</li>
+      <li>Unregister</li>
+      <li>Disconnect</li>
+    </ol>
+  </div>
+
+  <div class="content">
+    <div id="alice" class="user">
+      <h4>Alice</h4>
+      <div class="message-box">
+        <input class="message-box-message" type="text" id="messageAlice" placeholder="Message Bob" disabled>
+        <button id="sendAlice" disabled>Send</button>
+        <div class="message-box-received disabled" id="receiveAlice" disabled></div>
+      </div>
+      <ol>
+        <li><button id="connectAlice" disabled>Connect</button></li>
+        <li><button id="registerAlice" disabled>Register User</button></li>
+        <li><button id="beginAlice" disabled>Initiate Session</button></li>
+        <li><button id="endAlice" disabled>End Session</button></li>
+        <li><button id="unregisterAlice" disabled>Unregister</button></li>
+        <li><button id="disconnectAlice" disabled>Disconnect</button></li>
+      </ol>
+    </div>
+
+    <div id="bob" class="user">
+      <h4>Bob</h4>
+      <div class="message-box">
+        <input class="message-box-message" type="text" id="messageBob" placeholder="Message Alice" disabled>
+        <button id="sendBob" disabled>Send</button>
+        <div class="message-box-received disabled" id="receiveBob"></div>
+      </div>
+      <ol>
+        <li><button id="connectBob" disabled>Connect</button></li>
+        <li><button id="registerBob" disabled>Register User</button></li>
+        <li><button id="beginBob" disabled>Initiate Session</button></li>
+        <li><button id="endBob" disabled>End Session</button></li>
+        <li><button id="unregisterBob" disabled>Unregister</button></li>
+        <li><button id="disconnectBob" disabled>Disconnect</button></li>
+      </ol>
+    </div>
+  
+  </div>
+
+  <script src="./dist/demo-3.js"
+    onerror="alert('To run this demo you must first build the library and demo source! See the README.')">
+    </script>
+
+</body>
+
+</html>

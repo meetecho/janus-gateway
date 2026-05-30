@@ -1,0 +1,48 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    // "ecmaVersion": "latest",
+    "ecmaVersion": 2017,
+    "sourceType": "module",
+    "project": "./tsconfig-base.json"
+  },
+  "plugins": [
+      "@typescript-eslint",
+      "tree-shaking",
+      "prettier"
+  ],
+  "extends": [
+      "eslint:recommended",
+      "plugin:@typescript-eslint/eslint-recommended",
+      "plugin:@typescript-eslint/recommended",
+    // "plugin:@typescript-eslint/recommended-requiring-type-checking",
+    // "plugin:@typescript-eslint/strict",
+      "prettier"
+  ],
+  "rules": {
+    "no-console": "error",
+    "prettier/prettier": "error",
+    // "@typescript-eslint/explicit-member-accessibility": "error",
+    // "@typescript-eslint/member-ordering": "error",
+    "tree-shaking/no-side-effects-in-initialization": "error"
+  },
+  "overrides": [
+    {
+      "files": ["./demo/**/*.ts", "./test/**/*.ts"],
+      "rules": {
+        "@typescript-eslint/no-floating-promises": "off",
+        "@typescript-eslint/no-implied-eval": "off",
+        "@typescript-eslint/no-unsafe-argument": "off",
+        "@typescript-eslint/no-unsafe-assignment": "off",
+        "@typescript-eslint/no-unsafe-call": "off",
+        "@typescript-eslint/no-unsafe-member-access": "off",
+        "@typescript-eslint/no-unsafe-return": "off",
+        "@typescript-eslint/no-misused-promises": "off",
+        "@typescript-eslint/restrict-template-expressions": "off",
+        "@typescript-eslint/restrict-plus-operands": "off",
+        "tree-shaking/no-side-effects-in-initialization": "off"
+      }
+    }
+  ]
+}

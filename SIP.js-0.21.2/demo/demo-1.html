@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+  <meta charset="utf-8" />
+  <title>SIP.js Demo 1</title>
+  <link rel="stylesheet" type="text/css" href="./demo-1.css">
+</head>
+
+<body>
+  <span><a href="index.html">&lt; Index</a></span>
+
+  <h2>Demo: Audio Call - Outbound</h2>
+
+  <div>
+    When this page was loaded, a <code>SimpleUser</code> was created.
+    <ol>
+      <li>Connect <code>SimpleUser</code> to server</li>
+      <li>Place call to destination</li>
+      <li>Hangup call</li>
+      <li>Disconnect</li>
+    </ol>
+  </div>
+
+  <ol>
+    <li><button id="connect" disabled>Connect</button> with <code><span id="server"></span></code></li>
+    <li><button id="call" disabled>Place Call</button> with <code><span id="target"></span></code></li>
+    <li><button id="hangup" disabled>Hangup Call</button></li>
+    <li><button id="disconnect" disabled>Disconnect</button></li>
+  </ol>
+
+  <p>
+    When the call is established, the remote audio is added to the following HTML5 audio element...
+  </p>
+  <audio id="remoteAudio" controls>
+    <p>Your browser doesn't support HTML5 audio.</p>
+  </audio>
+
+  <p>
+    While the call is established, DTMF may be sent using the following "keypad"...
+  </p>
+  <div class="dtmf">DTMF sent: <span id="dtmf"></span></div>
+  <div>
+    <div>
+      <button class="keypad" disabled>1</button>
+      <button class="keypad" disabled>2</button>
+      <button class="keypad" disabled>3</button>
+    </div>
+    <div>
+      <button class="keypad" disabled>4</button>
+      <button class="keypad" disabled>5</button>
+      <button class="keypad" disabled>6</button>
+    </div>
+    <div>
+      <button class="keypad" disabled>7</button>
+      <button class="keypad" disabled>8</button>
+      <button class="keypad" disabled>9</button>
+    </div>
+    <div>
+      <button class="keypad" disabled>*</button>
+      <button class="keypad" disabled>0</button>
+      <button class="keypad" disabled>#</button>
+    </div>
+  </div>
+
+  <p>
+    While the call is established, the session may placed on hold or muted...
+  </p>
+  <div>
+    <input type="checkbox" id="hold" name="hold" disabled>
+    <label for="hold">Hold</label>
+  </div>
+  <div>
+    <input type="checkbox" id="mute" name="mute" disabled>
+    <label for="mute">Mute</label>
+  </div>
+
+  <script src="./dist/demo-1.js"
+    onerror="alert('To run this demo you must first build the library and demo source! See the README.')">
+    </script>
+</body>
+
+</html>

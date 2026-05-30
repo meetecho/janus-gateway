@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+  <meta charset="utf-8" />
+  <title>SIP.js Demos</title>
+</head>
+
+<body>
+  <h2>Demos</h2>
+
+  <p>
+    The SIP.js library and the demos must be built before they will run.
+    <pre>
+    npm install
+    npm run build-demo              
+    </pre>
+    <b>Safari</b> requires either...
+    <ul>
+      <li>enabling <code>Develop -> WebRTC -> Allow Media Capture on Insecure Sites</code></li>
+      <li>or serving the demo from a secure website</li>
+    </ul>
+  </p>
+
+  <h4>1) <a href="./demo-1.html">Audio Call - Outbound</a></h4>
+  <ul>
+    <li>Connecting to SIP WebSocket Server</li>
+    <li>Making an outbound audio call</li>
+    <li>Sending DTMF</li>
+    <li>Hold & Mute</li>
+  </ul>
+
+  <h4>2) <a href="./demo-2.html">Video Call - Between Two Users</a></h4>
+  <ul>
+    <li>Connecting to SIP WebSocket Server</li>
+    <li>Registering to receive incoming calls</li>
+    <li>Making an outbound video call</li>
+    <li>Answering incoming calls</li>
+  </ul>
+
+  <h4>3) <a href="./demo-3.html">Data Channel - Between Two Users</a></h4>
+  <ul>
+    <li>Connecting to SIP WebSocket Server</li>
+    <li>Registering to receive incoming calls</li>
+    <li>Making an outbound call with data channel</li>
+    <li>Answering incoming call with data channel</li>
+  </ul>
+
+</body>
+
+</html>
