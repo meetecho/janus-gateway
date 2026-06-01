@@ -230,6 +230,7 @@ static GHashTable *connections = NULL;
 static janus_mutex connections_mutex = JANUS_MUTEX_INITIALIZER;
 /* Callbacks */
 static void janus_moq_new_connection(imquic_connection *conn, void *user_data);
+static void janus_moq_connection_failed(void *user_data);
 static void janus_moq_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason);
 /* MoQ specific */
 static void janus_moq_moq_ready(imquic_connection *conn);
@@ -1297,6 +1298,7 @@ static void *janus_moq_handler(void *data) {
 				imquic_set_publish_namespace_error_cb(quic_endpoint, janus_moq_moq_publish_namespace_error);
 				imquic_set_incoming_subscribe_cb(quic_endpoint, janus_moq_moq_incoming_subscribe);
 				imquic_set_incoming_unsubscribe_cb(quic_endpoint, janus_moq_moq_incoming_unsubscribe);
+				imquic_set_connection_failed_cb(quic_endpoint, janus_moq_connection_failed);
 				imquic_set_moq_connection_gone_cb(quic_endpoint, janus_moq_connection_gone);
 			} else if(session->moqsub) {
 				imquic_set_new_moq_connection_cb(quic_endpoint, janus_moq_new_connection);
@@ -1305,6 +1307,7 @@ static void *janus_moq_handler(void *data) {
 				imquic_set_subscribe_error_cb(quic_endpoint, janus_moq_moq_subscribe_error);
 				imquic_set_publish_done_cb(quic_endpoint, janus_moq_moq_publish_done);
 				imquic_set_incoming_object_cb(quic_endpoint, janus_moq_moq_incoming_object);
+				imquic_set_connection_failed_cb(quic_endpoint, janus_moq_connection_failed);
 				imquic_set_moq_connection_gone_cb(quic_endpoint, janus_moq_connection_gone);
 			}
 			session->quic_endpoint = quic_endpoint;
@@ -1385,6 +1388,10 @@ static void *janus_moq_handler(void *data) {
 			/* Send an answer back to the browser */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("bridging"));
+			if(moqpub) {
+				json_t *json = imquic_moq_catalog_serialize_obj(session->catalog);
+				json_object_set_new(result, "catalog", json);
+			};
 		} else if(!strcasecmp(request_text, "start")) {
 			if(!session->moqsub) {
 				/* This command can only be sent by subscriberss */
@@ -1480,6 +1487,23 @@ static void janus_moq_new_connection(imquic_connection *conn, void *user_data) {
 		imquic_moq_set_max_request_id(conn, 100);	/* FIXME */
 }
 
+static void janus_moq_connection_failed(void *user_data) {
+	janus_moq_session *session = (janus_moq_session *)user_data;
+	if(session == NULL)
+		return;
+	/* Connection has failed */
+	JANUS_LOG(LOG_INFO, "Connection failed\n");
+	/* Notify the application */
+	json_t *event = json_object();
+	json_object_set_new(event, "moq", json_string("event"));
+	json_object_set_new(event, "error_space", json_string("connection"));
+	json_object_set_new(event, "error_code", json_integer(0));
+	json_object_set_new(event, "error", json_string("Connection failed"));
+	int ret = gateway->push_event(session->handle, &janus_moq_plugin, NULL, event, NULL);
+	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+	json_decref(event);
+}
+
 static void janus_moq_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	/* Connection has gone away */
 	JANUS_LOG(LOG_INFO, "[%s] Connection gone: %"SCNu64" (%s)\n",
@@ -1497,6 +1521,16 @@ static void janus_moq_connection_gone(imquic_connection *conn, uint64_t error_co
 	g_hash_table_remove(connections, conn);
 	janus_mutex_unlock(&connections_mutex);
 	imquic_connection_unref(conn);
+	/* Notify the application */
+	json_t *event = json_object();
+	json_object_set_new(event, "moq", json_string("event"));
+	json_object_set_new(event, "error_space", json_string("connection"));
+	json_object_set_new(event, "error_code", json_integer(error_code));
+	if(reason)
+		json_object_set_new(event, "error", json_string(reason));
+	int ret = gateway->push_event(session->handle, &janus_moq_plugin, NULL, event, NULL);
+	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+	json_decref(event);
 	janus_refcount_decrease(&session->ref);
 }
 
@@ -1504,11 +1538,13 @@ static void janus_moq_connection_gone(imquic_connection *conn, uint64_t error_co
 static void janus_moq_moq_ready(imquic_connection *conn) {
 	/* MoQ negotiation was done */
 	JANUS_LOG(LOG_INFO, "[%s] MoQ connection ready\n", imquic_get_connection_name(conn));
+	janus_mutex_lock(&connections_mutex);
 	janus_moq_session *session = g_hash_table_lookup(connections, conn);
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
 		janus_mutex_unlock(&connections_mutex);
 		return;
 	}
+	janus_mutex_unlock(&connections_mutex);
 	JANUS_LOG(LOG_INFO, "[%s] Connected as a MoQ %s\n", imquic_get_connection_name(conn), session->moqpub ? "publisher" : "subscriber");
 	if(session->moqpub) {
 		/* Let's publish_namespace our namespace */
@@ -1600,7 +1636,23 @@ static void janus_moq_moq_publish_namespace_error(imquic_connection *conn, uint6
 		imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
 	JANUS_LOG(LOG_INFO, "[%s] Got an error publishing namespace via ID '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
-	/* TODO Stop here */
+	janus_mutex_lock(&connections_mutex);
+	janus_moq_session *session = g_hash_table_lookup(connections, conn);
+	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&connections_mutex);
+		return;
+	}
+	janus_mutex_unlock(&connections_mutex);
+	/* Notify the application */
+	json_t *event = json_object();
+	json_object_set_new(event, "moq", json_string("event"));
+	json_object_set_new(event, "error_space", json_string("publish_namespace"));
+	json_object_set_new(event, "error_code", json_integer(error_code));
+	if(reason)
+		json_object_set_new(event, "error", json_string(reason));
+	int ret = gateway->push_event(session->handle, &janus_moq_plugin, NULL, event, NULL);
+	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+	json_decref(event);
 }
 
 static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
@@ -1615,11 +1667,13 @@ static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t r
 		g_snprintf(track, sizeof(track), "%.*s", (int)tn->length, tn->buffer);
 	JANUS_LOG(LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64")\n",
 		imquic_get_connection_name(conn), namespace, track, request_id);
+	janus_mutex_lock(&connections_mutex);
 	janus_moq_session *session = g_hash_table_lookup(connections, conn);
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
 		janus_mutex_unlock(&connections_mutex);
 		return;
 	}
+	janus_mutex_unlock(&connections_mutex);
 	if(session->track_namespace == NULL || strcasecmp(session->track_namespace, namespace)) {
 		JANUS_LOG(LOG_WARN, "Unknown namespace '%s'\n", namespace);
 		return;
@@ -1678,11 +1732,13 @@ static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t r
 
 static void janus_moq_moq_incoming_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 	JANUS_LOG(LOG_INFO, "[%s] Incoming unsubscribe for subscription %"SCNu64"\n", imquic_get_connection_name(conn), request_id);
+	janus_mutex_lock(&connections_mutex);
 	janus_moq_session *session = g_hash_table_lookup(connections, conn);
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
 		janus_mutex_unlock(&connections_mutex);
 		return;
 	}
+	janus_mutex_unlock(&connections_mutex);
 	/* FIXME Stop sending objects */
 	if(session->catalog_track.track && session->catalog_track.request_id == request_id) {
 		/* Catalog track */
@@ -1708,11 +1764,13 @@ static void janus_moq_moq_subscribe_accepted(imquic_connection *conn, uint64_t r
 		imquic_moq_request_parameters *parameters, GList *track_extensions) {
 	JANUS_LOG(LOG_INFO, "[%s] Subscription %"SCNu64" accepted\n",
 		imquic_get_connection_name(conn), request_id);
+	janus_mutex_lock(&connections_mutex);
 	janus_moq_session *session = g_hash_table_lookup(connections, conn);
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
 		janus_mutex_unlock(&connections_mutex);
 		return;
 	}
+	janus_mutex_unlock(&connections_mutex);
 	if(session->catalog_track.track && session->catalog_track.request_id == request_id) {
 		/* Catalog track */
 		JANUS_LOG(LOG_INFO, "[%s]   -- Catalog track will use track alias '%"SCNu64"\n",
@@ -1753,7 +1811,23 @@ static void janus_moq_moq_subscribe_error(imquic_connection *conn, uint64_t requ
 		imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
 	JANUS_LOG(LOG_INFO, "[%s] Got an error subscribing to ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
-	/* TODO Stop here */
+	janus_mutex_lock(&connections_mutex);
+	janus_moq_session *session = g_hash_table_lookup(connections, conn);
+	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&connections_mutex);
+		return;
+	}
+	janus_mutex_unlock(&connections_mutex);
+	/* Notify the application */
+	json_t *event = json_object();
+	json_object_set_new(event, "moq", json_string("event"));
+	json_object_set_new(event, "error_space", json_string("subscribe"));
+	json_object_set_new(event, "error_code", json_integer(error_code));
+	if(reason)
+		json_object_set_new(event, "error", json_string(reason));
+	int ret = gateway->push_event(session->handle, &janus_moq_plugin, NULL, event, NULL);
+	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+	json_decref(event);
 }
 
 static void janus_moq_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason) {
@@ -1771,11 +1845,13 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 		object->group_id, object->subgroup_id, object->object_id,
 		object->payload_len, num_props, imquic_moq_delivery_str(object->delivery),
 		imquic_moq_object_status_str(object->object_status), object->end_of_stream);
+	janus_mutex_lock(&connections_mutex);
 	janus_moq_session *session = g_hash_table_lookup(connections, conn);
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
 		janus_mutex_unlock(&connections_mutex);
 		return;
 	}
+	janus_mutex_unlock(&connections_mutex);
 	imquic_moq_version moq_version = imquic_moq_get_version(conn);
 	if(object->track_alias == session->catalog_track.track_alias || object->delivery == IMQUIC_MOQ_USE_FETCH) {
 		/* This is from the catalog track */
@@ -1790,9 +1866,9 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 		memcpy(json, object->payload, object->payload_len);
 		json[object->payload_len] = '\0';
 		session->catalog = imquic_moq_catalog_parse(json);
-		g_free(json);
 		if(session->catalog == NULL) {
 			/* Something went wrong */
+			g_free(json);
 			return;
 		}
 		/* Check if we're relying on the catalog to discover tracks */
@@ -1863,6 +1939,8 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 			json_object_set_new(event, "moq", json_string("event"));
 			json_t *result = json_object();
 			json_object_set_new(result, "event", json_string("offering"));
+			json_t *catalog = json_loads(json, 0, NULL);
+			json_object_set_new(result, "catalog", catalog);
 			json_object_set_new(event, "result", result);
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(session->handle, &janus_moq_plugin, NULL, event, jsep);
@@ -1870,6 +1948,7 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 			json_decref(event);
 			json_decref(jsep);
 		}
+		g_free(json);
 		return;
 	}
 	if((session->audio_track.track && object->track_alias != session->audio_track.track_alias) &&
