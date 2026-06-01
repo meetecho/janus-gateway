@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server: Media Over QUIC (MoQ)</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.9.2/umd/popper.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/6.0.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
+<script type="text/javascript" src="settings.js" ></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="moq.js"></script>
+<script>
+	$(function() {
+		$(".fixed-top").load("navbar.html", function() {
+			$(".fixed-top li.dropdown").addClass("active");
+			$(".fixed-top a[href='moq.html']").addClass("active");
+		});
+		$(".footer").load("../footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.2/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="../css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 2001;" src="../forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<div class="navbar navbar-expand-lg fixed-top navbar-dark bg-primary">
+</div>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="pb-2 mt-4 mb-2 border-bottom">
+				<h1>Plugin Demo: Media Over QUIC (MoQ)
+					<button class="btn btn-secondary" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="alert alert-primary mt-2 mb-5">
+						Want to learn more about the <strong>MoQ</strong> plugin?
+						Check the <a target="_blank" href="https://janus.conf.meetecho.com/docs/moq">Documentation</a>.
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This demo is a basic demonstration of how a gatewaying between the WebRTC and MoQ
+						protocols could look like, with respect to audio and video streams. It allows you to
+						either publish, or subscribe to, MoQ tracks using WebRTC via Janus. The MoQ plugin
+						performs the gatewaying to/from MoQ using the
+						<a target="_blank" href="https://imquic.conf.meetecho.com/docs/moq">imquic</a>
+						library. This can be tested against the LOC demos in the imquic repo.
+						<div class="alert alert-info"><b>Note well!</b> Please notice that the whole MoQ
+						spec is currently being defined, meaning many things will probably change before
+						it can be considered stable. As such, this plugin is currently a work in progress,
+						and so everything you test here should be considered very experimental.
+						</div>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="options">
+				<div class="row">
+					<div class="col-md-6 container hide" id="choose">
+						<div class="btn-group btn-group-sm w-100">
+							<div class="btn-group btn-group-sm" style="width: 100%">
+								<button autocomplete="off" id="role" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown" style="width: 100%">
+									MoQ Role
+								</button>
+								<ul id="rolelist" class="dropdown-menu" role="menu">
+									<a class="dropdown-item" href='#' id='publisher'>Publisher</a>
+									<a class="dropdown-item" href='#' id='subscriber'>Subscriber</a>
+								</ul>
+							</div>
+						</div>
+						<div class="input-group mt-3 mb-1">
+							<span class="input-group-text"><i class="fa-solid fa-cloud-arrow-up"></i></span>
+							<input class="form-control" type="text" placeholder="Relay address" autocomplete="off" id="server" onkeypress="return checkEnter(this, event);"></input>
+						</div>
+						<div class="input-group mt-3 mb-1">
+							<span class="input-group-text"><i class="fa-solid fa-plug"></i></span>
+							<input class="form-control" type="text" placeholder="Relay port" autocomplete="off" id="port" onkeypress="return checkEnter(this, event);"></input>
+						</div>
+						<div class="input-group mt-3 mb-1">
+							<span class="input-group-text"><i class="fa-solid fa-user"></i></span>
+							<input class="form-control" type="text" placeholder="MoQT Namespace" autocomplete="off" id="ns" onkeypress="return checkEnter(this, event);"></input>
+						</div>
+						<div class="input-group mt-3 mb-1">
+							<div class="btn-group btn-group-sm" style="width: 100%">
+								<button autocomplete="off" id="usecatalog" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown" style="width: 100%">
+									Catalog Usage
+								</button>
+								<ul id="cataloglist" class="dropdown-menu" role="menu">
+									<a class="dropdown-item" href='#' id='usecatalog'>Use catalog (autodetect tracks)</a>
+									<a class="dropdown-item" href='#' id='nocatalog'>Ignore catalog (use named tracks)</a>
+								</ul>
+							</div>
+						</div>
+						<div class="input-group mt-3 mb-1">
+							<div class="input-group-text">
+								<input type="checkbox" id="audioenable" checked>
+							</div>
+							<input class="form-control" type="text" placeholder="MoQT Audio Track" autocomplete="off" id="audio" onkeypress="return checkEnter(this, event);"></input>
+						</div>
+						<div class="input-group mt-3 mb-1">
+							<div class="input-group-text">
+								<input type="checkbox" id="videoenable" checked>
+							</div>
+							<input class="form-control" type="text" placeholder="MoQT Video Track" autocomplete="off" id="video" onkeypress="return checkEnter(this, event);"></input>
+						</div>
+						<div class="btn-group btn-group-sm w-100">
+							<button class="btn btn-primary" autocomplete="off" id="connect" style="width: 100%">Connect</button>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="container mt-4 hide" id="videos">
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>
