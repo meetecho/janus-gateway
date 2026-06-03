@@ -251,7 +251,7 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 static uint32_t janus_moq_h264_eg_getbit(uint8_t *base, uint32_t offset);
 static uint32_t janus_moq_h264_eg_decode(uint8_t *base, uint32_t *offset);
 static size_t janus_moq_h264_parse_sps(uint8_t *extradata, size_t extradata_len,
-	gboolean annexb, uint8_t *buffer, size_t len, int *width, int *height);
+	gboolean annexb, uint8_t *buffer, size_t len, gboolean stap, int *width, int *height);
 
 /* Error codes */
 #define JANUS_MOQ_ERROR_NO_MESSAGE		410
@@ -859,6 +859,18 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 				uint8_t nal = *(payload+1) & 0x1F;
 				uint8_t start_bit = *(payload+1) & 0x80;
 				int len = plen, jump = 0;
+				if(fragment == 7) {
+					/* We're using AVCC, so create an extradata for the video config */
+					char *temp = payload;
+					temp++;
+					int tot = len-1;
+					session->video_track.extradata_len = janus_moq_h264_parse_sps(session->video_track.extradata,
+						session->video_track.extradata_len, session->annexb, (uint8_t *)temp, tot, FALSE,
+						&session->video_track.width, &session->video_track.height);
+					JANUS_LOG(LOG_HUGE, "[%s]   -- Video has resolution %dx%d (%zu bytes of extradata)\n",
+						imquic_get_connection_name(session->conn),
+						session->video_track.width, session->video_track.height, session->video_track.extradata_len);
+				}
 				if(fragment == 24) {
 					/* May we find an SPS in this STAP-A? */
 					char *temp = payload;
@@ -874,7 +886,7 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 						if(nal == 7) {
 							/* We're using AVCC, so create an extradata for the video config */
 							session->video_track.extradata_len = janus_moq_h264_parse_sps(session->video_track.extradata,
-								session->video_track.extradata_len, session->annexb, (uint8_t *)temp - 2, tot + 2,
+								session->video_track.extradata_len, session->annexb, (uint8_t *)temp - 2, tot + 2, TRUE,
 								&session->video_track.width, &session->video_track.height);
 							JANUS_LOG(LOG_HUGE, "[%s]   -- Video has resolution %dx%d (%zu bytes of extradata)\n",
 								imquic_get_connection_name(session->conn),
@@ -1160,8 +1172,10 @@ static void *janus_moq_handler(void *data) {
 			uint16_t port = json_integer_value(json_object_get(root, "port"));
 			const char *remote_host = json_string_value(json_object_get(root, "remote_host"));
 			uint16_t remote_port = json_integer_value(json_object_get(root, "remote_port"));
-			gboolean raw_quic = json_is_true(json_object_get(root, "rawquic"));
-			gboolean webtransport = json_is_true(json_object_get(root, "webtransport"));
+			gboolean raw_quic = json_object_get(root, "rawquic") ?
+				json_is_true(json_object_get(root, "rawquic")) : TRUE;
+			gboolean webtransport = json_object_get(root, "webtransport") ?
+				json_is_true(json_object_get(root, "webtransport")) : TRUE;
 			if(!raw_quic && !webtransport)
 				raw_quic = TRUE;
 			const char *path = json_string_value(json_object_get(root, "path"));
@@ -2496,7 +2510,7 @@ static uint32_t janus_moq_h264_eg_decode(uint8_t *base, uint32_t *offset) {
 
 /* Helper to parse a SPS to width/height and return extradata we can send via LOC */
 static size_t janus_moq_h264_parse_sps(uint8_t *extradata, size_t extradata_len,
-		gboolean annexb, uint8_t *buffer, size_t len, int *width, int *height) {
+		gboolean annexb, uint8_t *buffer, size_t len, gboolean stap, int *width, int *height) {
 	/* We may need the extradata to be either AVCC or Annex-B */
 	size_t index = 0, extradata_size = 0;
 	if(!annexb) {
@@ -2590,12 +2604,16 @@ static size_t janus_moq_h264_parse_sps(uint8_t *extradata, size_t extradata_len,
 		*height = ((2 - frame_mbs_only_flag)* (pic_height_in_map_units_minus1 +1) * 16) - (frame_crop_top_offset * 2) - (frame_crop_bottom_offset * 2);
 
 	/* Append SPS to the extradata buffer */
-	uint16_t sps_size = 0;
-	memcpy(&sps_size, buffer, 2);
-	sps_size = ntohs(sps_size);
+	uint16_t sps_size = len - 1;
+	if(stap) {
+		memcpy(&sps_size, buffer, 2);
+		sps_size = ntohs(sps_size);
+	}
 	JANUS_LOG(LOG_HUGE, "SPS size: %"SCNu16"\n", sps_size);
 	if(!annexb) {
-		memcpy(extradata + extradata_size, buffer, 2);
+		sps_size = htons(sps_size);
+		memcpy(extradata + extradata_size, &sps_size, 2);
+		sps_size = ntohs(sps_size);
 		extradata_size += 2;
 	} else {
 		memset(extradata + extradata_size, 0x00, 1);
@@ -2604,10 +2622,16 @@ static size_t janus_moq_h264_parse_sps(uint8_t *extradata, size_t extradata_len,
 		memset(extradata + extradata_size + 3, 0x01, 1);
 		extradata_size += 4;
 	}
-	buffer += 2;
+	if(stap)
+		buffer += 2;
 	memcpy(extradata + extradata_size, buffer, sps_size);
 	buffer += sps_size;
 	extradata_size += sps_size;
+
+	if(!stap) {
+		/* This only contained the SPS */
+		return extradata_size;
+	}
 
 	/* Append PPS to the extradata buffer */
 	uint16_t pps_size = 0;
