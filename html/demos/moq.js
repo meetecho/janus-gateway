@@ -23,6 +23,7 @@ var audio = (getQueryStringValue("audio_track") !== "" ? getQueryStringValue("au
 var doVideo = (getQueryStringValue("video") !== "" ? (getQueryStringValue("video") === "true") : true);
 var video = (getQueryStringValue("video_track") !== "" ? getQueryStringValue("video_track") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
+var vres = (getQueryStringValue("vres") !== "" ? getQueryStringValue("vres") : 'stdres-16:9');
 var annexb = (getQueryStringValue("annexb") !== "" ? (getQueryStringValue("annexb") === "true") : false);
 var auth = (getQueryStringValue("auth") !== "" ? getQueryStringValue("auth") : null);
 
@@ -466,7 +467,7 @@ function publishMoq() {
 			// We only need to send audio and video, not receive it
 			tracks: [
 				{ type: 'audio', capture: true, recv: false },
-				{ type: 'video', capture: 'hires', recv: false }
+				{ type: 'video', capture: vres, recv: false }
 			],
 			success: function(jsep) {
 				Janus.debug("Got SDP!", jsep);
