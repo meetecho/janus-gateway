@@ -2308,35 +2308,38 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 				sps_len = ntohs(sps_len);
 				memcpy(&buffer[length], sps, sps_len);
 				length += sps_len;
-				/* Extract PPS */
-				if(!session->annexb) {
-					uint8_t *pps = sps + sps_len;
-					size_t pps_len = extradata_len - (pps - extradata);
-					JANUS_LOG(LOG_HUGE, "[%s] PPS(s) len: %zu\n",
-						imquic_get_connection_name(conn), pps_len);
-					JANUS_LOG(LOG_HUGE, "  -- Num of PPS: %"SCNu8"\n", pps[0]);
-					pps_index = 1;
-					for(size_t i=0; i<pps[0]; i++) {
-						size_t pps_i_len = 0;
-						memcpy(&pps_i_len, &pps[pps_index], 2);
-						pps_index += 2;
-						JANUS_LOG(LOG_HUGE, "  -- -- PPS[%zu] len %"SCNu16"/%zu\n", i, ntohs(pps_i_len), pps_len - pps_index);
-						/* Add PPS to the RTP packet */
-						memcpy(&buffer[length], &pps_i_len, 2);
+				offset += sps_len;
+				if(offset < extradata_len) {
+					/* Extract PPS */
+					if(!session->annexb) {
+						uint8_t *pps = sps + sps_len;
+						size_t pps_len = extradata_len - (pps - extradata);
+						JANUS_LOG(LOG_HUGE, "[%s] PPS(s) len: %zu\n",
+							imquic_get_connection_name(conn), pps_len);
+						JANUS_LOG(LOG_HUGE, "  -- Num of PPS: %"SCNu8"\n", pps[0]);
+						pps_index = 1;
+						for(size_t i=0; i<pps[0]; i++) {
+							size_t pps_i_len = 0;
+							memcpy(&pps_i_len, &pps[pps_index], 2);
+							pps_index += 2;
+							JANUS_LOG(LOG_HUGE, "  -- -- PPS[%zu] len %"SCNu16"/%zu\n", i, ntohs(pps_i_len), pps_len - pps_index);
+							/* Add PPS to the RTP packet */
+							memcpy(&buffer[length], &pps_i_len, 2);
+							length += 2;
+							pps_i_len = ntohs(pps_i_len);
+							memcpy(&buffer[length], &pps[pps_index], pps_i_len);
+							length += pps_i_len;
+							/* Go to the next PPS */
+							pps_index += pps_i_len;
+						}
+					} else {
+						pps_len = ntohs(pps_len);
+						memcpy(&buffer[length], &pps_len, 2);
 						length += 2;
-						pps_i_len = ntohs(pps_i_len);
-						memcpy(&buffer[length], &pps[pps_index], pps_i_len);
-						length += pps_i_len;
-						/* Go to the next PPS */
-						pps_index += pps_i_len;
+						pps_len = htons(pps_len);
+						memcpy(&buffer[length], &extradata[pps_index], pps_len);
+						length += pps_len;
 					}
-				} else {
-					pps_len = ntohs(pps_len);
-					memcpy(&buffer[length], &pps_len, 2);
-					length += 2;
-					pps_len = htons(pps_len);
-					memcpy(&buffer[length], &extradata[pps_index], pps_len);
-					length += pps_len;
 				}
 				/* Send the packet */
 				JANUS_LOG(LOG_HUGE, "[%s] RTP packet is %zu bytes\n",
