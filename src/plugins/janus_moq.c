@@ -1369,7 +1369,7 @@ static void *janus_moq_handler(void *data) {
 				g_atomic_int_set(&session->hangingup, 0);
 				/* Prepare a MoQ catalog too, if we're publishing */
 				if(session->moqpub && session->catalog == NULL) {
-					session->catalog = imquic_moq_catalog_create(1);
+					session->catalog = imquic_moq_catalog_create("draft-01");
 					if(session->audio_track.track != NULL) {
 						/* FIXME Add the audio track to the catalog */
 						imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(session->track_namespace,
