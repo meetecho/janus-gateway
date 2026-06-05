@@ -132,7 +132,8 @@ static janus_moq_message exit_message;
 
 /* Helper struct for mapping RTP to MoQ */
 typedef struct janus_moq_moq_rtp {
-	char *track;
+	imquic_moq_track *track;
+	char *track_name;
 	gboolean active;
 	uint64_t request_id, track_alias, group_id, object_id;
 	uint32_t ssrc;
@@ -158,7 +159,9 @@ typedef struct janus_moq_session {
 	imquic_connection *conn;
 	gboolean moqsub, moqpub, use_catalog;
 	imquic_moq_catalog *catalog;
-	char *track_namespace, *auth_info;
+	char *catalog_orig;
+	imquic_moq_namespace *track_namespace;
+	char *track_namespace_str, *auth_info;
 	janus_moq_moq_rtp catalog_track, audio_track, video_track;
 	/* RTP/RTCP */
 	GHashTable *media, *ptypes;
@@ -189,12 +192,17 @@ static void janus_moq_session_free(const janus_refcount *session_ref) {
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	imquic_moq_catalog_destroy(session->catalog);
-	g_free(session->track_namespace);
-	g_free(session->catalog_track.track);
+	g_free(session->catalog_orig);
+	imquic_moq_namespace_free(session->track_namespace);
+	g_free(session->track_namespace_str);
+	imquic_moq_track_free(session->catalog_track.track);
+	g_free(session->catalog_track.track_name);
 	g_free(session->catalog_track.buffer);
-	g_free(session->audio_track.track);
+	imquic_moq_track_free(session->audio_track.track);
+	g_free(session->audio_track.track_name);
 	g_free(session->audio_track.buffer);
-	g_free(session->video_track.track);
+	imquic_moq_track_free(session->video_track.track);
+	g_free(session->video_track.track_name);
 	g_free(session->video_track.buffer);
 	g_free(session->auth_info);
 	g_hash_table_unref(session->media);
@@ -506,11 +514,6 @@ void janus_moq_setup_media(janus_plugin_session *handle) {
 	janus_mutex_unlock(&sessions_mutex);
 	/* If this related to a subscriber, actually subscribe to the audio/video tracks now */
 	if(session->moqsub && session->conn) {
-		imquic_moq_namespace tns = {
-			.buffer = (uint8_t *)session->track_namespace,
-			.length = strlen(session->track_namespace),
-			.next = NULL
-		};
 		imquic_moq_request_parameters params;
 		imquic_moq_request_parameters_init_defaults(&params);
 		params.subscription_filter_set = TRUE;
@@ -518,26 +521,18 @@ void janus_moq_setup_media(janus_plugin_session *handle) {
 		/* Audio track, if any */
 		if(session->audio_track.track) {
 			session->audio_track.request_id = imquic_moq_get_next_request_id(session->conn);
-			JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s/%s, using ID %"SCNu64"\n",
+			JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s--%s, using ID %"SCNu64"\n",
 				imquic_get_connection_name(session->conn),
-				session->track_namespace, session->audio_track.track, session->audio_track.request_id);
-			imquic_moq_track tn = {
-				.buffer = (uint8_t *)session->audio_track.track,
-				.length = strlen(session->audio_track.track)
-			};
-			imquic_moq_subscribe(session->conn, session->audio_track.request_id, &tns, &tn, &params);
+				session->track_namespace_str, session->audio_track.track_name, session->audio_track.request_id);
+			imquic_moq_subscribe(session->conn, session->audio_track.request_id, session->track_namespace, session->audio_track.track, &params);
 		}
 		/* Video track, if any */
 		if(session->video_track.track) {
 			session->video_track.request_id = imquic_moq_get_next_request_id(session->conn);
-			JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s/%s, using ID %"SCNu64"\n",
+			JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s--%s, using ID %"SCNu64"\n",
 				imquic_get_connection_name(session->conn),
-				session->track_namespace, session->video_track.track, session->video_track.request_id);
-			imquic_moq_track tn = {
-				.buffer = (uint8_t *)session->video_track.track,
-				.length = strlen(session->video_track.track)
-			};
-			imquic_moq_subscribe(session->conn, session->video_track.request_id, &tns, &tn, &params);
+				session->track_namespace_str, session->video_track.track_name, session->video_track.request_id);
+			imquic_moq_subscribe(session->conn, session->video_track.request_id, session->track_namespace, session->video_track.track, &params);
 		}
 	}
 }
@@ -1072,22 +1067,24 @@ static void janus_moq_hangup_media_internal(janus_plugin_session *handle) {
 		imquic_shutdown_endpoint(session->quic_endpoint);
 	session->quic_endpoint = NULL;
 	imquic_moq_catalog_destroy(session->catalog);
-	g_free(session->track_namespace);
+	imquic_moq_namespace_free(session->track_namespace);
+	g_free(session->track_namespace_str);
 	session->track_namespace = NULL;
+	session->track_namespace_str = NULL;
 	g_free(session->auth_info);
 	session->auth_info = NULL;
 	session->catalog = NULL;
-	g_free(session->catalog_track.track);
+	imquic_moq_track_free(session->catalog_track.track);
+	g_free(session->catalog_track.track_name);
 	g_free(session->catalog_track.buffer);
-	session->catalog_track.track = NULL;
 	memset(&session->catalog_track, 0, sizeof(session->catalog_track));
-	g_free(session->audio_track.track);
+	imquic_moq_track_free(session->audio_track.track);
+	g_free(session->audio_track.track_name);
 	g_free(session->audio_track.buffer);
-	session->audio_track.track = NULL;
 	memset(&session->audio_track, 0, sizeof(session->audio_track));
-	g_free(session->video_track.track);
+	imquic_moq_track_free(session->video_track.track);
+	g_free(session->video_track.track_name);
 	g_free(session->video_track.buffer);
-	session->video_track.track = NULL;
 	memset(&session->video_track, 0, sizeof(session->video_track));
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
@@ -1268,20 +1265,38 @@ static void *janus_moq_handler(void *data) {
 			session->moqpub = moqpub;
 			session->moqsub = moqsub;
 			session->use_catalog = moqsub && use_catalog;
-			session->track_namespace = g_strdup(namespace);
+			/* FIXME We don't currently support providing a tuple */
+			session->track_namespace = g_malloc(sizeof(imquic_moq_namespace));
+			session->track_namespace->length = strlen(namespace);
+			if(session->track_namespace->length > 0) {
+				session->track_namespace->buffer = g_malloc(session->track_namespace->length);
+				memcpy(session->track_namespace->buffer, namespace, session->track_namespace->length);
+			}
+			session->track_namespace->next = NULL;
+			char tns_buf[4096];
+			const char *tns = imquic_moq_namespace_str(session->track_namespace, tns_buf, sizeof(tns_buf), TRUE);
+			session->track_namespace_str = tns ? g_strdup(tns) : NULL;
 			/* Catalog track */
 			memset(&session->catalog_track, 0, sizeof(session->catalog_track));
-			session->catalog_track.track = g_strdup("catalog");
+			const char *catalog = "catalog";
+			session->catalog_track.track = imquic_moq_track_create((uint8_t *)catalog, strlen(catalog));
+			session->catalog_track.track_name = g_strdup(catalog);
 			/* Audio track, if any */
 			memset(&session->audio_track, 0, sizeof(session->audio_track));
 			if(audio_track != NULL && (moqpub || (moqsub && !use_catalog))) {
-				session->audio_track.track = g_strdup(audio_track);
+				session->audio_track.track = imquic_moq_track_create((uint8_t *)audio_track, strlen(audio_track));
+				char tn_buf[4096];
+				const char *tn = imquic_moq_track_str(session->audio_track.track, tn_buf, sizeof(tn_buf));
+				session->audio_track.track_name = tn ? g_strdup(tn) : NULL;
 				session->audio_track.ssrc = janus_random_uint32();
 			}
 			/* Video track, if any */
 			memset(&session->video_track, 0, sizeof(session->video_track));
 			if(video_track != NULL && (moqpub || (moqsub && !use_catalog))) {
-				session->video_track.track = g_strdup(video_track);
+				session->video_track.track = imquic_moq_track_create((uint8_t *)video_track, strlen(video_track));
+				char tn_buf[4096];
+				const char *tn = imquic_moq_track_str(session->video_track.track, tn_buf, sizeof(tn_buf));
+				session->video_track.track_name = tn ? g_strdup(tn) : NULL;
 				session->video_track.ssrc = janus_random_uint32();
 			}
 			session->auth_info = auth_info ? g_strdup(auth_info) : NULL;
@@ -1372,8 +1387,8 @@ static void *janus_moq_handler(void *data) {
 					session->catalog = imquic_moq_catalog_create("draft-01");
 					if(session->audio_track.track != NULL) {
 						/* FIXME Add the audio track to the catalog */
-						imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(session->track_namespace,
-							session->audio_track.track, "loc", TRUE);
+						imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(session->track_namespace_str,
+							session->audio_track.track_name, "loc", TRUE);
 						track->role = g_strdup("audio");
 						track->render_group = 1;
 						track->target_latency = 200;
@@ -1383,8 +1398,8 @@ static void *janus_moq_handler(void *data) {
 					}
 					if(session->video_track.track != NULL && session->vcodec != JANUS_VIDEOCODEC_NONE) {
 						/* FIXME Add the video track to the catalog */
-						imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(session->track_namespace,
-							session->video_track.track, "loc", TRUE);
+						imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(session->track_namespace_str,
+							session->video_track.track_name, "loc", TRUE);
 						track->role = g_strdup("video");
 						track->render_group = 1;
 						track->target_latency = 200;
@@ -1562,31 +1577,18 @@ static void janus_moq_moq_ready(imquic_connection *conn) {
 	JANUS_LOG(LOG_INFO, "[%s] Connected as a MoQ %s\n", imquic_get_connection_name(conn), session->moqpub ? "publisher" : "subscriber");
 	if(session->moqpub) {
 		/* Let's publish_namespace our namespace */
-		JANUS_LOG(LOG_INFO, "[%s] Announcing namespace '%s'\n", imquic_get_connection_name(conn), session->track_namespace);
-		imquic_moq_namespace tns = {
-			.buffer = (uint8_t *)session->track_namespace,
-			.length = strlen(session->track_namespace)
-		};
+		JANUS_LOG(LOG_INFO, "[%s] Announcing namespace '%s'\n", imquic_get_connection_name(conn), session->track_namespace_str);
 		imquic_moq_request_parameters params;
 		imquic_moq_request_parameters_init_defaults(&params);
-		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), &tns, &params);
+		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), session->track_namespace, &params);
 	} else {
 		/* Let's subscribe to the catalog track: we may want to only subscribe
 		 * to the audio/video track when we've obtained a catalog back */
-		imquic_moq_namespace tns = {
-			.buffer = (uint8_t *)session->track_namespace,
-			.length = strlen(session->track_namespace),
-			.next = NULL
-		};
 		/* Catalog track */
 		session->catalog_track.request_id = imquic_moq_get_next_request_id(conn);
-		JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s/%s, using ID %"SCNu64"\n", imquic_get_connection_name(conn),
-			session->track_namespace, session->catalog_track.track, session->catalog_track.request_id);
-		imquic_moq_track ctn = {
-			.buffer = (uint8_t *)session->catalog_track.track,
-			.length = strlen(session->catalog_track.track)
-		};
-		imquic_moq_subscribe(conn, session->catalog_track.request_id, &tns, &ctn, NULL);
+		JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s--%s, using ID %"SCNu64"\n", imquic_get_connection_name(conn),
+			session->track_namespace_str, session->catalog_track.track_name, session->catalog_track.request_id);
+		imquic_moq_subscribe(conn, session->catalog_track.request_id, session->track_namespace, session->catalog_track.track, NULL);
 		if(session->use_catalog) {
 			/* We'll wait for the catalog to know what tracks to subscribe to */
 			JANUS_LOG(LOG_INFO, "[%s]   -- Waiting for catalog\n", imquic_get_connection_name(conn));
@@ -1631,6 +1633,10 @@ static void janus_moq_moq_ready(imquic_connection *conn) {
 			json_object_set_new(event, "moq", json_string("event"));
 			json_t *result = json_object();
 			json_object_set_new(result, "event", json_string("offering"));
+			if(session->catalog_orig) {
+				json_t *catalog = json_loads(session->catalog_orig, 0, NULL);
+				json_object_set_new(result, "catalog", catalog);
+			}
 			json_object_set_new(event, "result", result);
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(session->handle, &janus_moq_plugin, NULL, event, jsep);
@@ -1688,11 +1694,11 @@ static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t r
 		return;
 	}
 	janus_mutex_unlock(&connections_mutex);
-	if(session->track_namespace == NULL || strcasecmp(session->track_namespace, namespace)) {
+	if(session->track_namespace == NULL || !imquic_moq_namespace_equals(tns, session->track_namespace)) {
 		JANUS_LOG(LOG_WARN, "Unknown namespace '%s'\n", namespace);
 		return;
 	}
-	if(session->catalog_track.track && !strcasecmp(session->catalog_track.track, track)) {
+	if(session->catalog_track.track && imquic_moq_track_equals(tn, session->catalog_track.track)) {
 		/* Catalog track, accept the subscription */
 		session->catalog_track.request_id = request_id;
 		session->catalog_track.track_alias = 0;
@@ -1724,13 +1730,13 @@ static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t r
 	rparams.expires = 0;
 	rparams.group_order_set = TRUE;
 	rparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
-	if(session->audio_track.track && !strcasecmp(session->audio_track.track, track)) {
+	if(session->audio_track.track && imquic_moq_track_equals(tn, session->audio_track.track)) {
 		/* FIXME Subscription for the audio track */
 		session->audio_track.request_id = request_id;
 		session->audio_track.track_alias = 1;
 		imquic_moq_accept_subscribe(conn, request_id, session->audio_track.track_alias, &rparams, NULL);
 		session->audio_track.active = TRUE;
-	} else if(session->video_track.track && !strcasecmp(session->video_track.track, track)) {
+	} else if(session->video_track.track && imquic_moq_track_equals(tn, session->video_track.track)) {
 		/* FIXME Subscription for the video track */
 		session->video_track.request_id = request_id;
 		session->video_track.track_alias = 2;
@@ -1885,6 +1891,7 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 			g_free(json);
 			return;
 		}
+		session->catalog_orig = g_strdup(json);
 		/* Check if we're relying on the catalog to discover tracks */
 		if(session->moqsub && session->use_catalog) {
 			/* Use catalog to generate an offer for this subscriber */
@@ -1897,7 +1904,16 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 				imquic_moq_catalog_track *track = (imquic_moq_catalog_track *)temp->data;
 				if(track->role && !strcasecmp(track->role, "audio")) {
 					/* FIXME Audio track */
-					session->audio_track.track = g_strdup(track->track_name);
+					session->audio_track.track = imquic_moq_track_from_str(track->track_name);
+					if(session->audio_track.track == NULL || !imquic_moq_track_is_valid(session->audio_track.track)) {
+						/* Unsupported codec */
+						JANUS_LOG(LOG_WARN, "Invalid audio track '%s', skipping audio subscription\n", track->track_name);
+						imquic_moq_track_free(session->audio_track.track);
+						session->audio_track.track = NULL;
+						temp = temp->next;
+						continue;
+					}
+					session->audio_track.track_name = g_strdup(track->track_name);
 					session->audio_track.ssrc = janus_random_uint32();
 					session->audio_pt = janus_audiocodec_pt(JANUS_AUDIOCODEC_OPUS);
 					janus_sdp_generate_offer_mline(offer,
@@ -1929,7 +1945,16 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 						temp = temp->next;
 						continue;
 					}
-					session->video_track.track = g_strdup(track->track_name);
+					session->video_track.track = imquic_moq_track_from_str(track->track_name);
+					if(session->video_track.track == NULL || !imquic_moq_track_is_valid(session->video_track.track)) {
+						/* Unsupported codec */
+						JANUS_LOG(LOG_WARN, "Invalid video track '%s', skipping video subscription\n", track->track_name);
+						imquic_moq_track_free(session->video_track.track);
+						session->video_track.track = NULL;
+						temp = temp->next;
+						continue;
+					}
+					session->video_track.track_name = g_strdup(track->track_name);
 					session->video_track.ssrc = janus_random_uint32();
 					session->video_pt = janus_videocodec_pt(session->vcodec);
 					janus_sdp_generate_offer_mline(offer,
@@ -1953,7 +1978,7 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 			json_object_set_new(event, "moq", json_string("event"));
 			json_t *result = json_object();
 			json_object_set_new(result, "event", json_string("offering"));
-			json_t *catalog = json_loads(json, 0, NULL);
+			json_t *catalog = json_loads(session->catalog_orig, 0, NULL);
 			json_object_set_new(result, "catalog", catalog);
 			json_object_set_new(event, "result", result);
 			gint64 start = janus_get_monotonic_time();
