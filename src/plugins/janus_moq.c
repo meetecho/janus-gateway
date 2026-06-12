@@ -567,6 +567,9 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 			timestamp.value.number = session->audio_track.timestamp;
 			props = g_list_append(props, &timestamp);
 			session->audio_track.timestamp += 20000;	/* FIXME */
+			/* FIXME We currently don't support LOC private properties, so
+			 * we always send a 0x00 as a payload prefix to signal it's empty */
+			uint8_t loc_pvt_props = 0;
 			/* Prepare a MoQ object and send it */
 			imquic_moq_object object = {
 				.request_id = session->audio_track.request_id,
@@ -574,6 +577,8 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 				.group_id = session->audio_track.group_id++,
 				.subgroup_id = 0,	/* FIXME */
 				.object_id = session->audio_track.object_id,
+				.payload_prefix = &loc_pvt_props,
+				.payload_prefix_len = 1,
 				.payload = (uint8_t *)payload,
 				.payload_len = plen,
 				.properties = props,
@@ -626,6 +631,9 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 					props = g_list_append(props, &extradata);
 					session->video_track.extradata_len = 0;
 				}
+				/* FIXME We currently don't support LOC private properties, so
+				 * we always send a 0x00 as a payload prefix to signal it's empty */
+				uint8_t loc_pvt_props = 0;
 				/* Prepare a MoQ object and send it */
 				imquic_moq_object object = {
 					.request_id = session->video_track.request_id,
@@ -633,6 +641,8 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 					.group_id = session->video_track.group_id,
 					.subgroup_id = 0,	/* FIXME */
 					.object_id = session->video_track.object_id,
+					.payload_prefix = &loc_pvt_props,
+					.payload_prefix_len = 1,
 					.payload = session->video_track.buffer,
 					.payload_len = session->video_track.offset,
 					.properties = props,
@@ -2041,6 +2051,12 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 	/* FIXME We currently require the timestamp to be in the properties */
 	if(object->payload == NULL || object->payload_len == 0)
 		return;
+	/* TODO Check if there are private properties too */
+	if(*(object->payload) != 0x00) {
+		JANUS_LOG(LOG_WARN, "We don't support private properties yet, ignoring object\n");
+		return;
+	}
+	size_t skip = 1;
 	/* Convert LOC to RTP */
 	size_t hsize = 12;
 	if(session->audio_track.track && object->track_alias == session->audio_track.track_alias) {
@@ -2052,7 +2068,7 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 			return;
 		}
 		char buffer[1500];
-		size_t length = hsize + object->payload_len;
+		size_t length = hsize + object->payload_len - skip;
 		/* Craft the RTP packet */
 		if(session->audio_track.seq == 0) {
 			session->audio_track.timestamp = timestamp;
@@ -2072,7 +2088,7 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 		session->audio_track.last_ts += ts_diff;
 		rtp->timestamp = htonl(session->audio_track.last_ts);
 		rtp->ssrc = htonl(session->audio_track.ssrc);
-		memcpy(&buffer[hsize], object->payload, object->payload_len);
+		memcpy(&buffer[hsize], object->payload + skip, object->payload_len - skip);
 		/* Send the RTP packet */
 		janus_plugin_rtp pkt = { .mindex = -1, .video = FALSE, .buffer = buffer, .length = length };
 		janus_plugin_rtp_extensions_reset(&pkt.extensions);
@@ -2105,7 +2121,9 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 		rtp->timestamp = htonl(session->video_track.last_ts);
 		rtp->ssrc = htonl(session->video_track.ssrc);
 		/* Create all the RTP packets we need */
-		uint8_t *data = object->payload, *start = data, *end = object->payload + object->payload_len, *tmp = start;
+		uint8_t *payload = object->payload + skip;
+		size_t payload_len = object->payload_len - skip;
+		uint8_t *data = payload + skip, *start = data, *end = payload + payload_len, *tmp = start;
 		/* Packetization depends on the codec */
 		if(session->vcodec == JANUS_VIDEOCODEC_VP8) {
 			/* We're using VP8 */
@@ -2113,9 +2131,9 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 			if(session->pid == 32768)	/* PictureID is limited to 15 bits */
 				session->pid = 0;
 			/* Check if we need to split the frame in multiple RTP packets */
-			if(object->payload_len < mtu) {
+			if(payload_len < mtu) {
 				JANUS_LOG(LOG_HUGE, "[%s] Sending packet, payload is %zu bytes\n",
-					imquic_get_connection_name(conn), object->payload_len);
+					imquic_get_connection_name(conn), payload_len);
 				/* Add a payload descriptor: first octet */
 				char *pd = buffer+hsize;
 				*pd |= 1 << 7;		/* X=1 */
@@ -2132,18 +2150,18 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 				*pd |= 1 << 7;		/* M=1 */
 				hsize += 2;
 				/* Copy the frame data now */
-				memcpy(buffer + hsize, data, object->payload_len);
+				memcpy(buffer + hsize, data, payload_len);
 				/* Self-contained packet, set the Marker Bit to 1 */
 				rtp->markerbit = 1;
 				/* Send the packet */
-				length = hsize + object->payload_len;
+				length = hsize + payload_len;
 				session->video_track.seq++;
 				rtp->seq_number = htons(session->video_track.seq);
 				janus_plugin_rtp pkt = { .mindex = -1, .video = TRUE, .buffer = buffer, .length = length };
 				janus_plugin_rtp_extensions_reset(&pkt.extensions);
 				gateway->relay_rtp(session->handle, &pkt);
 			} else {
-				size_t rest_len = object->payload_len, first_byte = 0, packet_len = 0;
+				size_t rest_len = payload_len, first_byte = 0, packet_len = 0;
 				JANUS_LOG(LOG_HUGE, "[%s] Sending all that remains, payload is %zu bytes\n",
 					imquic_get_connection_name(conn), rest_len);
 				while(rest_len > 0) {
@@ -2152,14 +2170,14 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 					if(rest_len > mtu)
 						packet_len = mtu;
 					JANUS_LOG(LOG_HUGE, "[%s] Sending packet, payload is %zu/%zu bytes\n",
-						imquic_get_connection_name(conn), packet_len, object->payload_len);
+						imquic_get_connection_name(conn), packet_len, payload_len);
 					/* Add a payload descriptor: first octet */
 					hsize = 12;
 					memset(buffer + hsize, 0, 4);
 					char *pd = buffer + hsize;
 					*pd = 0;
 					*pd |= 1 << 7;		/* X=1 */
-					if(rest_len == object->payload_len)
+					if(rest_len == payload_len)
 						*pd |= 1 << 4;	/* S=1 only for the first packet */
 					hsize++;
 					/* Second octet */
@@ -2168,14 +2186,14 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 					hsize++;
 					/* Third and fourth octet */
 					pd++;
-					if(rest_len == object->payload_len) {
+					if(rest_len == payload_len) {
 						uint16_t cpid = htons(session->pid);
 						memcpy(pd, &cpid, sizeof(uint16_t));
 					}
 					*pd |= 1 << 7;		/* M=1 */
 					hsize += 2;
 					/* Copy the frame data now */
-					memcpy(buffer + hsize, object->payload + first_byte, packet_len);
+					memcpy(buffer + hsize, payload + first_byte, packet_len);
 					/* Update counters */
 					first_byte += packet_len;
 					rest_len -= packet_len;
@@ -2196,9 +2214,9 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 			if(session->pid == 32768)	/* PictureID is limited to 15 bits */
 				session->pid = 0;
 			/* Check if we need to split the frame in multiple RTP packets */
-			if(object->payload_len < mtu) {
+			if(payload_len < mtu) {
 				JANUS_LOG(LOG_HUGE, "[%s] Sending packet, payload is %zu bytes\n",
-					imquic_get_connection_name(conn), object->payload_len);
+					imquic_get_connection_name(conn), payload_len);
 				/* Add a payload descriptor: first octet */
 				char *pd = buffer+hsize;
 				*pd |= 1 << 7;		/* I=1 (PictureID present) */
@@ -2211,18 +2229,18 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 				*pd |= 1 << 7;		/* M=1 */
 				hsize += 2;
 				/* Copy the frame data now */
-				memcpy(buffer+hsize, object->payload, object->payload_len);
+				memcpy(buffer+hsize, payload, payload_len);
 				/* Self-contained packet, set the Marker Bit to 1 */
 				rtp->markerbit = 1;
 				/* Send the packet */
-				length = hsize + object->payload_len;
+				length = hsize + payload_len;
 				session->video_track.seq++;
 				rtp->seq_number = htons(session->video_track.seq);
 				janus_plugin_rtp pkt = { .mindex = -1, .video = TRUE, .buffer = buffer, .length = length };
 				janus_plugin_rtp_extensions_reset(&pkt.extensions);
 				gateway->relay_rtp(session->handle, &pkt);
 			} else {
-				size_t rest_len = object->payload_len, first_byte = 0, packet_len = 0;
+				size_t rest_len = payload_len, first_byte = 0, packet_len = 0;
 				JANUS_LOG(LOG_HUGE, "[%s] Sending all that remains, payload is %zu bytes\n",
 					imquic_get_connection_name(conn), rest_len);
 				while(rest_len > 0) {
@@ -2231,27 +2249,27 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 					if(rest_len > mtu)
 						packet_len = mtu;
 					JANUS_LOG(LOG_HUGE, "[%s]    Sending packet, payload is %zu/%zu bytes\n",
-						imquic_get_connection_name(conn), packet_len, object->payload_len);
+						imquic_get_connection_name(conn), packet_len, payload_len);
 					/* Add a payload descriptor: first octet */
 					hsize = 12;
 					char *pd = buffer+hsize;
 					*pd = 0;
 					*pd |= 1 << 7;		/* I=1 (PictureID present) */
-					if(rest_len == object->payload_len)
+					if(rest_len == payload_len)
 						*pd |= 1 << 3;		/* B=1 (Start of a frame) */
 					else if(rest_len <= mtu)
 						*pd |= 1 << 2;		/* E=1 (End of a frame) */
 					hsize++;
 					/* Second and third octet */
 					pd++;
-					if(rest_len == object->payload_len) {
+					if(rest_len == payload_len) {
 						uint16_t cpid = htons(session->pid);
 						memcpy(pd, &cpid, sizeof(uint16_t));
 					}
 					*pd |= 1 << 7;		/* M=1 */
 					hsize += 2;
 					/* Copy the frame data now */
-					memcpy(buffer+hsize, object->payload + first_byte, packet_len);
+					memcpy(buffer+hsize, payload + first_byte, packet_len);
 					/* Update counters */
 					first_byte += packet_len;
 					rest_len -= packet_len;
@@ -2384,14 +2402,14 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 			/* Check if we need to switch from AVCC to Annex-B */
 			if(!session->annexb) {
 				size_t avcc_offset = 0, nal_size = 0;
-				while(object->payload_len >= avcc_offset + 4) {
-					memcpy(&nal_size, object->payload + avcc_offset, 4);
+				while(payload_len >= avcc_offset + 4) {
+					memcpy(&nal_size, payload + avcc_offset, 4);
 					nal_size = ntohl(nal_size);
 					if(nal_size > 0) {
-						*(object->payload + avcc_offset) = 0x00;
-						*(object->payload + avcc_offset + 1) = 0x00;
-						*(object->payload + avcc_offset + 2) = 0x00;
-						*(object->payload + avcc_offset + 3) = 0x01;
+						*(payload + avcc_offset) = 0x00;
+						*(payload + avcc_offset + 1) = 0x00;
+						*(payload + avcc_offset + 2) = 0x00;
+						*(payload + avcc_offset + 3) = 0x01;
 					}
 					avcc_offset += 4 + nal_size;
 				}
