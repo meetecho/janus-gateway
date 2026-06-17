@@ -101,7 +101,7 @@ static struct janus_json_parameter bridge_parameters[] = {
 	{"webtransport", JANUS_JSON_BOOL, 0},
 	{"path", JANUS_JSON_STRING, 0},
 	{"role", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"namespace", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"namespace", JANUS_JSON_ARRAY, JANUS_JSON_PARAM_REQUIRED},
 	{"use_catalog", JANUS_JSON_BOOL, 0},
 	{"audio_track", JANUS_JSON_STRING, 0},
 	{"video_track", JANUS_JSON_STRING, 0},
@@ -1187,7 +1187,7 @@ static void *janus_moq_handler(void *data) {
 				raw_quic = TRUE;
 			const char *path = json_string_value(json_object_get(root, "path"));
 			const char *role = json_string_value(json_object_get(root, "role"));
-			const char *namespace = json_string_value(json_object_get(root, "namespace"));
+			json_t *namespace = json_object_get(root, "namespace");
 			json_t *uc = json_object_get(root, "use_catalog");
 			gboolean use_catalog = uc ? json_is_true(uc) : TRUE;
 			const char *audio_track = json_string_value(json_object_get(root, "audio_track"));
@@ -1232,13 +1232,17 @@ static void *janus_moq_handler(void *data) {
 					goto error;
 				}
 			}
-			if(namespace == NULL) {
-				/* Missing namespace */
-				janus_mutex_unlock(&session->mutex);
-				JANUS_LOG(LOG_ERR, "Missing MoQ namespace\n");
-				error_code = JANUS_MOQ_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing MoQ namespace");
-				goto error;
+			size_t i = 0;
+			for(i=0; i<json_array_size(namespace); i++) {
+				json_t *n = json_array_get(namespace, i);
+				if(n == NULL || json_is_null(n) || !json_is_string(n)) {
+					/* Invalid namespace */
+					janus_mutex_unlock(&session->mutex);
+					JANUS_LOG(LOG_ERR, "Invalid MoQ namespace field\n");
+					error_code = JANUS_MOQ_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid MoQ namespace field");
+					goto error;
+				}
 			}
 			if(moqpub && audio_track == NULL && video_track == NULL) {
 				/* Missing audio or video track */
@@ -1276,13 +1280,22 @@ static void *janus_moq_handler(void *data) {
 			session->moqsub = moqsub;
 			session->use_catalog = moqsub && use_catalog;
 			/* FIXME We don't currently support providing a tuple */
-			session->track_namespace = g_malloc(sizeof(imquic_moq_namespace));
-			session->track_namespace->length = strlen(namespace);
-			if(session->track_namespace->length > 0) {
-				session->track_namespace->buffer = g_malloc(session->track_namespace->length);
-				memcpy(session->track_namespace->buffer, namespace, session->track_namespace->length);
+			imquic_moq_namespace *last = NULL;
+			for(i=0; i<json_array_size(namespace); i++) {
+				const char *n = json_string_value(json_array_get(namespace, i));
+				imquic_moq_namespace *tns = g_malloc(sizeof(imquic_moq_namespace));
+				tns->length = strlen(n);
+				if(tns->length > 0) {
+					tns->buffer = g_malloc(tns->length);
+					memcpy(tns->buffer, n, tns->length);
+				}
+				tns->next = NULL;
+				if(session->track_namespace == NULL)
+					session->track_namespace = tns;
+				if(last)
+					last->next = tns;
+				last = tns;
 			}
-			session->track_namespace->next = NULL;
 			char tns_buf[4096];
 			const char *tns = imquic_moq_namespace_str(session->track_namespace, tns_buf, sizeof(tns_buf), TRUE);
 			session->track_namespace_str = tns ? g_strdup(tns) : NULL;

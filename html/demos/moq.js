@@ -479,7 +479,7 @@ function publishMoq() {
 					webtransport: wt,
 					path: path ? path : '/',
 					role: 'publisher',
-					namespace: namespace,
+					namespace: [ namespace ],
 					//~ auth_info: auth,
 				};
 				if($('#audioenable').prop('checked'))
@@ -533,7 +533,7 @@ function subscribeMoq() {
 		webtransport: wt,
 		path: path ? path : '/',
 		role: 'subscriber',
-		namespace: namespace,
+		namespace: [ namespace ],
 		//~ auth_info: auth,
 	}
 	if(!catalog) {
