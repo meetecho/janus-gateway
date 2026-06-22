@@ -73,3 +73,6 @@ cov-int
 .vscode
 node_modules
 .venv
+
+# Local development run directory (configs, recordings, screenshots)
+dev-run/

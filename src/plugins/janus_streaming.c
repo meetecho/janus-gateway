@@ -274,16 +274,17 @@ multistream-test: {
  * (invalid JSON, invalid request) which will always result in a
  * synchronous error response even for asynchronous requests.
  *
- * \c list , \c info , \c create , \c destroy , \c recording , \c edit ,
- * \c enable and \c disable are synchronous requests, which means you'll
- * get a response directly within the context of the transaction. \c list
+ * \c list , \c info , \c create , \c destroy , \c recording , \c screenshot ,
+ * \c edit , \c enable and \c disable are synchronous requests, which means
+ * you'll get a response directly within the context of the transaction. \c list
  * lists all the available streams; \c create allows you to create a new
  * mountpoint dynamically, as an alternative to using the configuration
  * file; \c destroy removes a mountpoint and destroys it; \c recording
  * instructs the plugin on whether or not a live RTP stream should be
- * recorded while it's broadcasted; \c enable and \c disable respectively
- * enable and disable a mountpoint, that is decide whether or not a
- * mountpoint should be available to users without destroying it.
+ * recorded while it's broadcasted; \c screenshot saves a single frame of a
+ * live H.264 RTP stream to an image file (PNG, JPEG or WebP); \c enable and
+ * \c disable respectively enable and disable a mountpoint, that is decide
+ * whether or not a mountpoint should be available to users without destroying it.
  * \c edit allows you to dynamically edit some mountpoint properties (e.g., the PIN);
  *
  * The \c watch , \c start , \c configure , \c pause , \c switch and \c stop requests
@@ -719,6 +720,45 @@ multistream-test: {
 }
 \endverbatim
  *
+ * Besides recording, you can also grab a single still image (a screenshot)
+ * out of a live, H.264, RTP-based mountpoint via the \c screenshot request.
+ * The plugin reuses the keyframe the Streaming plugin already buffers for
+ * bootstrapping new viewers, so the request is served synchronously and
+ * doesn't require any additional ingest or RTP forwarding: as such, it does
+ * require the mountpoint to have keyframe buffering enabled (see the
+ * \c bufferkf_ms and/or \c bufferkf_bytes properties). The request must be
+ * formatted like this:
+ *
+\verbatim
+{
+	"request" : "screenshot",
+	"id" : <unique ID of the mountpoint to grab a screenshot of; mandatory>,
+	"mid" : "<mid of the video stream to capture; optional, default is the first video stream>",
+	"format" : "<image format to use: png (default), jpg or webp; optional>",
+	"filename" : "<path/filename to save the image to; optional, a temporary path is used if missing>"
+}
+\endverbatim
+ *
+ * A \c secret may be required, just as for the \c recording request, if the
+ * mountpoint is protected by one. A successful request returns the path of
+ * the image that was written, plus its format and content type:
+ *
+\verbatim
+{
+	"streaming" : "ok",
+	"filename" : "<path of the saved image>",
+	"format" : "<image format that was used>",
+	"content_type" : "<MIME type of the saved image>"
+}
+\endverbatim
+ *
+ * Notice that, since the screenshot is taken from the latest buffered
+ * keyframe, the request will return an error if no keyframe has been
+ * received yet (e.g., right after the mountpoint started receiving media):
+ * in that case, simply retry once a keyframe has been buffered. Only H.264
+ * video is supported, and the Streaming plugin must have been built with
+ * screenshot (FFmpeg) support, or the request will return an error.
+ *
  * \subsection streamingasync Asynchronous requests
  *
  * All the requests we've gone through so far are synchronous. This means
@@ -982,6 +1022,13 @@ multistream-test: {
 #include "../sdp-utils.h"
 #include "../ip-utils.h"
 
+#ifdef JANUS_STREAMING_SCREENSHOT
+#include <libavcodec/avcodec.h>
+#include <libavutil/imgutils.h>
+#include <libavutil/opt.h>
+#include <libswscale/swscale.h>
+#endif
+
 /* Default settings */
 #define JANUS_STREAMING_DEFAULT_SESSION_TIMEOUT 0 /* Overwrite the RTSP session timeout. If set to zero, the RTSP timeout is derived from a session. */
 #define JANUS_STREAMING_DEFAULT_RECONNECT_DELAY 5 /* Reconnecting delay in seconds. */
@@ -1243,6 +1290,187 @@ static struct janus_json_parameter recording_stop_parameters[] = {
 	{"video", JANUS_JSON_BOOL, 0},
 	{"data", JANUS_JSON_BOOL, 0}
 };
+#ifdef JANUS_STREAMING_SCREENSHOT
+static struct janus_json_parameter screenshot_parameters[] = {
+	{"format", JSON_STRING, 0},
+	{"filename", JSON_STRING, 0},
+	{"mid", JSON_STRING, 0}
+};
+
+/* H.264 keyframe -> still image helpers (ported from the Screenshot plugin) */
+static const char *janus_streaming_screenshot_content_type(const char *format) {
+	if(!strcasecmp(format, "jpg") || !strcasecmp(format, "jpeg"))
+		return "image/jpeg";
+	if(!strcasecmp(format, "webp"))
+		return "image/webp";
+	return "image/png";
+}
+
+static const char *janus_streaming_screenshot_extension(const char *format) {
+	if(!strcasecmp(format, "jpg") || !strcasecmp(format, "jpeg"))
+		return "jpg";
+	if(!strcasecmp(format, "webp"))
+		return "webp";
+	return "png";
+}
+
+static gboolean janus_streaming_screenshot_valid_format(const char *format) {
+	return format != NULL && (!strcasecmp(format, "png") || !strcasecmp(format, "jpg") ||
+		!strcasecmp(format, "jpeg") || !strcasecmp(format, "webp"));
+}
+
+static void janus_streaming_screenshot_append_start_code(GByteArray *frame) {
+	static const guint8 start_code[] = { 0x00, 0x00, 0x00, 0x01 };
+	g_byte_array_append(frame, start_code, sizeof(start_code));
+}
+
+static gboolean janus_streaming_screenshot_append_h264(GByteArray *frame, const char *payload, int plen) {
+	if(frame == NULL || payload == NULL || plen < 1)
+		return FALSE;
+	uint8_t nal = payload[0] & 0x1F;
+	if(nal > 0 && nal < 24) {
+		janus_streaming_screenshot_append_start_code(frame);
+		g_byte_array_append(frame, (const guint8 *)payload, plen);
+		return TRUE;
+	} else if(nal == 24) {
+		const char *pos = payload + 1;
+		int left = plen - 1;
+		while(left > 2) {
+			uint16_t nsize = 0;
+			memcpy(&nsize, pos, sizeof(uint16_t));
+			nsize = ntohs(nsize);
+			pos += 2;
+			left -= 2;
+			if(nsize == 0 || nsize > left)
+				return FALSE;
+			janus_streaming_screenshot_append_start_code(frame);
+			g_byte_array_append(frame, (const guint8 *)pos, nsize);
+			pos += nsize;
+			left -= nsize;
+		}
+		return TRUE;
+	} else if(nal == 28 && plen > 2) {
+		uint8_t indicator = payload[0];
+		uint8_t fu = payload[1];
+		gboolean start = (fu & 0x80) != 0;
+		uint8_t reconstructed = (indicator & 0xE0) | (fu & 0x1F);
+		if(start) {
+			janus_streaming_screenshot_append_start_code(frame);
+			g_byte_array_append(frame, &reconstructed, 1);
+		}
+		g_byte_array_append(frame, (const guint8 *)payload + 2, plen - 2);
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static gboolean janus_streaming_screenshot_write_image(const guint8 *data, gsize size, const char *format,
+		const char *filename, char *error, size_t error_len) {
+	gboolean success = FALSE;
+	const AVCodec *decoder = avcodec_find_decoder(AV_CODEC_ID_H264);
+	const AVCodec *encoder = NULL;
+	enum AVPixelFormat out_fmt = AV_PIX_FMT_RGB24;
+	if(!strcasecmp(format, "png")) {
+		encoder = avcodec_find_encoder(AV_CODEC_ID_PNG);
+		out_fmt = AV_PIX_FMT_RGB24;
+	} else if(!strcasecmp(format, "webp")) {
+		encoder = avcodec_find_encoder_by_name("libwebp");
+		if(encoder == NULL)
+			encoder = avcodec_find_encoder(AV_CODEC_ID_WEBP);
+		out_fmt = AV_PIX_FMT_BGRA;
+	} else {
+		encoder = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
+		out_fmt = AV_PIX_FMT_YUVJ420P;
+	}
+	if(decoder == NULL || encoder == NULL) {
+		g_snprintf(error, error_len, "Required decoder/encoder not available");
+		return FALSE;
+	}
+	AVCodecContext *dctx = avcodec_alloc_context3(decoder);
+	AVCodecContext *ectx = NULL;
+	AVFrame *frame = av_frame_alloc(), *out = av_frame_alloc();
+	AVPacket *pkt = av_packet_alloc(), *opkt = av_packet_alloc();
+	struct SwsContext *sws = NULL;
+	if(dctx == NULL || frame == NULL || out == NULL || pkt == NULL || opkt == NULL) {
+		g_snprintf(error, error_len, "Out of memory");
+		goto done;
+	}
+	if(avcodec_open2(dctx, decoder, NULL) < 0) {
+		g_snprintf(error, error_len, "Could not open H.264 decoder");
+		goto done;
+	}
+	pkt->data = (uint8_t *)data;
+	pkt->size = (int)size;
+	if(avcodec_send_packet(dctx, pkt) < 0 || avcodec_receive_frame(dctx, frame) < 0) {
+		g_snprintf(error, error_len, "Could not decode H.264 keyframe");
+		goto done;
+	}
+	ectx = avcodec_alloc_context3(encoder);
+	if(ectx == NULL) {
+		g_snprintf(error, error_len, "Could not allocate image encoder");
+		goto done;
+	}
+	ectx->width = frame->width;
+	ectx->height = frame->height;
+	ectx->pix_fmt = out_fmt;
+	ectx->time_base = (AVRational){1, 1};
+	if(!strcasecmp(format, "webp"))
+		av_opt_set_int(ectx->priv_data, "lossless", 1, 0);
+	if(avcodec_open2(ectx, encoder, NULL) < 0) {
+		g_snprintf(error, error_len, "Could not open image encoder for %s", format);
+		goto done;
+	}
+	out->format = ectx->pix_fmt;
+	out->width = ectx->width;
+	out->height = ectx->height;
+	if(av_frame_get_buffer(out, 32) < 0) {
+		g_snprintf(error, error_len, "Could not allocate converted image frame");
+		goto done;
+	}
+	sws = sws_getContext(frame->width, frame->height, frame->format,
+		out->width, out->height, out->format, SWS_BILINEAR, NULL, NULL, NULL);
+	if(sws == NULL) {
+		g_snprintf(error, error_len, "Could not allocate image converter");
+		goto done;
+	}
+	sws_scale(sws, (const uint8_t * const *)frame->data, frame->linesize, 0, frame->height, out->data, out->linesize);
+	out->pts = 0;
+	if(avcodec_send_frame(ectx, out) < 0) {
+		g_snprintf(error, error_len, "Could not encode %s image", format);
+		goto done;
+	}
+	int encres = avcodec_receive_packet(ectx, opkt);
+	if(encres < 0) {
+		avcodec_send_frame(ectx, NULL);
+		encres = avcodec_receive_packet(ectx, opkt);
+	}
+	if(encres < 0) {
+		g_snprintf(error, error_len, "Could not encode %s image", format);
+		goto done;
+	}
+	if(!g_file_set_contents(filename, (const char *)opkt->data, opkt->size, NULL)) {
+		g_snprintf(error, error_len, "Could not write image file");
+		goto done;
+	}
+	success = TRUE;
+done:
+	if(sws)
+		sws_freeContext(sws);
+	if(ectx)
+		avcodec_free_context(&ectx);
+	if(dctx)
+		avcodec_free_context(&dctx);
+	if(frame)
+		av_frame_free(&frame);
+	if(out)
+		av_frame_free(&out);
+	if(pkt)
+		av_packet_free(&pkt);
+	if(opkt)
+		av_packet_free(&opkt);
+	return success;
+}
+#endif
 static struct janus_json_parameter simulcast_parameters[] = {
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -5580,6 +5808,174 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_object_set_new(response, "streaming", json_string("ok"));
 			goto prepare_response;
 		}
+	} else if(!strcasecmp(request_text, "screenshot")) {
+		/* Save the latest buffered keyframe of an RTP mountpoint as a still image */
+#ifndef JANUS_STREAMING_SCREENSHOT
+		error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Streaming plugin built without screenshot (FFmpeg) support");
+		goto prepare_response;
+#else
+		JANUS_VALIDATE_JSON_OBJECT(root, screenshot_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, idstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		const char *format = json_string_value(json_object_get(root, "format"));
+		if(format == NULL)
+			format = "png";
+		if(!janus_streaming_screenshot_valid_format(format)) {
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Unsupported format (allowed: png, jpg, webp)");
+			goto prepare_response;
+		}
+		const char *req_mid = json_string_value(json_object_get(root, "mid"));
+		const char *req_filename = json_string_value(json_object_get(root, "filename"));
+		json_t *id = json_object_get(root, "id");
+		guint64 id_value = 0;
+		char id_num[30], *id_value_str = NULL;
+		if(!string_ids) {
+			id_value = json_integer_value(id);
+			g_snprintf(id_num, sizeof(id_num), "%"SCNu64, id_value);
+			id_value_str = id_num;
+		} else {
+			id_value_str = (char *)json_string_value(id);
+		}
+		janus_mutex_lock(&mountpoints_mutex);
+		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints,
+			string_ids ? (gpointer)id_value_str : (gpointer)&id_value);
+		if(mp == NULL) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %s\n", id_value_str);
+			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+			g_snprintf(error_cause, 512, "No such mountpoint/stream %s", id_value_str);
+			goto prepare_response;
+		}
+		janus_refcount_increase(&mp->ref);
+		if(mp->streaming_type != janus_streaming_type_live || mp->streaming_source != janus_streaming_source_rtp) {
+			janus_refcount_decrease(&mp->ref);
+			janus_mutex_unlock(&mountpoints_mutex);
+			error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
+			g_snprintf(error_cause, 512, "Screenshots are only available on RTP-based live streams");
+			goto prepare_response;
+		}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(mp->secret, root, "secret", error_code, error_cause,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_refcount_decrease(&mp->ref);
+			janus_mutex_unlock(&mountpoints_mutex);
+			goto prepare_response;
+		}
+		janus_streaming_rtp_source *source = mp->source;
+		/* Find the (H.264) video stream we want a screenshot of */
+		janus_streaming_rtp_source_stream *stream = NULL;
+		GList *temp = source->media;
+		while(temp) {
+			janus_streaming_rtp_source_stream *s = (janus_streaming_rtp_source_stream *)temp->data;
+			if(s->type == JANUS_STREAMING_MEDIA_VIDEO && (req_mid == NULL || !strcasecmp(s->mid, req_mid))) {
+				stream = s;
+				break;
+			}
+			temp = temp->next;
+		}
+		if(stream == NULL) {
+			janus_refcount_decrease(&mp->ref);
+			janus_mutex_unlock(&mountpoints_mutex);
+			error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
+			g_snprintf(error_cause, 512, "%s", req_mid ? "No such video stream" : "Mountpoint has no video stream");
+			goto prepare_response;
+		}
+		if(stream->codecs.video_codec != JANUS_VIDEOCODEC_H264) {
+			janus_refcount_decrease(&mp->ref);
+			janus_mutex_unlock(&mountpoints_mutex);
+			error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
+			g_snprintf(error_cause, 512, "Screenshots are only supported for H.264 video");
+			goto prepare_response;
+		}
+		/* Reassemble the latest buffered keyframe into an Annex-B H.264 frame */
+		GByteArray *fbuf = g_byte_array_new();
+		janus_mutex_lock(&stream->keyframe.mutex);
+		if(!stream->keyframe.enabled || stream->keyframe.latest_keyframe == NULL) {
+			janus_mutex_unlock(&stream->keyframe.mutex);
+			g_byte_array_unref(fbuf);
+			janus_refcount_decrease(&mp->ref);
+			janus_mutex_unlock(&mountpoints_mutex);
+			error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
+			g_snprintf(error_cause, 512, "No keyframe buffered yet (enable bufferkf on the mountpoint)");
+			goto prepare_response;
+		}
+		/* Prepend our SPS/PPS, if we have them, so the decoder can init */
+		if(stream->h264_spspps != NULL && stream->h264_spspps_len > 0) {
+			int plen = 0;
+			char *payload = janus_rtp_payload(stream->h264_spspps, stream->h264_spspps_len, &plen);
+			if(payload != NULL)
+				janus_streaming_screenshot_append_h264(fbuf, payload, plen);
+		}
+		/* The buffer is stored newest-first (g_list_prepend) and always starts
+		 * from a keyframe, so the oldest entries are the keyframe's packets.
+		 * Walk it backwards (oldest first) and take only the first access unit
+		 * (the keyframe), i.e. the packets sharing the oldest timestamp; stop
+		 * as soon as a later frame (delta) begins. We can't trust keyframe.kf_ts
+		 * here, as it's overwritten by every delta frame. */
+		uint32_t ref_ts = 0;
+		gboolean have_ref = FALSE;
+		GList *kf = g_list_last(stream->keyframe.latest_keyframe);
+		while(kf) {
+			janus_streaming_rtp_relay_packet *pkt = (janus_streaming_rtp_relay_packet *)kf->data;
+			kf = kf->prev;
+			if(pkt == NULL || pkt->data == NULL)
+				continue;
+			if(!have_ref) {
+				ref_ts = pkt->timestamp;
+				have_ref = TRUE;
+			} else if(pkt->timestamp != ref_ts) {
+				break;
+			}
+			int plen = 0;
+			char *payload = janus_rtp_payload((char *)pkt->data, pkt->length, &plen);
+			if(payload != NULL)
+				janus_streaming_screenshot_append_h264(fbuf, payload, plen);
+		}
+		janus_mutex_unlock(&stream->keyframe.mutex);
+		/* We have the frame bytes, the mountpoint no longer needs to be locked */
+		janus_refcount_decrease(&mp->ref);
+		janus_mutex_unlock(&mountpoints_mutex);
+		/* Work out the output filename */
+		char generated[1024];
+		const char *filename = req_filename;
+		if(filename == NULL) {
+			g_snprintf(generated, sizeof(generated), "%s/janus-streaming-screenshot-%s-%"SCNi64".%s",
+				g_get_tmp_dir(), id_value_str, janus_get_real_time(),
+				janus_streaming_screenshot_extension(format));
+			filename = generated;
+		}
+		char img_error[256] = {0};
+		gboolean ok = janus_streaming_screenshot_write_image(fbuf->data, fbuf->len,
+			format, filename, img_error, sizeof(img_error));
+		g_byte_array_unref(fbuf);
+		if(!ok) {
+			error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
+			g_snprintf(error_cause, 512, "%s", img_error[0] ? img_error : "Could not encode screenshot");
+			goto prepare_response;
+		}
+		response = json_object();
+		json_object_set_new(response, "streaming", json_string("ok"));
+		json_object_set_new(response, "filename", json_string(filename));
+		json_object_set_new(response, "format", json_string(format));
+		json_object_set_new(response, "content_type", json_string(janus_streaming_screenshot_content_type(format)));
+		goto prepare_response;
+#endif
 	} else if(!strcasecmp(request_text, "enable") || !strcasecmp(request_text, "disable")) {
 		/* A request to enable/disable a mountpoint */
 		if(!string_ids) {

@@ -1,0 +1,24 @@
+general: {
+	events = true
+	path = "./screenshots"
+}
+
+# When enabled, the plugin opens one plain-RTP listener per configured stream so
+# it can take screenshots from H.264 streams forwarded to it (e.g. via the
+# Streaming or VideoRoom plugins' rtp_forward), instead of a WebRTC
+# PeerConnection. Each stream has a unique "id" (used in the "take" request to
+# pick the source) and its own "videoport". A "take" request must include
+# "stream" to select one, unless a single stream is configured.
+rtp: {
+	enabled = false
+	streams = (
+		{
+			id = 1
+			videoport = 8004
+		}
+		#,{
+		#	id = 2
+		#	videoport = 8006
+		#}
+	)
+}

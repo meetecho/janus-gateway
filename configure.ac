@@ -726,6 +726,13 @@ AC_ARG_ENABLE([plugin-recordplay],
                      [enable_plugin_recordplay=no])],
               [enable_plugin_recordplay=yes])
 
+AC_ARG_ENABLE([plugin-screenshot],
+              [AS_HELP_STRING([--disable-plugin-screenshot],
+                              [Disable screenshot plugin])],
+              [AS_IF([test "x$enable_plugin_screenshot" != "xyes"],
+                     [enable_plugin_screenshot=no])],
+              [enable_plugin_screenshot=yes])
+
 AC_ARG_ENABLE([plugin-sip],
               [AS_HELP_STRING([--disable-plugin-sip],
                               [Disable sip plugin])],
@@ -856,11 +863,23 @@ PKG_CHECK_MODULES([DUKTAPE],
 AC_SUBST([DUKTAPE_CFLAGS])
 AC_SUBST([DUKTAPE_LIBS])
 
+AS_IF([test "x$enable_plugin_screenshot" = "xyes"],
+      [PKG_CHECK_MODULES([SCREENSHOT],
+                         [
+                          libavutil
+                          libavcodec
+                          libswscale
+                         ])
+      ])
+AC_SUBST([SCREENSHOT_CFLAGS])
+AC_SUBST([SCREENSHOT_LIBS])
+
 AM_CONDITIONAL([ENABLE_PLUGIN_AUDIOBRIDGE], [test "x$enable_plugin_audiobridge" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_DUKTAPE], [test "x$enable_plugin_duktape" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_ECHOTEST], [test "x$enable_plugin_echotest" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_LUA], [test "x$enable_plugin_lua" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_RECORDPLAY], [test "x$enable_plugin_recordplay" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_SCREENSHOT], [test "x$enable_plugin_screenshot" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_SIP], [test "x$enable_plugin_sip" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_NOSIP], [test "x$enable_plugin_nosip" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_STREAMING], [test "x$enable_plugin_streaming" = "xyes"])

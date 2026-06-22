@@ -434,6 +434,16 @@ EXTRA_DIST += \
 CLEANFILES += ../conf/janus.plugin.recordplay.jcfg.sample
 endif
 
+if ENABLE_PLUGIN_SCREENSHOT
+plugin_LTLIBRARIES += plugins/libjanus_screenshot.la
+plugins_libjanus_screenshot_la_SOURCES = plugins/janus_screenshot.c
+plugins_libjanus_screenshot_la_CFLAGS = $(plugins_cflags) $(SCREENSHOT_CFLAGS)
+plugins_libjanus_screenshot_la_LDFLAGS = $(plugins_ldflags) $(SCREENSHOT_LIBS)
+plugins_libjanus_screenshot_la_LIBADD = $(plugins_libadd)
+conf_DATA += ../conf/janus.plugin.screenshot.jcfg.sample
+EXTRA_DIST += ../conf/janus.plugin.screenshot.jcfg.sample
+endif
+
 if ENABLE_PLUGIN_SIP
 plugin_LTLIBRARIES += plugins/libjanus_sip.la
 plugins_libjanus_sip_la_SOURCES = plugins/janus_sip.c
@@ -460,6 +470,10 @@ plugins_libjanus_streaming_la_SOURCES = plugins/janus_streaming.c
 plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags) $(LIBCURL_CFLAGS) $(OGG_CFLAGS) $(LIBSRTP_CFLAGS)
 plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags) $(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) $(OGG_LDFLAGS) $(OGG_LIBS)
 plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd) $(LIBCURL_LIBADD) $(OGG_LIBADD)
+if ENABLE_PLUGIN_SCREENSHOT
+plugins_libjanus_streaming_la_CFLAGS += $(SCREENSHOT_CFLAGS) -DJANUS_STREAMING_SCREENSHOT
+plugins_libjanus_streaming_la_LDFLAGS += $(SCREENSHOT_LIBS)
+endif
 conf_DATA += ../conf/janus.plugin.streaming.jcfg.sample
 stream_DATA += \
 	plugins/streams/radio.alaw \
