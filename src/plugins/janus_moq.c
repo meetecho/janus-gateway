@@ -135,6 +135,7 @@ typedef struct janus_moq_moq_rtp {
 	imquic_moq_track *track;
 	char *track_name;
 	gboolean active;
+	gboolean got_first;
 	uint64_t request_id, track_alias, group_id, object_id;
 	uint32_t ssrc;
 	uint32_t last_ts;
@@ -550,6 +551,28 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 			return;
 		if(!session->moqpub || session->conn == NULL || packet->buffer == NULL || packet->length == 0)
 			return;
+		/* First of all, check if we have a catalog to send */
+		if(session->catalog_track.active && !session->catalog_track.got_first) {
+			/* Send the catalog right away */
+			char *json = imquic_moq_catalog_serialize(session->catalog);
+			if(json != NULL) {
+				imquic_moq_object object = {
+					.request_id = session->catalog_track.request_id,
+					.track_alias = session->catalog_track.track_alias,
+					.group_id = 0,	/* FIXME */
+					.subgroup_id = 0,
+					.object_id = 0,
+					.payload = (uint8_t *)json,
+					.payload_len = strlen(json),
+					.delivery = IMQUIC_MOQ_USE_SUBGROUP,
+					.end_of_stream = TRUE
+				};
+				imquic_moq_send_object(session->conn, &object);
+				g_free(json);
+			}
+			session->catalog_track.got_first = TRUE;
+		}
+		/* Now process the RTP payload */
 		int plen = 0;
 		char *payload = janus_rtp_payload((char *)packet->buffer, packet->length, &plen);
 		if(payload == NULL || plen == 0)
@@ -582,12 +605,26 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 				.payload = (uint8_t *)payload,
 				.payload_len = plen,
 				.properties = props,
-				.delivery = IMQUIC_MOQ_USE_DATAGRAM,
-				.end_of_stream = TRUE
+				.delivery = IMQUIC_MOQ_USE_DATAGRAM
 			};
 			imquic_moq_send_object(session->conn, &object);
 			g_list_free(props);
 		} else if(packet->video && session->video_track.track && session->video_track.active) {
+			/* If this is the first packet we receive, wait for a keyframe */
+			if(!session->video_track.got_first) {
+				gint64 now = janus_get_monotonic_time();
+				if(session->pli_latest == 0 || (now-session->pli_latest >= 100000)) {
+					gateway->send_pli(session->handle);
+					session->pli_latest = janus_get_monotonic_time();
+					session->pli_freq = 5;
+				}
+				if(!janus_is_keyframe(session->vcodec, payload, plen)) {
+					JANUS_LOG(LOG_VERB, "[%s] Waiting for a keyframe\n",
+						imquic_get_connection_name(session->conn));
+					return;
+				}
+				session->video_track.got_first = TRUE;
+			}
 			/* Buffer until we have a complete frame */
 			if(session->video_track.buffer == NULL) {
 				session->video_track.size = 10000;
@@ -647,7 +684,7 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 					.payload_len = session->video_track.offset,
 					.properties = props,
 					.delivery = IMQUIC_MOQ_USE_SUBGROUP,
-					.end_of_stream = TRUE
+					.end_of_stream = FALSE
 				};
 				session->video_track.object_id++;
 				imquic_moq_send_object(session->conn, &object);
@@ -727,6 +764,22 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 							/* This is a keyframe */
 							JANUS_LOG(LOG_HUGE, "[%s]   -- Key frame (seq=%"SCNu16", ts=%"SCNu32")\n",
 								imquic_get_connection_name(session->conn), ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+							if(session->video_track.group_id > 0) {
+								/* Close the previous stream first */
+								imquic_moq_object object = {
+									.request_id = session->video_track.request_id,
+									.track_alias = session->video_track.track_alias,
+									.group_id = session->video_track.group_id,
+									.subgroup_id = 0,	/* FIXME */
+									.object_id = session->video_track.object_id,
+									.payload = NULL,
+									.payload_len = 0,
+									.properties = NULL,
+									.delivery = IMQUIC_MOQ_USE_SUBGROUP,
+									.end_of_stream = TRUE
+								};
+								imquic_moq_send_object(session->conn, &object);
+							}
 							session->video_track.keyframe = TRUE;
 							session->video_track.group_id++;
 							session->video_track.object_id = 0;
@@ -1726,24 +1779,8 @@ static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t r
 		session->catalog_track.request_id = request_id;
 		session->catalog_track.track_alias = 0;
 		imquic_moq_accept_subscribe(conn, request_id, session->catalog_track.track_alias, NULL, NULL);
+		/* Mark the track as active */
 		session->catalog_track.active = TRUE;
-		/* Send the catalog right away */
-		char *json = imquic_moq_catalog_serialize(session->catalog);
-		if(json != NULL) {
-			imquic_moq_object object = {
-				.request_id = session->catalog_track.request_id,
-				.track_alias = session->catalog_track.track_alias,
-				.group_id = 0,	/* FIXME */
-				.subgroup_id = 0,
-				.object_id = 0,
-				.payload = (uint8_t *)json,
-				.payload_len = strlen(json),
-				.delivery = IMQUIC_MOQ_USE_SUBGROUP,
-				.end_of_stream = TRUE
-			};
-			imquic_moq_send_object(conn, &object);
-			g_free(json);
-		}
 		return;
 	}
 	/* Audio or video */
@@ -1758,16 +1795,15 @@ static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t r
 		session->audio_track.request_id = request_id;
 		session->audio_track.track_alias = 1;
 		imquic_moq_accept_subscribe(conn, request_id, session->audio_track.track_alias, &rparams, NULL);
+		/* Mark the track as active */
 		session->audio_track.active = TRUE;
 	} else if(session->video_track.track && imquic_moq_track_equals(tn, session->video_track.track)) {
 		/* FIXME Subscription for the video track */
 		session->video_track.request_id = request_id;
 		session->video_track.track_alias = 2;
 		imquic_moq_accept_subscribe(conn, request_id, session->video_track.track_alias, &rparams, NULL);
+		/* Mark the track as active */
 		session->video_track.active = TRUE;
-		gateway->send_pli(session->handle);
-		session->pli_latest = janus_get_monotonic_time();
-		session->pli_freq = 5;
 	} else {
 		JANUS_LOG(LOG_WARN, "Unknown track '%s'\n", track);
 	}
