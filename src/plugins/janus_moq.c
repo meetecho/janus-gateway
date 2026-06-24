@@ -1931,7 +1931,7 @@ static void janus_moq_moq_request_updated(imquic_connection *conn, uint64_t requ
 	if(parameters->new_group_request_set && parameters->new_group_request &&
 			session->video_track.active && session->video_track.request_id == sub_request_id) {
 		/* Send a PLI */
-		JANUS_LOG(LOG_WARN, "[%s] Got a NEW_GROUP_REQUEST, sending PLI\n",
+		JANUS_LOG(LOG_INFO, "[%s] Got a NEW_GROUP_REQUEST, sending PLI\n",
 			imquic_get_connection_name(conn));
 		gateway->send_pli(session->handle);
 		session->pli_latest = janus_get_monotonic_time();
