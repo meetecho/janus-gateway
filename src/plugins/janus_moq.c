@@ -167,7 +167,6 @@ typedef struct janus_moq_session {
 	/* RTP/RTCP */
 	GHashTable *media, *ptypes;
 	int audio_pt, video_pt;
-	uint16_t pli_freq;
 	gint64 pli_latest;
 	/* Encoding */
 	janus_videocodec vcodec;
@@ -253,6 +252,8 @@ static void janus_moq_moq_subscribe_accepted(imquic_connection *conn, uint64_t r
 	imquic_moq_request_parameters *parameters, GList *track_extensions);
 static void janus_moq_moq_subscribe_error(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+static void janus_moq_moq_request_updated(imquic_connection *conn, uint64_t request_id,
+	uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
 static void janus_moq_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason);
 static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_object *object);
 
@@ -616,7 +617,6 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 				if(session->pli_latest == 0 || (now-session->pli_latest >= 100000)) {
 					gateway->send_pli(session->handle);
 					session->pli_latest = janus_get_monotonic_time();
-					session->pli_freq = 5;
 				}
 				if(!janus_is_keyframe(session->vcodec, payload, plen)) {
 					JANUS_LOG(LOG_VERB, "[%s] Waiting for a keyframe\n",
@@ -1068,13 +1068,6 @@ void janus_moq_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pack
 				}
 			}
 		}
-		gint64 now = janus_get_monotonic_time();
-		if(session->pli_freq > 0 && ((now-session->pli_latest) >= ((gint64)session->pli_freq*G_USEC_PER_SEC))) {
-			/* FIXME We send a FIR every tot seconds */
-			session->pli_latest = now;
-			JANUS_LOG(LOG_HUGE, "Sending PLI\n");
-			gateway->send_pli(session->handle);
-		}
 	}
 }
 
@@ -1403,6 +1396,7 @@ static void *janus_moq_handler(void *data) {
 				imquic_set_publish_namespace_error_cb(quic_endpoint, janus_moq_moq_publish_namespace_error);
 				imquic_set_incoming_subscribe_cb(quic_endpoint, janus_moq_moq_incoming_subscribe);
 				imquic_set_incoming_unsubscribe_cb(quic_endpoint, janus_moq_moq_incoming_unsubscribe);
+				imquic_set_request_updated_cb(quic_endpoint, janus_moq_moq_request_updated);
 				imquic_set_connection_failed_cb(quic_endpoint, janus_moq_connection_failed);
 				imquic_set_moq_connection_gone_cb(quic_endpoint, janus_moq_connection_gone);
 			} else if(session->moqsub) {
@@ -1791,17 +1785,27 @@ static void janus_moq_moq_incoming_subscribe(imquic_connection *conn, uint64_t r
 	rparams.group_order_set = TRUE;
 	rparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 	if(session->audio_track.track && imquic_moq_track_equals(tn, session->audio_track.track)) {
-		/* FIXME Subscription for the audio track */
+		/* Subscription for the audio track */
 		session->audio_track.request_id = request_id;
 		session->audio_track.track_alias = 1;
 		imquic_moq_accept_subscribe(conn, request_id, session->audio_track.track_alias, &rparams, NULL);
 		/* Mark the track as active */
 		session->audio_track.active = TRUE;
 	} else if(session->video_track.track && imquic_moq_track_equals(tn, session->video_track.track)) {
-		/* FIXME Subscription for the video track */
+		/* Subscription for the video track */
 		session->video_track.request_id = request_id;
 		session->video_track.track_alias = 2;
-		imquic_moq_accept_subscribe(conn, request_id, session->video_track.track_alias, &rparams, NULL);
+		/* Advertise support for DYNAMIC_GROUPS: if we receive a
+		 * NEW_GROUP_REQUEST, we'll send an RTCP PLI via WebRTC */
+		imquic_moq_property dynamic_groups = {
+			.id = IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS,
+			.value = {
+				.number = 1
+			}
+		};
+		GList *props = g_list_append(NULL, &dynamic_groups);
+		imquic_moq_accept_subscribe(conn, request_id, session->video_track.track_alias, &rparams, props);
+		g_list_free(props);
 		/* Mark the track as active */
 		session->video_track.active = TRUE;
 	} else {
@@ -1834,7 +1838,6 @@ static void janus_moq_moq_incoming_unsubscribe(imquic_connection *conn, uint64_t
 		session->video_track.active = FALSE;
 		session->video_track.request_id = 0;
 		session->video_track.track_alias = 0;
-		session->pli_freq = 0;
 		session->pli_latest = 0;
 	}
 }
@@ -1907,6 +1910,35 @@ static void janus_moq_moq_subscribe_error(imquic_connection *conn, uint64_t requ
 	int ret = gateway->push_event(session->handle, &janus_moq_plugin, NULL, event, NULL);
 	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 	json_decref(event);
+}
+
+static void janus_moq_moq_request_updated(imquic_connection *conn, uint64_t request_id,
+		uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
+	JANUS_LOG(LOG_INFO, "[%s] Incoming update (%"SCNu64") for request %"SCNu64"\n",
+		imquic_get_connection_name(conn), request_id, sub_request_id);
+	janus_mutex_lock(&connections_mutex);
+	janus_moq_session *session = g_hash_table_lookup(connections, conn);
+	if(session == NULL || g_atomic_int_get(&session->destroyed) || !session->moqpub) {
+		janus_mutex_unlock(&connections_mutex);
+		JANUS_LOG(LOG_WARN, "[%s] Ignoring REQUEST_UPDATE, unrecognized subscription\n",
+			imquic_get_connection_name(conn));
+		imquic_moq_reject_request_update(conn, request_id,
+			IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "No such subscription", 0, NULL);
+		return;
+	}
+	janus_mutex_unlock(&connections_mutex);
+	/* Check if it's a NEW_GROUP_REQUEST for the video track */
+	if(parameters->new_group_request_set && parameters->new_group_request &&
+			session->video_track.active && session->video_track.request_id == sub_request_id) {
+		/* Send a PLI */
+		JANUS_LOG(LOG_WARN, "[%s] Got a NEW_GROUP_REQUEST, sending PLI\n",
+			imquic_get_connection_name(conn));
+		gateway->send_pli(session->handle);
+		session->pli_latest = janus_get_monotonic_time();
+	}
+	/* FIXME We always send a REQUEST_OK back, but we should check if we
+	 * actually recognize the request ID the update is for */
+	imquic_moq_accept_request_update(conn, request_id, NULL);
 }
 
 static void janus_moq_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason) {
