@@ -1376,6 +1376,7 @@ static void *janus_moq_handler(void *data) {
 				IMQUIC_CONFIG_LOCAL_PORT, port,
 				IMQUIC_CONFIG_REMOTE_HOST, remote_host,
 				IMQUIC_CONFIG_REMOTE_PORT, remote_port,
+				IMQUIC_CONFIG_RAW_QUIC, raw_quic,
 				IMQUIC_CONFIG_WEBTRANSPORT, webtransport,
 				IMQUIC_CONFIG_HTTP3_PATH, path,
 				IMQUIC_CONFIG_USER_DATA, session,
