@@ -3803,7 +3803,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, gboolean offer, gboolean tri
 	pc->media_bytype = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_ice_peerconnection_medium_dereference);
 #ifdef HAVE_PORTRANGE
 	/* FIXME: libnice supports this since 0.1.0, but the 0.1.3 on Fedora fails with an undefined reference! */
-	nice_agent_set_port_range(handle->agent, handle->stream_id, 1, rtp_range_min, rtp_range_max);
+	uint16_t pc_range_min = handle->rtp_range_min ? handle->rtp_range_min : rtp_range_min;
+	uint16_t pc_range_max = handle->rtp_range_max ? handle->rtp_range_max : rtp_range_max;
+	nice_agent_set_port_range(handle->agent, handle->stream_id, 1, pc_range_min, pc_range_max);
 #endif
 	/* Gather now only if we're doing hanf-trickle */
 	if(!janus_full_trickle_enabled && !nice_agent_gather_candidates(handle->agent, handle->stream_id)) {

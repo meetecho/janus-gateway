@@ -56,6 +56,8 @@ declare namespace JanusJS {
 		handle_id?: number,
 		opaque_id?: string,
 		loop_index?: number,
+		min_port?: number,
+		max_port?: number,
 		janus: string,
 		transaction: string,
 		body?: any,
@@ -168,6 +170,8 @@ declare namespace JanusJS {
 		opaqueId?: string;
 		token?: string;
 		loopIndex?: number;
+		minPort?: number;
+		maxPort?: number;
 	}
 
 	interface OfferParams {

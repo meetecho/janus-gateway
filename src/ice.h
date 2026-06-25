@@ -353,6 +353,10 @@ struct janus_ice_handle {
 	char *opaque_id;
 	/*! \brief Token that was used to attach the handle, if required */
 	char *token;
+	/*! \brief Per-handle ICE port range min (0 = use global) */
+	uint16_t rtp_range_min;
+	/*! \brief Per-handle ICE port range max (0 = use global) */
+	uint16_t rtp_range_max;
 	/*! \brief Monotonic time of when the handle has been created */
 	gint64 created;
 	/*! \brief Opaque application (plugin) pointer */

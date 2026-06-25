@@ -1313,9 +1313,11 @@ var Janus = (function (factory) {
 			}
 			let opaqueId = callbacks.opaqueId;
 			let loopIndex = callbacks.loopIndex;
+			let minPort = callbacks.minPort;
+			let maxPort = callbacks.maxPort;
 			let handleToken = callbacks.token ? callbacks.token : token;
 			let transaction = Janus.randomString(12);
-			let request = { "janus": "attach", "plugin": plugin, "opaque_id": opaqueId, "loop_index": loopIndex, "transaction": transaction };
+			let request = { "janus": "attach", "plugin": plugin, "opaque_id": opaqueId, "loop_index": loopIndex, "min_port": minPort, "max_port": maxPort, "transaction": transaction };
 			if(handleToken)
 				request["token"] = handleToken;
 			if(apisecret)

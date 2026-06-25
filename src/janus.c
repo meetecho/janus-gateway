@@ -104,6 +104,8 @@ static struct janus_json_parameter attach_parameters[] = {
 	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"opaque_id", JSON_STRING, 0},
 	{"loop_index", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"min_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"max_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 };
 static struct janus_json_parameter body_parameters[] = {
 	{"body", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
@@ -1267,6 +1269,20 @@ int janus_process_incoming_request(janus_request *request) {
 		if(handle == NULL) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
+		}
+		/* Optional per-handle ICE port range (falls back to global) */
+		json_t *min_port = json_object_get(root, "min_port");
+		json_t *max_port = json_object_get(root, "max_port");
+		if(min_port || max_port) {
+			json_int_t mn = min_port ? json_integer_value(min_port) : 0;
+			json_int_t mx = max_port ? json_integer_value(max_port) : 0;
+			if(mn > 0 && mx >= mn && mx <= 65535) {
+				handle->rtp_range_min = (uint16_t)mn;
+				handle->rtp_range_max = (uint16_t)mx;
+			} else {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Ignoring invalid attach port range %"JSON_INTEGER_FORMAT"-%"JSON_INTEGER_FORMAT" (using global rtp_port_range)\n",
+					handle->handle_id, mn, mx);
+			}
 		}
 		handle_id = handle->handle_id;
 		/* We increase the counter as this request is using the handle */
