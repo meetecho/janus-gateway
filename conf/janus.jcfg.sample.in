@@ -274,6 +274,17 @@ media: {
 	# https://tools.ietf.org/html/draft-ietf-tsvwg-rtcweb-qos-18#page-6
 	# That said, DON'T TOUCH THIS IF YOU DON'T KNOW WHAT IT MEANS!
 	#dscp = 46
+
+	# By default the 'rtp_port_range' configured above (if any) is shared by all
+	# PeerConnections. If you want to let clients confine a single handle to a
+	# narrower sub-range, you can set the 'rtp_port_range_perhandle_override'
+	# property to true: when enabled, an 'attach' request may provide optional
+	# 'min_port' and 'max_port' properties to restrict that handle's RTP/RTCP
+	# ports. The requested range is confined within the global 'rtp_port_range'
+	# above: a range that falls outside it is ignored and the global range is
+	# used instead. When this is disabled (the default), the 'min_port' and
+	# 'max_port' properties are ignored, so the existing behavior is preserved.
+	#rtp_port_range_perhandle_override = false
 }
 
 # NAT-related stuff: specifically, you can configure the STUN/TURN

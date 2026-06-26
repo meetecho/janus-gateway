@@ -311,6 +311,9 @@ static uint candidates_timeout = DEFAULT_CANDIDATES_TIMEOUT;
 
 /* By default we list dependencies details, but some may prefer not to */
 static gboolean hide_dependencies = FALSE;
+/* Cached config: the configured RTP/RTCP port range, and whether handles may request a sub-range on attach */
+static uint16_t rtp_port_range_min = 0, rtp_port_range_max = 0;
+static gboolean rtp_port_range_perhandle_override = FALSE;
 
 /* By default we do not exit if a shared library cannot be loaded or is missing an expected symbol */
 static gboolean exit_on_dl_error = FALSE;
@@ -1270,18 +1273,24 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
 		}
-		/* Optional per-handle ICE port range (falls back to global) */
+		/* Optional per-handle ICE port range, confined within the global rtp_port_range */
 		json_t *min_port = json_object_get(root, "min_port");
 		json_t *max_port = json_object_get(root, "max_port");
 		if(min_port || max_port) {
-			json_int_t mn = min_port ? json_integer_value(min_port) : 0;
-			json_int_t mx = max_port ? json_integer_value(max_port) : 0;
-			if(mn > 0 && mx >= mn && mx <= 65535) {
-				handle->rtp_range_min = (uint16_t)mn;
-				handle->rtp_range_max = (uint16_t)mx;
+			if(!rtp_port_range_perhandle_override) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Ignoring min_port/max_port: per-handle RTP port range override is disabled (rtp_port_range_perhandle_override)\n",
+					handle->handle_id);
 			} else {
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Ignoring invalid attach port range %"JSON_INTEGER_FORMAT"-%"JSON_INTEGER_FORMAT" (using global rtp_port_range)\n",
-					handle->handle_id, mn, mx);
+				json_int_t mn = min_port ? json_integer_value(min_port) : 0;
+				json_int_t mx = max_port ? json_integer_value(max_port) : 0;
+				uint16_t lo = rtp_port_range_min ? rtp_port_range_min : 1, hi = rtp_port_range_max ? rtp_port_range_max : 65535;
+				if(mn >= lo && mx >= mn && mx <= hi) {
+					handle->rtp_range_min = (uint16_t)mn;
+					handle->rtp_range_max = (uint16_t)mx;
+				} else {
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Ignoring attach port range %"JSON_INTEGER_FORMAT"-%"JSON_INTEGER_FORMAT" outside the configured rtp_port_range %"SCNu16"-%"SCNu16"\n",
+						handle->handle_id, mn, mx, lo, hi);
+				}
 			}
 		}
 		handle_id = handle->handle_id;
@@ -5176,6 +5185,11 @@ gint main(int argc, char *argv[]) {
 			rtp_max_port = 65535;
 		JANUS_LOG(LOG_INFO, "RTP port range: %u -- %u\n", rtp_min_port, rtp_max_port);
 	}
+	/* Remember the configured range + the per-handle override switch for use at attach time */
+	rtp_port_range_min = rtp_min_port;
+	rtp_port_range_max = rtp_max_port;
+	item = janus_config_get(config, config_media, janus_config_type_item, "rtp_port_range_perhandle_override");
+	rtp_port_range_perhandle_override = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	/* Check if we need to enable the ICE Lite mode */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "ice_lite");
 	ice_lite = (item && item->value) ? janus_is_true(item->value) : FALSE;
