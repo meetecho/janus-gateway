@@ -454,12 +454,21 @@ gboolean janus_rtcp_check_len(janus_rtcp_header *rtcp, int len) {
 }
 
 gboolean janus_rtcp_check_sr(janus_rtcp_header *rtcp, int len) {
+	int packet_len = 4*(int)ntohs(rtcp->length) + 4;
 	if (len < (int)sizeof(janus_rtcp_header) + (int)sizeof(uint32_t) + (int)sizeof(sender_info)) {
 		JANUS_LOG(LOG_VERB, "RTCP Packet is too small (%d bytes) to contain SR\n", len);
 		return FALSE;
 	}
+	if (packet_len > len) {
+		JANUS_LOG(LOG_VERB, "Invalid SR packet length %d bytes > actual %d bytes\n", packet_len, len);
+		return FALSE;
+	}
+	if (packet_len < (int)sizeof(janus_rtcp_header) + (int)sizeof(uint32_t) + (int)sizeof(sender_info)) {
+		JANUS_LOG(LOG_VERB, "Invalid SR packet length %d bytes\n", packet_len);
+		return FALSE;
+	}
 	int header_rb_len = (int)(rtcp->rc)*(int)sizeof(report_block);
-	int actual_rb_len = len - (int)sizeof(janus_rtcp_header) - (int)sizeof(uint32_t) - (int)sizeof(sender_info);
+	int actual_rb_len = packet_len - (int)sizeof(janus_rtcp_header) - (int)sizeof(uint32_t) - (int)sizeof(sender_info);
 	if (actual_rb_len < header_rb_len) {
 		JANUS_LOG(LOG_VERB, "SR got %d RB count, expected %d bytes > actual %d bytes\n", rtcp->rc, header_rb_len, actual_rb_len);
 		return FALSE;
@@ -468,8 +477,17 @@ gboolean janus_rtcp_check_sr(janus_rtcp_header *rtcp, int len) {
 }
 
 gboolean janus_rtcp_check_rr(janus_rtcp_header *rtcp, int len) {
+	int packet_len = 4*(int)ntohs(rtcp->length) + 4;
+	if (packet_len > len) {
+		JANUS_LOG(LOG_VERB, "Invalid RR packet length %d bytes > actual %d bytes\n", packet_len, len);
+		return FALSE;
+	}
+	if (packet_len < (int)sizeof(janus_rtcp_header) + (int)sizeof(uint32_t)) {
+		JANUS_LOG(LOG_VERB, "Invalid RR packet length %d bytes\n", packet_len);
+		return FALSE;
+	}
 	int header_rb_len = (int)(rtcp->rc)*(int)sizeof(report_block);
-	int actual_rb_len = len - (int)sizeof(janus_rtcp_header) - (int)sizeof(uint32_t);
+	int actual_rb_len = packet_len - (int)sizeof(janus_rtcp_header) - (int)sizeof(uint32_t);
 	if (actual_rb_len < header_rb_len) {
 		JANUS_LOG(LOG_VERB, "RR got %d RB count, expected %d bytes > actual %d bytes\n", rtcp->rc, header_rb_len, actual_rb_len);
 		return FALSE;
