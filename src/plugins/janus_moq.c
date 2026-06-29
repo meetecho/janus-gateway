@@ -1919,6 +1919,9 @@ static void *janus_moq_handler(void *data) {
 			session->auth_info = auth_info ? g_strdup(auth_info) : NULL;
 			g_snprintf(name, sizeof(name), "janus-moq%s-%"SCNu32,
 				session->moqpub ? "pub" : "sub", janus_random_uint32());
+			JANUS_LOG(LOG_INFO, "Creating new MoQ client (%s, %sraw QUIC, %sWebTransport)\n",
+				session->moqpub ? "publisher" : "subscriber",
+				raw_quic ? "" : "no ", webtransport ? "" : "no ");
 			quic_endpoint = imquic_create_moq_client(name,
 				IMQUIC_CONFIG_INIT,
 				IMQUIC_CONFIG_LOCAL_PORT, port,
