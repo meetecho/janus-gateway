@@ -416,6 +416,12 @@ int janus_ice_get_peerconnection_num(void) {
 /* RTP/RTCP port range */
 static uint16_t rtp_range_min = 0;
 static uint16_t rtp_range_max = 0;
+uint16_t janus_ice_get_rtp_range_min(void) {
+	return rtp_range_min;
+}
+uint16_t janus_ice_get_rtp_range_max(void) {
+	return rtp_range_max;
+}
 
 
 #define JANUS_ICE_PACKET_AUDIO	0

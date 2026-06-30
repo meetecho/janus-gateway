@@ -311,8 +311,7 @@ static uint candidates_timeout = DEFAULT_CANDIDATES_TIMEOUT;
 
 /* By default we list dependencies details, but some may prefer not to */
 static gboolean hide_dependencies = FALSE;
-/* Cached config: the configured RTP/RTCP port range, and whether handles may request a sub-range on attach */
-static uint16_t rtp_port_range_min = 0, rtp_port_range_max = 0;
+/* Whether handles may request a custom RTP port sub-range on attach (default off) */
 static gboolean rtp_port_range_perhandle_override = FALSE;
 
 /* By default we do not exit if a shared library cannot be loaded or is missing an expected symbol */
@@ -1283,11 +1282,14 @@ int janus_process_incoming_request(janus_request *request) {
 			} else {
 				json_int_t mn = min_port ? json_integer_value(min_port) : 0;
 				json_int_t mx = max_port ? json_integer_value(max_port) : 0;
-				uint16_t lo = rtp_port_range_min ? rtp_port_range_min : 1, hi = rtp_port_range_max ? rtp_port_range_max : 65535;
+				uint16_t gmin = janus_ice_get_rtp_range_min(), gmax = janus_ice_get_rtp_range_max();
+				uint16_t lo = gmin ? gmin : 1, hi = gmax ? gmax : 65535;
 				if(mn >= lo && mx >= mn && mx <= hi) {
 					handle->rtp_range_min = (uint16_t)mn;
 					handle->rtp_range_max = (uint16_t)mx;
 				} else {
+					handle->rtp_range_min = 0;
+					handle->rtp_range_max = 0;
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Ignoring attach port range %"JSON_INTEGER_FORMAT"-%"JSON_INTEGER_FORMAT" outside the configured rtp_port_range %"SCNu16"-%"SCNu16"\n",
 						handle->handle_id, mn, mx, lo, hi);
 				}
@@ -5185,9 +5187,7 @@ gint main(int argc, char *argv[]) {
 			rtp_max_port = 65535;
 		JANUS_LOG(LOG_INFO, "RTP port range: %u -- %u\n", rtp_min_port, rtp_max_port);
 	}
-	/* Remember the configured range + the per-handle override switch for use at attach time */
-	rtp_port_range_min = rtp_min_port;
-	rtp_port_range_max = rtp_max_port;
+	/* Remember whether handles may request a custom RTP port sub-range on attach */
 	item = janus_config_get(config, config_media, janus_config_type_item, "rtp_port_range_perhandle_override");
 	rtp_port_range_perhandle_override = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	/* Check if we need to enable the ICE Lite mode */
