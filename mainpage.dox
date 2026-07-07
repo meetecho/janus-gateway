@@ -1362,6 +1362,13 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * Notice that you can also provide an optional \c opaque_id string
  * identifier (for more details on why this might be useful, read more
  * <a href="https://github.com/meetecho/janus-gateway/pull/748">here</a>).
+ * Optional \c min_port and \c max_port integer properties can be provided too,
+ * to confine this handle's ICE host candidates to a specific UDP port range;
+ * when omitted, the global \c rtp_port_range from the configuration is used.
+ * These properties are only honored when \c rtp_port_range_perhandle_override
+ * is enabled in the \c media configuration (otherwise they are ignored). The
+ * requested range is confined within the global \c rtp_port_range: a range that
+ * falls outside it is ignored, and the global range is used instead.
  * If the request is successful, you'll receive the unique plugin handle
  * identifier in a response formatted the same way as the session create
  * one, that is like this:

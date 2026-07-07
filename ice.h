@@ -129,6 +129,12 @@ gboolean janus_ice_is_ice_tcp_enabled(void);
 /*! \brief Method to check whether full-trickle support is enabled or not
  * @returns true if full-trickle support is enabled, false otherwise */
 gboolean janus_ice_is_full_trickle_enabled(void);
+/*! \brief Method to get the minimum of the configured RTP/RTCP port range
+ * @returns The configured minimum port, or 0 if no range was set */
+uint16_t janus_ice_get_rtp_range_min(void);
+/*! \brief Method to get the maximum of the configured RTP/RTCP port range
+ * @returns The configured maximum port, or 0 if no range was set */
+uint16_t janus_ice_get_rtp_range_max(void);
 /*! \brief Method to check whether mDNS resolution is enabled or not
  * @returns true if mDNS resolution is enabled, false otherwise */
 gboolean janus_ice_is_mdns_enabled(void);
@@ -343,6 +349,10 @@ struct janus_ice_handle {
 	char *opaque_id;
 	/*! \brief Token that was used to attach the handle, if required */
 	char *token;
+	/*! \brief Per-handle ICE port range min (0 = use global) */
+	uint16_t rtp_range_min;
+	/*! \brief Per-handle ICE port range max (0 = use global) */
+	uint16_t rtp_range_max;
 	/*! \brief Monotonic time of when the handle has been created */
 	gint64 created;
 	/*! \brief Opaque application (plugin) pointer */

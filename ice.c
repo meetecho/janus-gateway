@@ -413,6 +413,12 @@ int janus_ice_get_peerconnection_num(void) {
 /* RTP/RTCP port range */
 static uint16_t rtp_range_min = 0;
 static uint16_t rtp_range_max = 0;
+uint16_t janus_ice_get_rtp_range_min(void) {
+	return rtp_range_min;
+}
+uint16_t janus_ice_get_rtp_range_max(void) {
+	return rtp_range_max;
+}
 
 
 #define JANUS_ICE_PACKET_AUDIO	0
@@ -4018,7 +4024,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	stream->component = component;
 #ifdef HAVE_PORTRANGE
 	/* FIXME: libnice supports this since 0.1.0, but the 0.1.3 on Fedora fails with an undefined reference! */
-	nice_agent_set_port_range(handle->agent, handle->stream_id, 1, rtp_range_min, rtp_range_max);
+	uint16_t pc_range_min = handle->rtp_range_min ? handle->rtp_range_min : rtp_range_min;
+	uint16_t pc_range_max = handle->rtp_range_max ? handle->rtp_range_max : rtp_range_max;
+	nice_agent_set_port_range(handle->agent, handle->stream_id, 1, pc_range_min, pc_range_max);
 #endif
 	/* Gather now only if we're doing hanf-trickle */
 	if(!janus_full_trickle_enabled && !nice_agent_gather_candidates(handle->agent, handle->stream_id)) {
