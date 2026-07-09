@@ -652,6 +652,25 @@ void janus_moq_setup_media(janus_plugin_session *handle) {
 		imquic_moq_request_parameters_init_defaults(&params);
 		params.subscription_filter_set = TRUE;
 		params.subscription_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+		if(session->auth_info) {
+			/* Serialize the token using the USE_VALUE alias type */
+			params.auth_token_set = TRUE;
+			params.auth_token_len = sizeof(params.auth_token);
+			imquic_moq_auth_token token = { 0 };
+			token.alias_type = IMQUIC_MOQ_AUTH_TOKEN_USE_VALUE;
+			token.token_type_set = TRUE;
+			token.token_type = 0;	/* FIXME */
+			token.token_value.buffer = (uint8_t *)session->auth_info;
+			token.token_value.length = strlen(session->auth_info);
+			size_t offset = imquic_moq_build_auth_token(imquic_moq_get_version(session->conn),
+				&token, params.auth_token, params.auth_token_len);
+			if(offset == 0) {
+				params.auth_token_set = FALSE;
+				JANUS_LOG(LOG_WARN, "[%s] Error serializing the auth token\n",
+					imquic_get_connection_name(session->conn));
+			}
+			params.auth_token_len = offset;
+		}
 		/* Audio track, if any */
 		if(session->audio_track.track) {
 			session->audio_track.request_id = imquic_moq_get_next_request_id(session->conn);
@@ -2209,11 +2228,30 @@ static void janus_moq_moq_ready(imquic_connection *conn) {
 	}
 	janus_mutex_unlock(&connections_mutex);
 	JANUS_LOG(LOG_INFO, "[%s] Connected as a MoQ %s\n", imquic_get_connection_name(conn), session->moqpub ? "publisher" : "subscriber");
+	imquic_moq_request_parameters params;
+	imquic_moq_request_parameters_init_defaults(&params);
+	if(session->auth_info) {
+		/* Serialize the token using the USE_VALUE alias type */
+		params.auth_token_set = TRUE;
+		params.auth_token_len = sizeof(params.auth_token);
+		imquic_moq_auth_token token = { 0 };
+		token.alias_type = IMQUIC_MOQ_AUTH_TOKEN_USE_VALUE;
+		token.token_type_set = TRUE;
+		token.token_type = 0;	/* FIXME */
+		token.token_value.buffer = (uint8_t *)session->auth_info;
+		token.token_value.length = strlen(session->auth_info);
+		size_t offset = imquic_moq_build_auth_token(imquic_moq_get_version(conn),
+			&token, params.auth_token, params.auth_token_len);
+		if(offset == 0) {
+			params.auth_token_set = FALSE;
+			JANUS_LOG(LOG_WARN, "[%s] Error serializing the auth token\n",
+				imquic_get_connection_name(conn));
+		}
+		params.auth_token_len = offset;
+	}
 	if(session->moqpub) {
 		/* Let's publish_namespace our namespace */
 		JANUS_LOG(LOG_INFO, "[%s] Announcing namespace '%s'\n", imquic_get_connection_name(conn), session->track_namespace_str);
-		imquic_moq_request_parameters params;
-		imquic_moq_request_parameters_init_defaults(&params);
 		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), session->track_namespace, &params);
 	} else {
 		/* Let's subscribe to the catalog track: we may want to only subscribe
@@ -2222,7 +2260,7 @@ static void janus_moq_moq_ready(imquic_connection *conn) {
 		session->catalog_track.request_id = imquic_moq_get_next_request_id(conn);
 		JANUS_LOG(LOG_INFO, "[%s] Subscribing to %s--%s, using ID %"SCNu64"\n", imquic_get_connection_name(conn),
 			session->track_namespace_str, session->catalog_track.track_name, session->catalog_track.request_id);
-		imquic_moq_subscribe(conn, session->catalog_track.request_id, session->track_namespace, session->catalog_track.track, NULL);
+		imquic_moq_subscribe(conn, session->catalog_track.request_id, session->track_namespace, session->catalog_track.track, &params);
 		if(session->use_catalog) {
 			/* We'll wait for the catalog to know what tracks to subscribe to */
 			JANUS_LOG(LOG_INFO, "[%s]   -- Waiting for catalog\n", imquic_get_connection_name(conn));
