@@ -2691,7 +2691,7 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 			imquic_get_connection_name(conn), object->track_alias);
 		return;
 	}
-	/* FIXME Assuming LOC from https://www.ietf.org/archive/id/draft-ietf-moq-loc-02.html */
+	/* FIXME Assuming LOC from https://www.ietf.org/archive/id/draft-ietf-moq-loc-03.html */
 	uint64_t timestamp = 0, timescale = 0;
 	struct imquic_moq_property_data *loc_extradata = NULL;
 	/* Parse the properties to get access to the LOC info */
