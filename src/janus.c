@@ -5130,8 +5130,10 @@ gint main(int argc, char *argv[]) {
 	const char *auth_hash = NULL;
 	if (item && item->value)
 		auth_hash = item->value;
-	if(janus_auth_init(auth_enabled, auth_secret, auth_hash) < 0)
+	if(janus_auth_init(auth_enabled, auth_secret, auth_hash) < 0) {
+		janus_options_destroy();
 		exit(1);
+	}
 
 	/* Check if opaque IDs should be sent back in the Janus API too */
 	item = janus_config_get(config, config_general, janus_config_type_item, "opaqueid_in_api");
