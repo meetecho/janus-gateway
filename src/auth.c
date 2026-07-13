@@ -38,13 +38,14 @@ static GHashTable *tokens = NULL, *allowed_plugins = NULL;
 static gboolean auth_enabled = FALSE;
 static janus_mutex mutex = JANUS_MUTEX_INITIALIZER;
 static char *auth_secret = NULL;
+static const EVP_MD *auth_hash = NULL;
 
 static void janus_auth_free_token(char *token) {
 	g_free(token);
 }
 
 /* Setup */
-void janus_auth_init(gboolean enabled, const char *secret) {
+int janus_auth_init(gboolean enabled, const char *secret, const char *hash) {
 	if(enabled) {
 		if(secret == NULL) {
 			JANUS_LOG(LOG_INFO, "Stored-Token based authentication enabled\n");
@@ -52,13 +53,23 @@ void janus_auth_init(gboolean enabled, const char *secret) {
 			allowed_plugins = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)janus_auth_free_token, NULL);
 			auth_enabled = TRUE;
 		} else {
-			JANUS_LOG(LOG_INFO, "Signed-Token based authentication enabled\n");
+			if(hash == NULL || !strcasecmp(hash, "sha1")) {
+				auth_hash = EVP_sha1();
+			} else if(!strcasecmp(hash, "sha256")) {
+				auth_hash = EVP_sha256();
+			} else {
+				JANUS_LOG(LOG_ERR, "Unsupported token_auth_hash '%s' (supported values: sha1, sha256)\n", hash);
+				return -1;
+			}
+			JANUS_LOG(LOG_INFO, "Signed-Token based authentication enabled (HMAC-%s)\n",
+				auth_hash == EVP_sha256() ? "SHA256" : "SHA1");
 			auth_secret = g_strdup(secret);
 			auth_enabled = TRUE;
 		}
 	} else {
 		JANUS_LOG(LOG_INFO, "Token based authentication disabled\n");
 	}
+	return 0;
 }
 
 gboolean janus_auth_is_enabled(void) {
@@ -106,10 +117,10 @@ gboolean janus_auth_check_signature(const char *token, const char *realm) {
 	/* Verify realm */
 	if(strcmp(data[1], realm))
 		goto fail;
-	/* Verify HMAC-SHA1 */
+	/* Verify HMAC signature */
 	unsigned char signature[EVP_MAX_MD_SIZE] = "";
 	unsigned int len;
-	HMAC(EVP_sha1(), auth_secret, strlen(auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
+	HMAC(auth_hash, auth_secret, strlen(auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
 	gchar *base64 = g_base64_encode(signature, len);
 	gboolean result = janus_strcmp_const_time(parts[1], base64);
 	g_strfreev(data);
@@ -157,10 +168,10 @@ gboolean janus_auth_check_signature_contains(const char *token, const char *real
 	}
 	if (!result)
 		goto fail;
-	/* Verify HMAC-SHA1 */
+	/* Verify HMAC signature */
 	unsigned char signature[EVP_MAX_MD_SIZE] = "";
 	unsigned int len;
-	HMAC(EVP_sha1(), auth_secret, strlen(auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
+	HMAC(auth_hash, auth_secret, strlen(auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
 	gchar *base64 = g_base64_encode(signature, len);
 	result = janus_strcmp_const_time(parts[1], base64);
 	g_strfreev(data);

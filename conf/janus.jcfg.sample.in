@@ -63,10 +63,12 @@ general: {
 									# a valid token in all requests. Useful if
 									# you want to authenticate requests from web
 									# users.
-	#token_auth_secret = "janus"	# Use HMAC-SHA1 signed tokens (with token_auth). Note that
+	#token_auth_secret = "janus"	# Use HMAC signed tokens (with token_auth). Note that
 									# without this, the Admin API MUST
 									# be enabled, as tokens are added and removed
 									# through messages sent there.
+	#token_auth_hash = "sha1"		# Hash function used for signed-token authentication.
+									# Defaults to sha1. Supported values: sha1, sha256.
 	admin_secret = "janusoverlord"	# String that all Janus requests must contain
 									# to be accepted/authorized by the admin/monitor.
 									# only needed if you enabled the admin API

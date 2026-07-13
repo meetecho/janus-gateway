@@ -24,8 +24,10 @@
 
 /*! \brief Method to initializing the token based authentication
  * @param[in] enabled Whether the authentication mechanism should be enabled or not
- * @param[in] secret the secret to validate signed tokens against, or NULL to use stored tokens */
-void janus_auth_init(gboolean enabled, const char *secret);
+ * @param[in] secret the secret to validate signed tokens against, or NULL to use stored tokens
+ * @param[in] hash the hash function to use for signed tokens (sha1 or sha256), or NULL for the default sha1;
+ * @returns 0 on success, or a negative integer otherwise */
+int janus_auth_init(gboolean enabled, const char *secret, const char *hash);
 /*! \brief Method to check whether the mechanism is enabled or not */
 gboolean janus_auth_is_enabled(void);
 /*! \brief Method to check whether the mechanism is in stored-token mode or not */

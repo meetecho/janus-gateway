@@ -2183,8 +2183,12 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * Where \c timestamp is a UNIX timestamp (seconds since 0:00 UTC, 1.1.1970)
  * that marks the point in time at which the token expires;
  * \c plugin1 etc. are the \c bundle names of plugins (such as \c janus.plugin.videoroom);
- * and \c signature is the base64-encoded HMAC-SHA1 signature of the expiry
+ * and \c signature is the base64-encoded HMAC signature of the expiry
  * timestamp in ASCII format, hashed using the \c --token-auth-secret as a key.
+ *
+ * Signed tokens use HMAC-SHA1 by default. The hash function can be changed
+ * with \c token_auth_hash in the \c general section of \c janus.jcfg;
+ * supported values are \c sha1 and \c sha256.
  *
  * The following function can be used to sign tokens using the node.js crypto library:
  *
