@@ -4914,7 +4914,12 @@ gint main(int argc, char *argv[])
 	const char *auth_secret = NULL;
 	if (item && item->value)
 		auth_secret = item->value;
-	janus_auth_init(auth_enabled, auth_secret);
+	item = janus_config_get(config, config_general, janus_config_type_item, "token_auth_hash");
+	const char *auth_hash = NULL;
+	if (item && item->value)
+		auth_hash = item->value;
+	if(janus_auth_init(auth_enabled, auth_secret, auth_hash) < 0)
+		exit(1);
 
 	/* Check if opaque IDs should be sent back in the Janus API too */
 	item = janus_config_get(config, config_general, janus_config_type_item, "opaqueid_in_api");
