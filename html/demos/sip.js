@@ -311,36 +311,7 @@ $(document).ready(function() {
 											Janus.log(result["username"] + " accepted the call!", jsep);
 											// Call can start, now: handle the remote answer
 											if(jsep) {
-												let doAudio = (jsep.sdp.indexOf("m=audio ") > -1);
-												let doVideo = (jsep.sdp.indexOf("m=video ") > -1);
-												//~ sipcall.handleRemoteJsep({ jsep: jsep, error: doHangup });
-												let tracks = [];
-												if(doAudio)
-													tracks.push({ type: 'audio', capture: true, recv: true });
-												if(doVideo)
-													tracks.push({ type: 'video', capture: true, recv: true });
-												sipcall.createAnswer(
-													{
-														jsep: jsep,
-														tracks: tracks,
-														success: function(jsep) {
-															Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo + ":", jsep);
-															sipcall.doAudio = doAudio;
-															sipcall.doVideo = doVideo;
-															let body = { request: "late_ack" };
-															body["autoaccept_reinvites"] = false;
-															sipcall.send({ message: body, jsep: jsep });
-															$('#call').removeAttr('disabled').html('Hangup')
-																.removeClass("btn-success").addClass("btn-danger")
-																.unbind('click').click(doHangup);
-														},
-														error: function(error) {
-															Janus.error("WebRTC error:", error);
-															bootbox.alert("WebRTC error... " + error.message);
-															let body = { request: "hangup" };
-															sipcall.send({ message: body });
-														}
-													});
+												sipcall.handleRemoteJsep({ jsep: jsep, error: doHangup });
 											}
 											toastr.success("Call accepted!");
 											sipcall.callId = callId;
