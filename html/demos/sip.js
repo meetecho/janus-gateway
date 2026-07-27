@@ -945,7 +945,6 @@ function doCall(ev) {
 	actuallyDoCall(handle, $('#peer' + suffix).val(), doVideo);
 }
 function actuallyDoCall(handle, uri, doVideo, referId) {
-/*
 	// We want bidirectional audio for sure, and maybe video
 	handle.doAudio = true;
 	handle.doVideo = doVideo;
@@ -996,18 +995,6 @@ function actuallyDoCall(handle, uri, doVideo, referId) {
 				bootbox.alert("WebRTC error... " + error.message);
 			}
 		});
-*/
-
-	/* FIXME Offerless INVITE test */
-	let body = { request: "call", uri: uri };
-	body["autoaccept_reinvites"] = false;
-	body["late_offer"] = true;
-	if(referId) {
-		// In case we're originating this call because of a call
-		// transfer, we need to provide the internal reference ID
-		body["refer_id"] = referId;
-	}
-	handle.send({ message: body });
 }
 
 function doHangup(ev) {
