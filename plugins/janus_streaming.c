@@ -189,6 +189,9 @@ rtsp_timeout = communication timeout (CURLOPT_TIMEOUT) for cURL call gathering t
 rtsp_conn_timeout = connection timeout for cURL (CURLOPT_CONNECTTIMEOUT) call gathering the RTSP information (default=5s)
 rtsp_notify_changes = if set to true, will send an event to connected users when the RTSP session
 	gets disconnected, and when it's reconnected (default=false)
+rtsp_fmtp_sps = what the plugin should do it if finds SPS/PPS info in an SDP fmtp attribute sent by the RTSP server;
+	the default value is "always", to manually inject them in RTP traffic, as that's what WebRTC endpoints need;
+	to disable this behaviour (e.g., if the camera already sends SPS/PPS in-stream via RTP too) use "never"
 \endverbatim
  *
  * \section streamapi Streaming API
@@ -923,6 +926,7 @@ static struct janus_json_parameter rtsp_parameters[] = {
 	{"rtsp_timeout", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"rtsp_conn_timeout", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"rtsp_notify_changes", JANUS_JSON_BOOL, 0},
+	{"rtsp_fmtp_sps", JSON_STRING, 0},
 	{"audiortpmap", JSON_STRING, 0},
 	{"audiofmtp", JSON_STRING, 0},
 	{"audiopt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1151,6 +1155,7 @@ typedef struct janus_streaming_rtp_source {
 	char *rtsp_stream_uri;
 	gboolean rtsp_quirk;
 	gboolean rtsp_notify_changes;
+	gboolean rtsp_fmtp_sps;
 	gint64 ka_timeout;
 	char *rtsp_ahost, *rtsp_vhost;
 	gboolean reconnecting;
@@ -1278,7 +1283,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
-		gboolean quirk, gboolean notify_changes,
+		gboolean quirk, gboolean notify_changes, gboolean fmtp_sps,
 		gboolean doaudio, int audiopt, char *artpmap, char *afmtp,
 		gboolean dovideo, int videopt, char *vrtpmap, char *vfmtp,
 		uint16_t bufferkf_ms, uint32_t bufferkf_bytes,
@@ -1699,8 +1704,14 @@ static void janus_streaming_parse_sprop(janus_streaming_rtp_source *source, char
 				memcpy(nal + offset, pps_dec, plen);
 				/* Keep track of the packet */
 				g_free(source->h264_spspps);
-				source->h264_spspps = buf;
-				source->h264_spspps_len = flen;
+				if(!source->rtsp || (source->rtsp && source->rtsp_fmtp_sps)) {
+					source->h264_spspps = buf;
+					source->h264_spspps_len = flen;
+				} else {
+					source->h264_spspps = NULL;
+					source->h264_spspps_len = 0;
+					g_free(buf);
+				}
 			}
 			g_free(sps_dec);
 			g_free(pps_dec);
@@ -2344,6 +2355,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *rtsp_timeout = janus_config_get(config, cat, janus_config_type_item, "rtsp_timeout");
 				janus_config_item *rtsp_conn_timeout = janus_config_get(config, cat, janus_config_type_item, "rtsp_conn_timeout");
 				janus_config_item *rtsp_notify_changes = janus_config_get(config, cat, janus_config_type_item, "rtsp_notify_changes");
+				janus_config_item *rtsp_fmtp_sps = janus_config_get(config, cat, janus_config_type_item, "rtsp_fmtp_sps");
 				janus_network_address iface_value;
 				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtsp' mountpoint '%s', missing mandatory information...\n", cat->name);
@@ -2353,6 +2365,16 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
 				gboolean rtsp_quirk = quirk && quirk->value && janus_is_true(quirk->value);
 				gboolean notify_changes = rtsp_notify_changes && rtsp_notify_changes->value && janus_is_true(rtsp_notify_changes->value);
+				gboolean fmtp_sps = TRUE;
+				if(rtsp_fmtp_sps && rtsp_fmtp_sps->value) {
+					if(!strcasecmp(rtsp_fmtp_sps->value, "always")) {
+						fmtp_sps = TRUE;
+					} else if(!strcasecmp(rtsp_fmtp_sps->value, "never")) {
+						fmtp_sps = FALSE;
+					} else {
+						JANUS_LOG(LOG_WARN, "Unsupported value '%s' for rtsp_fmtp_sps\n", rtsp_fmtp_sps->value);
+					}
+				}
 				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
 				gboolean dovideo = video && video->value && janus_is_true(video->value);
 				if(dovideo && vkf && vkf->value && janus_is_true(vkf->value)) {
@@ -2401,7 +2423,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(char *)file->value,
 						username ? (char *)username->value : NULL,
 						password ? (char *)password->value : NULL,
-						rtsp_quirk, notify_changes,
+						rtsp_quirk, notify_changes, fmtp_sps,
 						doaudio,
 						(acodec && acodec->value) ? atoi(acodec->value) : -1,
 						artpmap ? (char *)artpmap->value : NULL,
@@ -3528,12 +3550,23 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_t *rtsp_timeout = json_object_get(root, "rtsp_timeout");
 			json_t *rtsp_conn_timeout = json_object_get(root, "rtsp_conn_timeout");
 			json_t *rtsp_notify_changes = json_object_get(root, "rtsp_notify_changes");
+			const char *rtsp_fmtp_sps = json_string_value(json_object_get(root, "rtsp_fmtp_sps"));
 			if(failerr == NULL)	/* For an old typo, we support the legacy syntax too */
 				failerr = json_object_get(root, "rtsp_check");
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE;
 			gboolean doquirk = quirk ? json_is_true(quirk) : FALSE;
 			gboolean notify_changes = rtsp_notify_changes ? json_is_true(rtsp_notify_changes) : FALSE;
+			gboolean fmtp_sps = TRUE;
+			if(rtsp_fmtp_sps) {
+				if(!strcasecmp(rtsp_fmtp_sps, "always")) {
+					fmtp_sps = TRUE;
+				} else if(!strcasecmp(rtsp_fmtp_sps, "never")) {
+					fmtp_sps = FALSE;
+				} else {
+					JANUS_LOG(LOG_WARN, "Unsupported value '%s' for rtsp_fmtp_sps\n", rtsp_fmtp_sps);
+				}
+			}
 			gboolean error_on_failure = failerr ? json_is_true(failerr) : TRUE;
 			if(!doaudio && !dovideo) {
 				JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream, no audio or video have to be streamed...\n");
@@ -3567,7 +3600,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				(char *)json_string_value(url),
 				username ? (char *)json_string_value(username) : NULL,
 				password ? (char *)json_string_value(password) : NULL,
-				doquirk, notify_changes,
+				doquirk, notify_changes, fmtp_sps,
 				doaudio, (audiopt ? json_integer_value(audiopt) : -1),
 					(char *)json_string_value(audiortpmap), (char *)json_string_value(audiofmtp),
 				dovideo, (videopt ? json_integer_value(videopt) : -1),
@@ -7807,7 +7840,7 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
-		gboolean quirk, gboolean notify_changes,
+		gboolean quirk, gboolean notify_changes, gboolean fmtp_sps,
 		gboolean doaudio, int acodec, char *artpmap, char *afmtp,
 		gboolean dovideo, int vcodec, char *vrtpmap, char *vfmtp,
 		uint16_t bufferkf_ms, uint32_t bufferkf_bytes,
@@ -7887,6 +7920,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp_source->rtsp_stream_uri = NULL;
 	live_rtsp_source->rtsp_quirk = quirk;
 	live_rtsp_source->rtsp_notify_changes = notify_changes;
+	live_rtsp_source->rtsp_fmtp_sps = fmtp_sps;
 	live_rtsp_source->arc = NULL;
 	live_rtsp_source->vrc = NULL;
 	live_rtsp_source->drc = NULL;
@@ -8019,7 +8053,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
-		gboolean quirk, gboolean notify_changes,
+		gboolean quirk, gboolean notify_changes, gboolean fmtp_sps,
 		gboolean doaudio, int acodec, char *audiortpmap, char *audiofmtp,
 		gboolean dovideo, int vcodec, char *videortpmap, char *videofmtp,
 		uint16_t bufferkf_ms, uint32_t bufferkf_bytes,
