@@ -782,6 +782,20 @@ gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
 	}
 	return (result != NULL);
 }
+
+void janus_plugin_session_touch(janus_plugin_session *plugin_session) {
+	if(!janus_plugin_session_is_alive(plugin_session))
+		return;
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || !handle->session)
+		return;
+	janus_session *session = (janus_session *)handle->session;
+	if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->timedout))
+		return;
+	janus_mutex_lock(&session->mutex);
+	session->last_activity = janus_get_monotonic_time();
+	janus_mutex_unlock(&session->mutex);
+}
 static void janus_plugin_session_dereference(janus_plugin_session *plugin_session) {
 	if(plugin_session)
 		janus_refcount_decrease(&plugin_session->ref);

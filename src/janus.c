@@ -40,6 +40,7 @@
 #include "ip-utils.h"
 #include "rtcp.h"
 #include "rtpfwd.h"
+#include "rtpws.h"
 #include "auth.h"
 #include "record.h"
 #include "events.h"
@@ -642,6 +643,7 @@ static janus_callbacks janus_handler_plugin =
 		.send_remb = janus_plugin_send_remb,
 		.close_pc = janus_plugin_close_pc,
 		.end_session = janus_plugin_end_session,
+		.touch_session = janus_plugin_session_touch,
 		.events_is_enabled = janus_events_is_enabled,
 		.notify_event = janus_plugin_notify_event,
 		.auth_is_signed = janus_plugin_auth_is_signed,
@@ -4527,6 +4529,7 @@ gint main(int argc, char *argv[]) {
 	janus_config_category *config_certs = janus_config_get_create(config, NULL, janus_config_type_category, "certificates");
 	janus_config_category *config_nat = janus_config_get_create(config, NULL, janus_config_type_category, "nat");
 	janus_config_category *config_media = janus_config_get_create(config, NULL, janus_config_type_category, "media");
+	janus_config_category *config_rtpws = janus_config_get_create(config, NULL, janus_config_type_category, "rtpws");
 	janus_config_category *config_transports = janus_config_get_create(config, NULL, janus_config_type_category, "transports");
 	janus_config_category *config_plugins = janus_config_get_create(config, NULL, janus_config_type_category, "plugins");
 	janus_config_category *config_events = janus_config_get_create(config, NULL, janus_config_type_category, "events");
@@ -5546,6 +5549,50 @@ gint main(int argc, char *argv[]) {
 		exit(1);
 	}
 
+	/* Initialize RTP-over-WebSocket support */
+	gboolean enable_rtp_ws = FALSE;
+	item = janus_config_get(config, config_rtpws, janus_config_type_item, "enable_rtp_ws");
+	if(item && item->value)
+		enable_rtp_ws = janus_is_true(item->value);
+	uint16_t rtp_ws_port = 8190;
+	item = janus_config_get(config, config_rtpws, janus_config_type_item, "port");
+	if(item && item->value)
+		janus_string_to_uint16(item->value, &rtp_ws_port);
+	const char *rtp_ws_path = "/rtp-ws";
+	item = janus_config_get(config, config_rtpws, janus_config_type_item, "path");
+	if(item && item->value)
+		rtp_ws_path = item->value;
+	const char *rtp_ws_public_url = "";
+	item = janus_config_get(config, config_rtpws, janus_config_type_item, "public_url");
+	if(item && item->value)
+		rtp_ws_public_url = item->value;
+	gboolean rtp_ws_secure = FALSE;
+	item = janus_config_get(config, config_rtpws, janus_config_type_item, "secure");
+	if(item && item->value)
+		rtp_ws_secure = janus_is_true(item->value);
+	const char *rtp_ws_cert_pem = NULL, *rtp_ws_cert_key = NULL, *rtp_ws_cert_pwd = NULL;
+	if(rtp_ws_secure) {
+		item = janus_config_get(config, config_rtpws, janus_config_type_item, "cert_pem");
+		if(item && item->value)
+			rtp_ws_cert_pem = item->value;
+		item = janus_config_get(config, config_rtpws, janus_config_type_item, "cert_key");
+		if(item && item->value)
+			rtp_ws_cert_key = item->value;
+		item = janus_config_get(config, config_rtpws, janus_config_type_item, "cert_pwd");
+		if(item && item->value)
+			rtp_ws_cert_pwd = item->value;
+	}
+	gboolean rtp_ws_allow_bind = FALSE;
+	item = janus_config_get(config, config_rtpws, janus_config_type_item, "allow_ws_bind");
+	if(item && item->value)
+		rtp_ws_allow_bind = janus_is_true(item->value);
+	if(janus_rtp_ws_init(enable_rtp_ws, rtp_ws_port, rtp_ws_path, rtp_ws_public_url,
+			rtp_ws_secure, rtp_ws_cert_pem, rtp_ws_cert_key, rtp_ws_cert_pwd,
+			server_name, rtp_ws_allow_bind) < 0) {
+		janus_options_destroy();
+		exit(1);
+	}
+
 	/* Sessions */
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	/* Start the sessions timeout watchdog */
@@ -6099,6 +6146,7 @@ gint main(int argc, char *argv[]) {
 	janus_sctp_deinit();
 #endif
 	janus_rtp_forwarders_deinit();
+	janus_rtp_ws_deinit();
 	janus_auth_deinit();
 
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");

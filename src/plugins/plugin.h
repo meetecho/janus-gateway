@@ -171,7 +171,7 @@ janus_plugin *create(void) {
  * Janus instance or it will crash.
  *
  */
-#define JANUS_PLUGIN_API_VERSION	106
+#define JANUS_PLUGIN_API_VERSION	107
 
 /*! \brief Initialization of all plugin properties to NULL
  *
@@ -414,6 +414,11 @@ struct janus_callbacks {
 	 * callback on this plugin when done
 	 * @param[in] handle The plugin/gateway session to get rid of */
 	void (* const end_session)(janus_plugin_session *handle);
+	/*! \brief Refresh the core session activity timer for a plugin handle
+	 * \note Used when media flows outside JSON signaling (e.g. AudioBridge rtpws)
+	 * so \c session_timeout does not destroy an otherwise active session
+	 * @param[in] handle The plugin/gateway session whose core session should be touched */
+	void (* const touch_session)(janus_plugin_session *handle);
 
 	/*! \brief Callback to check whether the event handlers mechanism is enabled
 	 * @returns TRUE if it is, FALSE if it isn't (which means notify_event should NOT be called) */
