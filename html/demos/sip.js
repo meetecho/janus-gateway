@@ -311,7 +311,36 @@ $(document).ready(function() {
 											Janus.log(result["username"] + " accepted the call!", jsep);
 											// Call can start, now: handle the remote answer
 											if(jsep) {
-												sipcall.handleRemoteJsep({ jsep: jsep, error: doHangup });
+												let doAudio = (jsep.sdp.indexOf("m=audio ") > -1);
+												let doVideo = (jsep.sdp.indexOf("m=video ") > -1);
+												//~ sipcall.handleRemoteJsep({ jsep: jsep, error: doHangup });
+												let tracks = [];
+												if(doAudio)
+													tracks.push({ type: 'audio', capture: true, recv: true });
+												if(doVideo)
+													tracks.push({ type: 'video', capture: true, recv: true });
+												sipcall.createAnswer(
+													{
+														jsep: jsep,
+														tracks: tracks,
+														success: function(jsep) {
+															Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo + ":", jsep);
+															sipcall.doAudio = doAudio;
+															sipcall.doVideo = doVideo;
+															let body = { request: "late_ack" };
+															body["autoaccept_reinvites"] = false;
+															sipcall.send({ message: body, jsep: jsep });
+															$('#call').removeAttr('disabled').html('Hangup')
+																.removeClass("btn-success").addClass("btn-danger")
+																.unbind('click').click(doHangup);
+														},
+														error: function(error) {
+															Janus.error("WebRTC error:", error);
+															bootbox.alert("WebRTC error... " + error.message);
+															let body = { request: "hangup" };
+															sipcall.send({ message: body });
+														}
+													});
 											}
 											toastr.success("Call accepted!");
 											sipcall.callId = callId;
@@ -916,6 +945,7 @@ function doCall(ev) {
 	actuallyDoCall(handle, $('#peer' + suffix).val(), doVideo);
 }
 function actuallyDoCall(handle, uri, doVideo, referId) {
+/*
 	// We want bidirectional audio for sure, and maybe video
 	handle.doAudio = true;
 	handle.doVideo = doVideo;
@@ -966,6 +996,18 @@ function actuallyDoCall(handle, uri, doVideo, referId) {
 				bootbox.alert("WebRTC error... " + error.message);
 			}
 		});
+*/
+
+	/* FIXME Offerless INVITE test */
+	let body = { request: "call", uri: uri };
+	body["autoaccept_reinvites"] = false;
+	body["late_offer"] = true;
+	if(referId) {
+		// In case we're originating this call because of a call
+		// transfer, we need to provide the internal reference ID
+		body["refer_id"] = referId;
+	}
+	handle.send({ message: body });
 }
 
 function doHangup(ev) {
