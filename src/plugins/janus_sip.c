@@ -6572,6 +6572,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(sip == NULL || sip->sip_refer_to == NULL) {
 				JANUS_LOG(LOG_ERR, "Missing Refer-To header\n");
 				nua_respond(nh, 400, sip_status_phrase(400), TAG_END());
+				/* REFER is an application method, so the stack will not destroy
+				 * the per-request handle after the response we just sent */
+				janus_sip_destroy_unbound_handle(session, nh, hmagic);
 				break;
 			}
 			/* Access the headers we need */
@@ -6605,25 +6608,42 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			/* Send a 202 back */
 			nua_respond(nh, 202, sip_status_phrase(202), NUTAG_WITH_CURRENT(nua), TAG_END());
 			JANUS_LOG(LOG_VERB, "[%p] 202\n", nh);
-			/* Take note of the session and NUA handle we got the REFER from (for NOTIFY) */
+			/* Take note of the session and NUA handle we got the REFER from (for
+			 * NOTIFY), but only while the session is still alive: teardown sweeps
+			 * this table and marks the session destroyed under this same mutex,
+			 * so once the flag is visible the sweep has already run and a record
+			 * inserted now would never be reclaimed. */
 			janus_mutex_lock(&sessions_mutex);
 			guint32 refer_id = 0;
-			while(refer_id == 0) {
-				refer_id = janus_random_uint32();
-				if(g_hash_table_lookup(transfers, GUINT_TO_POINTER(refer_id)) != NULL) {
-					refer_id = 0;
-					continue;
+			if(!g_atomic_int_get(&session->destroyed)) {
+				while(refer_id == 0) {
+					refer_id = janus_random_uint32();
+					if(g_hash_table_lookup(transfers, GUINT_TO_POINTER(refer_id)) != NULL) {
+						refer_id = 0;
+						continue;
+					}
+					janus_sip_transfer *t = g_malloc(sizeof(janus_sip_transfer));
+					janus_refcount_increase(&session->ref);
+					t->session = session;
+					t->referred_by = referred_by ? g_strdup(referred_by) : NULL;
+					t->custom_headers = custom_headers ? g_strdup(custom_headers) : NULL;
+					t->nh_s = nh;
+					nua_save_event(nua, t->saved);
+					g_hash_table_insert(transfers, GUINT_TO_POINTER(refer_id), t);
 				}
-				janus_sip_transfer *t = g_malloc(sizeof(janus_sip_transfer));
-				janus_refcount_increase(&session->ref);
-				t->session = session;
-				t->referred_by = referred_by ? g_strdup(referred_by) : NULL;
-				t->custom_headers = custom_headers ? g_strdup(custom_headers) : NULL;
-				t->nh_s = nh;
-				nua_save_event(nua, t->saved);
-				g_hash_table_insert(transfers, GUINT_TO_POINTER(refer_id), t);
 			}
 			janus_mutex_unlock(&sessions_mutex);
+			if(refer_id == 0) {
+				/* Torn down while this REFER was in flight: the 202 above already
+				 * went out on the still-live stack, so just drop what the normal
+				 * path would have consumed */
+				janus_sip_destroy_unbound_handle(session, nh, hmagic);
+				g_free(replaces);
+				su_free(session->stack->s_home, referred_by);
+				su_free(session->stack->s_home, refer_to);
+				su_free(session->stack->s_home, custom_headers);
+				break;
+			}
 			/* Notify the application */
 			json_t *info = json_object();
 			json_object_set_new(info, "sip", json_string("event"));
