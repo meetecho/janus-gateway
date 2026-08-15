@@ -1578,6 +1578,12 @@ static void janus_sip_message_free(janus_sip_message *msg) {
 	g_free(msg);
 }
 
+/* Matcher for sweeping a closing session's transfers out of the global table */
+static gboolean janus_sip_transfer_owned_by_session(gpointer key, gpointer value, gpointer user_data) {
+	janus_sip_transfer *t = (janus_sip_transfer *)value;
+	return t != NULL && t->session == (janus_sip_session *)user_data;
+}
+
 static void janus_sip_transfer_destroy(janus_sip_transfer *t) {
 	if(t == NULL)
 		return;
@@ -2776,11 +2782,12 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 			janus_mutex_unlock(&master->mutex);
 		}
 	}
-	/* If this session was involved in a transfer, get rid of the reference */
-	if(session->refer_id) {
-		g_hash_table_remove(transfers, GUINT_TO_POINTER(session->refer_id));
-		session->refer_id = 0;
-	}
+	/* Every entry holds a reference to the session, and session->refer_id is
+	 * only the last transfer the application acted upon, so sweep them all.
+	 * sessions_mutex is held here. */
+	if(transfers != NULL)
+		g_hash_table_foreach_remove(transfers, janus_sip_transfer_owned_by_session, session);
+	session->refer_id = 0;
 	/* Shutdown the NUA */
 	if(session->stack) {
 		janus_mutex_lock(&session->stack->smutex);
