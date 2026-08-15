@@ -1581,6 +1581,13 @@ static void janus_sip_message_free(janus_sip_message *msg) {
 static void janus_sip_transfer_destroy(janus_sip_transfer *t) {
 	if(t == NULL)
 		return;
+	/* The saved event holds a reference to the REFER message, and an
+	 * out-of-dialog REFER leaves us a fresh unbound handle to destroy */
+	nua_destroy_event(t->saved);
+	gboolean adopted_call_handle = t->session != NULL && t->session->stack != NULL &&
+		t->nh_s == t->session->stack->s_nh_i;
+	if(t->nh_s != NULL && nua_handle_magic(t->nh_s) == NULL && !adopted_call_handle)
+		nua_handle_destroy(t->nh_s);
 	g_free(t->referred_by);
 	g_free(t->custom_headers);
 	if(t->session != NULL)
