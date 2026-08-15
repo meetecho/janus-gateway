@@ -6078,6 +6078,17 @@ error:
 
 
 /* Sofia callbacks */
+/* nua creates a fresh handle for every out-of-dialog request and leaves the
+ * unbound ones to us to destroy (see the nua_i_options docs). The adopted
+ * incoming-call handle is unbound as well, so spare that one. */
+static void janus_sip_destroy_unbound_handle(janus_sip_session *session, nua_handle_t *nh, nua_hmagic_t *hmagic) {
+	if(nh == NULL || hmagic != NULL)
+		return;
+	if(session->stack != NULL && nh == session->stack->s_nh_i)
+		return;
+	nua_handle_destroy(nh);
+}
+
 void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase, nua_t *nua, nua_magic_t *magic, nua_handle_t *nh, nua_hmagic_t *hmagic, sip_t const *sip, tagi_t tags[])
 {
 	janus_sip_session *session = (janus_sip_session *)(hmagic ? hmagic : magic);
@@ -6610,6 +6621,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		}
 		case nua_i_info: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* Safe here: what follows only reads the event's own sip object */
+			janus_sip_destroy_unbound_handle(session, nh, hmagic);
 			/* We expect a payload */
 			if(!sip->sip_content_type || !sip->sip_content_type->c_type || !sip->sip_payload || !sip->sip_payload->pl_data) {
 				return;
@@ -6643,6 +6656,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		}
 		case nua_i_message: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* Safe here: what follows only reads the event's own sip object */
+			janus_sip_destroy_unbound_handle(session, nh, hmagic);
 			/* We expect a payload */
 			if(!sip->sip_content_type || !sip->sip_content_type->c_type || !sip->sip_payload || !sip->sip_payload->pl_data) {
 				return;
@@ -6716,6 +6731,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* Stack responds automatically to OPTIONS request unless OPTIONS is
 			 * included in the set of application methods, set by NUTAG_APPL_METHOD(). */
+			janus_sip_destroy_unbound_handle(session, nh, hmagic);
 			break;
 	/* Responses */
 		case nua_r_get_params:
