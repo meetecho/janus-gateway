@@ -1918,7 +1918,9 @@ static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_
 			char *header_prefix = (char *)temp->data;
 			if(header_prefix != NULL && unknown_header->un_name != NULL) {
 				if(strncasecmp(unknown_header->un_name, header_prefix, strlen(header_prefix)) == 0) {
-					json_object_set(headers, unknown_header->un_name, json_string(unknown_header->un_value));
+					/* json_object_set (without _new) would leave the fresh
+					 * json_string with an extra reference and leak it */
+					json_object_set_new(headers, unknown_header->un_name, json_string(unknown_header->un_value));
 					break;
 				}
 			}
