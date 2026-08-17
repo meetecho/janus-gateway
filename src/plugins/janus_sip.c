@@ -4358,7 +4358,7 @@ static void *janus_sip_handler(void *data) {
 				}
 				if(session->stack->subscriptions == NULL) {
 					/* We still need a table for mapping these subscriptions as well */
-					session->stack->subscriptions = g_hash_table_new_full(g_int64_hash, g_int64_equal,
+					session->stack->subscriptions = g_hash_table_new_full(g_str_hash, g_str_equal,
 						(GDestroyNotify)g_free, (GDestroyNotify)nua_handle_destroy);
 				}
 				g_hash_table_insert(session->stack->subscriptions, g_strdup(event_type), nh);
