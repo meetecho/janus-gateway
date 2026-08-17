@@ -1442,6 +1442,23 @@ static char *janus_sip_session_contact_header_retrieve(janus_sip_session *sessio
 		return session->stack->contact_header;
 }
 
+static gboolean janus_sip_subscription_matches_handle(gpointer key, gpointer value, gpointer user_data) {
+	return (value == user_data);
+}
+
+/* Drop a subscription handle once the stack says its dialog usage is gone. The
+ * table's value destructor is nua_handle_destroy(), and that destroy is a
+ * signal to the stack thread, so this is safe from inside a callback for the
+ * same handle. */
+static void janus_sip_subscription_forget(janus_sip_session *session, nua_handle_t *nh) {
+	if(session == NULL || session->stack == NULL || nh == NULL)
+		return;
+	janus_mutex_lock(&session->stack->smutex);
+	if(session->stack->subscriptions != NULL)
+		g_hash_table_foreach_remove(session->stack->subscriptions, janus_sip_subscription_matches_handle, nh);
+	janus_mutex_unlock(&session->stack->smutex);
+}
+
 static void janus_sip_session_free(const janus_refcount *session_ref) {
 	janus_sip_session *session = janus_refcount_containerof(session_ref, janus_sip_session, ref);
 	/* Remove the reference to the core plugin session */
@@ -6771,6 +6788,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		}
 		case nua_i_notify: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* The one signal sofia gives for every way a subscription ends,
+			 * including the internal "Fetch Timeouts without NOTIFY" event,
+			 * which carries no SIP message - hence before the checks below */
+			const tagi_t *substate_tag = tl_find(tags, nutag_substate);
+			if(substate_tag != NULL &&
+					(enum nua_substate)(substate_tag->t_value) == nua_substate_terminated)
+				janus_sip_subscription_forget(session, nh);
 			/* We expect a payload */
 			if(!sip) {
 				/* No SIP message? Maybe an internal message? */
@@ -7501,8 +7525,15 @@ auth_failed:
 					TAG_END());
 				break;
 			} else if(status >= 400) {
-				/* Something went wrong */
+				/* Something went wrong: the stack has dropped the dialog usage
+				 * (an initial SUBSCRIBE that never became ready, or a refresh
+				 * shut down gracefully) without telling us through i_notify,
+				 * so the entry in stack->subscriptions is now a handle with no
+				 * subscription. Reap it: keeping it leaks the handle for the
+				 * lifetime of the session, and a later subscribe reusing the
+				 * same call_id would resend on a half-dead dialog. */
 				JANUS_LOG(LOG_WARN, "[%s] SUBSCRIBE failed: %d %s\n", session->account.username, status, phrase ? phrase : "");
+				janus_sip_subscription_forget(session, nh);
 				json_t *event = json_object();
 				json_object_set_new(event, "sip", json_string("event"));
 				if(sip && sip->sip_call_id)
