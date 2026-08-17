@@ -89,7 +89,7 @@ static void janus_wsevh_connect_attempt(lws_sorted_usec_list_t *sul);
 static GQueue *events = NULL;
 static janus_mutex events_mutex = JANUS_MUTEX_INITIALIZER;
 static gboolean group_events = TRUE;
-static volatile gint events_cap_on_reconnect = 0, dropped = 0;
+static volatile gint events_cap_on_reconnect = 0, events_max_queue = 0, dropped = 0;
 static void janus_wsevh_event_free(json_t *event) {
 	json_decref(event);
 }
@@ -105,7 +105,8 @@ static struct janus_json_parameter request_parameters[] = {
 static struct janus_json_parameter tweak_parameters[] = {
 	{"events", JSON_STRING, 0},
 	{"grouping", JANUS_JSON_BOOL, 0},
-	{"events_cap_on_reconnect", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"events_cap_on_reconnect", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"events_max_queue", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 /* Error codes (for the tweaking via Admin API */
 #define JANUS_WSEVH_ERROR_INVALID_REQUEST		411
@@ -362,6 +363,15 @@ int janus_wsevh_init(const char *config_path) {
 	if(events_cap_on_reconnect < 0)
 		events_cap_on_reconnect = 0;
 
+	/* Do we need an absolute cap on the queue, connected or not? A backend that
+	 * accepts the connection and then stops reading it never puts us in the
+	 * reconnect state, so events_cap_on_reconnect would never apply. */
+	item = janus_config_get(config, config_general, janus_config_type_item, "events_max_queue");
+	if(item && item->value)
+		events_max_queue = atoi(item->value);
+	if(events_max_queue < 0)
+		events_max_queue = 0;
+
 	/* Handle the rest of the configuration, starting from the server details */
 	item = janus_config_get(config, config_general, janus_config_type_item, "backend");
 	if(item && item->value)
@@ -512,17 +522,21 @@ void janus_wsevh_incoming_event(json_t *event) {
 	json_incref(event);
 	janus_mutex_lock(&events_mutex);
 	g_queue_push_tail(events, event);
-	if(g_atomic_int_get(&reconnect)) {
-		/* We're reconnecting: check if there's a cap to how many events to keep in the buffer */
-		guint cap = g_atomic_int_get(&events_cap_on_reconnect);
-		if(cap > 0 && g_queue_get_length(events) > cap) {
-			/* Get rid of older events, we won't need them anymore */
-			json_t *drop = NULL;
-			while(g_queue_get_length(events) > cap) {
-				drop = g_queue_pop_head(events);
-				json_decref(drop);
-				g_atomic_int_inc(&dropped);
-			}
+	/* While reconnecting we only keep events_cap_on_reconnect events; events_max_queue,
+	 * when set, applies at all times, including while the backend is connected but is
+	 * not reading what we write to it. */
+	guint cap = g_atomic_int_get(&reconnect) ?
+		(guint)g_atomic_int_get(&events_cap_on_reconnect) : 0;
+	guint hard = (guint)g_atomic_int_get(&events_max_queue);
+	if(hard > 0 && (cap == 0 || hard < cap))
+		cap = hard;
+	if(cap > 0 && g_queue_get_length(events) > cap) {
+		/* Get rid of older events, we won't need them anymore */
+		json_t *drop = NULL;
+		while(g_queue_get_length(events) > cap) {
+			drop = g_queue_pop_head(events);
+			json_decref(drop);
+			g_atomic_int_inc(&dropped);
 		}
 	}
 	janus_mutex_unlock(&events_mutex);
@@ -569,6 +583,9 @@ json_t *janus_wsevh_handle_request(json_t *request) {
 		/* Whether we should put a cap on queued events when reconnecting */
 		if(json_object_get(request, "events_cap_on_reconnect"))
 			g_atomic_int_set(&events_cap_on_reconnect, json_integer_value(json_object_get(request, "events_cap_on_reconnect")));
+		/* Whether we should put an absolute cap on queued events */
+		if(json_object_get(request, "events_max_queue"))
+			g_atomic_int_set(&events_max_queue, json_integer_value(json_object_get(request, "events_max_queue")));
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
 		error_code = JANUS_WSEVH_ERROR_INVALID_REQUEST;
