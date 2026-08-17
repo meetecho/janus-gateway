@@ -896,7 +896,12 @@ static void janus_wsevh_connect_attempt(lws_sorted_usec_list_t *sul) {
 		JANUS_LOG(LOG_ERR, "WebSocketsEventHandler: Connecting to backend websocket server %s:%d failed\n", address, port);
 		return;
 	}
+#if !((LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || LWS_LIBRARY_VERSION_MAJOR >= 4)
+	/* On lws < 3.2 the service loop keys off this flag to decide whether to
+	 * reconnect, so it must be cleared when the attempt starts. On newer lws
+	 * LWS_CALLBACK_CLIENT_ESTABLISHED clears it once the connection exists. */
 	g_atomic_int_set(&reconnect, 0);
+#endif
 }
 
 /* Adopts the reconnect_delay value in case of an error
