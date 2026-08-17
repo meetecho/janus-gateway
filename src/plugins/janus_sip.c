@@ -6286,11 +6286,18 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(ssip == NULL) {
 				JANUS_LOG(LOG_ERR, "\tInvalid SIP stack\n");
 				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
+				/* Once i_invite has been delivered the handle is ours even on a
+				 * final error response, and this event's active-call reference
+				 * has to go back on every path that does not keep the call */
+				janus_sip_destroy_unbound_handle(session, nh, hmagic);
+				janus_sip_unref_active_call(session);
 				break;
 			}
 			if(sip->sip_from == NULL || sip->sip_to == NULL) {
 				JANUS_LOG(LOG_ERR, "\tInvalid request (missing From or To)\n");
 				nua_respond(nh, 400, sip_status_phrase(400), TAG_END());
+				janus_sip_destroy_unbound_handle(session, nh, hmagic);
+				janus_sip_unref_active_call(session);
 				break;
 			}
 			gboolean reinvite = FALSE, busy = FALSE;
@@ -6339,6 +6346,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				}
 				JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
 				nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
+				janus_sip_destroy_unbound_handle(session, nh, hmagic);
+				janus_sip_unref_active_call(session);
 				/* Notify the web app about the missed invite */
 				json_t *missed = json_object();
 				json_object_set_new(missed, "sip", json_string("event"));
@@ -6385,6 +6394,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					JANUS_LOG(LOG_ERR, "\tError parsing SDP! %s\n", sdperror);
 					g_atomic_int_set(&session->establishing, 0);
 					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+					janus_sip_destroy_unbound_handle(session, nh, hmagic);
+					/* A re-INVITE gave its reference back at the branch above */
+					if(!reinvite)
+						janus_sip_unref_active_call(session);
 					break;
 				}
 			}
@@ -6428,6 +6441,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(!session->media.has_audio && !session->media.has_video) {
 					g_atomic_int_set(&session->establishing, 0);
 					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+					janus_sip_destroy_unbound_handle(session, nh, hmagic);
+					if(!reinvite)
+						janus_sip_unref_active_call(session);
 					janus_sdp_destroy(sdp);
 					break;
 				}
@@ -6435,6 +6451,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(!session->media.remote_audio_ip && !session->media.remote_video_ip) {
 					g_atomic_int_set(&session->establishing, 0);
 					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+					janus_sip_destroy_unbound_handle(session, nh, hmagic);
+					if(!reinvite)
+						janus_sip_unref_active_call(session);
 					janus_sdp_destroy(sdp);
 					break;
 				}
