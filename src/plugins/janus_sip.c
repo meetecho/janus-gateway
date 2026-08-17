@@ -6270,6 +6270,31 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* We had a reference to this session for this call, get rid of it */
 			janus_sip_unref_active_call(session);
+			/* Last event sofia sends for the call, and the handle is ours: the
+			 * first event delivered on it made the stack take a user reference
+			 * it never gives back. It cannot be destroyed any earlier - that
+			 * would drop the queued events, this one included. session->stack
+			 * is still alive here, since this event returns the reference the
+			 * teardown waits for. */
+			if(nh != NULL && nh != session->stack->s_nh_i &&
+					nh != session->stack->s_nh_r && nh != session->stack->s_nh_m) {
+				/* An in-dialog REFER stored this same handle in the transfers
+				 * table; clear those pointers or the sweep at session close
+				 * would destroy it a second time */
+				janus_mutex_lock(&sessions_mutex);
+				if(transfers != NULL) {
+					GHashTableIter titer;
+					gpointer tvalue;
+					g_hash_table_iter_init(&titer, transfers);
+					while(g_hash_table_iter_next(&titer, NULL, &tvalue)) {
+						janus_sip_transfer *t = (janus_sip_transfer *)tvalue;
+						if(t != NULL && t->nh_s == nh)
+							t->nh_s = NULL;
+					}
+				}
+				janus_mutex_unlock(&sessions_mutex);
+				nua_handle_destroy(nh);
+			}
 			break;
 		}
 	/* SIP requests */
