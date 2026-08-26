@@ -374,10 +374,20 @@ room-<unique room ID>: {
 	"secret" : "<room secret, mandatory if configured>",
 	"room" : <unique numeric ID of the room>,
 	"id" : <unique numeric ID of the participant to moderate>,
-	"mid" : <mid of the m-line to refer to for this moderate request>,
-	"mute" : <true|false, depending on whether the media addressed by the above mid should be muted by the moderator>
+	"mid" : <mid of the m-line to refer to for this moderate request; mandatory if type is missing>,
+	"type" : "<medium to refer to for this moderate request, audio|video|data; mandatory if mid is missing>",
+	"mute" : <true|false, depending on whether the media addressed by the above mid (or type) should be muted by the moderator>
 }
 \endverbatim
+ *
+ * Notice that \c mid and \c type are mutually exclusive, and exactly one of
+ * the two must be provided: \c mid addresses a single m-line, while \c type
+ * addresses all the streams of that medium the participant may have. Since
+ * the latter doesn't need any stream to exist in the first place, it's also
+ * the way to moderate a participant that joined but didn't publish yet: the
+ * moderation will be enforced as soon as they do. A separate event is sent
+ * for each of the streams that were actually affected, which means no event
+ * is sent at all when moderating a participant with no stream of that type.
  *
  * A successful request will result in a \c success response:
  *
@@ -496,9 +506,29 @@ room-<unique room ID>: {
 	"id" : <unique ID to register for the publisher; optional, will be chosen by the plugin if missing>,
 	"display" : "<display name for the publisher; optional>",
 	"token" : "<invitation token, in case the room has an ACL; optional>",
-	"metadata" : <valid json object with metadata; optional>
+	"metadata" : <valid json object with metadata; optional>,
+	"muted" : { "audio" : <true|false, whether this publisher's audio streams should start muted; optional, default false>,
+		"video" : <true|false, whether this publisher's video streams should start muted; optional, default false>,
+		"data" : <true|false, whether this publisher's data streams should start muted; optional, default false> }
 }
 \endverbatim
+ *
+ * The \c muted property, if provided, is applied as soon as the corresponding
+ * stream is first created (i.e., when the publisher's SDP offer for that
+ * medium is processed), so that the stream is never briefly unmoderated
+ * before an explicit \c moderate request can be sent. Notice that this state
+ * is sticky, since it's exactly the same state a \c moderate request acts on:
+ * it will be enforced again on any stream the publisher may create later on,
+ * e.g., after a renegotiation, or if the PeerConnection goes away (whether
+ * because of an explicit \c unpublish, or because the connection was lost)
+ * and they publish again. A \c moderate request updates this state as well,
+ * which means that once a moderator unmutes a medium, it will stay unmuted
+ * for any new stream too. Considering this is moderation, publishers can't
+ * lift it themselves: only a moderator can, using \c moderate as usual.
+ * Notice that, since this property addresses a medium rather than a specific
+ * m-line (which doesn't exist yet when joining), it applies to all the
+ * streams of that type the publisher may create: as such, moderating a
+ * single mid will affect any new stream of the same type as well.
  *
  * This will add the user to the list of participants in the room, although
  * in a non-active role for the time being. Anyway, this participation
@@ -1835,8 +1865,8 @@ room-<unique room ID>: {
 
 
 /* Plugin information */
-#define JANUS_VIDEOROOM_VERSION			10
-#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.10"
+#define JANUS_VIDEOROOM_VERSION			11
+#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.11"
 #define JANUS_VIDEOROOM_DESCRIPTION		"This is a plugin implementing a videoconferencing SFU (Selective Forwarding Unit) for Janus, that is an audio/video router."
 #define JANUS_VIDEOROOM_NAME			"JANUS VideoRoom plugin"
 #define JANUS_VIDEOROOM_AUTHOR			"Meetecho s.r.l."
@@ -2012,7 +2042,8 @@ static struct janus_json_parameter kick_parameters[] = {
 };
 static struct janus_json_parameter moderate_parameters[] = {
 	{"secret", JSON_STRING, 0},
-	{"mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"mid", JANUS_JSON_STRING, 0},
+	{"type", JSON_STRING, 0},
 	{"mute", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter join_parameters[] = {
@@ -2023,7 +2054,8 @@ static struct janus_json_parameter join_parameters[] = {
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
-	{"token", JSON_STRING, 0}
+	{"token", JSON_STRING, 0},
+	{"muted", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter publish_parameters[] = {
 	{"descriptions", JANUS_JSON_ARRAY, 0},
@@ -2432,6 +2464,9 @@ typedef struct janus_videoroom_publisher {
 	int user_audio_level_average;	/* Participant's audio_level_average overwriting global room setting */
 	gboolean talking; 	/* Whether this participant is currently talking (uses audio levels extension) */
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
+	gboolean moderated_audio;	/* Whether audio is moderated for this publisher: enforced on audio streams as soon as they're created */
+	gboolean moderated_video;	/* Whether video is moderated for this publisher: enforced on video streams as soon as they're created */
+	gboolean moderated_data;	/* Whether data is moderated for this publisher: enforced on data streams as soon as they're created */
 	GList *streams;				/* List of media streams sent by this publisher (audio, video and/or data) */
 	GHashTable *streams_byid;	/* As above, indexed by mindex */
 	GHashTable *streams_bymid;	/* As above, indexed by mid */
@@ -4367,13 +4402,13 @@ static void janus_videoroom_notify_about_publisher(janus_videoroom_publisher *p,
 					json_object_set_new(info, "h264_profile", json_string(ps->h264_profile));
 				else if(ps->vcodec == JANUS_VIDEOCODEC_VP9)
 					json_object_set_new(info, "vp9_profile", json_string(ps->vp9_profile));
-				if(ps->muted)
-					json_object_set_new(info, "moderated", json_true());
 				if(ps->simulcast)
 					json_object_set_new(info, "simulcast", json_true());
 				if(ps->svc)
 					json_object_set_new(info, "svc", json_true());
 			}
+			if(ps->muted)
+				json_object_set_new(info, "moderated", json_true());
 		}
 		json_array_append_new(media, info);
 		temp = temp->next;
@@ -4418,13 +4453,13 @@ static void janus_videoroom_notify_about_publisher(janus_videoroom_publisher *p,
 					json_object_set_new(mediainfo, "codec", json_string(janus_audiocodec_name(ps->acodec)));
 				} else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 					json_object_set_new(mediainfo, "codec", json_string(janus_videocodec_name(ps->vcodec)));
-					if(ps->muted)
-						json_object_set_new(mediainfo, "moderated", json_true());
 					if(ps->simulcast)
 						json_object_set_new(mediainfo, "simulcast", json_true());
 					if(ps->svc)
 						json_object_set_new(mediainfo, "svc", json_true());
 				}
+				if(ps->muted)
+					json_object_set_new(mediainfo, "moderated", json_true());
 			}
 			json_array_append_new(media, mediainfo);
 			temp = temp->next;
@@ -6833,59 +6868,121 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			goto prepare_response;
 		}
 		janus_refcount_increase(&participant->ref);
-		/* Check if there's any media delivery to change */
+		/* Check if there's any media delivery to change: we either address a
+		 * specific m-line, or a whole medium (audio, video or data) */
 		const char *mid = json_string_value(json_object_get(root, "mid"));
+		const char *type = json_string_value(json_object_get(root, "type"));
 		gboolean muted = json_is_true(json_object_get(root, "mute"));
-		janus_mutex_lock(&participant->streams_mutex);
-		/* Subscribe to a specific mid */
-		janus_videoroom_publisher_stream *ps = g_hash_table_lookup(participant->streams_bymid, mid);
-		if(ps == NULL) {
-			janus_mutex_unlock(&participant->streams_mutex);
+		janus_videoroom_media medium = janus_videoroom_media_from_str(type);
+		if((mid == NULL) == (type == NULL)) {
 			janus_refcount_decrease(&participant->ref);
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
-			JANUS_LOG(LOG_ERR, "No such stream %s\n", mid);
-			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
-			g_snprintf(error_cause, 512, "No such stream %s", mid);
+			JANUS_LOG(LOG_ERR, "Invalid request, provide either a mid or a type\n");
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid request, provide either a mid or a type");
 			goto prepare_response;
 		}
-		if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO || ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
-			if(participant->session && g_atomic_int_get(&participant->session->started) &&
-					!muted && ps->active && ps->muted) {
-				/* Audio/Video was just resumed, try resetting the RTP headers for viewers */
-				janus_mutex_lock(&ps->subscribers_mutex);
-				GSList *temp = ps->subscribers;
-				while(temp) {
-					janus_videoroom_subscriber_stream *ss = (janus_videoroom_subscriber_stream *)temp->data;
-					if(ss)
-						ss->context.seq_reset = TRUE;
-					temp = temp->next;
-				}
-				janus_mutex_unlock(&ps->subscribers_mutex);
+		if(type != NULL && medium == JANUS_VIDEOROOM_MEDIA_NONE) {
+			janus_refcount_decrease(&participant->ref);
+			janus_mutex_unlock(&videoroom->mutex);
+			janus_refcount_decrease(&videoroom->ref);
+			JANUS_LOG(LOG_ERR, "Invalid element value (type)\n");
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element value (type)");
+			goto prepare_response;
+		}
+		janus_mutex_lock(&participant->streams_mutex);
+		/* Get the streams we need to moderate: either the one with the
+		 * provided mid, or all those of the provided type */
+		GList *pslist = NULL;
+		if(mid != NULL) {
+			janus_videoroom_publisher_stream *ps = g_hash_table_lookup(participant->streams_bymid, mid);
+			if(ps == NULL) {
+				janus_mutex_unlock(&participant->streams_mutex);
+				janus_refcount_decrease(&participant->ref);
+				janus_mutex_unlock(&videoroom->mutex);
+				janus_refcount_decrease(&videoroom->ref);
+				JANUS_LOG(LOG_ERR, "No such stream %s\n", mid);
+				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+				g_snprintf(error_cause, 512, "No such stream %s", mid);
+				goto prepare_response;
+			}
+			medium = ps->type;
+			pslist = g_list_append(pslist, ps);
+		} else {
+			GList *tmp = participant->streams;
+			while(tmp) {
+				janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)tmp->data;
+				if(ps->type == medium)
+					pslist = g_list_append(pslist, ps);
+				tmp = tmp->next;
 			}
 		}
-		ps->muted = muted;
-		janus_mutex_unlock(&participant->streams_mutex);
-		/* Prepare an event for this */
-		json_t *event = json_object();
-		json_object_set_new(event, "videoroom", json_string("event"));
-		json_object_set_new(event, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
-		json_object_set_new(event, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
-		json_object_set_new(event, "mid", json_string(mid));
-		json_object_set_new(event, "moderation", muted ? json_string("muted") : json_string("unmuted"));
-		/* Notify the speaker this event is related to as well */
-		janus_videoroom_notify_participants(participant, event, TRUE);
-		json_decref(event);
-		/* Also notify event handlers */
-		if(notify_events && gateway->events_is_enabled()) {
-			json_t *info = json_object();
-			json_object_set_new(info, "videoroom", json_string("moderated"));
-			json_object_set_new(info, "room", string_ids ? json_string(videoroom->room_id_str) : json_integer(videoroom->room_id));
-			json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
-			json_object_set_new(info, "mid", json_string(mid));
-			json_object_set_new(info, "moderation", muted ? json_string("muted") : json_string("unmuted"));
-			gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+		/* Keep track of the moderation state for this medium, so that we can enforce
+		 * it again on any stream the publisher may create later on: this way a
+		 * renegotiation, or a new PeerConnection after the previous one went away,
+		 * won't silently get rid of the moderation a moderator put in place. This is
+		 * also what allows moderating publishers that haven't published yet, since
+		 * there's no stream (and so no mid) to address for them at that point */
+		if(medium == JANUS_VIDEOROOM_MEDIA_AUDIO)
+			participant->moderated_audio = muted;
+		else if(medium == JANUS_VIDEOROOM_MEDIA_VIDEO)
+			participant->moderated_video = muted;
+		else if(medium == JANUS_VIDEOROOM_MEDIA_DATA)
+			participant->moderated_data = muted;
+		/* Update the streams we found, and take note of their mids for the events */
+		GList *mids = NULL, *ml = pslist;
+		while(ml) {
+			janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)ml->data;
+			if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO || ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+				if(participant->session && g_atomic_int_get(&participant->session->started) &&
+						!muted && ps->active && ps->muted) {
+					/* Audio/Video was just resumed, try resetting the RTP headers for viewers */
+					janus_mutex_lock(&ps->subscribers_mutex);
+					GSList *slist = ps->subscribers;
+					while(slist) {
+						janus_videoroom_subscriber_stream *ss = (janus_videoroom_subscriber_stream *)slist->data;
+						if(ss)
+							ss->context.seq_reset = TRUE;
+						slist = slist->next;
+					}
+					janus_mutex_unlock(&ps->subscribers_mutex);
+				}
+			}
+			ps->muted = muted;
+			if(ps->mid != NULL)
+				mids = g_list_append(mids, g_strdup(ps->mid));
+			ml = ml->next;
 		}
+		g_list_free(pslist);
+		janus_mutex_unlock(&participant->streams_mutex);
+		/* Prepare an event for each of the streams we moderated */
+		ml = mids;
+		while(ml) {
+			const char *stream_mid = (const char *)ml->data;
+			json_t *event = json_object();
+			json_object_set_new(event, "videoroom", json_string("event"));
+			json_object_set_new(event, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
+			json_object_set_new(event, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+			json_object_set_new(event, "mid", json_string(stream_mid));
+			json_object_set_new(event, "moderation", muted ? json_string("muted") : json_string("unmuted"));
+			/* Notify the speaker this event is related to as well */
+			janus_videoroom_notify_participants(participant, event, TRUE);
+			json_decref(event);
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "videoroom", json_string("moderated"));
+				json_object_set_new(info, "room", string_ids ? json_string(videoroom->room_id_str) : json_integer(videoroom->room_id));
+				json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
+				json_object_set_new(info, "mid", json_string(stream_mid));
+				json_object_set_new(info, "moderation", muted ? json_string("muted") : json_string("unmuted"));
+				gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+			}
+			ml = ml->next;
+		}
+		g_list_free_full(mids, (GDestroyNotify)g_free);
 		janus_mutex_unlock(&videoroom->mutex);
 		/* Prepare response */
 		response = json_object();
@@ -9807,6 +9904,13 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->subscriptions = NULL;
 				publisher->acodec = JANUS_AUDIOCODEC_NONE;
 				publisher->vcodec = JANUS_VIDEOCODEC_NONE;
+				/* Was an initial moderation state requested for this publisher's future streams? */
+				json_t *muted = json_object_get(root, "muted");
+				if(muted != NULL) {
+					publisher->moderated_audio = json_is_true(json_object_get(muted, "audio"));
+					publisher->moderated_video = json_is_true(json_object_get(muted, "video"));
+					publisher->moderated_data = json_is_true(json_object_get(muted, "data"));
+				}
 				janus_mutex_init(&publisher->subscribers_mutex);
 				janus_mutex_init(&publisher->own_subscriptions_mutex);
 				publisher->streams_byid = g_hash_table_new_full(NULL, NULL,
@@ -12839,6 +12943,13 @@ static void *janus_videoroom_handler(void *data) {
 						janus_refcount_increase(&participant->ref);	/* Add a reference to the publisher */
 						/* Initialize the stream */
 						ps->active = TRUE;
+						/* Enforce the moderation state we have for this publisher, if any */
+						if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO)
+							ps->muted = participant->moderated_audio;
+						else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO)
+							ps->muted = participant->moderated_video;
+						else if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA)
+							ps->muted = participant->moderated_data;
 						ps->acodec = participant->acodec;
 						ps->vcodec = participant->vcodec;
 						ps->pt = -1;
@@ -13227,6 +13338,8 @@ static void *janus_videoroom_handler(void *data) {
 							if(ps->svc)
 								json_object_set_new(info, "svc", json_true());
 						}
+						if(ps->muted)
+							json_object_set_new(info, "moderated", json_true());
 						if(ps->audio_level_extmap_id > 0)
 							json_object_set_new(info, "audiolevel_ext_id", json_integer(ps->audio_level_extmap_id));
 						if(ps->video_orient_extmap_id > 0)
