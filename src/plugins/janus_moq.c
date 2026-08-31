@@ -650,8 +650,8 @@ void janus_moq_setup_media(janus_plugin_session *handle) {
 	if(session->moqsub && session->conn) {
 		imquic_moq_request_parameters params;
 		imquic_moq_request_parameters_init_defaults(&params);
-		params.subscription_filter_set = TRUE;
-		params.subscription_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+		params.location_filter_set = TRUE;
+		params.location_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 		if(session->auth_info) {
 			/* Serialize the token using the USE_VALUE alias type */
 			params.auth_token_set = TRUE;
@@ -899,8 +899,8 @@ static void *janus_moq_processing_thread(void *data) {
 			props = g_list_append(props, &timestamp);
 			session->audio_track.timestamp += 20000;
 			/* FIXME We currently don't support LOC private properties, so
-			 * we always send a 0x00 as a payload prefix to signal it's empty */
-			uint8_t loc_pvt_props = 0;
+			 * we always add an empty list to signal it's empty */
+			uint8_t loc_pvt_props[] = { 0xA, 0x00 };
 			/* Prepare a MoQ object and send it */
 			imquic_moq_object object = {
 				.request_id = session->audio_track.request_id,
@@ -908,8 +908,8 @@ static void *janus_moq_processing_thread(void *data) {
 				.group_id = session->audio_track.group_id++,
 				.subgroup_id = 0,	/* FIXME */
 				.object_id = session->audio_track.object_id,
-				.payload_prefix = &loc_pvt_props,
-				.payload_prefix_len = 1,
+				.payload_prefix = loc_pvt_props,
+				.payload_prefix_len = sizeof(loc_pvt_props),
 				.payload = (uint8_t *)payload,
 				.payload_len = plen,
 				.properties = props,
@@ -1060,8 +1060,8 @@ static void *janus_moq_processing_thread(void *data) {
 						extradata_len = 0;
 					}
 					/* FIXME We currently don't support LOC private properties, so
-					 * we always send a 0x00 as a payload prefix to signal it's empty */
-					uint8_t loc_pvt_props = 0;
+					 * we always add an empty list to signal it's empty */
+					uint8_t loc_pvt_props[] = { 0xA, 0x00 };
 					/* Prepare a MoQ object and send it */
 					imquic_moq_object object = {
 						.request_id = session->video_track.request_id,
@@ -1069,8 +1069,8 @@ static void *janus_moq_processing_thread(void *data) {
 						.group_id = session->video_track.group_id,
 						.subgroup_id = 0,	/* FIXME */
 						.object_id = session->video_track.object_id,
-						.payload_prefix = &loc_pvt_props,
-						.payload_prefix_len = 1,
+						.payload_prefix = loc_pvt_props,
+						.payload_prefix_len = sizeof(loc_pvt_props),
 						.payload = received_frame,
 						.payload_len = frame_len,
 						.properties = props,
@@ -2734,12 +2734,22 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 	/* FIXME We currently require the timestamp to be in the properties */
 	if(object->payload == NULL || object->payload_len == 0)
 		return;
-	/* TODO Check if there are private properties too */
-	if(*(object->payload) != 0x00) {
-		JANUS_LOG(LOG_WARN, "We don't support private properties yet, ignoring object\n");
+	/* Check if there are private properties too */
+	uint8_t length = 0;
+	uint64_t prop_type = imquic_read_moqint(moq_version, object->payload, object->payload_len, &length);
+	if(length == 0 || length > object->payload_len || prop_type != 0xA) {
+		JANUS_LOG(LOG_WARN, "Broken private properties (got %"SCNu64", expecting 0xA), ignoring object\n", prop_type);
 		return;
 	}
-	size_t skip = 1;
+	size_t skip = length;
+	size_t prop_len = imquic_read_moqint(moq_version, object->payload + skip, object->payload_len - skip, &length);
+	if(length == 0 || (skip + length) > object->payload_len) {
+		JANUS_LOG(LOG_WARN, "Broken private properties length, ignoring object\n");
+		return;
+	}
+	skip += length;
+	/* TODO Handle private properties, if any */
+	skip += prop_len;
 	/* Convert LOC to RTP */
 	size_t hsize = 12;
 	if(session->audio_track.track && object->track_alias == session->audio_track.track_alias) {
