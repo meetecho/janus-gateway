@@ -1449,9 +1449,10 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 			} else {
 				janus_refcount_increase(&loop->ref);
 				automatic_selection = FALSE;
+				loop->handles++;
 				handle->mainctx = loop->mainctx;
 				handle->mainloop = loop->mainloop;
-				loop->handles++;
+				handle->static_event_loop = loop;
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Manually added handle to loop #%d\n", handle->handle_id, loop->id);
 			}
 		}
@@ -1534,7 +1535,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		janus_ice_static_event_loop *loop = (janus_ice_static_event_loop *)handle->static_event_loop;
 		loop->handles--;
 		janus_refcount_decrease(&loop->ref);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Manually removed handle from loop #%d\n", handle->handle_id, loop->id);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Removed handle from loop #%d\n", handle->handle_id, loop->id);
 	}
 	janus_mutex_unlock(&event_loops_mutex);
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
