@@ -1612,9 +1612,10 @@ static void janus_ice_cb_agent_closed(GObject *src, GAsyncResult *result, gpoint
 	janus_ice_outgoing_traffic *t = (janus_ice_outgoing_traffic *)data;
 	janus_ice_handle *handle = t->handle;
 
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Disposing nice agent %p\n", handle->handle_id, handle->agent);
-	g_object_unref(handle->agent);
-	handle->agent = NULL;
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Disposing nice agent %p\n", handle->handle_id, src);
+	if(handle->agent == (NiceAgent *)src)
+		handle->agent = NULL;
+	g_object_unref(src);
 	g_source_unref((GSource *)t);
 	janus_refcount_decrease(&handle->ref);
 }
