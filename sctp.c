@@ -951,7 +951,7 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 			break;
 		case DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT:
 			pr_policy = SCTP_PR_SCTP_RTX;
-			unordered = 1;
+			unordered = 0;
 			break;
 		case DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT_UNORDERED:
 			pr_policy = SCTP_PR_SCTP_RTX;
@@ -963,7 +963,7 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 			/* FIXME Should we handle some error, here? */
 			break;
 	}
-	pr_value = ntohs(req->reliability_params);
+	pr_value = ntohl(req->reliability_params);
 	channel->state = DATA_CHANNEL_CONNECTING;
 	channel->unordered = unordered;
 	channel->pr_policy = pr_policy;
