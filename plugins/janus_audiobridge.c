@@ -9135,6 +9135,9 @@ static void *janus_audiobridge_participant_thread(void *data) {
 			before += 20000;
 			if(participant->jitter) {
 				janus_mutex_lock(&participant->qmutex);
+				/* jitter_buffer_get() only sets jbp.data when it actually returns a packet,
+				 * so clear it first to make sure a failed read leaves no stale pointer */
+				jbp.data = NULL;
 				ret = jitter_buffer_get(participant->jitter, &jbp, participant->codec == JANUS_AUDIOCODEC_OPUS ? 960 : 160, NULL);
 				jitter_ticks++;
 				/* Adjust the buffer size every 50 ticks (~1 second) */
@@ -9150,7 +9153,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						lost_packets_gap++;
 						if(!g_atomic_int_compare_and_exchange(&participant->decoding, 0, 1)) {
 							/* This means we're cleaning up, so don't try to decode */
-							janus_audiobridge_buffer_packet_destroy(bpkt);
+							bpkt = NULL;
 							break;
 						}
 						int32_t output_samples = 0;
@@ -9200,6 +9203,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					if(!g_atomic_int_compare_and_exchange(&participant->decoding, 0, 1)) {
 						/* This means we're cleaning up, so don't try to decode */
 						janus_audiobridge_buffer_packet_destroy(bpkt);
+						bpkt = NULL;
 						break;
 					}
 					/* Access the payload */
@@ -9212,6 +9216,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							participant->codec == JANUS_AUDIOCODEC_OPUS ? "Opus" : "G.711");
 						g_atomic_int_set(&participant->decoding, 0);
 						janus_audiobridge_buffer_packet_destroy(bpkt);
+						bpkt = NULL;
 						continue;
 					}
 					rtp = (janus_rtp_header *)buffer;
@@ -9236,6 +9241,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							JANUS_LOG(LOG_WARN, "[G.711] Wrong packet size (expected 160, got %d), skipping audio packet\n", plen);
 							g_atomic_int_set(&participant->decoding, 0);
 							janus_audiobridge_buffer_packet_destroy(bpkt);
+							bpkt = NULL;
 							g_free(pkt->data);
 							g_free(pkt);
 							continue;
@@ -9260,6 +9266,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 #endif
 					/* Get rid of the buffered packet */
 					janus_audiobridge_buffer_packet_destroy(bpkt);
+					bpkt = NULL;
 					/* Update the details */
 					participant->last_seq = pkt->seq_number;
 					participant->last_timestamp = pkt->timestamp;
