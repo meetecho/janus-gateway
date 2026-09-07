@@ -45,6 +45,16 @@ general: {
 						# events when a reconnection actually ends up taking place.
 	# events_cap_on_reconnect = 10
 
+						# 'events_cap_on_reconnect' only applies while we are actually
+						# reconnecting. A backend that completes the WebSocket handshake
+						# and then stops reading never puts us in that state, so nothing
+						# pops the queue and it grows until libwebsockets itself gives up
+						# on the connection minutes later. 'events_max_queue' is an
+						# absolute ceiling that applies whatever the connection state is:
+						# when both are set the smaller one wins. As above, 0 disables it
+						# (the default), so the minimum useful value is 1.
+	# events_max_queue = 20000
+
 						# In case you need to debug connection issues, you can configure
 						# the libwebsockets debugging level as a comma separated list of things
 						# to debug, supported values: err, warn, notice, info, debug, parser,
