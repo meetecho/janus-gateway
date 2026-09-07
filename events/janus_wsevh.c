@@ -567,7 +567,25 @@ json_t *janus_wsevh_handle_request(json_t *request) {
 		goto plugin_response;
 	/* Get the request */
 	const char *request_text = json_string_value(json_object_get(request, "request"));
-	if(!strcasecmp(request_text, "tweak")) {
+	if(!strcasecmp(request_text, "info")) {
+		/* The queue depth is the only in-band way to tell a backend that
+		 * stopped reading from a leak elsewhere: both grow at similar rates.
+		 * On lws < 3.2 `connected` reads true while a connect attempt is
+		 * still in flight, since the flag is cleared when it starts. */
+		json_t *info = json_object();
+		janus_mutex_lock(&events_mutex);
+		json_object_set_new(info, "queued", json_integer(events ? g_queue_get_length(events) : 0));
+		janus_mutex_unlock(&events_mutex);
+		json_object_set_new(info, "connected", g_atomic_int_get(&reconnect) ? json_false() : json_true());
+		json_object_set_new(info, "dropped", json_integer(g_atomic_int_get(&dropped)));
+		json_object_set_new(info, "grouping", group_events ? json_true() : json_false());
+		json_object_set_new(info, "events_cap_on_reconnect", json_integer(g_atomic_int_get(&events_cap_on_reconnect)));
+		json_object_set_new(info, "events_max_queue", json_integer(g_atomic_int_get(&events_max_queue)));
+		json_t *response = json_object();
+		json_object_set_new(response, "result", json_integer(200));
+		json_object_set_new(response, "info", info);
+		return response;
+	} else if(!strcasecmp(request_text, "tweak")) {
 		/* We only support a request to tweak the current settings */
 		JANUS_VALIDATE_JSON_OBJECT(request, tweak_parameters,
 			error_code, error_cause, TRUE,
