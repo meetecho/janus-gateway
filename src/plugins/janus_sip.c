@@ -4160,11 +4160,8 @@ static void *janus_sip_handler(void *data) {
 					g_error_free(error);
 					goto error;
 				}
-				/* Wait (up to 2s) for the Sofia thread to bring up the NUA stack, signaled via a condition */
 				gint64 deadline = g_get_monotonic_time() + 2 * G_TIME_SPAN_SECOND;
 				janus_mutex_lock(&session->stack_mutex);
-				/* janus_condition_wait_until() discards g_cond_wait_until()'s return, so guard the
-				 * deadline in the loop condition to avoid spinning once it has expired. */
 				while((session->stack == NULL || session->stack->s_nua == NULL) && g_get_monotonic_time() < deadline) {
 					janus_condition_wait_until(&session->stack_cond, &session->stack_mutex, deadline);
 				}
@@ -8601,8 +8598,6 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NTATAG_CANCEL_2543(session->account.rfc2543_cancel),
 				NTATAG_SIP_T1X64(sip_timer_t1x64),
 				TAG_NULL());
-	/* The NUA stack is ready; publish it (the stack/s_nua writes above) to the waiting
-	 * register handler. Single waiter per session, so signal rather than broadcast. */
 	janus_mutex_lock(&session->stack_mutex);
 	janus_condition_signal(&session->stack_cond);
 	janus_mutex_unlock(&session->stack_mutex);
