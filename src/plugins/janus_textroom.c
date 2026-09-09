@@ -1693,6 +1693,18 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 					JANUS_LOG(LOG_ERR, "Error initializing CURL context\n");
 				} else {
 					curl_easy_setopt(curl, CURLOPT_URL, textroom->http_backend);
+					/* The backend URL comes straight from the plugin API: restrict libcurl to
+					 * the protocols this feature is documented to use, so that a room owner
+					 * cannot turn the callback into gopher://, file://, ftp://, ... */
+#if CURL_AT_LEAST_VERSION(7, 85, 0)
+					curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "http,https");
+					curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+#else
+					curl_easy_setopt(curl, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+					curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+#endif
+					curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+					curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
 					struct curl_slist *headers = NULL;
 					headers = curl_slist_append(headers, "Accept: application/json");
 					headers = curl_slist_append(headers, "Content-Type: application/json");
@@ -2461,6 +2473,18 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 				JANUS_LOG(LOG_ERR, "Error initializing CURL context\n");
 			} else {
 				curl_easy_setopt(curl, CURLOPT_URL, textroom->http_backend);
+				/* The backend URL comes straight from the plugin API: restrict libcurl to
+				 * the protocols this feature is documented to use, so that a room owner
+				 * cannot turn the callback into gopher://, file://, ftp://, ... */
+#if CURL_AT_LEAST_VERSION(7, 85, 0)
+				curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "http,https");
+				curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+#else
+				curl_easy_setopt(curl, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+				curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+#endif
+				curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+				curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
 				struct curl_slist *headers = NULL;
 				headers = curl_slist_append(headers, "Accept: application/json");
 				headers = curl_slist_append(headers, "Content-Type: application/json");
