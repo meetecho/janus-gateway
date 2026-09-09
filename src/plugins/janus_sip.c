@@ -1364,8 +1364,8 @@ typedef struct janus_sip_session {
 	gboolean helper;		/* Whether this session is a helper or not */
 	GList *helpers;			/* The helper sessions, if this is the "master" */
 	janus_mutex mutex;
-	GMutex stack_mutex;			/* Protects the Sofia stack readiness signaling below */
-	GCond stack_cond;			/* Signaled by the Sofia thread once the NUA stack (s_nua) is ready */
+	janus_mutex stack_mutex;		/* Protects the Sofia stack readiness signaling below */
+	janus_condition stack_cond;		/* Signaled by the Sofia thread once the NUA stack (s_nua) is ready */
 	char *hangup_reason_header;
 	char *hangup_reason_header_protocol;
 	char *hangup_reason_header_cause;
@@ -1461,8 +1461,8 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 		g_free(session->stack);
 		session->stack = NULL;
 	}
-	g_cond_clear(&session->stack_cond);
-	g_mutex_clear(&session->stack_mutex);
+	janus_condition_destroy(&session->stack_cond);
+	janus_mutex_destroy(&session->stack_mutex);
 	if(session->account.proxy) {
 		g_free(session->account.proxy);
 		session->account.proxy = NULL;
@@ -2700,8 +2700,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
 	janus_mutex_init(&session->mutex);
-	g_mutex_init(&session->stack_mutex);
-	g_cond_init(&session->stack_cond);
+	janus_mutex_init(&session->stack_mutex);
+	janus_condition_init(&session->stack_cond);
 	handle->plugin_handle = session;
 	janus_refcount_init(&session->ref, janus_sip_session_free);
 
@@ -4162,13 +4162,14 @@ static void *janus_sip_handler(void *data) {
 				}
 				/* Wait (up to 2s) for the Sofia thread to bring up the NUA stack, signaled via a condition */
 				gint64 deadline = g_get_monotonic_time() + 2 * G_TIME_SPAN_SECOND;
-				g_mutex_lock(&session->stack_mutex);
-				while(session->stack == NULL || session->stack->s_nua == NULL) {
-					if(!g_cond_wait_until(&session->stack_cond, &session->stack_mutex, deadline))
-						break;	/* Deadline expired */
+				janus_mutex_lock(&session->stack_mutex);
+				/* janus_condition_wait_until() discards g_cond_wait_until()'s return, so guard the
+				 * deadline in the loop condition to avoid spinning once it has expired. */
+				while((session->stack == NULL || session->stack->s_nua == NULL) && g_get_monotonic_time() < deadline) {
+					janus_condition_wait_until(&session->stack_cond, &session->stack_mutex, deadline);
 				}
 				gboolean nua_ready = (session->stack != NULL && session->stack->s_nua != NULL);
-				g_mutex_unlock(&session->stack_mutex);
+				janus_mutex_unlock(&session->stack_mutex);
 				if(!nua_ready) {
 					JANUS_LOG(LOG_ERR, "Two seconds passed and still no NUA, problems with the thread?\n");
 					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
@@ -8600,10 +8601,11 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NTATAG_CANCEL_2543(session->account.rfc2543_cancel),
 				NTATAG_SIP_T1X64(sip_timer_t1x64),
 				TAG_NULL());
-	/* The NUA stack is ready: wake up any register handler waiting on it */
-	g_mutex_lock(&session->stack_mutex);
-	g_cond_broadcast(&session->stack_cond);
-	g_mutex_unlock(&session->stack_mutex);
+	/* The NUA stack is ready; publish it (the stack/s_nua writes above) to the waiting
+	 * register handler. Single waiter per session, so signal rather than broadcast. */
+	janus_mutex_lock(&session->stack_mutex);
+	janus_condition_signal(&session->stack_cond);
+	janus_mutex_unlock(&session->stack_mutex);
 	if(query_contact_header)
 		nua_get_params(session->stack->s_nua, SIPTAG_FROM_STR(""), TAG_END());
 	su_root_run(session->stack->s_root);
