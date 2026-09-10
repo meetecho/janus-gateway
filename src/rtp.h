@@ -154,6 +154,11 @@ int janus_videocodec_pt(janus_videocodec vcodec);
  * @param[in] len Length of the buffer to inspect */
 gboolean janus_is_rtp(char *buf, guint len);
 
+/*! \brief Checks if the given payload type falls within the dynamic range [96, 127].
+ * @param[in] payload_type The payload type value to check.
+ * @returns TRUE if the payload type is in the dynamic range, FALSE otherwise. */
+gboolean janus_is_dynamic_payload_type(int payload_type);
+
 /*! \brief Helper to quickly access the RTP payload, skipping header and extensions
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
