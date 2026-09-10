@@ -1,0 +1,112 @@
+#!/bin/sh
+
+# exit on failure
+set -e
+
+# exit on unassigned variable
+set -u
+
+# variables
+janus_request="none"
+janus_options="none"
+janus_addr="${JANUS_HOST:-localhost}"
+janus_port="${JANUS_ADMIN_PORT:-7088}"
+janus_pass="${JANUS_ADMIN_SECRET:-janusoverlord}"
+janus_endpoint="${JANUS_ADMIN_ENDPOINT:-/admin}"
+janus_timeout="${JANUS_ADMIN_TIMEOUT:-5}"
+
+# define usage
+usage() {
+	cat <<EOF
+usage: $0 [-h] [options] -r REQUEST
+
+	-h	show this help message
+	-r	janus request (required)
+	-o	janus request optional parameter (can be repeated) (default: ${janus_options})
+	-a	janus server address (default: ${janus_addr}, env: JANUS_HOST)
+	-p	janus HTTP admin port (default: ${janus_port}, env: JANUS_ADMIN_PORT)
+	-s	janus admin secret (default: ${janus_pass}, env: JANUS_ADMIN_SECRET)
+	-e	janus admin endpoint (default: ${janus_endpoint}, env: JANUS_ADMIN_ENDPOINT)
+	-t	janus response timeout (default: ${janus_timeout}, env: JANUS_ADMIN_TIMEOUT)
+EOF
+
+	exit ${1:-1}
+}
+
+# define fatal
+fatal() {
+    printf "fatal: $*\n\n" >&2
+    usage 1
+}
+
+# get random string
+rand_str() {
+	length=${1:-32}
+	LC_CTYPE=C tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w ${length} | head -n 1
+}
+
+# parse parameters
+while getopts "ha:p:s:e:t:o:r:" opt; do
+	case $opt in
+		h) usage 0 ;;
+		r) janus_request="${OPTARG}" ;;
+		o) janus_options="${janus_options},${OPTARG}" ;;
+		a) janus_addr="${OPTARG}" ;;
+		p) janus_port="${OPTARG}" ;;
+		s) janus_pass="${OPTARG}" ;;
+		e) janus_endpoint="${OPTARG}" ;;
+		t) janus_timeout="${OPTARG}" ;;
+	esac
+done
+
+# check parameters
+if [ "${janus_request}" = "none" ]; then
+	fatal "Janus request parameter is mandatory"
+fi
+
+# parse optional parameter
+http_session_id=
+http_handle_id=
+http_payload_opts=""
+for opt in $(echo ${janus_options} | sed 's/,/ /g'); do
+	if [ "${opt}" = "none" ]; then
+		continue
+	fi
+
+	opt_name="$(echo ${opt} | cut -d= -f1)"
+	opt_value="$(echo ${opt} | cut -d= -f2-)"
+
+	# append double-quotes to JSON strings
+	if echo "${opt_value}" | grep -qE '^([0-9]+|true|false|null)$'; then
+		http_payload_opts="${http_payload_opts}\"${opt_name}\": ${opt_value},"
+	else
+		http_payload_opts="${http_payload_opts}\"${opt_name}\": \"${opt_value}\","
+	fi
+
+	if [ "${opt_name}" = "session_id" ]; then
+		http_session_id="/${opt_value}"
+	elif [ "${opt_name}" = "handle_id" ]; then
+		http_handle_id="/${opt_value}"
+	fi
+done
+
+# prepare payload
+http_payload=$(cat <<EOF
+{
+	"janus": "${janus_request}",
+	${http_payload_opts}
+	"transaction": "$(rand_str 12)",
+	"admin_secret": "${janus_pass}"
+}
+EOF
+)
+
+# send request
+curl \
+	--silent \
+	--fail \
+	--show-error \
+	--max-time ${janus_timeout} \
+	--write-out '\n' \
+	--data "${http_payload}" \
+	http://${janus_addr}:${janus_port}${janus_endpoint}${http_session_id}${http_handle_id}
