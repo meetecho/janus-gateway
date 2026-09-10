@@ -314,6 +314,10 @@ static gboolean hide_dependencies = FALSE;
 /* Whether handles may request a custom RTP port sub-range on attach (default off) */
 static gboolean rtp_port_range_perhandle_override = FALSE;
 
+/* By default the "info" endpoint is unauthenticated, but operators who want
+ * to reduce server fingerprinting can require auth to access it */
+static gboolean disable_info_api = FALSE;
+
 /* By default we do not exit if a shared library cannot be loaded or is missing an expected symbol */
 static gboolean exit_on_dl_error = FALSE;
 
@@ -1112,6 +1116,14 @@ int janus_process_incoming_request(janus_request *request) {
 	if(session_id == 0 && handle_id == 0) {
 		/* Can only be a 'Create new session', a 'Get info' or a 'Ping/Pong' request */
 		if(!strcasecmp(message_text, "info")) {
+			if(disable_info_api) {
+				/* Info endpoint is restricted: require a valid secret or token */
+				ret = janus_request_check_secret(request, session_id, transaction_text);
+				if(ret != 0) {
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
+					goto jsondone;
+				}
+			}
 			ret = janus_process_success(request, janus_info(transaction_text));
 			goto jsondone;
 		}
@@ -4909,6 +4921,8 @@ gint main(int argc, char *argv[]) {
 		janus_config_add(config, config_general, janus_config_item_create("token_auth", "true"));
 	if(options.token_auth_secret)
 		janus_config_add(config, config_general, janus_config_item_create("token_auth_secret", options.token_auth_secret));
+	if(options.disable_info_api)
+		janus_config_add(config, config_general, janus_config_item_create("disable_info_api", "true"));
 	if(options.no_webrtc_encryption)
 		janus_config_add(config, config_general, janus_config_item_create("no_webrtc_encryption", "true"));
 	if(options.cert_pem)
@@ -5152,6 +5166,14 @@ gint main(int argc, char *argv[]) {
 	item = janus_config_get(config, config_general, janus_config_type_item, "hide_dependencies");
 	if(item && item->value && janus_is_true(item->value))
 		hide_dependencies = TRUE;
+	/* Check if the "info" endpoint should require authentication */
+	item = janus_config_get(config, config_general, janus_config_type_item, "disable_info_api");
+	if(item && item->value && janus_is_true(item->value)) {
+		disable_info_api = TRUE;
+		if(api_secret == NULL && !janus_auth_is_enabled()) {
+			JANUS_LOG(LOG_WARN, "disable_info_api is enabled, but neither api_secret nor token_auth is configured: the \"info\" endpoint will remain accessible to all\n");
+		}
+	}
 
 	/* Setup ICE stuff (e.g., checking if the provided STUN server is correct) */
 	char *stun_server = NULL, *turn_server = NULL;
