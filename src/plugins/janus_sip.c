@@ -1442,6 +1442,23 @@ static char *janus_sip_session_contact_header_retrieve(janus_sip_session *sessio
 		return session->stack->contact_header;
 }
 
+static gboolean janus_sip_subscription_matches_handle(gpointer key, gpointer value, gpointer user_data) {
+	return (value == user_data);
+}
+
+/* Drop a subscription handle once the stack says its dialog usage is gone. The
+ * table's value destructor is nua_handle_destroy(), and that destroy is a
+ * signal to the stack thread, so this is safe from inside a callback for the
+ * same handle. */
+static void janus_sip_subscription_forget(janus_sip_session *session, nua_handle_t *nh) {
+	if(session == NULL || session->stack == NULL || nh == NULL)
+		return;
+	janus_mutex_lock(&session->stack->smutex);
+	if(session->stack->subscriptions != NULL)
+		g_hash_table_foreach_remove(session->stack->subscriptions, janus_sip_subscription_matches_handle, nh);
+	janus_mutex_unlock(&session->stack->smutex);
+}
+
 static void janus_sip_session_free(const janus_refcount *session_ref) {
 	janus_sip_session *session = janus_refcount_containerof(session_ref, janus_sip_session, ref);
 	/* Remove the reference to the core plugin session */
@@ -1578,9 +1595,22 @@ static void janus_sip_message_free(janus_sip_message *msg) {
 	g_free(msg);
 }
 
+/* Matcher for sweeping a closing session's transfers out of the global table */
+static gboolean janus_sip_transfer_owned_by_session(gpointer key, gpointer value, gpointer user_data) {
+	janus_sip_transfer *t = (janus_sip_transfer *)value;
+	return t != NULL && t->session == (janus_sip_session *)user_data;
+}
+
 static void janus_sip_transfer_destroy(janus_sip_transfer *t) {
 	if(t == NULL)
 		return;
+	/* The saved event holds a reference to the REFER message, and an
+	 * out-of-dialog REFER leaves us a fresh unbound handle to destroy */
+	nua_destroy_event(t->saved);
+	gboolean adopted_call_handle = t->session != NULL && t->session->stack != NULL &&
+		t->nh_s == t->session->stack->s_nh_i;
+	if(t->nh_s != NULL && nua_handle_magic(t->nh_s) == NULL && !adopted_call_handle)
+		nua_handle_destroy(t->nh_s);
 	g_free(t->referred_by);
 	g_free(t->custom_headers);
 	if(t->session != NULL)
@@ -1905,7 +1935,9 @@ static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_
 			char *header_prefix = (char *)temp->data;
 			if(header_prefix != NULL && unknown_header->un_name != NULL) {
 				if(strncasecmp(unknown_header->un_name, header_prefix, strlen(header_prefix)) == 0) {
-					json_object_set(headers, unknown_header->un_name, json_string(unknown_header->un_value));
+					/* json_object_set (without _new) would leave the fresh
+					 * json_string with an extra reference and leak it */
+					json_object_set_new(headers, unknown_header->un_name, json_string(unknown_header->un_value));
 					break;
 				}
 			}
@@ -2769,11 +2801,12 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 			janus_mutex_unlock(&master->mutex);
 		}
 	}
-	/* If this session was involved in a transfer, get rid of the reference */
-	if(session->refer_id) {
-		g_hash_table_remove(transfers, GUINT_TO_POINTER(session->refer_id));
-		session->refer_id = 0;
-	}
+	/* Every entry holds a reference to the session, and session->refer_id is
+	 * only the last transfer the application acted upon, so sweep them all.
+	 * sessions_mutex is held here. */
+	if(transfers != NULL)
+		g_hash_table_foreach_remove(transfers, janus_sip_transfer_owned_by_session, session);
+	session->refer_id = 0;
 	/* Shutdown the NUA */
 	if(session->stack) {
 		janus_mutex_lock(&session->stack->smutex);
@@ -6078,6 +6111,17 @@ error:
 
 
 /* Sofia callbacks */
+/* nua creates a fresh handle for every out-of-dialog request and leaves the
+ * unbound ones to us to destroy (see the nua_i_options docs). The adopted
+ * incoming-call handle is unbound as well, so spare that one. */
+static void janus_sip_destroy_unbound_handle(janus_sip_session *session, nua_handle_t *nh, nua_hmagic_t *hmagic) {
+	if(nh == NULL || hmagic != NULL)
+		return;
+	if(session->stack != NULL && nh == session->stack->s_nh_i)
+		return;
+	nua_handle_destroy(nh);
+}
+
 void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase, nua_t *nua, nua_magic_t *magic, nua_handle_t *nh, nua_hmagic_t *hmagic, sip_t const *sip, tagi_t tags[])
 {
 	janus_sip_session *session = (janus_sip_session *)(hmagic ? hmagic : magic);
@@ -6243,6 +6287,31 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* We had a reference to this session for this call, get rid of it */
 			janus_sip_unref_active_call(session);
+			/* Last event sofia sends for the call, and the handle is ours: the
+			 * first event delivered on it made the stack take a user reference
+			 * it never gives back. It cannot be destroyed any earlier - that
+			 * would drop the queued events, this one included. session->stack
+			 * is still alive here, since this event returns the reference the
+			 * teardown waits for. */
+			if(nh != NULL && nh != session->stack->s_nh_i &&
+					nh != session->stack->s_nh_r && nh != session->stack->s_nh_m) {
+				/* An in-dialog REFER stored this same handle in the transfers
+				 * table; clear those pointers or the sweep at session close
+				 * would destroy it a second time */
+				janus_mutex_lock(&sessions_mutex);
+				if(transfers != NULL) {
+					GHashTableIter titer;
+					gpointer tvalue;
+					g_hash_table_iter_init(&titer, transfers);
+					while(g_hash_table_iter_next(&titer, NULL, &tvalue)) {
+						janus_sip_transfer *t = (janus_sip_transfer *)tvalue;
+						if(t != NULL && t->nh_s == nh)
+							t->nh_s = NULL;
+					}
+				}
+				janus_mutex_unlock(&sessions_mutex);
+				nua_handle_destroy(nh);
+			}
 			break;
 		}
 	/* SIP requests */
@@ -6275,11 +6344,18 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(ssip == NULL) {
 				JANUS_LOG(LOG_ERR, "\tInvalid SIP stack\n");
 				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
+				/* Once i_invite has been delivered the handle is ours even on a
+				 * final error response, and this event's active-call reference
+				 * has to go back on every path that does not keep the call */
+				janus_sip_destroy_unbound_handle(session, nh, hmagic);
+				janus_sip_unref_active_call(session);
 				break;
 			}
 			if(sip->sip_from == NULL || sip->sip_to == NULL) {
 				JANUS_LOG(LOG_ERR, "\tInvalid request (missing From or To)\n");
 				nua_respond(nh, 400, sip_status_phrase(400), TAG_END());
+				janus_sip_destroy_unbound_handle(session, nh, hmagic);
+				janus_sip_unref_active_call(session);
 				break;
 			}
 			gboolean reinvite = FALSE, busy = FALSE;
@@ -6328,6 +6404,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				}
 				JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
 				nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
+				janus_sip_destroy_unbound_handle(session, nh, hmagic);
+				janus_sip_unref_active_call(session);
 				/* Notify the web app about the missed invite */
 				json_t *missed = json_object();
 				json_object_set_new(missed, "sip", json_string("event"));
@@ -6374,6 +6452,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					JANUS_LOG(LOG_ERR, "\tError parsing SDP! %s\n", sdperror);
 					g_atomic_int_set(&session->establishing, 0);
 					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+					janus_sip_destroy_unbound_handle(session, nh, hmagic);
+					/* A re-INVITE gave its reference back at the branch above */
+					if(!reinvite)
+						janus_sip_unref_active_call(session);
 					break;
 				}
 			}
@@ -6417,6 +6499,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(!session->media.has_audio && !session->media.has_video) {
 					g_atomic_int_set(&session->establishing, 0);
 					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+					janus_sip_destroy_unbound_handle(session, nh, hmagic);
+					if(!reinvite)
+						janus_sip_unref_active_call(session);
 					janus_sdp_destroy(sdp);
 					break;
 				}
@@ -6424,6 +6509,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(!session->media.remote_audio_ip && !session->media.remote_video_ip) {
 					g_atomic_int_set(&session->establishing, 0);
 					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+					janus_sip_destroy_unbound_handle(session, nh, hmagic);
+					if(!reinvite)
+						janus_sip_unref_active_call(session);
 					janus_sdp_destroy(sdp);
 					break;
 				}
@@ -6528,6 +6616,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(sip == NULL || sip->sip_refer_to == NULL) {
 				JANUS_LOG(LOG_ERR, "Missing Refer-To header\n");
 				nua_respond(nh, 400, sip_status_phrase(400), TAG_END());
+				/* REFER is an application method, so the stack will not destroy
+				 * the per-request handle after the response we just sent */
+				janus_sip_destroy_unbound_handle(session, nh, hmagic);
 				break;
 			}
 			/* Access the headers we need */
@@ -6561,25 +6652,42 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			/* Send a 202 back */
 			nua_respond(nh, 202, sip_status_phrase(202), NUTAG_WITH_CURRENT(nua), TAG_END());
 			JANUS_LOG(LOG_VERB, "[%p] 202\n", nh);
-			/* Take note of the session and NUA handle we got the REFER from (for NOTIFY) */
+			/* Take note of the session and NUA handle we got the REFER from (for
+			 * NOTIFY), but only while the session is still alive: teardown sweeps
+			 * this table and marks the session destroyed under this same mutex,
+			 * so once the flag is visible the sweep has already run and a record
+			 * inserted now would never be reclaimed. */
 			janus_mutex_lock(&sessions_mutex);
 			guint32 refer_id = 0;
-			while(refer_id == 0) {
-				refer_id = janus_random_uint32();
-				if(g_hash_table_lookup(transfers, GUINT_TO_POINTER(refer_id)) != NULL) {
-					refer_id = 0;
-					continue;
+			if(!g_atomic_int_get(&session->destroyed)) {
+				while(refer_id == 0) {
+					refer_id = janus_random_uint32();
+					if(g_hash_table_lookup(transfers, GUINT_TO_POINTER(refer_id)) != NULL) {
+						refer_id = 0;
+						continue;
+					}
+					janus_sip_transfer *t = g_malloc(sizeof(janus_sip_transfer));
+					janus_refcount_increase(&session->ref);
+					t->session = session;
+					t->referred_by = referred_by ? g_strdup(referred_by) : NULL;
+					t->custom_headers = custom_headers ? g_strdup(custom_headers) : NULL;
+					t->nh_s = nh;
+					nua_save_event(nua, t->saved);
+					g_hash_table_insert(transfers, GUINT_TO_POINTER(refer_id), t);
 				}
-				janus_sip_transfer *t = g_malloc(sizeof(janus_sip_transfer));
-				janus_refcount_increase(&session->ref);
-				t->session = session;
-				t->referred_by = referred_by ? g_strdup(referred_by) : NULL;
-				t->custom_headers = custom_headers ? g_strdup(custom_headers) : NULL;
-				t->nh_s = nh;
-				nua_save_event(nua, t->saved);
-				g_hash_table_insert(transfers, GUINT_TO_POINTER(refer_id), t);
 			}
 			janus_mutex_unlock(&sessions_mutex);
+			if(refer_id == 0) {
+				/* Torn down while this REFER was in flight: the 202 above already
+				 * went out on the still-live stack, so just drop what the normal
+				 * path would have consumed */
+				janus_sip_destroy_unbound_handle(session, nh, hmagic);
+				g_free(replaces);
+				su_free(session->stack->s_home, referred_by);
+				su_free(session->stack->s_home, refer_to);
+				su_free(session->stack->s_home, custom_headers);
+				break;
+			}
 			/* Notify the application */
 			json_t *info = json_object();
 			json_object_set_new(info, "sip", json_string("event"));
@@ -6610,6 +6718,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		}
 		case nua_i_info: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* Safe here: what follows only reads the event's own sip object */
+			janus_sip_destroy_unbound_handle(session, nh, hmagic);
 			/* We expect a payload */
 			if(!sip->sip_content_type || !sip->sip_content_type->c_type || !sip->sip_payload || !sip->sip_payload->pl_data) {
 				return;
@@ -6643,6 +6753,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		}
 		case nua_i_message: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* Safe here: what follows only reads the event's own sip object */
+			janus_sip_destroy_unbound_handle(session, nh, hmagic);
 			/* We expect a payload */
 			if(!sip->sip_content_type || !sip->sip_content_type->c_type || !sip->sip_payload || !sip->sip_payload->pl_data) {
 				return;
@@ -6676,6 +6788,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		}
 		case nua_i_notify: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* The one signal sofia gives for every way a subscription ends,
+			 * including the internal "Fetch Timeouts without NOTIFY" event,
+			 * which carries no SIP message - hence before the checks below */
+			const tagi_t *substate_tag = tl_find(tags, nutag_substate);
+			if(substate_tag != NULL &&
+					(enum nua_substate)(substate_tag->t_value) == nua_substate_terminated)
+				janus_sip_subscription_forget(session, nh);
 			/* We expect a payload */
 			if(!sip) {
 				/* No SIP message? Maybe an internal message? */
@@ -6716,6 +6835,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* Stack responds automatically to OPTIONS request unless OPTIONS is
 			 * included in the set of application methods, set by NUTAG_APPL_METHOD(). */
+			janus_sip_destroy_unbound_handle(session, nh, hmagic);
 			break;
 	/* Responses */
 		case nua_r_get_params:
@@ -7405,8 +7525,15 @@ auth_failed:
 					TAG_END());
 				break;
 			} else if(status >= 400) {
-				/* Something went wrong */
+				/* Something went wrong: the stack has dropped the dialog usage
+				 * (an initial SUBSCRIBE that never became ready, or a refresh
+				 * shut down gracefully) without telling us through i_notify,
+				 * so the entry in stack->subscriptions is now a handle with no
+				 * subscription. Reap it: keeping it leaks the handle for the
+				 * lifetime of the session, and a later subscribe reusing the
+				 * same call_id would resend on a half-dead dialog. */
 				JANUS_LOG(LOG_WARN, "[%s] SUBSCRIBE failed: %d %s\n", session->account.username, status, phrase ? phrase : "");
+				janus_sip_subscription_forget(session, nh);
 				json_t *event = json_object();
 				json_object_set_new(event, "sip", json_string("event"));
 				if(sip && sip->sip_call_id)
