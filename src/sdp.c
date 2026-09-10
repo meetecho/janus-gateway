@@ -1639,6 +1639,13 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping disabled/unsupported media line...\n", handle->handle_id);
 			m->port = 0;
 			m->direction = JANUS_SDP_INACTIVE;
+			/* RFC 8843 (BUNDLE): rejected m-lines are not included in the
+			* BUNDLE group. If a rejected m-line retains a real connection address,
+			* browsers may attempt to establish a separate ICE
+			* transport for it, which fails since it's not bundled. Remove c_addr to
+			* prevent this (e.g., for unsupported media types like text/T.140). */
+			g_free(m->c_addr);
+			m->c_addr = NULL;
 			temp = temp->next;
 			continue;
 		}
