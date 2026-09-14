@@ -1704,7 +1704,11 @@ static void janus_streaming_parse_sprop(janus_streaming_rtp_source *source, char
 				memcpy(nal + offset, pps_dec, plen);
 				/* Keep track of the packet */
 				g_free(source->h264_spspps);
+#ifdef HAVE_LIBCURL
 				if(!source->rtsp || (source->rtsp && source->rtsp_fmtp_sps)) {
+#else
+				if(!source->rtsp) {
+#endif
 					source->h264_spspps = buf;
 					source->h264_spspps_len = flen;
 				} else {
