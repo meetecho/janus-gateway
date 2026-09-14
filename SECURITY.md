@@ -2,7 +2,7 @@
 
 *Maintained by Meetecho as open-source software steward under Article 24 of the EU Cyber Resilience Act (Regulation (EU) 2024/2847)*
 
-**Last updated:** 10th of September, 2026· **Version:** 1.0
+**Last updated:** 14th of September, 2026· **Version:** 1.0.1
 
 ---
 
@@ -22,7 +22,8 @@ This policy covers the Janus WebRTC Server core project as published at https://
 
 ## 3. How to report a vulnerability
 
-- **Contact:** `security@meetecho.com`
+Please do not report security vulnerabilities through public GitHub issues, discussions, or pull requests. The preferred way to report a vulnerability is through [GitHub's private vulnerability reporting](https://github.com/meetecho/janus-gateway/security/advisories/new). If you are unable to use GitHub's private reporting, you can alternatively contact `janus-security@meetecho.com`.
+
 - **What to include:** affected version/commit, reproduction steps or PoC, potential impact, whether it's already public or being exploited.
 - **Response time:** we aim to acknowledge reports within 2-3 business days.
 
@@ -59,7 +60,7 @@ This obligation is limited to Meetecho's own development infrastructure for Janu
 
 Upon a reasoned request from an EU market surveillance authority, Meetecho will provide this policy and related documentation, in a language the authority can understand, in electronic or paper form, as required by Article 24(2).
 
-Point of contact for such requests: `security@meetecho.com`.
+Point of contact for such requests: `janus-security@meetecho.com`.
 
 ## 7. Encouraging community vulnerability reporting
 
