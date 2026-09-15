@@ -1364,6 +1364,8 @@ typedef struct janus_sip_session {
 	gboolean helper;		/* Whether this session is a helper or not */
 	GList *helpers;			/* The helper sessions, if this is the "master" */
 	janus_mutex mutex;
+	janus_mutex stack_mutex;		/* Protects the Sofia stack readiness signaling below */
+	janus_condition stack_cond;		/* Signaled by the Sofia thread once the NUA stack (s_nua) is ready */
 	char *hangup_reason_header;
 	char *hangup_reason_header_protocol;
 	char *hangup_reason_header_cause;
@@ -1459,6 +1461,8 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 		g_free(session->stack);
 		session->stack = NULL;
 	}
+	janus_condition_destroy(&session->stack_cond);
+	janus_mutex_destroy(&session->stack_mutex);
 	if(session->account.proxy) {
 		g_free(session->account.proxy);
 		session->account.proxy = NULL;
@@ -2696,6 +2700,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
 	janus_mutex_init(&session->mutex);
+	janus_mutex_init(&session->stack_mutex);
+	janus_condition_init(&session->stack_cond);
 	handle->plugin_handle = session;
 	janus_refcount_init(&session->ref, janus_sip_session_free);
 
@@ -4154,15 +4160,14 @@ static void *janus_sip_handler(void *data) {
 					g_error_free(error);
 					goto error;
 				}
-				long int timeout = 0;
-				while(session->stack == NULL || session->stack->s_nua == NULL) {
-					g_usleep(100000);
-					timeout += 100000;
-					if(timeout >= 2000000) {
-						break;
-					}
+				gint64 deadline = g_get_monotonic_time() + 2 * G_TIME_SPAN_SECOND;
+				janus_mutex_lock(&session->stack_mutex);
+				while((session->stack == NULL || session->stack->s_nua == NULL) && g_get_monotonic_time() < deadline) {
+					janus_condition_wait_until(&session->stack_cond, &session->stack_mutex, deadline);
 				}
-				if(timeout >= 2000000) {
+				gboolean nua_ready = (session->stack != NULL && session->stack->s_nua != NULL);
+				janus_mutex_unlock(&session->stack_mutex);
+				if(!nua_ready) {
 					JANUS_LOG(LOG_ERR, "Two seconds passed and still no NUA, problems with the thread?\n");
 					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
 					g_snprintf(error_cause, 512, "Two seconds passed and still no NUA, problems with the thread?");
@@ -8593,6 +8598,9 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NTATAG_CANCEL_2543(session->account.rfc2543_cancel),
 				NTATAG_SIP_T1X64(sip_timer_t1x64),
 				TAG_NULL());
+	janus_mutex_lock(&session->stack_mutex);
+	janus_condition_signal(&session->stack_cond);
+	janus_mutex_unlock(&session->stack_mutex);
 	if(query_contact_header)
 		nua_get_params(session->stack->s_nua, SIPTAG_FROM_STR(""), TAG_END());
 	su_root_run(session->stack->s_root);
