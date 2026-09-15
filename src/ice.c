@@ -4167,7 +4167,8 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 	guint32 ssrc_peer = 0;
 	janus_ice_peerconnection_medium *medium = NULL;
 	if(pc) {
-		/* Find inbound video medium */
+		/* Prefer inbound video, falling back to audio if no video has a valid peer SSRC. */
+		janus_ice_peerconnection_medium *audio = NULL;
 		janus_mutex_lock(&handle->mutex);
 		GHashTableIter iter;
 		gpointer value;
@@ -4190,6 +4191,12 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 				if(medium && ssrc_peer)
 					break;
 			}
+			if(audio == NULL && m && m->type == JANUS_MEDIA_AUDIO && m->recv && m->ssrc_peer[0] != 0)
+				audio = m;
+		}
+		if(medium == NULL && audio != NULL) {
+			medium = audio;
+			ssrc_peer = audio->ssrc_peer[0];
 		}
 		janus_mutex_unlock(&handle->mutex);
 	}
@@ -4271,7 +4278,8 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 				medium->ssrc, ssrc_peer, feedback_packet_count, packets_to_process);
 			/* Enqueue it, we'll send it later */
 			if(len > 0) {
-				janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = TRUE, .buffer = rtcpbuf, .length = len };
+				janus_plugin_rtcp rtcp = { .mindex = medium->mindex,
+					.video = (medium->type == JANUS_MEDIA_VIDEO), .buffer = rtcpbuf, .length = len };
 				janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
 			}
 			if(packets_to_process != packets) {
