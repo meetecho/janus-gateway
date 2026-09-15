@@ -9426,6 +9426,9 @@ static void *janus_audiobridge_participant_thread(void *data) {
 			before += 20000;
 			if(participant->jitter) {
 				janus_mutex_lock(&participant->qmutex);
+				/* jitter_buffer_get() only sets jbp.data when it actually returns a packet,
+				 * so clear it first to make sure a failed read leaves no stale pointer */
+				jbp.data = NULL;
 				ret = jitter_buffer_get(participant->jitter, &jbp, janus_audiobridge_codec_jitter_span(participant->codec), NULL);
 				jitter_ticks++;
 				/* Adjust the buffer size every 50 ticks (~1 second) */
@@ -9443,7 +9446,10 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						if(participant->decoder == NULL) {
 							/* This means we're cleaning up, so don't try to decode */
 							janus_mutex_unlock(&participant->decoding_mutex);
-							janus_audiobridge_buffer_packet_destroy(bpkt);
+							/* Notice that we have no buffered packet to get rid of here: we
+							 * only got to this branch because the jitter buffer had nothing
+							 * for us, so bpkt is either NULL or a dangling pointer to the
+							 * packet we already freed in a previous iteration */
 							break;
 						}
 						int32_t output_samples = 0;
@@ -9499,6 +9505,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						JANUS_LOG(LOG_ERR, "[%s] Ops! got an error accessing the RTP payload\n",
 							participant->codec == JANUS_AUDIOCODEC_OPUS ? "Opus" : "G.711");
 						janus_audiobridge_buffer_packet_destroy(bpkt);
+						bpkt = NULL;
 						continue;
 					}
 					rtp = (janus_rtp_header *)buffer;
@@ -9521,6 +9528,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							/* This means we're cleaning up, so don't try to decode */
 							janus_mutex_unlock(&participant->decoding_mutex);
 							janus_audiobridge_buffer_packet_destroy(bpkt);
+							bpkt = NULL;
 							break;
 						}
 						pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)pkt->data, BUFFER_SAMPLES, 0);
@@ -9530,6 +9538,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						if(plen != 160) {
 							JANUS_LOG(LOG_WARN, "[G.711] Wrong packet size (expected 160, got %d), skipping audio packet\n", plen);
 							janus_audiobridge_buffer_packet_destroy(bpkt);
+							bpkt = NULL;
 							g_free(pkt->data);
 							g_free(pkt);
 							continue;
@@ -9554,6 +9563,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							JANUS_LOG(LOG_WARN, "[L16] Wrong packet size (expected %d, got %d), skipping audio packet\n",
 								expected_plen, plen);
 							janus_audiobridge_buffer_packet_destroy(bpkt);
+							bpkt = NULL;
 							g_free(pkt->data);
 							g_free(pkt);
 							continue;
@@ -9574,6 +9584,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 #endif
 					/* Get rid of the buffered packet */
 					janus_audiobridge_buffer_packet_destroy(bpkt);
+					bpkt = NULL;
 					/* Update the details */
 					participant->last_seq = pkt->seq_number;
 					participant->last_timestamp = pkt->timestamp;
