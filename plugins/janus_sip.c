@@ -6868,6 +6868,74 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* We got a response to our REFER */
 			JANUS_LOG(LOG_VERB, "Response to REFER received\n");
+			if(status == 401 || status == 407) {
+				/* A proxy that challenges in-dialog requests (Kamailio in front
+				 * of Asterisk, for one) wants the same credentials the INVITE
+				 * got; without them the REFER is never sent and the transfer
+				 * silently never happens. */
+				const char *scheme = NULL;
+				const char *realm = NULL;
+				if(status == 401) {
+					sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
+					if(www_auth == NULL)
+						break;
+					scheme = www_auth->au_scheme;
+					realm = msg_params_find(www_auth->au_params, "realm=");
+				} else {
+					sip_proxy_authenticate_t const* proxy_auth = sip->sip_proxy_authenticate;
+					if(proxy_auth == NULL)
+						break;
+					scheme = proxy_auth->au_scheme;
+					realm = msg_params_find(proxy_auth->au_params, "realm=");
+				}
+				char authuser[100], secret[100];
+				memset(authuser, 0, sizeof(authuser));
+				memset(secret, 0, sizeof(secret));
+				if(session->helper) {
+					if(session->master == NULL) {
+						JANUS_LOG(LOG_WARN, "No master session for this helper, authentication will fail...\n");
+					} else {
+						session = session->master;
+					}
+				}
+				if(session->account.authuser && strchr(session->account.authuser, ':')) {
+					g_snprintf(authuser, sizeof(authuser), "\"%s\"", session->account.authuser);
+				} else {
+					g_snprintf(authuser, sizeof(authuser), "%s", session->account.authuser);
+				}
+				if(session->account.secret && strchr(session->account.secret, ':')) {
+					g_snprintf(secret, sizeof(secret), "\"%s\"", session->account.secret);
+				} else {
+					g_snprintf(secret, sizeof(secret), "%s", session->account.secret);
+				}
+				char auth[256];
+				memset(auth, 0, sizeof(auth));
+				g_snprintf(auth, sizeof(auth), "%s%s:%s:%s:%s%s",
+					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
+					scheme,
+					realm,
+					authuser,
+					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
+					secret);
+				nua_authenticate(nh,
+					NUTAG_AUTH(auth),
+					TAG_END());
+				break;
+			}
+			if(status >= 300) {
+				/* The transferee's side refused: tell the application, which
+				 * otherwise only hears of a REFER that was accepted. */
+				json_t *refused = json_object();
+				json_object_set_new(refused, "sip", json_string("event"));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("transfer_failed"));
+				json_object_set_new(result, "code", json_integer(status));
+				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
+				json_object_set_new(refused, "result", result);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, refused, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				json_decref(refused);
+			}
 			break;
 		}
 		case nua_r_invite: {
