@@ -2268,6 +2268,9 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data);
 static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data);
 static void janus_videoroom_hangup_media_internal(gpointer session_data);
 
+/* Arbitrary cap for helper threads */
+#define JANUS_VIDEOROOM_HELPER_THREADS_CAP	100
+
 typedef enum janus_videoroom_p_type {
 	janus_videoroom_p_type_none = 0,
 	janus_videoroom_p_type_subscriber,			/* Generic subscriber */
@@ -4057,7 +4060,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			}
 			if(threads && threads->value) {
 				int helper_threads = atoi(threads->value);
-				if(helper_threads < 0) {
+				if(helper_threads < 0 || helper_threads > JANUS_VIDEOROOM_HELPER_THREADS_CAP) {
 					JANUS_LOG(LOG_WARN, "Invalid threads configuration '%d' in room '%s', ignoring...\n", helper_threads, cat->name);
 				} else {
 					/* If we need helper threads, spawn them now */
@@ -4080,13 +4083,23 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 							janus_refcount_increase(&helper->ref);
 							helper->thread = g_thread_try_new(tname, &janus_videoroom_helper_thread, helper, &error);
 							if(error != NULL) {
-								/* TODO Should this be a hard failure? */
+								/* Give up */
 								JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the helper thread...\n",
 									error->code, error->message ? error->message : "??");
-							} else {
-								janus_refcount_increase(&helper->ref);
-								videoroom->threads = g_list_append(videoroom->threads, helper);
+								janus_refcount_decrease(&helper->ref);
+								janus_refcount_decrease(&videoroom->ref);
+								janus_videoroom_helper_destroy(helper);
+								break;
 							}
+							janus_refcount_increase(&helper->ref);
+							videoroom->threads = g_list_append(videoroom->threads, helper);
+						}
+						if(error != NULL) {
+							/* Something went wrong, return an error */
+							janus_videoroom_room_destroy(videoroom);
+							janus_mutex_unlock(&rooms_mutex);
+							cl = cl->next;
+							continue;
 						}
 					}
 				}
@@ -4906,6 +4919,13 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			g_snprintf(error_cause, 512, "No configuration file, can't create permanent room");
 			goto prepare_response;
 		}
+		int threads_num = json_integer_value(threads);
+		if(threads_num > JANUS_VIDEOROOM_HELPER_THREADS_CAP) {
+			JANUS_LOG(LOG_ERR, "Too many helper threads requested\n");
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Too many helper threads requested");
+			goto prepare_response;
+		}
 		guint64 room_id = 0;
 		char room_id_num[30], *room_id_str = NULL;
 		json_t *room = json_object_get(root, "room");
@@ -4933,6 +4953,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		/* Create the room */
 		janus_videoroom *videoroom = g_malloc0(sizeof(janus_videoroom));
+		janus_mutex_init(&videoroom->mutex);
+		janus_refcount_init(&videoroom->ref, janus_videoroom_room_free);
 		/* Generate a random ID */
 		gboolean room_id_allocated = FALSE;
 		if(!string_ids && room_id == 0) {
@@ -4997,7 +5019,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if(fir_freq)
 			videoroom->fir_freq = json_integer_value(fir_freq);
 		/* If we need helper threads, spawn them now */
-		videoroom->helper_threads = json_integer_value(threads);;
+		videoroom->helper_threads = threads_num;
 		if(videoroom->helper_threads > 0) {
 			GError *error = NULL;
 			char tname[16];
@@ -5016,13 +5038,24 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				janus_refcount_increase(&helper->ref);
 				helper->thread = g_thread_try_new(tname, &janus_videoroom_helper_thread, helper, &error);
 				if(error != NULL) {
-					/* TODO Should this be a hard failure? */
+					/* Give up */
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the helper thread...\n",
 						error->code, error->message ? error->message : "??");
-				} else {
-					janus_refcount_increase(&helper->ref);
-					videoroom->threads = g_list_append(videoroom->threads, helper);
+					janus_refcount_decrease(&helper->ref);
+					janus_refcount_decrease(&videoroom->ref);
+					janus_videoroom_helper_destroy(helper);
+					break;
 				}
+				janus_refcount_increase(&helper->ref);
+				videoroom->threads = g_list_append(videoroom->threads, helper);
+			}
+			if(error != NULL) {
+				/* Something went wrong, return an error */
+				janus_videoroom_room_destroy(videoroom);
+				janus_mutex_unlock(&rooms_mutex);
+				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Helper threads error");
+				goto prepare_response;
 			}
 		}
 		/* By default, we force Opus as the only audio codec */
@@ -5148,8 +5181,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			videoroom->lock_record = json_is_true(lock_record);
 		}
 		g_atomic_int_set(&videoroom->destroyed, 0);
-		janus_mutex_init(&videoroom->mutex);
-		janus_refcount_init(&videoroom->ref, janus_videoroom_room_free);
 		videoroom->participants = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
 			(GDestroyNotify)g_free, (GDestroyNotify)janus_videoroom_publisher_dereference);
 		videoroom->private_ids = g_hash_table_new(NULL, NULL);
