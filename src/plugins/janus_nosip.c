@@ -1305,7 +1305,7 @@ void janus_nosip_destroy_session(janus_plugin_session *handle, int *error) {
 	JANUS_LOG(LOG_VERB, "Destroying NoSIP session (%p)...\n", session);
 	janus_nosip_hangup_media_internal(handle);
 	if(session->unique_id)
-		g_hash_table_remove(sessions, session->unique_id);
+		g_hash_table_remove(unique_ids, session->unique_id);
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 	return;

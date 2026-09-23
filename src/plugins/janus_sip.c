@@ -2788,7 +2788,7 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 		janus_mutex_unlock(&session->stack->smutex);
 	}
 	if(session->unique_id)
-		g_hash_table_remove(sessions, session->unique_id);
+		g_hash_table_remove(unique_ids, session->unique_id);
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
