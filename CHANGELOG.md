@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 
-## [v0.16.2] - 2026-04-23
+## [v0.16.2] - 2026-09-23
 
 - [**SEC**] Updated security policy document and added security advisories
 - [**SEC**] Fix AudioBridge recordings bypassing protected folders (reported by Calif.io) [[PR-3676](https://github.com/meetecho/janus-gateway/pull/3676)]
