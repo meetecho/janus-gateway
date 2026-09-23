@@ -3479,6 +3479,17 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		if(recfile)
 			audiobridge->record_file = g_strdup(json_string_value(recfile));
 		if(recdir) {
+			/* record_dir comes from the plugin API here (unlike the janus.plugin.audiobridge.jcfg
+			 * path above, which is the operator's own file): do not let it create
+			 * directories in a protected folder. */
+			if(janus_is_folder_protected(json_string_value(recdir))) {
+				JANUS_LOG(LOG_ERR, "Target recording folder '%s' is in protected folder...\n",
+					json_string_value(recdir));
+				janus_mutex_unlock(&rooms_mutex);
+				error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Target recording folder is protected");
+				goto prepare_response;
+			}
 			audiobridge->record_dir = g_strdup(json_string_value(recdir));
 			if(janus_mkdir(audiobridge->record_dir, 0755) < 0) {
 				/* FIXME Should this be fatal, when creating a room? */
@@ -3984,6 +3995,14 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		gint room_prev_recording_active = recording_active ? 1 : 0;
 		/* Check if we need to create a folder */
 		if(recording_active && recdir != NULL) {
+			if(janus_is_folder_protected(json_string_value(recdir))) {
+				janus_mutex_unlock(&rooms_mutex);
+				JANUS_LOG(LOG_ERR, "Target recording folder '%s' is in protected folder...\n",
+					json_string_value(recdir));
+				error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Target recording folder is protected");
+				goto prepare_response;
+			}
 			if(janus_mkdir(json_string_value(recdir), 0755) < 0) {
 				/* FIXME Should this be fatal, when creating a room? */
 				janus_mutex_unlock(&rooms_mutex);
@@ -8428,6 +8447,17 @@ static void janus_audiobridge_rec_add_wav_header(janus_audiobridge_room *audiobr
 			audiobridge->record_dir ? "/" : "",
 			audiobridge->room_id_str, now,
 			rec_tempext ? "." : "", rec_tempext ? rec_tempext : "");
+	}
+	/* Make sure the target is not in a folder the admin protected: this is the
+	 * same check src/record.c (.mjr) and src/text2pcap.c (pcap) already perform
+	 * on their own API-supplied output paths, and it was missing here. */
+	if(janus_is_folder_protected(filename)) {
+		JANUS_LOG(LOG_ERR, "Target recording path '%s' is in protected folder...\n", filename);
+		g_atomic_int_set(&audiobridge->record, 0);
+		g_atomic_int_set(&audiobridge->wav_header_added, 0);
+		g_free(audiobridge->record_file);
+		audiobridge->record_file = NULL;
+		return;
 	}
 	audiobridge->recording = fopen(filename, "wb");
 	if(audiobridge->recording == NULL) {
