@@ -782,6 +782,9 @@ rtsp_fmtp_sps = what the plugin should do it if finds SPS/PPS info in an SDP fmt
 #define JANUS_STREAMING_DEFAULT_CURL_TIMEOUT 10L /* Communication timeout for cURL. */
 #define JANUS_STREAMING_DEFAULT_CURL_CONNECT_TIMEOUT 5L /* Connection timeout for cURL. */
 
+/* Arbitrary cap for helper threads */
+#define JANUS_STREAMING_HELPER_THREADS_CAP	100
+
 /* Plugin information */
 #define JANUS_STREAMING_VERSION			10
 #define JANUS_STREAMING_VERSION_STRING	"0.0.10"
@@ -6866,6 +6869,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	/* If we need helper threads, spawn them now */
 	GError *error = NULL;
 	char tname[16];
+	if(threads > JANUS_STREAMING_HELPER_THREADS_CAP) {
+		JANUS_LOG(LOG_WARN, "Requested too many helper threads, capping to max (%d)\n", JANUS_STREAMING_HELPER_THREADS_CAP);
+		threads = JANUS_STREAMING_HELPER_THREADS_CAP;
+	}
 	if(threads > 0) {
 		int i=0;
 		for(i=0; i<threads; i++) {
