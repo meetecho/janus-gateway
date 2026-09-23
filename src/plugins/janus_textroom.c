@@ -1578,12 +1578,29 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		json_t *username = json_object_get(root, "to");
 		json_t *usernames = json_object_get(root, "tos");
 		if(username && usernames) {
+			janus_refcount_decrease(&participant->ref);
 			janus_mutex_unlock(&textroom->mutex);
 			janus_refcount_decrease(&textroom->ref);
 			JANUS_LOG(LOG_ERR, "Both to and tos array provided\n");
 			error_code = JANUS_TEXTROOM_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Both to and tos array provided");
 			goto msg_response;
+		}
+		if(usernames) {
+			/* Make sure we got strings */
+			size_t i = 0;
+			for(i=0; i<json_array_size(usernames); i++) {
+				json_t *u = json_array_get(usernames, i);
+				if(u == NULL || json_is_null(u) || !json_is_string(u)) {
+					janus_refcount_decrease(&participant->ref);
+					janus_mutex_unlock(&textroom->mutex);
+					janus_refcount_decrease(&textroom->ref);
+					JANUS_LOG(LOG_ERR, "Invalid tos provided\n");
+					error_code = JANUS_TEXTROOM_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid tos provided");
+					goto msg_response;
+				}
+			}
 		}
 		json_t *text = json_object_get(root, "text");
 		const char *message = json_string_value(text);
