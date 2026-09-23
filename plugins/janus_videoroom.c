@@ -1567,6 +1567,7 @@ typedef struct janus_videoroom_session {
 	gint64 sdp_version;
 	janus_videoroom_p_type participant_type;
 	gpointer participant;
+	volatile gint starting;
 	volatile gint started;
 	volatile gint dataready;
 	volatile gint hangingup;
@@ -4708,6 +4709,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			goto prepare_response;
 		}
 		participant->kicked = TRUE;
+		g_atomic_int_set(&participant->session->starting, 0);
 		g_atomic_int_set(&participant->session->started, 0);
 		participant->audio_active = FALSE;
 		participant->video_active = FALSE;
@@ -5453,6 +5455,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 
 	/* Media relaying can start now */
 	g_atomic_int_set(&session->started, 1);
+	g_atomic_int_set(&session->starting, 0);
 	if(session->participant) {
 		/* If this is a publisher, notify all subscribers about the fact they can
 		 * now subscribe; if this is a subscriber, instead, ask the publisher a FIR */
@@ -6169,6 +6172,7 @@ static void janus_videoroom_hangup_subscriber(janus_videoroom_subscriber *s) {
 
 static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 	janus_videoroom_session *session = (janus_videoroom_session *)session_data;
+	g_atomic_int_set(&session->starting, 0);
 	g_atomic_int_set(&session->started, 0);
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1)) {
 		return;
@@ -7074,7 +7078,8 @@ static void *janus_videoroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "Already in as a publisher on this handle");
 				goto error;
 			} else if(!strcasecmp(request_text, "configure") || !strcasecmp(request_text, "publish")) {
-				if(!strcasecmp(request_text, "publish") && participant->sdp) {
+				if(!strcasecmp(request_text, "publish") && (g_atomic_int_get(&participant->session->starting) ||
+						g_atomic_int_get(&participant->session->started))) {
 					janus_refcount_decrease(&participant->ref);
 					JANUS_LOG(LOG_ERR, "Can't publish, already published\n");
 					error_code = JANUS_VIDEOROOM_ERROR_ALREADY_PUBLISHED;
@@ -7356,6 +7361,7 @@ static void *janus_videoroom_handler(void *data) {
 				participant->audio_active = FALSE;
 				participant->video_active = FALSE;
 				participant->data_active = FALSE;
+				g_atomic_int_set(&session->starting, 0);
 				g_atomic_int_set(&session->started, 0);
 				//~ session->destroy = TRUE;
 			} else {
@@ -7891,6 +7897,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 				json_object_set_new(event, "left", json_string("ok"));
+				g_atomic_int_set(&session->starting, 0);
 				g_atomic_int_set(&session->started, 0);
 			} else {
 				JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
@@ -7970,22 +7977,23 @@ static void *janus_videoroom_handler(void *data) {
 				g_hash_table_iter_init(&iter, videoroom->participants);
 				while (!g_atomic_int_get(&videoroom->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
 					janus_videoroom_publisher *p = value;
-					if(p != participant && p->sdp)
+					if(p != participant && (g_atomic_int_get(&p->session->starting) || g_atomic_int_get(&p->session->started)))
 						count++;
 				}
 				janus_refcount_increase(&videoroom->ref);
-				janus_mutex_unlock(&videoroom->mutex);
 				if(count == videoroom->max_publishers) {
+					janus_mutex_unlock(&videoroom->mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					participant->audio_active = FALSE;
 					participant->video_active = FALSE;
 					participant->data_active = FALSE;
-					JANUS_LOG(LOG_ERR, "Maximum number of publishers (%d) already reached\n", videoroom->max_publishers);
+					JANUS_LOG(LOG_ERR, "Maximum number of active publishers (%d) already reached\n", videoroom->max_publishers);
 					error_code = JANUS_VIDEOROOM_ERROR_PUBLISHERS_FULL;
-					g_snprintf(error_cause, 512, "Maximum number of publishers (%d) already reached", videoroom->max_publishers);
+					g_snprintf(error_cause, 512, "Maximum number of active publishers (%d) already reached", videoroom->max_publishers);
 					goto error;
 				}
 				if(videoroom->require_e2ee && !e2ee && !participant->e2ee) {
+					janus_mutex_unlock(&videoroom->mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					participant->audio_active = FALSE;
 					participant->video_active = FALSE;
@@ -7995,6 +8003,8 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "Room requires end-to-end encrypted media");
 					goto error;
 				}
+				g_atomic_int_set(&participant->session->starting, 1);
+				janus_mutex_unlock(&videoroom->mutex);
 				/* Now prepare the SDP to give back */
 				if(strstr(msg_sdp, "mozilla") || strstr(msg_sdp, "Mozilla")) {
 					participant->firefox = TRUE;
@@ -8003,6 +8013,7 @@ static void *janus_videoroom_handler(void *data) {
 				char error_str[512];
 				janus_sdp *offer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
 				if(offer == NULL) {
+					g_atomic_int_set(&participant->session->starting, 0);
 					janus_refcount_decrease(&videoroom->ref);
 					json_decref(event);
 					JANUS_LOG(LOG_ERR, "Error parsing offer: %s\n", error_str);
