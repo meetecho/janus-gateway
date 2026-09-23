@@ -22,6 +22,8 @@
 # mjrs_dir = "/path/to/" (path to save the mjr files to)
 # allow_rtp_participants = true|false (whether participants should be allowed to join
 #		via plain RTP as well, rather than just WebRTC, default=false)
+# allow_ws_participants = true|false (whether participants should be allowed to join
+#		via WebSocket RTP media, default=false)
 # groups = optional, non-hierarchical, array of groups to tag participants, for external forwarding purposes only
 #
 #     The following lines are only needed if you want the mixed audio
@@ -72,6 +74,9 @@ general: {
 	# what local IP address to bind to for media. If no address is set in the
 	# property below, then one will be automatically guessed from the system.
 	#local_ip = "1.2.3.4"
+
+	# WebSocket media for agents is configured in janus.jcfg (rtpws section).
+	# Rooms must set allow_ws_participants = true to accept media=websocket joins.
 
 }
 
