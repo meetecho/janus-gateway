@@ -4360,7 +4360,7 @@ static gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstp
 static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	janus_ice_stream *stream = handle->stream;
-	if(stream && stream->video_recv && stream->do_transport_wide_cc) {
+	if(stream && (stream->audio_recv || stream->video_recv) && stream->do_transport_wide_cc) {
 		/* Make sure we have an SSRC to report about */
 		guint ssrc_peer = 0;
 		int i = 0;
@@ -4369,6 +4369,12 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 				ssrc_peer = stream->video_ssrc_peer[i];
 				break;
 			}
+		}
+		gboolean video = TRUE;
+		if(ssrc_peer == 0) {
+			/* Try falling back to audio if no video has a valid peer SSRC */
+			video = FALSE;
+			ssrc_peer = stream->audio_ssrc_peer;
 		}
 		if(ssrc_peer == 0) {
 			JANUS_LOG(LOG_HUGE, "No valid peer SSRC found for transport-wide CC feedback\n");
@@ -4445,7 +4451,7 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 				stream->video_ssrc, ssrc_peer, feedback_packet_count, packets_to_process);
 			/* Enqueue it, we'll send it later */
 			if(len > 0) {
-				janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = rtcpbuf, .length = len };
+				janus_plugin_rtcp rtcp = { .video = video, .buffer = rtcpbuf, .length = len };
 				janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
 			}
 			if(packets_to_process != packets) {
