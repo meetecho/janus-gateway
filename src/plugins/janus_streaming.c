@@ -9060,7 +9060,14 @@ static void *janus_streaming_relay_thread(void *data) {
 						janus_recorder_save_frame(stream->rc, buffer, bytes);
 					}
 					if(mountpoint->enabled) {
-						packet.data->ssrc = htonl(ssrc);
+						/* Relay with a stable SSRC rather than the source's. The ingest
+						 * context above has already rebased seq/ts once for everyone; if
+						 * viewers saw the source SSRC change, each viewer's own switching
+						 * context would compute a separate wall-clock timestamp offset and
+						 * viewers of the same mountpoint would drift apart, which breaks
+						 * clients that bond two subscriptions by sequence number. The core
+						 * overwrites the SSRC per PeerConnection anyway. */
+						packet.data->ssrc = htonl((uint32_t)mountpoint->id);
 						/* Backup the actual payload type, timestamp and sequence number set by the restreamer, in case switching is involved */
 						packet.ptype = packet.data->type;
 						packet.timestamp = ntohl(packet.data->timestamp);
@@ -9260,7 +9267,8 @@ static void *janus_streaming_relay_thread(void *data) {
 						janus_recorder_save_frame(stream->rc, buffer, bytes);
 					}
 					if (mountpoint->enabled) {
-						packet.data->ssrc = htonl(ssrc);
+						/* Stable SSRC towards viewers: see the audio path above. */
+						packet.data->ssrc = htonl((uint32_t)mountpoint->id);
 						/* Backup the actual payload type, timestamp and sequence number set by the restreamer, in case switching is involved */
 						packet.ptype = packet.data->type;
 						packet.timestamp = ntohl(packet.data->timestamp);
