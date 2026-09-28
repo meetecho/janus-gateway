@@ -628,6 +628,7 @@ void janus_plugin_send_pli_stream(janus_plugin_session *plugin_session, int mind
 void janus_plugin_send_remb(janus_plugin_session *plugin_session, uint32_t bitrate);
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
+void janus_plugin_abandon_session(janus_plugin_session *plugin_session);
 void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event);
 gboolean janus_plugin_auth_is_signed(void);
 gboolean janus_plugin_auth_is_signature_valid(janus_plugin *plugin, const char *token);
@@ -643,6 +644,7 @@ static janus_callbacks janus_handler_plugin =
 		.send_remb = janus_plugin_send_remb,
 		.close_pc = janus_plugin_close_pc,
 		.end_session = janus_plugin_end_session,
+		.abandon_session = janus_plugin_abandon_session,
 		.touch_session = janus_plugin_session_touch,
 		.events_is_enabled = janus_events_is_enabled,
 		.notify_event = janus_plugin_notify_event,
@@ -4400,6 +4402,75 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 	janus_refcount_increase(&plugin_session->ref);
 	GSource *timeout_source = g_timeout_source_new_seconds(0);
 	g_source_set_callback(timeout_source, janus_plugin_end_session_internal, plugin_session, NULL);
+	g_source_attach(timeout_source, sessions_watchdog_context);
+	g_source_unref(timeout_source);
+}
+
+/* Drop a core session that no longer has a client to send `destroy`.
+ * Caller is the sessions watchdog thread. The handle is already removed. */
+static void janus_session_drop_abandoned(janus_session *session) {
+	if(!session || g_atomic_int_get(&session->destroyed))
+		return;
+	janus_mutex_lock(&sessions_mutex);
+	janus_mutex_lock(&session->mutex);
+	gboolean empty = session->ice_handles == NULL || g_hash_table_size(session->ice_handles) == 0;
+	janus_mutex_unlock(&session->mutex);
+	if(!empty || !g_atomic_int_compare_and_exchange(&session->timedout, 0, 1)) {
+		janus_mutex_unlock(&sessions_mutex);
+		return;
+	}
+	JANUS_LOG(LOG_INFO, "Dropping abandoned session %"SCNu64"...\n", session->session_id);
+	if(g_hash_table_remove(sessions, &session->session_id))
+		g_atomic_int_dec_and_test(&sessions_num);
+	janus_mutex_unlock(&sessions_mutex);
+
+	janus_request *source = janus_session_get_request(session);
+	if(source && source->transport)
+		source->transport->session_over(source->instance, session->session_id, FALSE, FALSE);
+	janus_request_unref(source);
+	if(janus_events_is_enabled())
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, JANUS_EVENT_SUBTYPE_NONE,
+			session->session_id, "destroyed", NULL);
+	janus_session_destroy(session);
+}
+
+static gboolean janus_plugin_abandon_session_internal(gpointer user_data) {
+	janus_plugin_session *plugin_session = (janus_plugin_session *)user_data;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!ice_handle) {
+		janus_refcount_decrease(&plugin_session->ref);
+		return G_SOURCE_REMOVE;
+	}
+	janus_refcount_increase(&ice_handle->ref);
+	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
+		janus_refcount_decrease(&plugin_session->ref);
+		janus_refcount_decrease(&ice_handle->ref);
+		return G_SOURCE_REMOVE;
+	}
+	janus_session *session = (janus_session *)ice_handle->session;
+	if(!session) {
+		janus_refcount_decrease(&plugin_session->ref);
+		janus_refcount_decrease(&ice_handle->ref);
+		return G_SOURCE_REMOVE;
+	}
+	janus_session_handles_remove(session, ice_handle);
+	janus_refcount_decrease(&plugin_session->ref);
+	janus_refcount_decrease(&ice_handle->ref);
+	janus_session_drop_abandoned(session);
+	return G_SOURCE_REMOVE;
+}
+
+void janus_plugin_abandon_session(janus_plugin_session *plugin_session) {
+	/* Same as end_session, then drop the core session if that was its last handle.
+	 * closepc single-flights against a second abandon or an in-flight close_pc. */
+	if(!janus_plugin_session_is_alive(plugin_session))
+		return;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!ice_handle || !g_atomic_int_compare_and_exchange(&ice_handle->closepc, 0, 1))
+		return;
+	janus_refcount_increase(&plugin_session->ref);
+	GSource *timeout_source = g_timeout_source_new_seconds(0);
+	g_source_set_callback(timeout_source, janus_plugin_abandon_session_internal, plugin_session, NULL);
 	g_source_attach(timeout_source, sessions_watchdog_context);
 	g_source_unref(timeout_source);
 }

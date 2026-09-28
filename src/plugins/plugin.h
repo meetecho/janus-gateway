@@ -414,6 +414,11 @@ struct janus_callbacks {
 	 * callback on this plugin when done
 	 * @param[in] handle The plugin/gateway session to get rid of */
 	void (* const end_session)(janus_plugin_session *handle);
+	/*! \brief End the plugin handle and destroy the core session when it has no handles left
+	 * \note For server-side sessions with no client left to send \c destroy (AudioBridge
+	 * rtpws). \c close_pc does not run \c hangup_media until a PeerConnection exists.
+	 * @param[in] handle The plugin/gateway session to get rid of, along with its core session */
+	void (* const abandon_session)(janus_plugin_session *handle);
 	/*! \brief Refresh the core session activity timer for a plugin handle
 	 * \note Used when media flows outside JSON signaling (e.g. AudioBridge rtpws)
 	 * so \c session_timeout does not destroy an otherwise active session

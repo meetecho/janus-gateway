@@ -1892,6 +1892,25 @@ static void janus_audiobridge_rtp_ws_media_params(janus_audiobridge_participant 
 	*payload_type = pt;
 }
 
+static void janus_audiobridge_rtp_ws_gone(janus_rtp_ws_peer *peer) {
+	/* Media socket closed. The HTTP join client is already gone, so drop the
+	 * signaling session instead of waiting out session_timeout. user_data is
+	 * cleared under sessions_mutex before the plugin session is freed. */
+	if(!peer || gateway == NULL)
+		return;
+	janus_mutex_lock(&sessions_mutex);
+	janus_audiobridge_session *session = (janus_audiobridge_session *)peer->user_data;
+	if(!session || g_atomic_int_get(&session->destroyed) || !session->handle) {
+		janus_mutex_unlock(&sessions_mutex);
+		return;
+	}
+	janus_refcount_increase(&session->ref);
+	janus_plugin_session *handle = session->handle;
+	janus_mutex_unlock(&sessions_mutex);
+	gateway->abandon_session(handle);
+	janus_refcount_decrease(&session->ref);
+}
+
 static void janus_audiobridge_rtp_ws_incoming(janus_rtp_ws_peer *peer, char *buffer, int len) {
 	if(!peer || !peer->user_data)
 		return;
@@ -1908,6 +1927,8 @@ static void janus_audiobridge_rtp_ws_incoming(janus_rtp_ws_peer *peer, char *buf
 static void janus_audiobridge_rtp_ws_detach(janus_audiobridge_participant *participant) {
 	if(!participant || !participant->rtp_ws_peer)
 		return;
+	/* Stop client_gone from using the plugin session after this returns. */
+	participant->rtp_ws_peer->user_data = NULL;
 	janus_rtp_ws_peer_destroy(participant->rtp_ws_peer);
 	participant->rtp_ws_peer = NULL;
 }
@@ -4052,8 +4073,12 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				janus_audiobridge_participant_clear_inbuf(p);
 				janus_mutex_unlock(&p->qmutex);
 				janus_audiobridge_participant_clear_outbuf(p);
-				/* Request a WebRTC hangup */
-				gateway->close_pc(p->session->handle);
+				/* close_pc never reaches hangup_media when no PeerConnection was
+				 * negotiated, which is every ws-media handle. */
+				if(p->wsmedia)
+					gateway->abandon_session(p->session->handle);
+				else
+					gateway->close_pc(p->session->handle);
 			}
 		}
 		json_decref(destroyed);
@@ -4867,8 +4892,12 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			gateway->notify_event(&janus_audiobridge_plugin, session ? session->handle : NULL, info);
 		}
 		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
-		if(participant && participant->session)
-			gateway->close_pc(participant->session->handle);
+		if(participant && participant->session) {
+			if(participant->wsmedia)
+				gateway->abandon_session(participant->session->handle);
+			else
+				gateway->close_pc(participant->session->handle);
+		}
 		JANUS_LOG(LOG_VERB, "Kicked user %s from room %s\n", user_id_str, room_id_str);
 		/* Prepare response */
 		response = json_object();
@@ -4960,8 +4989,12 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				gateway->notify_event(&janus_audiobridge_plugin, session ? session->handle : NULL, info);
 			}
 			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
-			if(participant && participant->session)
-				gateway->close_pc(participant->session->handle);
+			if(participant && participant->session) {
+				if(participant->wsmedia)
+					gateway->abandon_session(participant->session->handle);
+				else
+					gateway->close_pc(participant->session->handle);
+			}
 			JANUS_LOG(LOG_VERB, "Kicked user %s from room %s\n", user_id_str, room_id_str);
 		}
 		/* Prepare response */
@@ -7256,7 +7289,7 @@ static void *janus_audiobridge_handler(void *data) {
 						!strcasecmp(json_string_value(ws_framing), "payload"))
 					ws_payload_only = TRUE;
 				participant->rtp_ws_peer = janus_rtp_ws_peer_create(session,
-					janus_audiobridge_rtp_ws_incoming, NULL, ws_codec_name,
+					janus_audiobridge_rtp_ws_incoming, janus_audiobridge_rtp_ws_gone, ws_codec_name,
 					ws_sample_rate, 1, 20, ws_payload_type, ws_payload_only);
 				if(!participant->rtp_ws_peer) {
 					error_code = 499;
