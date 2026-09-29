@@ -2600,7 +2600,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_item *rpr = janus_config_get(config, config_general, janus_config_type_item, "rtp_port_range");
 		if(rpr && rpr->value) {
 			/* Split in min and max port */
-			char *maxport = strrchr(rpr->value, '-');
+			char *maxport = (char *)strrchr(rpr->value, '-');
 			if(maxport != NULL) {
 				*maxport = '\0';
 				maxport++;
@@ -8653,7 +8653,6 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	int count = 0, rf_count = 0, pf_count = 0, prev_count = 0;
 	int lgain = 0, rgain = 0, diff = 0;
 	int mix_count = 0;
-	gboolean has_silent = FALSE;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&audiobridge->destroyed)) {
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
@@ -8726,7 +8725,6 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			buffer[i] = 0;
 		if(groups_num > 0)
 			memset(groupBuffers, 0, groupBuffersSize);
-		has_silent = FALSE;
 		ps = participants_list;
 		while(ps) {
 			janus_audiobridge_participant *p = (janus_audiobridge_participant *)ps->data;
@@ -8735,7 +8733,6 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					!g_atomic_int_get(&p->active) || p->muted || g_atomic_int_get(&p->suspended) || !p->inbuf) {
 				janus_mutex_unlock(&p->qmutex);
 				ps = ps->next;
-				has_silent = TRUE; /* If we have someone who is not speaking, but listening */
 				continue;
 			}
 			GList *peek = g_list_first(p->inbuf);
@@ -8748,7 +8745,6 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						JANUS_LOG(LOG_WARN, "[G.711] Error upsampling to %d, skipping audio packet\n", audiobridge->sampling_rate);
 						janus_mutex_unlock(&p->qmutex);
 						ps = ps->next;
-						has_silent = TRUE; /* If we have someone who is not speaking, but listening */
 						continue;
 					}
 					memcpy(pkt->data, resampled, pkt->length*2);
@@ -8849,8 +8845,6 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						}
 					}
 				}
-			} else {
-				has_silent = TRUE;
 			}
 			janus_mutex_unlock(&p->qmutex);
 			ps = ps->next;
@@ -8954,10 +8948,10 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			}
 		}
 		/* If limiter is enabled and we use limiter (i.e. there are at least 2 tracks mixed) we should initialize it */
-		if(audiobridge->use_limiter && mix_count > 1)
-			janus_audiobridge_compute_scaling_factors(buffer, envelope, scaling_factors, per_sample_scaling_factors, 
+		if(audiobridge->use_limiter && mix_count > 1) {
+			janus_audiobridge_compute_scaling_factors(buffer, envelope, scaling_factors, per_sample_scaling_factors,
 				samples_in_sub_frame, &filter_state_level, &last_scaling_factor);
-		
+		}
 		/* Always calculate the full mix when limiter is enabled and we have multiple mixed tracks */
 		if(audiobridge->use_limiter && mix_count > 1) {
 			/* Apply limiter to create the fullmix_buffer */

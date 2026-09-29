@@ -424,7 +424,7 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 	/* Look for the mapping */
 	const char *line = strstr(sdp, video ? "m=video" : "m=audio");
 	while(line) {
-		char *next = strchr(line, '\n');
+		char *next = (char *)strchr(line, '\n');
 		if(next) {
 			*next = '\0';
 			if(strstr(line, "a=rtpmap") && strstr(line, format)) {
@@ -466,7 +466,7 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 	g_snprintf(rtpmap, 50, "a=rtpmap:%d ", pt);
 	const char *line = strstr(sdp, "m=");
 	while(line) {
-		char *next = strchr(line, '\n');
+		char *next = (char *)strchr(line, '\n');
 		if(next) {
 			*next = '\0';
 			if(strstr(line, rtpmap)) {

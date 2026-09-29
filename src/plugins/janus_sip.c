@@ -2368,7 +2368,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		item = janus_config_get(config, config_general, janus_config_type_item, "rtp_port_range");
 		if(item && item->value) {
 			/* Split in min and max port */
-			char *maxport = strrchr(item->value, '-');
+			char *maxport = (char *)strrchr(item->value, '-');
 			if(maxport != NULL) {
 				*maxport = '\0';
 				maxport++;
