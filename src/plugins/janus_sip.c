@@ -5464,8 +5464,11 @@ send_invite:
 			}
 			if(refer_to == NULL)
 				refer_to = sip_refer_to_format(session->stack->s_home, "<%s>", uri_text);
+			/* Retrieve the Contact header for manually adding if not NULL */
+			char *contact_header = janus_sip_session_contact_header_retrieve(session);
 			/* Send the REFER */
 			nua_refer(session->stack->s_nh_i,
+				TAG_IF(contact_header != NULL, SIPTAG_CONTACT_STR(contact_header)),
 				SIPTAG_REFER_TO(refer_to),
 				TAG_END());
 
