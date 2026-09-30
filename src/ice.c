@@ -3193,7 +3193,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							/* Should we retransmit this packet? */
 							if((p->last_retransmit > 0) && (now-p->last_retransmit < p->current_backoff)) {
 								JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Packet %u was retransmitted just %"SCNi64"us ago, skipping\n", handle->handle_id, seqnr, now-p->last_retransmit);
-								g_queue_pop_tail(queue);
 								continue;
 							}
 							in_rb = 1;
@@ -3248,7 +3247,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						if(rtcp_ctx != NULL && in_rb) {
 							g_atomic_int_inc(&rtcp_ctx->nack_count);
 						}
-						g_queue_pop_tail(queue);
 					}
 					medium->retransmit_recent_cnt += retransmits_cnt;
 					/* FIXME Remove the NACK compound packet, we've handled it */
