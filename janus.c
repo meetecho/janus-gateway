@@ -4697,7 +4697,7 @@ gint main(int argc, char *argv[])
 	}
 	if(args_info.stun_server_given) {
 		/* Split in server and port (if port missing, use 3478 as default) */
-		char *stunport = strrchr(args_info.stun_server_arg, ':');
+		char *stunport = (char *)strrchr(args_info.stun_server_arg, ':');
 		if(stunport != NULL) {
 			*stunport = '\0';
 			stunport++;
@@ -4960,7 +4960,7 @@ gint main(int argc, char *argv[])
 	item = janus_config_get(config, config_media, janus_config_type_item, "rtp_port_range");
 	if(item && item->value) {
 		/* Split in min and max port */
-		char *maxport = strrchr(item->value, '-');
+		char *maxport = (char *)strrchr(item->value, '-');
 		if(maxport != NULL) {
 			*maxport = '\0';
 			maxport++;

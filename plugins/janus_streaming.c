@@ -1823,7 +1823,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_item *range = janus_config_get(config, config_general, janus_config_type_item, "rtp_port_range");
 		if(range && range->value) {
 			/* Split in min and max port */
-			char *maxport = strrchr(range->value, '-');
+			char *maxport = (char *)strrchr(range->value, '-');
 			if(maxport != NULL) {
 				*maxport = '\0';
 				maxport++;
@@ -7082,39 +7082,39 @@ static int janus_streaming_rtsp_parse_sdp(janus_streaming_rtp_source *source, co
 	/* Parse the SDP now */
 	char pattern[256];
 	g_snprintf(pattern, sizeof(pattern), "m=%s", media);
-	char *m = strstr(buffer, pattern);
+	char *m = (char *)strstr(buffer, pattern);
 	if(m == NULL) {
 		JANUS_LOG(LOG_VERB, "[%s] no media %s...\n", name, media);
 		return -1;
 	}
 	sscanf(m, "m=%*s %*d %*s %d", pt);
-	char *s = strstr(m, "a=control:");
+	char *s = (char *)strstr(m, "a=control:");
 	if(s == NULL) {
 		JANUS_LOG(LOG_ERR, "[%s] no control for %s...\n", name, media);
 		return -1;
 	}
 	sscanf(s, "a=control:%2047s", control);
-	char *r = strstr(m, "a=rtpmap:");
+	char *r = (char *)strstr(m, "a=rtpmap:");
 	if(r != NULL) {
 		if(sscanf(r, "a=rtpmap:%*d%*[ ]%2047[^\r\n]s", rtpmap) != 1) {
 			JANUS_LOG(LOG_ERR, "[%s] cannot parse %s rtpmap...\n", name, media);
 			return -1;
 		}
 	}
-	char *f = strstr(m, "a=fmtp:");
+	char *f = (char *)strstr(m, "a=fmtp:");
 	if(f != NULL) {
 		if(sscanf(f, "a=fmtp:%*d%*[ ]%2047[^\r\n]s", fmtp) != 1) {
 			JANUS_LOG(LOG_ERR, "[%s] cannot parse %s fmtp...\n", name, media);
 			return -1;
 		}
-		char *start = strstr(f, "sprop-parameter-sets=");
+		char *start = (char *)strstr(f, "sprop-parameter-sets=");
 		if(start != NULL) {
 			start += strlen("sprop-parameter-sets=");
-			char *end = strstr(start, ";");
+			char *end = (char *)strstr(start, ";");
 			if(end == NULL)
-				end = strstr(start, "\r");
+				end = (char *)strstr(start, "\r");
 			if(end == NULL)
-				end = strstr(start, "\n");
+				end = (char *)strstr(start, "\n");
 			if(end) {
 				char c = *end;
 				*end = '\0';
@@ -7126,17 +7126,17 @@ static int janus_streaming_rtsp_parse_sdp(janus_streaming_rtp_source *source, co
 			}
 		}
 	}
-	char *c = strstr(m, "c=IN IP4");
+	char *c = (char *)strstr(m, "c=IN IP4");
 	if(c == NULL) {
 		/* No m-line c= attribute? try in the whole SDP */
-		c = strstr(buffer, "c=IN IP4");
+		c = (char *)strstr(buffer, "c=IN IP4");
 	}
 	char ip[256];
 	in_addr_t mcast = INADDR_ANY;
 	if(c != NULL) {
 		if(sscanf(c, "c=IN IP4 %255[^/]", ip) != 0) {
 			memcpy(host, ip, sizeof(ip));
-			c = strstr(host, "\r\n");
+			c = (char *)strstr(host, "\r\n");
 			if(c)
 				*c = '\0';
 			mcast = inet_addr(ip);

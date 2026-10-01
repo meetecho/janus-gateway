@@ -55,9 +55,9 @@ int janus_rtp_header_extension_get_id(const char *sdp, const char *extension) {
 	char extmap[100];
 	g_snprintf(extmap, 100, "a=extmap:%%d %s", extension);
 	/* Look for the extmap */
-	const char *line = strstr(sdp, "m=");
+	char *line = (char *)strstr(sdp, "m=");
 	while(line) {
-		char *next = strchr(line, '\n');
+		char *next = (char *)strchr(line, '\n');
 		if(next) {
 			*next = '\0';
 			if(strstr(line, "a=extmap") && strstr(line, extension)) {
@@ -84,9 +84,9 @@ const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id) {
 	/* Look for the mapping */
 	char extmap[100];
 	g_snprintf(extmap, 100, "a=extmap:%d ", id);
-	const char *line = strstr(sdp, "m=");
+	char *line = (char *)strstr(sdp, "m=");
 	while(line) {
-		char *next = strchr(line, '\n');
+		char *next = (char *)strchr(line, '\n');
 		if(next) {
 			*next = '\0';
 			if(strstr(line, extmap)) {

@@ -3866,13 +3866,13 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 
 	/* Add all local addresses, except those in the ignore list */
 	struct ifaddrs *ifaddr, *ifa;
-	int family, s, n;
+	int family, s;
 	char host[NI_MAXHOST];
 	if(getifaddrs(&ifaddr) == -1) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error getting list of interfaces... %d (%s)\n",
 			handle->handle_id, errno, g_strerror(errno));
 	} else {
-		for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
+		for(ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
 			if(ifa->ifa_addr == NULL)
 				continue;
 			/* Skip interfaces which are not up and running */

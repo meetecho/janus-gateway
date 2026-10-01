@@ -2640,7 +2640,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_item *rpr = janus_config_get(config, config_general, janus_config_type_item, "rtp_port_range");
 		if(rpr && rpr->value) {
 			/* Split in min and max port */
-			char *maxport = strrchr(rpr->value, '-');
+			char *maxport = (char *)strrchr(rpr->value, '-');
 			if(maxport != NULL) {
 				*maxport = '\0';
 				maxport++;

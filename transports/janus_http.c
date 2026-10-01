@@ -440,14 +440,14 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 	}
 	if(!found && (ip || interface)) {
 		struct ifaddrs *ifaddr = NULL, *ifa = NULL;
-		int family = 0, s = 0, n = 0;
+		int family = 0, s = 0;
 		char host[NI_MAXHOST];
 		if(getifaddrs(&ifaddr) == -1) {
 			JANUS_LOG(LOG_ERR, "Error getting list of interfaces to bind %s API %s webserver...\n",
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			return NULL;
 		} else {
-			for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
+			for(ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
 				if(ifa->ifa_addr == NULL)
 					continue;
 				family = ifa->ifa_addr->sa_family;
