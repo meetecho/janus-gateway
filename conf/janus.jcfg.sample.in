@@ -289,6 +289,27 @@ media: {
 	#rtp_port_range_perhandle_override = false
 }
 
+# RTP-over-WebSocket support: a core media transport plugins can use to
+# exchange binary RTP frames with external clients over WS/WSS (e.g., for
+# headless agents joining an AudioBridge room via signaling, then streaming
+# media on a separate socket). Disabled by default.
+rtpws: {
+	#enable_rtp_ws = true
+	#port = 8190
+	#path = "/rtp-ws"
+	#public_url = "wss://media.example.com"
+	#secure = true
+	#cert_pem = "/path/to/certificate.pem"
+	#cert_key = "/path/to/key.pem"
+	#cert_pwd = "secret"
+	# When true, a client may connect without a "?sid=" query param and bind it
+	# later over the WebSocket with a {"type":"bind","sid":"..."} control frame
+	# (browser-first, so the client's connection picks the pod). The peerless
+	# connection first receives a {"type":"server_info","server-name":"..."}
+	# frame naming the pod. When false, only the legacy "?sid=" flow is accepted.
+	#allow_ws_bind = true
+}
+
 # NAT-related stuff: specifically, you can configure the STUN/TURN
 # servers to use to gather candidates if the gateway is behind a NAT,
 # and srflx/relay candidates are needed. In case STUN is not enough and

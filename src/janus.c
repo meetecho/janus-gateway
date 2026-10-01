@@ -40,6 +40,7 @@
 #include "ip-utils.h"
 #include "rtcp.h"
 #include "rtpfwd.h"
+#include "rtpws.h"
 #include "auth.h"
 #include "record.h"
 #include "events.h"
@@ -627,6 +628,7 @@ void janus_plugin_send_pli_stream(janus_plugin_session *plugin_session, int mind
 void janus_plugin_send_remb(janus_plugin_session *plugin_session, uint32_t bitrate);
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
+void janus_plugin_abandon_session(janus_plugin_session *plugin_session);
 void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event);
 gboolean janus_plugin_auth_is_signed(void);
 gboolean janus_plugin_auth_is_signature_valid(janus_plugin *plugin, const char *token);
@@ -642,6 +644,8 @@ static janus_callbacks janus_handler_plugin =
 		.send_remb = janus_plugin_send_remb,
 		.close_pc = janus_plugin_close_pc,
 		.end_session = janus_plugin_end_session,
+		.abandon_session = janus_plugin_abandon_session,
+		.touch_session = janus_plugin_session_touch,
 		.events_is_enabled = janus_events_is_enabled,
 		.notify_event = janus_plugin_notify_event,
 		.auth_is_signed = janus_plugin_auth_is_signed,
@@ -4402,6 +4406,75 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 	g_source_unref(timeout_source);
 }
 
+/* Drop a core session that no longer has a client to send `destroy`.
+ * Caller is the sessions watchdog thread. The handle is already removed. */
+static void janus_session_drop_abandoned(janus_session *session) {
+	if(!session || g_atomic_int_get(&session->destroyed))
+		return;
+	janus_mutex_lock(&sessions_mutex);
+	janus_mutex_lock(&session->mutex);
+	gboolean empty = session->ice_handles == NULL || g_hash_table_size(session->ice_handles) == 0;
+	janus_mutex_unlock(&session->mutex);
+	if(!empty || !g_atomic_int_compare_and_exchange(&session->timedout, 0, 1)) {
+		janus_mutex_unlock(&sessions_mutex);
+		return;
+	}
+	JANUS_LOG(LOG_INFO, "Dropping abandoned session %"SCNu64"...\n", session->session_id);
+	if(g_hash_table_remove(sessions, &session->session_id))
+		g_atomic_int_dec_and_test(&sessions_num);
+	janus_mutex_unlock(&sessions_mutex);
+
+	janus_request *source = janus_session_get_request(session);
+	if(source && source->transport)
+		source->transport->session_over(source->instance, session->session_id, FALSE, FALSE);
+	janus_request_unref(source);
+	if(janus_events_is_enabled())
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, JANUS_EVENT_SUBTYPE_NONE,
+			session->session_id, "destroyed", NULL);
+	janus_session_destroy(session);
+}
+
+static gboolean janus_plugin_abandon_session_internal(gpointer user_data) {
+	janus_plugin_session *plugin_session = (janus_plugin_session *)user_data;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!ice_handle) {
+		janus_refcount_decrease(&plugin_session->ref);
+		return G_SOURCE_REMOVE;
+	}
+	janus_refcount_increase(&ice_handle->ref);
+	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
+		janus_refcount_decrease(&plugin_session->ref);
+		janus_refcount_decrease(&ice_handle->ref);
+		return G_SOURCE_REMOVE;
+	}
+	janus_session *session = (janus_session *)ice_handle->session;
+	if(!session) {
+		janus_refcount_decrease(&plugin_session->ref);
+		janus_refcount_decrease(&ice_handle->ref);
+		return G_SOURCE_REMOVE;
+	}
+	janus_session_handles_remove(session, ice_handle);
+	janus_refcount_decrease(&plugin_session->ref);
+	janus_refcount_decrease(&ice_handle->ref);
+	janus_session_drop_abandoned(session);
+	return G_SOURCE_REMOVE;
+}
+
+void janus_plugin_abandon_session(janus_plugin_session *plugin_session) {
+	/* Same as end_session, then drop the core session if that was its last handle.
+	 * closepc single-flights against a second abandon or an in-flight close_pc. */
+	if(!janus_plugin_session_is_alive(plugin_session))
+		return;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!ice_handle || !g_atomic_int_compare_and_exchange(&ice_handle->closepc, 0, 1))
+		return;
+	janus_refcount_increase(&plugin_session->ref);
+	GSource *timeout_source = g_timeout_source_new_seconds(0);
+	g_source_set_callback(timeout_source, janus_plugin_abandon_session_internal, plugin_session, NULL);
+	g_source_attach(timeout_source, sessions_watchdog_context);
+	g_source_unref(timeout_source);
+}
+
 void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event) {
 	/* A plugin asked to notify an event to the handlers */
 	if(!plugin || !event || !json_is_object(event))
@@ -4527,6 +4600,7 @@ gint main(int argc, char *argv[]) {
 	janus_config_category *config_certs = janus_config_get_create(config, NULL, janus_config_type_category, "certificates");
 	janus_config_category *config_nat = janus_config_get_create(config, NULL, janus_config_type_category, "nat");
 	janus_config_category *config_media = janus_config_get_create(config, NULL, janus_config_type_category, "media");
+	janus_config_category *config_rtpws = janus_config_get_create(config, NULL, janus_config_type_category, "rtpws");
 	janus_config_category *config_transports = janus_config_get_create(config, NULL, janus_config_type_category, "transports");
 	janus_config_category *config_plugins = janus_config_get_create(config, NULL, janus_config_type_category, "plugins");
 	janus_config_category *config_events = janus_config_get_create(config, NULL, janus_config_type_category, "events");
@@ -5546,6 +5620,50 @@ gint main(int argc, char *argv[]) {
 		exit(1);
 	}
 
+	/* Initialize RTP-over-WebSocket support */
+	gboolean enable_rtp_ws = FALSE;
+	item = janus_config_get(config, config_rtpws, janus_config_type_item, "enable_rtp_ws");
+	if(item && item->value)
+		enable_rtp_ws = janus_is_true(item->value);
+	uint16_t rtp_ws_port = 8190;
+	item = janus_config_get(config, config_rtpws, janus_config_type_item, "port");
+	if(item && item->value)
+		janus_string_to_uint16(item->value, &rtp_ws_port);
+	const char *rtp_ws_path = "/rtp-ws";
+	item = janus_config_get(config, config_rtpws, janus_config_type_item, "path");
+	if(item && item->value)
+		rtp_ws_path = item->value;
+	const char *rtp_ws_public_url = "";
+	item = janus_config_get(config, config_rtpws, janus_config_type_item, "public_url");
+	if(item && item->value)
+		rtp_ws_public_url = item->value;
+	gboolean rtp_ws_secure = FALSE;
+	item = janus_config_get(config, config_rtpws, janus_config_type_item, "secure");
+	if(item && item->value)
+		rtp_ws_secure = janus_is_true(item->value);
+	const char *rtp_ws_cert_pem = NULL, *rtp_ws_cert_key = NULL, *rtp_ws_cert_pwd = NULL;
+	if(rtp_ws_secure) {
+		item = janus_config_get(config, config_rtpws, janus_config_type_item, "cert_pem");
+		if(item && item->value)
+			rtp_ws_cert_pem = item->value;
+		item = janus_config_get(config, config_rtpws, janus_config_type_item, "cert_key");
+		if(item && item->value)
+			rtp_ws_cert_key = item->value;
+		item = janus_config_get(config, config_rtpws, janus_config_type_item, "cert_pwd");
+		if(item && item->value)
+			rtp_ws_cert_pwd = item->value;
+	}
+	gboolean rtp_ws_allow_bind = FALSE;
+	item = janus_config_get(config, config_rtpws, janus_config_type_item, "allow_ws_bind");
+	if(item && item->value)
+		rtp_ws_allow_bind = janus_is_true(item->value);
+	if(janus_rtp_ws_init(enable_rtp_ws, rtp_ws_port, rtp_ws_path, rtp_ws_public_url,
+			rtp_ws_secure, rtp_ws_cert_pem, rtp_ws_cert_key, rtp_ws_cert_pwd,
+			server_name, rtp_ws_allow_bind) < 0) {
+		janus_options_destroy();
+		exit(1);
+	}
+
 	/* Sessions */
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	/* Start the sessions timeout watchdog */
@@ -6099,6 +6217,7 @@ gint main(int argc, char *argv[]) {
 	janus_sctp_deinit();
 #endif
 	janus_rtp_forwarders_deinit();
+	janus_rtp_ws_deinit();
 	janus_auth_deinit();
 
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
