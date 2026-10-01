@@ -470,7 +470,7 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 		JANUS_LOG(LOG_FATAL, "Certificate check error (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		return -6;
 	}
-	SSL_CTX_set_read_ahead(ssl_ctx,1);
+	SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_TICKET);
 
 	unsigned int size;
 	unsigned char fingerprint[EVP_MAX_MD_SIZE];
@@ -560,6 +560,9 @@ void janus_dtls_srtp_cleanup(void) {
 		ssl_ctx = NULL;
 	}
 #if JANUS_USE_OPENSSL_PRE_1_1_API && !defined(HAVE_BORINGSSL)
+	for(int l = 0; l < CRYPTO_num_locks(); l++) {
+		pthread_mutex_destroy(&janus_dtls_locks[l]);
+	}
 	g_free(janus_dtls_locks);
 #endif
 }

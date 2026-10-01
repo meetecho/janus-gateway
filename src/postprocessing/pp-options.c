@@ -36,7 +36,8 @@ gboolean janus_pprec_options_parse(janus_pprec_options *options, int argc, char 
 		{ "silence-distance", 'C', 0, G_OPTION_ARG_INT, &options->silence_distance, "RTP packets distance used to detect RTP silence suppression, disabled if 0 (default=0)", NULL },
 		{ "restamp", 'r', 0, G_OPTION_ARG_INT, &options->restamp_multiplier, "If the latency of a packet is bigger than the `moving_average_latency * (<restamp>/1000)` the timestamps will be corrected, disabled if 0 (default=0)", NULL },
 		{ "restamp-packets", 'c', 0, G_OPTION_ARG_INT, &options->restamp_packets, "Number of packets used for calculating moving average latency for timestamp correction (default=10)", NULL },
-		{ "restamp-min-th", 'n', 0, G_OPTION_ARG_INT, &options->restamp_min_th, "Minimum latency of moving average to reach before starting to correct timestamps. (default=500)", NULL },
+		{ "restamp-min-th", 'n', 0, G_OPTION_ARG_INT, &options->restamp_min_th, "Minimum latency of moving average to reach before starting to correct timestamps (default=500)", NULL },
+		{ "ignore-rtp-ts", 'I', 0, G_OPTION_ARG_NONE, &options->ignore_rtp_ts, "Ignore RTP timestamps, and use packet arrival timestamps for timing (default=no)", NULL },
 		{ G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &options->paths, NULL, NULL },
 		{ NULL, 0, 0, 0, NULL, NULL, NULL },
 	};

@@ -10,7 +10,7 @@
 general: {
 	#admin_key = "supersecret"		# If set, rooms can be created via API only
 									# if this key is provided in the request
-	json = "indented"				# Whether the data channel JSON messages should be indented (default),
+	json = "compact"				# Whether the data channel JSON messages should be indented (pretty),
 									# plain (no indentation) or compact (no indentation and no spaces)
 	#events = false					# Whether events should be sent to event
 									# handlers (default=true)

@@ -20,4 +20,8 @@ general: {
 	#dscp_audio_rtp = 46
 	#dscp_video_rtp = 26
 
+	#admin_key = "supersecret"		# If set, management requests (e.g.,
+									# creating, listing and destroying RTP
+									# forwarders) only work if this key
+									# is provided as part of the the request
 }

@@ -18,7 +18,7 @@
 #include "utils.h"
 
 /* Local resources */
-static janus_mutex rtpfwds_mutex;
+static janus_mutex rtpfwds_mutex = JANUS_MUTEX_INITIALIZER;
 static GHashTable *rtpfwds = NULL;
 static gboolean ipv6_disabled = FALSE;
 /* RTCP stuff */
@@ -45,7 +45,6 @@ int janus_rtp_forwarders_init(void) {
 	/* Initialize the forwarders table and muted */
 	rtpfwds = g_hash_table_new_full(g_str_hash, g_str_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)janus_rtp_forwarder_unref);
-	janus_mutex_init(&rtpfwds_mutex);
 	/* Let's check if IPv6 is disabled, as we may need to know for forwarders */
 	int fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 	if(fd < 0) {

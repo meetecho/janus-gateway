@@ -8,7 +8,7 @@
 # To see debug logs from the HTTP server library, set 'mhd_debug'.
 general: {
 	#events = true					# Whether to notify event handlers about transport events (default=true)
-	json = "indented"				# Whether the JSON messages should be indented (default),
+	json = "compact"				# Whether the JSON messages should be indented (pretty),
 									# plain (no indentation) or compact (no indentation and no spaces)
 	base_path = "/janus"			# Base path to bind to in the web server (plain HTTP only)
 	http = true						# Whether to enable the plain HTTP interface

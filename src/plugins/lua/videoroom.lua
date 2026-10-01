@@ -14,7 +14,7 @@ logger = require('janus-logger')
 
 -- Example details
 name = "videoroom.lua"
-logger.prefix(colors.blue .. name .. colors.reset)
+logger.prefix("[" .. colors.blue .. name .. colors.reset .. "]")
 logger.print("Loading...")
 
 -- State and properties
@@ -913,7 +913,7 @@ function resumeScheduler()
 	for index,task in ipairs(tasks) do
 		local success, result = coroutine.resume(task.co, task.id, task.tr, task.msg, task.jsep)
 		if not success then
-			logger.print(colors("[%{red}exception%{reset}]") .. " " .. dumpTable(result))
+			logger.print(colors.red .. " " .. dumpTable(result) .. colors.reset)
 		end
 	end
 	logger.print("Coroutines resumed")

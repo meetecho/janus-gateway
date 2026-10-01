@@ -123,7 +123,7 @@ static gboolean notify_events = TRUE;
 static enum MHD_FLAG mhd_debug_flag = MHD_NO_FLAG;
 
 /* JSON serialization options */
-static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+static size_t json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 
 /* Parameter validation (for tweaking and queries via Admin API) */
 static struct janus_json_parameter request_parameters[] = {
@@ -214,6 +214,7 @@ static void janus_http_session_free(const janus_refcount *session_ref) {
 			json_decref(event);
 		g_async_queue_unref(session->events);
 	}
+	janus_mutex_destroy(&session->mutex);
 	g_free(session);
 }
 
@@ -258,7 +259,7 @@ static GSource *janus_http_request_timeout_create(janus_transport_session *ts, j
 	janus_http_request_timeout *t = (janus_http_request_timeout *)source;
 	t->ts = ts;
 	t->session = session;
-	g_source_set_ready_time(source, janus_get_monotonic_time() + timeout*G_USEC_PER_SEC);
+	g_source_set_ready_time(source, janus_get_monotonic_time_internal() + timeout*G_USEC_PER_SEC);
 	JANUS_LOG(LOG_DBG, "[%p] create (%d)\n", source, timeout);
 	return source;
 }
@@ -306,30 +307,49 @@ static gboolean enforce_cors = FALSE;
 /* REST and Admin/Monitor ACL list */
 static GList *janus_http_access_list = NULL, *janus_http_admin_access_list = NULL;
 static gboolean janus_http_check_xff = FALSE, janus_http_admin_check_xff = FALSE;
-static janus_mutex access_list_mutex;
+static janus_mutex access_list_mutex = JANUS_MUTEX_INITIALIZER;
 static void janus_http_allow_address(const char *ip, gboolean admin) {
 	if(ip == NULL)
 		return;
 	/* Is this an IP or an interface? */
 	janus_mutex_lock(&access_list_mutex);
-	if(!admin)
-		janus_http_access_list = g_list_append(janus_http_access_list, (gpointer)ip);
-	else
-		janus_http_admin_access_list = g_list_append(janus_http_admin_access_list, (gpointer)ip);
+	if(!admin) {
+		janus_http_access_list = g_list_append(janus_http_access_list, g_strdup(ip));
+		if(strstr(ip, ":") == NULL) {
+			/* Add a ::ffff: prefixed address too, which we may need if the server
+			 * supports IPV6 too, and so IPv4 addresses will look different */
+			char pfx_ip[50];
+			g_snprintf(pfx_ip, sizeof(pfx_ip), "::ffff:%s", ip);
+			janus_http_access_list = g_list_append(janus_http_access_list, g_strdup(pfx_ip));
+		}
+	} else {
+		janus_http_admin_access_list = g_list_append(janus_http_admin_access_list, g_strdup(ip));
+		if(strstr(ip, ":") == NULL) {
+			/* Add a ::ffff: prefixed address too, which we may need if the server
+			 * supports IPV6 too, and so IPv4 addresses will look different */
+			char pfx_ip[50];
+			g_snprintf(pfx_ip, sizeof(pfx_ip), "::ffff:%s", ip);
+			janus_http_admin_access_list = g_list_append(janus_http_admin_access_list, g_strdup(pfx_ip));
+		}
+	}
 	janus_mutex_unlock(&access_list_mutex);
 }
 static gboolean janus_http_is_allowed(const char *ip, gboolean admin) {
 	if(ip == NULL)
 		return FALSE;
-	if(!admin && janus_http_access_list == NULL)
-		return TRUE;
-	if(admin && janus_http_admin_access_list == NULL)
-		return TRUE;
 	janus_mutex_lock(&access_list_mutex);
+	if(!admin && janus_http_access_list == NULL) {
+		janus_mutex_unlock(&access_list_mutex);
+		return TRUE;
+	}
+	if(admin && janus_http_admin_access_list == NULL) {
+		janus_mutex_unlock(&access_list_mutex);
+		return TRUE;
+	}
 	GList *temp = admin ? janus_http_admin_access_list : janus_http_access_list;
 	while(temp) {
 		const char *allowed = (const char *)temp->data;
-		if(allowed != NULL && strstr(ip, allowed)) {
+		if(allowed != NULL && strstr(ip, allowed) == ip) {
 			janus_mutex_unlock(&access_list_mutex);
 			return TRUE;
 		}
@@ -420,14 +440,14 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 	}
 	if(!found && (ip || interface)) {
 		struct ifaddrs *ifaddr = NULL, *ifa = NULL;
-		int family = 0, s = 0, n = 0;
+		int family = 0, s = 0;
 		char host[NI_MAXHOST];
 		if(getifaddrs(&ifaddr) == -1) {
 			JANUS_LOG(LOG_ERR, "Error getting list of interfaces to bind %s API %s webserver...\n",
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			return NULL;
 		} else {
-			for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
+			for(ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
 				if(ifa->ifa_addr == NULL)
 					continue;
 				family = ifa->ifa_addr->sa_family;
@@ -667,8 +687,8 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				/* Compact, so no spaces between separators */
 				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 			} else {
-				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
-				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (compact)\n", item->value);
+				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 			}
 		}
 
@@ -986,6 +1006,9 @@ void janus_http_destroy(void) {
 	g_hash_table_destroy(sessions);
 	sessions = NULL;
 	janus_mutex_unlock(&sessions_mutex);
+
+	g_list_free_full(janus_http_access_list, (GDestroyNotify)g_free);
+	g_list_free_full(janus_http_admin_access_list, (GDestroyNotify)g_free);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);

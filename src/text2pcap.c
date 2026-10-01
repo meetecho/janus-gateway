@@ -184,9 +184,9 @@ janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, i
 	}
 
 	/* Try opening the file now */
-	f = fopen(fname, "ab");
+	f = fopen(fname, "wb");
 	if (f == NULL) {
-		JANUS_LOG(LOG_ERR, "fopen(%s) error: %d\n", fname, errno);
+		JANUS_LOG(LOG_ERR, "fopen(%s) error: %d (%s)\n", fname, errno, g_strerror(errno));
 		g_free(fname);
 		return NULL;
 	}
@@ -328,5 +328,6 @@ void janus_text2pcap_free(janus_text2pcap *instance) {
 		return;
 	janus_text2pcap_close(instance);
 	g_free(instance->filename);
+	janus_mutex_destroy(&instance->mutex);
 	g_free(instance);
 }

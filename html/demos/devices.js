@@ -30,8 +30,6 @@ function initDevices(devices) {
 	$('#devices').removeClass('hide');
 	$('#devices').parent().removeClass('hide');
 	$('#choose-device').click(restartCapture);
-	let audio = $('#audio-device').val();
-	let video = $('#video-device').val();
 	$('#audio-device, #video-device').find('option').remove();
 
 	devices.forEach(function(device) {
@@ -77,9 +75,6 @@ function initDevices(devices) {
 				});
 		}
 	});
-
-	$('#audio-device').val(audio);
-	$('#video-device').val(video);
 
 	$('#change-devices').click(function() {
 		// A different device has been selected: hangup the session, and set it up again
@@ -322,6 +317,7 @@ $(document).ready(function() {
 													if(mst)
 														mst.stop();
 												}
+											// eslint-disable-next-line no-unused-vars
 											} catch(e) {}
 										}
 										if(track.kind === "video") {
@@ -579,7 +575,7 @@ function sendData() {
 
 // Helper to parse query string
 function getQueryStringValue(name) {
-	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+	name = name.replace(/[[]/, "\\[").replace(/[\]]/, "\\]");
 	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));

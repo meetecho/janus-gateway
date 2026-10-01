@@ -56,6 +56,8 @@ typedef struct janus_session {
 	gint timeout;
 	/*! \brief Flag to notify that transport is gone */
 	volatile gint transport_gone;
+	/*! \brief Time of when the transport went away (in case reclaiming session is supported) */
+	gint64 transport_gone_time;
 	/*! \brief Mutex to lock/unlock this session */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */

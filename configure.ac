@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[1.2.3],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[1.4.3],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -21,7 +21,6 @@ CFLAGS="$CFLAGS \
 	-fPIC \
 	-fstack-protector-all \
 	-fstrict-aliasing \
-	-ggdb3 \
 	-pthread \
 	-Wall \
 	-Warray-bounds \
@@ -30,7 +29,7 @@ CFLAGS="$CFLAGS \
 	-Wformat-security \
 	-Wformat=2 \
 	-Winit-self \
-	-Wlarger-than=65537 \
+	-Wlarger-than=2097152 \
 	-Wmissing-declarations \
 	-Wmissing-format-attribute \
 	-Wmissing-include-dirs \
@@ -53,7 +52,6 @@ case "$CC" in
 *clang*)
 	# Specific clang flags
 	CFLAGS="$CFLAGS \
-		-Wno-cast-align \
 		-Wno-initializer-overrides \
 		-Wno-missing-noreturn"
 ;;
@@ -65,17 +63,16 @@ cc*)
 *)
 	# Specific gcc flags
 	CFLAGS="$CFLAGS \
-		-Wcast-align \
 		-Wno-override-init \
 		-Wunsafe-loop-optimizations \
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=1203
+JANUS_VERSION=1403
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="1.2.3"
+JANUS_VERSION_STRING="1.4.3"
 AC_SUBST(JANUS_VERSION_STRING)
-JANUS_VERSION_SO="2:3:0"
+JANUS_VERSION_SO="2:12:0"
 AC_SUBST(JANUS_VERSION_SO)
 
 case "$host_os" in
@@ -101,6 +98,9 @@ esac
 glib_version=2.34
 ssl_version=1.0.1
 jansson_version=2.5
+
+JANUS_PACKAGES_PUBLIC="glib-2.0 >= $glib_version, jansson >= $jansson_version"
+AC_SUBST(JANUS_PACKAGES_PUBLIC)
 
 ##
 # Janus
@@ -374,7 +374,7 @@ AS_IF([test "x${boringssl_dir}" != "x"],
 	   CFLAGS="$CFLAGS -I${boringssl_dir}/include";
 	   BORINGSSL_CFLAGS=" -I${boringssl_dir}/include";
        AC_SUBST(BORINGSSL_CFLAGS)
-	   BORINGSSL_LIBS=" -L${boringssl_dir}/lib";
+	   BORINGSSL_LIBS=" -L${boringssl_dir}/lib -lstdc++";
        AC_SUBST(BORINGSSL_LIBS)
 	   AC_CHECK_HEADERS([${boringssl_dir}/include/openssl/opensslconf.h],
 	                    [AC_DEFINE(HAVE_BORINGSSL)],
@@ -990,6 +990,7 @@ AC_CONFIG_FILES([
   src/Makefile
   html/Makefile
   docs/Makefile
+  janus-gateway.pc
 ])
 
 JANUS_MANUAL_LIBS+=" -pthread"

@@ -20,6 +20,8 @@ typedef struct janus_options {
 	gboolean disable_stdout;
 	gboolean log_stdout;
 	const char *log_file;
+	const char *log_rotate_sig;
+	int64_t check_openfiles_limit;
 	const char *cwd_path;
 	const char *interface;
 	const char *plugins_folder;
@@ -35,7 +37,6 @@ typedef struct janus_options {
 	const char *ice_ignore_list;
 	gboolean ipv6_candidates;
 	gboolean ipv6_link_local;
-	gboolean libnice_debug;
 	gboolean full_trickle;
 	gboolean ice_lite;
 	gboolean ice_tcp;
@@ -56,6 +57,7 @@ typedef struct janus_options {
 	const char *token_auth_secret;
 	gboolean event_handlers;
 	gboolean no_webrtc_encryption;
+	gboolean print_version;
 } janus_options;
 
 /*! \brief Helper method to parse the command line options

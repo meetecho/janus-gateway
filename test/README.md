@@ -5,12 +5,13 @@ The files in this sub-folder are intended to be used for testing Janus.
 ## aiortc functional testing
 
 We implemented some RTC Python clients based on [aiortc](https://github.com/aiortc/aiortc).
-In order to use them you'll need Python >= 3.4 (Python 3.6 is recommended).
+In order to use them you'll need Python >= 3.9.
 
-Also you'll need all of the [aiortc requirements](https://github.com/aiortc/aiortc#requirements) and the following python libraries:
+To install required libraries:
 
 ```bash
-pip3 install setuptools websockets aiortc
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 ```
 
 ### echo.py

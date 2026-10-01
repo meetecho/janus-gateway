@@ -24,6 +24,7 @@
 #include <openssl/rand.h>
 
 #include "utils.h"
+#include "rtp.h"
 #include "debug.h"
 #include "mutex.h"
 
@@ -31,10 +32,20 @@
 #include "mach_gettime.h"
 #endif
 
-gint64 janus_get_monotonic_time(void) {
+gint64 janus_get_monotonic_time_internal(void) {
 	struct timespec ts;
 	clock_gettime (CLOCK_MONOTONIC, &ts);
 	return (ts.tv_sec*G_GINT64_CONSTANT(1000000)) + (ts.tv_nsec/G_GINT64_CONSTANT(1000));
+}
+
+static gint64 janus_started = 0;
+void janus_mark_started(void) {
+	if(janus_started == 0)
+		janus_started = janus_get_monotonic_time_internal();
+}
+
+gint64 janus_get_monotonic_time(void) {
+	return janus_get_monotonic_time_internal() - janus_started;
 }
 
 gint64 janus_get_real_time(void) {
@@ -238,7 +249,7 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 			tmp = strstr(pos, old_string);
 			pos = tmp;
 		}
-		uint16_t old_stringlen = strlen(outgoing)+1, new_stringlen = old_stringlen + diff*counter;
+		size_t old_stringlen = strlen(outgoing)+1, new_stringlen = old_stringlen + diff*counter;
 		if(diff > 0) {	/* Resize now */
 			tmp = g_realloc(outgoing, new_stringlen);
 			outgoing = tmp;
@@ -247,13 +258,13 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 		pos = strstr(outgoing, old_string);
 		while(pos) {
 			if(diff > 0) {	/* Move to the right (new_string is larger than old_string) */
-				uint16_t len = strlen(pos)+1;
+				size_t len = strlen(pos)+1;
 				memmove(pos + diff, pos, len);
 				memcpy(pos, new_string, strlen(new_string));
 				pos += strlen(new_string);
 				tmp = strstr(pos, old_string);
 			} else {	/* Move to the left (new_string is smaller than old_string) */
-				uint16_t len = strlen(pos - diff)+1;
+				size_t len = strlen(pos - diff)+1;
 				memmove(pos, pos - diff, len);
 				memcpy(pos, new_string, strlen(new_string));
 				pos += strlen(old_string);
@@ -413,7 +424,7 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 	/* Look for the mapping */
 	const char *line = strstr(sdp, video ? "m=video" : "m=audio");
 	while(line) {
-		char *next = strchr(line, '\n');
+		char *next = (char *)strchr(line, '\n');
 		if(next) {
 			*next = '\0';
 			if(strstr(line, "a=rtpmap") && strstr(line, format)) {
@@ -455,7 +466,7 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 	g_snprintf(rtpmap, 50, "a=rtpmap:%d ", pt);
 	const char *line = strstr(sdp, "m=");
 	while(line) {
-		char *next = strchr(line, '\n');
+		char *next = (char *)strchr(line, '\n');
 		if(next) {
 			*next = '\0';
 			if(strstr(line, rtpmap)) {
@@ -921,6 +932,24 @@ gboolean janus_h265_is_keyframe(const char *buffer, int len) {
 		/* FIXME We return TRUE for more than just VPS and SPS, as
 		 * suggested in https://github.com/meetecho/janus-gateway/issues/2323 */
 		return TRUE;
+	}
+	return FALSE;
+}
+
+gboolean janus_is_keyframe(int codec, const char *buffer, int len) {
+	switch(codec) {
+		case JANUS_VIDEOCODEC_VP8:
+			return janus_vp8_is_keyframe(buffer, len);
+		case JANUS_VIDEOCODEC_VP9:
+			return janus_vp9_is_keyframe(buffer, len);
+		case JANUS_VIDEOCODEC_H264:
+			return janus_h264_is_keyframe(buffer, len);
+		case JANUS_VIDEOCODEC_AV1:
+			return janus_av1_is_keyframe(buffer, len);
+		case JANUS_VIDEOCODEC_H265:
+			return janus_h265_is_keyframe(buffer, len);
+		default:
+			break;
 	}
 	return FALSE;
 }

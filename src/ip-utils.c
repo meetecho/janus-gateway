@@ -242,6 +242,15 @@ int janus_network_lookup_interface(const struct ifaddrs *ifas, const char *iface
 	if(ifas == NULL || iface == NULL || result == NULL)
 		return -EINVAL;
 	janus_network_address_nullify(result);
+	if(!strcmp(iface, "0.0.0.0")) {
+		result->family = AF_INET;
+		result->ipv4.s_addr = INADDR_ANY;
+		return 0;
+	} else if(!strcmp(iface, "::")) {
+		result->family = AF_INET6;
+		result->ipv6 = in6addr_any;
+		return 0;
+	}
 	janus_network_query_config q;
 	/* Let's see if iface is an IPv4 address, an IPv6 address, or possibly an interface name */
 	int res = janus_network_prepare_device_query(iface,

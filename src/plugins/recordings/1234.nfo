@@ -1,5 +1,6 @@
 [1234]
 name = Lorenzo says hello!
+private = false
 date = 2014-10-22 14:44:36
 audio = rec-sample-audio.mjr
 video = rec-sample-video.mjr

@@ -1,7 +1,14 @@
 # path = where to place recordings in the file system
+# admin_key = plugin management secret; if set, private recordings can
+#             be listed only if this key is provided in the request
+# private = true|false, whether recordings should be marked as private by
+#           default, meaning they're not returned to users connecting to the
+#           plugin unless they provide the right 'admin_key' in the request
 # events = true|false, whether events should be sent to event handlers
 
 general: {
 	path = "@recordingsdir@"
+	#admin_key = "supersecret"
+	#private = true
 	#events = false
 }

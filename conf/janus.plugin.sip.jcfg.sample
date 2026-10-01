@@ -52,4 +52,8 @@ general: {
 	# engine (default 32000 milliseconds)
 	sip_timer_t1x64 = 32000
 
+	#admin_key = "supersecret"		# If set, management requests (e.g.,
+									# creating, listing and destroying RTP
+									# forwarders) only work if this key
+									# is provided as part of the the request
 }

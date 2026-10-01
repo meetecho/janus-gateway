@@ -133,6 +133,12 @@ gboolean janus_ice_is_ice_tcp_enabled(void);
 /*! \brief Method to check whether full-trickle support is enabled or not
  * @returns true if full-trickle support is enabled, false otherwise */
 gboolean janus_ice_is_full_trickle_enabled(void);
+/*! \brief Method to get the minimum of the configured RTP/RTCP port range
+ * @returns The configured minimum port, or 0 if no range was set */
+uint16_t janus_ice_get_rtp_range_min(void);
+/*! \brief Method to get the maximum of the configured RTP/RTCP port range
+ * @returns The configured maximum port, or 0 if no range was set */
+uint16_t janus_ice_get_rtp_range_max(void);
 /*! \brief Method to check whether mDNS resolution is enabled or not
  * @returns true if mDNS resolution is enabled, false otherwise */
 gboolean janus_ice_is_mdns_enabled(void);
@@ -231,13 +237,6 @@ void janus_ice_event_set_combine_media_stats(gboolean combine_media_stats_to_one
  * @returns true to combine events */
 gboolean janus_ice_event_get_combine_media_stats(void);
 
-/*! \brief Method to check whether libnice debugging has been enabled (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html)
- * @returns True if libnice debugging is enabled, FALSE otherwise */
-gboolean janus_ice_is_ice_debugging_enabled(void);
-/*! \brief Method to enable libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
-void janus_ice_debugging_enable(void);
-/*! \brief Method to disable libnice debugging (the default) */
-void janus_ice_debugging_disable(void);
 /*! \brief Method to enable opaque ID in Janus API responses/events */
 void janus_enable_opaqueid_in_api(void);
 /*! \brief Method to check whether opaque ID have to be added to Janus API responses/events
@@ -360,6 +359,10 @@ struct janus_ice_handle {
 	char *opaque_id;
 	/*! \brief Token that was used to attach the handle, if required */
 	char *token;
+	/*! \brief Per-handle ICE port range min (0 = use global) */
+	uint16_t rtp_range_min;
+	/*! \brief Per-handle ICE port range max (0 = use global) */
+	uint16_t rtp_range_max;
 	/*! \brief Monotonic time of when the handle has been created */
 	gint64 created;
 	/*! \brief Opaque application (plugin) pointer */
@@ -480,6 +483,8 @@ struct janus_ice_peerconnection {
 	gint abs_send_time_ext_id;
 	/*! \brief Absolute Capture Time ext ID */
 	gint abs_capture_time_ext_id;
+	/*! \brief Video Layers Allocation ext ID */
+	gint videolayers_ext_id;
 	/*! \brief Whether we do transport wide cc */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
@@ -529,8 +534,12 @@ struct janus_ice_peerconnection {
 	GHashTable *rtx_payload_types;
 	/*! \brief Reverse mapping of rtx payload types to actual media-related packet types */
 	GHashTable *rtx_payload_types_rev;
+	/*! \brief Helper queue for storing requested packets from NACKs */
+	GQueue *nacks_queue;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gboolean noerrorlog;
+	/*! \brief Flag to count how many too large packets we discarded, if any */
+	volatile gint too_large;
 	/*! \brief Mutex to lock/unlock this stream */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */

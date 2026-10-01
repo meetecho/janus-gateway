@@ -397,6 +397,7 @@ plugins_libadd = \
 if ENABLE_PLUGIN_AUDIOBRIDGE
 plugin_LTLIBRARIES += plugins/libjanus_audiobridge.la
 plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c \
+	plugins/audiobridge-deps/limiter/limiter.h plugins/audiobridge-deps/limiter/limiter.c \
 	plugins/audiobridge-deps/jitter.c plugins/audiobridge-deps/resample.c plugins/audiobridge-deps/arch.h \
 	plugins/audiobridge-deps/os_support.h plugins/audiobridge-deps/speex/speex_jitter.h plugins/audiobridge-deps/speex/speex_resampler.h \
 	plugins/audiobridge-deps/speex/speexdsp_types.h plugins/audiobridge-deps/speex/speexdsp_config_types.h
@@ -462,8 +463,8 @@ plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags) $(LIBCURL_LDFLAGS) $(
 plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd) $(LIBCURL_LIBADD) $(OGG_LIBADD)
 conf_DATA += ../conf/janus.plugin.streaming.jcfg.sample
 stream_DATA += \
-	plugins/streams/music.mulaw \
 	plugins/streams/radio.alaw \
+	plugins/streams/remembrance.opus \
 	plugins/streams/test_gstreamer.sh \
 	plugins/streams/test_gstreamer1.sh \
 	plugins/streams/test_gstreamer_multistream.sh \
@@ -497,8 +498,8 @@ endif
 if ENABLE_PLUGIN_TEXTROOM
 plugin_LTLIBRARIES += plugins/libjanus_textroom.la
 plugins_libjanus_textroom_la_SOURCES = plugins/janus_textroom.c
-plugins_libjanus_textroom_la_CFLAGS = $(plugins_cflags)
-plugins_libjanus_textroom_la_LDFLAGS = $(plugins_ldflags)
+plugins_libjanus_textroom_la_CFLAGS = $(plugins_cflags) $(LIBCURL_CFLAGS)
+plugins_libjanus_textroom_la_LDFLAGS = $(plugins_ldflags) $(LIBCURL_LDFLAGS) $(LIBCURL_LIBS)
 plugins_libjanus_textroom_la_LIBADD = $(plugins_libadd)
 conf_DATA += ../conf/janus.plugin.textroom.jcfg.sample
 EXTRA_DIST += ../conf/janus.plugin.textroom.jcfg.sample

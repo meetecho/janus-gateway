@@ -40,8 +40,17 @@ struct janus_json_parameter {
 #endif
 
 
+/*! Helper method used by the core to mark when Janus started */
+void janus_mark_started(void);
+
 /*! \brief Helper to retrieve the system monotonic time, as Glib's
  * g_get_monotonic_time may not be available (only since 2.28)
+ * @returns The system monotonic time */
+gint64 janus_get_monotonic_time_internal(void);
+
+/*! \brief Helper to retrieve the system monotonic time, as Glib's
+ * g_get_monotonic_time may not be available (only since 2.28)
+ * @note The monotonic time will be normalized from the Janus start time
  * @returns The system monotonic time */
 gint64 janus_get_monotonic_time(void);
 
@@ -365,6 +374,14 @@ gboolean janus_av1_is_keyframe(const char *buffer, int len);
  * @param[in] len The length of the RTP payload
  * @returns TRUE if it's a keyframe, FALSE otherwise */
 gboolean janus_h265_is_keyframe(const char *buffer, int len);
+
+/*! \brief Helper method to check if keyframe or not, using one of the
+ * codec specific helper methods according to the provided codec type
+ * @param[in] codec The \ref janus_videocodec used for this RTP payload
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a keyframe, FALSE otherwise */
+gboolean janus_is_keyframe(int codec, const char *buffer, int len);
 
 /*! \brief VP8 simulcasting context, in order to make sure SSRC changes result in coherent picid/temporal level increases */
 typedef struct janus_vp8_simulcast_context {

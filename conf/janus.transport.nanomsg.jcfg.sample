@@ -9,7 +9,7 @@ general: {
 	enabled = true						# Whether to enable the Nanomsg interface
 										# for Janus API clients
 	#events = true						# Whether to notify event handlers about transport events (default=true)
-	json = "indented"					# Whether the JSON messages should be indented (default),
+	json = "compact"					# Whether the JSON messages should be indented (pretty),
 										# plain (no indentation) or compact (no indentation and no spaces)
 	#mode = "bind"						# Whether we should 'bind' to the specified
 										# address (default), or connect to it if remote

@@ -63,6 +63,7 @@ typedef struct janus_rtp_packet {
 	gint length;
 	gint64 created;
 	gint64 last_retransmit;
+	gint64 current_backoff;
 	janus_plugin_rtp_extensions extensions;
 } janus_rtp_packet;
 
@@ -111,6 +112,8 @@ typedef struct janus_rtp_rfc2833_payload {
 #define JANUS_RTP_EXTMAP_REPAIRED_RID		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id"
 /*! \brief a=extmap:10 https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension */
 #define JANUS_RTP_EXTMAP_DEPENDENCY_DESC	"https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension"
+/*! \brief a=extmap:9 http://www.webrtc.org/experiments/rtp-hdrext/video-layers-allocation00 */
+#define JANUS_RTP_EXTMAP_VIDEO_LAYERS		"http://www.webrtc.org/experiments/rtp-hdrext/video-layers-allocation00"
 /*! \brief \note Note: We don't support encrypted extensions yet */
 #define JANUS_RTP_EXTMAP_ENCRYPTED			"urn:ietf:params:rtp-hdrext:encrypt"
 int janus_rtp_extension_id(const char *type);
@@ -281,6 +284,16 @@ int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int i
  * @param[out] transSeqNum Transport wide sequence number to set
  * @returns 0 if found, -1 otherwise */
 int janus_rtp_header_extension_set_transport_wide_cc(char *buf, int len, int id, uint16_t transSeqNum);
+
+/*! \brief Helper to parse a video layers allocation (http://www.webrtc.org/experiments/rtp-hdrext/video-layers-allocation00)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] spatial_layers Variable where the parsed spatial layers value will be stored
+ * @param[out] temporal_layers Variable where the parsed temporal layers value will be stored
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_video_layers_allocation(char *buf, int len, int id,
+	int8_t *spatial_layers, int8_t *temporal_layers);
 
 /*! \brief Helper to replace the ID of an RTP extension with a different one (e.g.,
  * to turn a repaired-rtp-stream-id into a rtp-stream-id after a successful rtx)

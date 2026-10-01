@@ -26,11 +26,12 @@ var localStream = null;
 $(document).ready(function() {
 	// Preload the video
 	$('#videoleft').append(
-		'<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay playsinline muted="true" loop>' +
+		'<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay playsinline loop>' +
 		'	<source src="surround/ChID-BLITS-EBU.mp4" type="video/mp4">' +
 		'</video>'
 	);
 	let myvideo = $('#myvideo').get(0);
+	myvideo.volume = 0.001;
 
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
@@ -361,6 +362,7 @@ $(document).ready(function() {
 											if(mst)
 												mst.stop();
 										}
+									// eslint-disable-next-line no-unused-vars
 									} catch(e) {
 										// Do nothing if this fails
 									}
@@ -410,7 +412,7 @@ function sendData() {
 
 // Helper to parse query string
 function getQueryStringValue(name) {
-	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+	name = name.replace(/[[]/, "\\[").replace(/[\]]/, "\\]");
 	let regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
 		results = regex.exec(location.search);
 	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));

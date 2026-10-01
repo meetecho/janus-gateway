@@ -36,7 +36,7 @@ declare namespace JanusJS {
 		init: () => void;
 	}
 
-	type GetScreenCallback = (error?, sourceId?) => void
+	type GetScreenCallback = (error:string, sourceId:string) => void
 
 	type HttpApiCallOption = {
 		async: boolean,
@@ -56,6 +56,8 @@ declare namespace JanusJS {
 		handle_id?: number,
 		opaque_id?: string,
 		loop_index?: number,
+		min_port?: number,
+		max_port?: number,
 		janus: string,
 		transaction: string,
 		body?: any,
@@ -168,6 +170,8 @@ declare namespace JanusJS {
 		opaqueId?: string;
 		token?: string;
 		loopIndex?: number;
+		minPort?: number;
+		maxPort?: number;
 	}
 
 	interface OfferParams {
@@ -286,7 +290,7 @@ declare namespace JanusJS {
 		remove?: boolean;
 		type: 'video' | 'screen' | 'audio' | 'data';
 		mid?: string;
-		capture: boolean | MediaStreamTrack;
+		capture: boolean | MediaTrackConstraints | MediaStreamTrack;
 		recv?: boolean;
 		group?: 'default' | string;
 		gumGroup?: TrackOption['group'];

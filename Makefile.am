@@ -47,6 +47,16 @@ CLEANFILES += conf/janus.jcfg.sample
 
 
 ##
+# pkg-config file
+##
+
+EXTRA_DIST = janus-gateway.pc.in
+pkgconfigdir = $(libdir)/pkgconfig
+pkgconfig_DATA = janus-gateway.pc
+DISTCLEANFILES = janus-gateway.pc
+
+
+##
 # Fuzzers checking
 ##
 
@@ -91,11 +101,11 @@ EXTRA_DIST += $(jsmodules_DATA)
 
 if ENABLE_JAVASCRIPT_MODULES
 
-npm/node_modules/rollup/dist/bin/rollup: npm/package.json
-	cd npm && $(NPM) install && touch node_modules/rollup/dist/bin/rollup
+node_modules/rollup/dist/bin/rollup: package.json
+	$(NPM) install && touch node_modules/rollup/dist/bin/rollup
 
-npm/dist/janus.%.js: html/janus.js npm/node_modules/rollup/dist/bin/rollup npm/rollup.config.mjs npm/module.js
-	cd npm && $(NPM) run rollup -- --o $(patsubst npm/%,%,$@) --f $*
+npm/dist/janus.%.js: html/demos/janus.js node_modules/rollup/dist/bin/rollup npm/rollup.config.mjs npm/module.js
+	$(NPM) run rollup -- --o $@ --f $*
 
 endif
 
