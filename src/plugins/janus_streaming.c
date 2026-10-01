@@ -8342,14 +8342,14 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 			JANUS_LOG(LOG_ERR, "[%s] cannot parse %s fmtp...\n", name, media);
 			return -1;
 		}
-		const char *start = strstr(f, "sprop-parameter-sets=");
+		char *start = (char *)strstr(f, "sprop-parameter-sets=");
 		if(sps != NULL && start != NULL) {
 			start += strlen("sprop-parameter-sets=");
 			char *end = (char *)strstr(start, ";");
 			if(end == NULL)
-				end = strstr(start, "\r");
+				end = (char *)strstr(start, "\r");
 			if(end == NULL)
-				end = strstr(start, "\n");
+				end = (char *)strstr(start, "\n");
 			if(end) {
 				char c = *end;
 				*end = '\0';
@@ -8361,17 +8361,17 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 			}
 		}
 	}
-	char *c = strstr(m, "c=IN IP4");
+	char *c = (char *)strstr(m, "c=IN IP4");
 	if(c == NULL) {
 		/* No m-line c= attribute? try in the whole SDP */
-		c = strstr(buffer, "c=IN IP4");
+		c = (char *)strstr(buffer, "c=IN IP4");
 	}
 	char ip[256];
 	in_addr_t mcast = INADDR_ANY;
 	if(c != NULL) {
 		if(sscanf(c, "c=IN IP4 %255[^/]", ip) != 0) {
 			memcpy(host, ip, sizeof(ip));
-			c = strstr(host, "\r\n");
+			c = (char *)strstr(host, "\r\n");
 			if(c)
 				*c = '\0';
 			mcast = inet_addr(ip);
