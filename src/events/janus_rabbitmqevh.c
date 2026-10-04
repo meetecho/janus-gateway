@@ -87,7 +87,6 @@ static GThread *handler_thread;
 static GThread *in_thread;
 static void *jns_rmqevh_hdlr(void *data);
 static void *jns_rmqevh_hrtbt(void *data);
-int janus_rabbitmqevh_tryconnect(void);
 int janus_rabbitmqevh_connect(void);
 
 /* Queue of events to handle */
@@ -123,6 +122,9 @@ static gboolean ssl_verify_hostname = FALSE;
 static char *route_key = NULL, *exchange = NULL, *exchange_type = NULL ;
 static uint16_t heartbeat = 0;
 static gboolean block_startup_until_connected = FALSE;
+static uint16_t retry_interval = 5;
+static guint rmq_reconnect_backoff_initial = 100000;
+static gfloat rmq_reconnect_backoff_multiplier = 1.5;
 static uint16_t rmqport = AMQP_PROTOCOL_PORT;
 static gboolean declare_outgoing_queue = TRUE;
 
@@ -241,6 +243,12 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	item = janus_config_get(config, config_general, janus_config_type_item, "block_startup_until_connected");
 	if(item && item->value && janus_is_true(item->value))
 		block_startup_until_connected = TRUE;
+	retry_interval = 5;
+	item = janus_config_get(config, config_general, janus_config_type_item, "retry_interval");
+	if(item && item->value && (janus_string_to_uint16(item->value, &retry_interval) < 0 || retry_interval == 0)) {
+		JANUS_LOG(LOG_WARN, "RabbitMQEventHandler: Invalid retry_interval (%s), using default (5 seconds)\n", item->value);
+		retry_interval = 5;
+	}
 
 	/* SSL config*/
 	item = janus_config_get(config, config_general, janus_config_type_item, "ssl_enable");
@@ -299,7 +307,20 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	}
 
 	/* Connect */
-	int result = janus_rabbitmqevh_connect();
+	int result = -1;
+	while(!g_atomic_int_get(&stopping)) {
+		result = janus_rabbitmqevh_connect();
+		if(result == 0)
+			break;
+		if(rmq_conn) {
+			amqp_destroy_connection(rmq_conn);
+			rmq_conn = NULL;
+		}
+		if(!block_startup_until_connected)
+			break;
+		JANUS_LOG(LOG_WARN, "RabbitMQEventHandler: Connection failed, retrying in %u seconds\n", retry_interval);
+		g_usleep((gulong)retry_interval * 1000000);
+	}
 	if(result < 0) {
 		goto error;
 	}
@@ -335,6 +356,10 @@ int janus_rabbitmqevh_init(const char *config_path) {
 error:
 	/* If we got here, something went wrong */
 	success = FALSE;
+	if(rmq_conn) {
+		amqp_destroy_connection(rmq_conn);
+		rmq_conn = NULL;
+	}
 	g_free(route_key);
 	g_free(exchange);
 	/* Fall through */
@@ -350,31 +375,11 @@ done:
 }
 
 int janus_rabbitmqevh_connect(void) {
-	uint8_t retry_interval = 5; // Retry interval in seconds
-
-	while (!g_atomic_int_get(&stopping)) {
-		if (janus_rabbitmqevh_tryconnect() == 0) {
-			return 0;
-		}
-
-		if (!block_startup_until_connected) {
-			break;
-		}
-
-		JANUS_LOG(LOG_ERR, "RabbitMQEventHandler: Connection failed, retrying in %d seconds\n", retry_interval);
-		g_usleep(retry_interval * 1000000);
-	}
-
-	JANUS_LOG(LOG_FATAL, "Failed to connect to RabbitMQ\n");
-	return -1;
-}
-
-int janus_rabbitmqevh_tryconnect(void){
 	rmq_conn = amqp_new_connection();
 	amqp_socket_t *socket = NULL;
 	int status = AMQP_STATUS_OK;
 	JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Creating RabbitMQ socket...\n");
-	if (ssl_enable) {
+	if(ssl_enable) {
 		socket = amqp_ssl_socket_new(rmq_conn);
 		if(socket == NULL) {
 			JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error creating socket...\n");
@@ -439,7 +444,7 @@ int janus_rabbitmqevh_tryconnect(void){
 		}
 	}
 
-	if (declare_outgoing_queue) {
+	if(declare_outgoing_queue) {
 		JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Declaring outgoing queue... (%s)\n", route_key);
 		amqp_queue_declare(rmq_conn, rmq_channel, amqp_cstring_bytes(route_key), 0, 0, 0, 0, amqp_empty_table);
 		result = amqp_get_rpc_reply(rmq_conn);
@@ -666,6 +671,8 @@ static void *jns_rmqevh_hrtbt(void *data) {
 	timeout.tv_sec = 0;
 	timeout.tv_usec = 0;
 	amqp_frame_t frame;
+	guint64 rmq_reconnect_backoff = rmq_reconnect_backoff_initial;
+	guint64 rmq_reconnect_backoff_max = (guint64)retry_interval * 1000000;
 
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		janus_mutex_lock(&mutex);
@@ -688,10 +695,15 @@ static void *jns_rmqevh_hrtbt(void *data) {
 			}
 			if(!g_atomic_int_get(&stopping)) {
 				JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Trying to reconnect\n");
-				int result = janus_rabbitmqevh_tryconnect();
+				int result = janus_rabbitmqevh_connect();
 				if(result < 0) {
-					g_usleep(5000000);
+					JANUS_LOG(LOG_WARN, "RabbitMQEventHandler: Failed to reconnect. Retrying in %fs...\n", (gfloat)rmq_reconnect_backoff/1000000);
+					g_usleep(rmq_reconnect_backoff);
+					rmq_reconnect_backoff *= rmq_reconnect_backoff_multiplier;
+					if(rmq_reconnect_backoff >= rmq_reconnect_backoff_max)
+						rmq_reconnect_backoff = rmq_reconnect_backoff_max;
 				} else {
+					rmq_reconnect_backoff = rmq_reconnect_backoff_initial;
 					g_usleep(waiting_usec);
 				}
 			}
