@@ -704,6 +704,11 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 			offset += 2;
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
+				if(len >= sizeof(prebuffer)) {
+					JANUS_LOG(LOG_ERR, "Info header too big (%"SCNu16" bytes), invalid recording\n", len);
+					fclose(file);
+					return NULL;
+				}
 				bytes = fread(prebuffer, sizeof(char), len, file);
 				if(bytes < 0) {
 					JANUS_LOG(LOG_ERR, "Error reading from file... %s\n", g_strerror(errno));
@@ -2605,6 +2610,11 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
 				JANUS_LOG(LOG_VERB, "New .mjr header format\n");
+				if(len >= sizeof(prebuffer)) {
+					JANUS_LOG(LOG_ERR, "Info header too big (%"SCNu16" bytes), invalid recording\n", len);
+					fclose(file);
+					return NULL;
+				}
 				bytes = fread(prebuffer, sizeof(char), len, file);
 				if(bytes < 0) {
 					JANUS_LOG(LOG_ERR, "Error reading from file... %s\n", g_strerror(errno));
