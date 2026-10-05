@@ -330,6 +330,10 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason);
  * @param plugin_session The janus_plugin_session instance to validate
  * @returns true if the plugin session is valid, false otherwise */
 gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session);
+/*! \brief Refresh the Janus core session activity timer for a plugin session
+ * @note Used by plugins with non-signaling media (e.g. AudioBridge WebSocket RTP)
+ * so that \c session_timeout is not hit while RTP is flowing on rtpws */
+void janus_plugin_session_touch(janus_plugin_session *plugin_session);
 
 
 /*! \brief A helper struct for determining when to send NACKs */
