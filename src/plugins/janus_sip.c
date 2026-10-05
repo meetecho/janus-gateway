@@ -5103,6 +5103,8 @@ send_invite:
 					SOATAG_RTP_SELECT(SOA_RTP_SELECT_COMMON),
 					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 					TAG_END());
+				/* Late offer negotiated: clear the flag so a later re-INVITE's 200 OK is ACKed normally */
+				session->media.late_offer = FALSE;
 			}
 			g_free(sdp);
 			/* Send an ack back */
