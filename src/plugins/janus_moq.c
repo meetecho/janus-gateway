@@ -651,7 +651,8 @@ void janus_moq_setup_media(janus_plugin_session *handle) {
 		imquic_moq_request_parameters params;
 		imquic_moq_request_parameters_init_defaults(&params);
 		params.location_filter_set = TRUE;
-		params.location_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+		params.location_filter.legacy_type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+		params.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_NEXT_OBJECT;
 		if(session->auth_info) {
 			/* Serialize the token using the USE_VALUE alias type */
 			params.auth_token_set = TRUE;
@@ -900,7 +901,7 @@ static void *janus_moq_processing_thread(void *data) {
 			session->audio_track.timestamp += 20000;
 			/* FIXME We currently don't support LOC private properties, so
 			 * we always add an empty list to signal it's empty */
-			uint8_t loc_pvt_props[] = { 0xA, 0x00 };
+			uint8_t loc_pvt_props[] = { IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST, 0x00 };
 			/* Prepare a MoQ object and send it */
 			imquic_moq_object object = {
 				.request_id = session->audio_track.request_id,
@@ -1061,7 +1062,7 @@ static void *janus_moq_processing_thread(void *data) {
 					}
 					/* FIXME We currently don't support LOC private properties, so
 					 * we always add an empty list to signal it's empty */
-					uint8_t loc_pvt_props[] = { 0xA, 0x00 };
+					uint8_t loc_pvt_props[] = { IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST, 0x00 };
 					/* Prepare a MoQ object and send it */
 					imquic_moq_object object = {
 						.request_id = session->video_track.request_id,
@@ -2737,8 +2738,9 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 	/* Check if there are private properties too */
 	uint8_t length = 0;
 	uint64_t prop_type = imquic_read_moqint(moq_version, object->payload, object->payload_len, &length);
-	if(length == 0 || length > object->payload_len || prop_type != 0xA) {
-		JANUS_LOG(LOG_WARN, "Broken private properties (got %"SCNu64", expecting 0xA), ignoring object\n", prop_type);
+	if(length == 0 || length > object->payload_len || prop_type != IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST) {
+		JANUS_LOG(LOG_WARN, "Broken private properties (got %"SCNu64", expecting %d), ignoring object\n",
+			prop_type, IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST);
 		return;
 	}
 	size_t skip = length;
