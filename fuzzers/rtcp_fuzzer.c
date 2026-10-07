@@ -61,8 +61,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	janus_rtcp_cap_remb((char *)copy_data[idx++], size, 256000);
 	janus_rtcp_swap_report_blocks((char *)copy_data[idx++], size, 2);
 	janus_rtcp_fix_report_data((char *)copy_data[idx++], size, 2000, 1000, 2, 2, 2, TRUE);
-	janus_rtcp_fix_ssrc(&ctx0, (char *)copy_data[idx++], size, 1, 2, 2);
-	janus_rtcp_parse(&ctx1, (char *)copy_data[idx++], size);
+	janus_rtcp_fix_ssrc(&ctx0, NULL, (char *)copy_data[idx++], size, 1, 2, 2);
+	janus_rtcp_parse(&ctx1, NULL, (char *)copy_data[idx++], size);
 	janus_rtcp_remove_nacks((char *)copy_data[idx++], size);
 	/* Functions that allocate new memory */
 	char *output_data = janus_rtcp_filter((char *)data, size, &newlen);
