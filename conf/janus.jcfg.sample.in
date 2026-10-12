@@ -158,6 +158,15 @@ general: {
 									# application in the related Janus API responses
 									# or events; in case you need them to be in the
 									# Janus API too, set this property to 'true'.
+	#disable_info_api = true		# By default, the "info" endpoint is unauthenticated,
+									# allowing any caller to discover loaded plugins and
+									# server details. Setting this to 'true' restricts
+									# the endpoint so that a valid api_secret or token
+									# is required to access it, e.g., when Janus runs
+									# behind a reverse proxy and you want to reduce
+									# server fingerprinting. Note that this option has
+									# no effect unless api_secret or token_auth is
+									# also configured.
 	#hide_dependencies = true		# By default, a call to the "info" endpoint of
 									# either the Janus or Admin API now also returns
 									# the versions of the main dependencies (e.g.,
