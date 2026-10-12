@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.16.3] - 2026-10-12
+
+- [**SEC**] Fix potential buffer overflow in Record&Play plugin (reported by AdamKorcz) [[PR-3688](https://github.com/meetecho/janus-gateway/pull/3688)]
+- [**SEC**] Fix master/helper session switch potentially causing a crash in SIP plugin (reported by AdamKorcz) [[PR-3689](https://github.com/meetecho/janus-gateway/pull/3689)]
+- Keep DTLS retransmission timer running after handshake (thanks @fippo!) [[PR-3687](https://github.com/meetecho/janus-gateway/pull/3687)]
+- Enable TWCC feedback for audio-only connections (thanks @SteveMcFarlin!) [[PR-3674](https://github.com/meetecho/janus-gateway/pull/3674)]
+- Avoid discarding NACKs with duplicate queue pops (thanks @chriswiggins!) [[PR-3684](https://github.com/meetecho/janus-gateway/pull/3684)]
+- Added new option to restrict "info" API when using secrets or tokens (thanks @ EricLi-400!) [[PR-3646](https://github.com/meetecho/janus-gateway/pull/3646)]
+- Add support for outgoing late offers (offerless INVITE) to the SIP plugin [[PR-3660](https://github.com/meetecho/janus-gateway/pull/3660)]
+- Fixed contact header sometimes missing in REFER messages in the SIP plugin
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.16.2] - 2026-09-23
 
 - [**SEC**] Updated security policy document and added security advisories
