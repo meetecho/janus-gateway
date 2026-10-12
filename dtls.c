@@ -1141,11 +1141,8 @@ gboolean janus_dtls_retry(gpointer stack) {
 		goto stoptimer;
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP))
 		goto stoptimer;
-	if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS already set up, disabling retransmission timer!\n", handle->handle_id);
-		goto stoptimer;
-	}
-	if(janus_get_monotonic_time() - dtls->dtls_started >= 20*G_USEC_PER_SEC) {
+	if(dtls->dtls_state != JANUS_DTLS_STATE_CONNECTED &&
+			janus_get_monotonic_time() - dtls->dtls_started >= 20*G_USEC_PER_SEC) {
 		/* FIXME Should we really give up after 20 seconds waiting for DTLS? */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] DTLS taking too much time for component %d in stream %d...\n",
 			handle->handle_id, component->component_id, stream->stream_id);
@@ -1154,6 +1151,12 @@ gboolean janus_dtls_retry(gpointer stack) {
 	}
 	struct timeval timeout = {0};
 	if(DTLSv1_get_timeout(dtls->ssl, &timeout) == 0) {
+		if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
+			/* With DTLS 1.3 the handshake may be done before our last flight
+			 * has been ACKed, so we only stop when no timer is pending anymore */
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS already set up, disabling retransmission timer!\n", handle->handle_id);
+			goto stoptimer;
+		}
 		/* failed to get timeout. try again on next iter */
 		return TRUE;
 	}
