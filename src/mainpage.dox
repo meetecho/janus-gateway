@@ -1245,8 +1245,8 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
  * clients to auto-negotiate capabilities before establishing a session.
  * If you want to restrict access to this endpoint (e.g., to reduce server
  * fingerprinting when Janus is behind a reverse proxy), you can require
- * authentication for it via the \c disable_info_api option in the \c general
- * section of \c janus.jcfg, or via the \c --disable-info-api command line
+ * authentication for it via the \c restrict_info_api option in the \c general
+ * section of \c janus.jcfg, or via the \c --restrict-info-api command line
  * argument. When enabled, unauthenticated \c info requests will be rejected
  * with a \c 403 Unauthorized error, while requests carrying a valid
  * \c api_secret or token will still be served normally. Note that this

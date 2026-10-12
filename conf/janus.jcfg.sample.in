@@ -158,7 +158,7 @@ general: {
 									# application in the related Janus API responses
 									# or events; in case you need them to be in the
 									# Janus API too, set this property to 'true'.
-	#disable_info_api = true		# By default, the "info" endpoint is unauthenticated,
+	#restrict_info_api = true		# By default, the "info" endpoint is unauthenticated,
 									# allowing any caller to discover loaded plugins and
 									# server details. Setting this to 'true' restricts
 									# the endpoint so that a valid api_secret or token
