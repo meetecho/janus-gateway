@@ -1168,9 +1168,9 @@ static janus_sip_message exit_message;
 
 
 typedef enum {
-	janus_sip_registration_status_disabled = -2,
 	janus_sip_registration_status_failed = -1,
 	janus_sip_registration_status_unregistered = 0,
+	janus_sip_registration_status_fakeregistered,
 	janus_sip_registration_status_registering,
 	janus_sip_registration_status_registered,
 	janus_sip_registration_status_unregistering,
@@ -1178,12 +1178,12 @@ typedef enum {
 
 static const char *janus_sip_registration_status_string(janus_sip_registration_status status) {
 	switch(status) {
-		case janus_sip_registration_status_disabled:
-			return "disabled";
 		case janus_sip_registration_status_failed:
 			return "failed";
 		case janus_sip_registration_status_unregistered:
 			return "unregistered";
+		case janus_sip_registration_status_fakeregistered:
+			return "fakeregistered";
 		case janus_sip_registration_status_registering:
 			return "registering";
 		case janus_sip_registration_status_registered:
@@ -3815,6 +3815,12 @@ static void *janus_sip_handler(void *data) {
 					JANUS_LOG(LOG_WARN, "Unknown type '%s', ignoring...\n", type_text);
 				}
 			}
+			if((guest || helper) && refresh) {
+				JANUS_LOG(LOG_ERR, "Already registered (%s)\n", session->account.username);
+				error_code = JANUS_SIP_ERROR_ALREADY_REGISTERED;
+				g_snprintf(error_cause, 512, "Already registered (%s)", session->account.username);
+				goto error;
+			}
 			if(helper) {
 				/* This is actually an helper session, for an already registered one */
 				json_t *master = json_object_get(root, "master_id");
@@ -3850,7 +3856,7 @@ static void *janus_sip_handler(void *data) {
 				janus_mutex_lock(&ms->mutex);
 				ms->helpers = g_list_append(ms->helpers, session);
 				janus_mutex_unlock(&ms->mutex);
-				session->account.registration_status = janus_sip_registration_status_disabled;
+				session->account.registration_status = janus_sip_registration_status_fakeregistered;
 				g_free(session->account.username);
 				session->account.username = ms->account.username ? g_strdup(ms->account.username) : NULL;
 				if(session->stack == NULL) {
@@ -4043,6 +4049,7 @@ static void *janus_sip_handler(void *data) {
 				/* Not needed, we can stop here: just say we're registered */
 				JANUS_LOG(LOG_INFO, "Guest will have username %s\n", user_id);
 				send_register = FALSE;
+				session->account.registration_status = janus_sip_registration_status_fakeregistered;
 			} else {
 				json_t *secret = json_object_get(root, "secret");
 				json_t *ha1_secret = json_object_get(root, "ha1_secret");
@@ -4251,7 +4258,7 @@ static void *janus_sip_handler(void *data) {
 				json_object_set_new(result, "unique_id", json_string(session->unique_id));
 			} else {
 				JANUS_LOG(LOG_VERB, "Not sending a SIP REGISTER: either send_register was set to false or guest mode was enabled\n");
-				session->account.registration_status = janus_sip_registration_status_disabled;
+				session->account.registration_status = janus_sip_registration_status_fakeregistered;
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registered"));
 				json_object_set_new(result, "username", json_string(session->account.username));
@@ -4321,7 +4328,7 @@ static void *janus_sip_handler(void *data) {
 			if(error_code != 0)
 				goto error;
 			if(session->account.registration_status != janus_sip_registration_status_registered &&
-					session->account.registration_status != janus_sip_registration_status_disabled) {
+					session->account.registration_status != janus_sip_registration_status_fakeregistered) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (not registered)");
@@ -4433,7 +4440,7 @@ static void *janus_sip_handler(void *data) {
 			if(error_code != 0)
 				goto error;
 			if(session->account.registration_status != janus_sip_registration_status_registered &&
-					session->account.registration_status != janus_sip_registration_status_disabled) {
+					session->account.registration_status != janus_sip_registration_status_fakeregistered) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (not registered)");
@@ -4469,7 +4476,7 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			if(session->account.registration_status != janus_sip_registration_status_registered &&
-					session->account.registration_status != janus_sip_registration_status_disabled) {
+					session->account.registration_status != janus_sip_registration_status_fakeregistered) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (not registered)");
@@ -5907,7 +5914,7 @@ send_invite:
 				janus_mutex_unlock(&session->mutex);
 			} else {
 				if(session->account.registration_status != janus_sip_registration_status_registered &&
-				   session->account.registration_status != janus_sip_registration_status_disabled) {
+				   session->account.registration_status != janus_sip_registration_status_fakeregistered) {
 					JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
 					error_code = JANUS_SIP_ERROR_WRONG_STATE;
 					g_snprintf(error_cause, 512, "Wrong state (not registered)");
