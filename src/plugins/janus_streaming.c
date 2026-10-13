@@ -1665,7 +1665,7 @@ static void janus_streaming_roq_incoming_rtp(struct janus_roq_server *rs, imquic
 	}
 	janus_mutex_unlock(&srs->mutex);
 }
-static void janus_streaming_roq_client_gone(struct janus_roq_server *rs, imquic_connection *conn) {
+static void janus_streaming_roq_client_gone(struct janus_roq_server *rs, imquic_connection *conn, uint64_t error_code, const char *reason) {
 	janus_streaming_roq_server *srs = (janus_streaming_roq_server *)rs->metadata;
 	if(!srs || g_atomic_int_get(&srs->destroyed))
 		return;
