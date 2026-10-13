@@ -222,16 +222,36 @@ void janus_rtcp_swap_report_blocks(char *packet, int len, uint32_t rtx_ssrc) {
 	}
 }
 
+static void janus_rtcp_incoming_report_block(janus_rtcp_context *ctx, janus_report_block *rb);
+
+/* Helper to log all the fields of an incoming report block */
+static void janus_rtcp_log_report_block(const char *type, int index, janus_report_block *rb) {
+	uint32_t flcnpl = ntohl(rb->flcnpl);
+	int32_t cumlost = (int32_t)((flcnpl & 0x00FFFFFF) << 8) >> 8;
+	JANUS_LOG(LOG_INFO, "[KE] [RTCP] %s RB#%d: ssrc=%"SCNu32", fraction_lost=%"SCNu32"/256, cumulative_lost=%d, ehsnr=%"SCNu32", jitter=%"SCNu32", lsr=%"SCNu32", dlsr=%"SCNu32"\n",
+		type, index, ntohl(rb->ssrc), flcnpl >> 24, cumlost, ntohl(rb->ehsnr),
+		ntohl(rb->jitter), ntohl(rb->lsr), ntohl(rb->delay));
+}
+
 /* Helper to handle an incoming SR: triggered by a call to janus_rtcp_fix_ssrc with a valid context pointer */
 static void janus_rtcp_incoming_sr(janus_rtcp_context *ctx, janus_rtcp_sr *sr) {
 	if(ctx == NULL)
 		return;
+	JANUS_LOG(LOG_INFO, "[RTCP] SR: ssrc=%"SCNu32", rc=%d, ntp=%"SCNu32".%"SCNu32", rtp_ts=%"SCNu32", packets=%"SCNu32", octets=%"SCNu32"\n",
+		ntohl(sr->ssrc), sr->header.rc, ntohl(sr->si.ntp_ts_msw), ntohl(sr->si.ntp_ts_lsw),
+		ntohl(sr->si.rtp_ts), ntohl(sr->si.s_packets), ntohl(sr->si.s_octets));
+	int i;
+	for(i = 0; i < sr->header.rc; i++)
+		janus_rtcp_log_report_block("SR", i, &sr->rb[i]);
 	/* Update the context with info on the monotonic time of last SR received */
 	ctx->lsr_ts = janus_get_monotonic_time();
 	/* Compute the last SR received as well */
 	uint64_t ntp = ntohl(sr->si.ntp_ts_msw);
 	ntp = (ntp << 32) | ntohl(sr->si.ntp_ts_lsw);
 	ctx->lsr = (ntp >> 16);
+	/* A SR can carry report blocks too: some peers never send an RR */
+	if(sr->header.rc > 0)
+		janus_rtcp_incoming_report_block(ctx, &sr->rb[0]);
 }
 
 /* Helper to handle an incoming transport-cc feedback: triggered by a call to janus_rtcp_fix_ssrc a valid context pointer */
@@ -398,46 +418,54 @@ static void janus_rtcp_rr_update_stats(rtcp_context *ctx, janus_report_block rb)
 	g_atomic_int_set(&ctx->sent_packets_since_last_rr, 0);
 }
 
+/* Helper to handle a report block, which can be carried by both SR and RR */
+static void janus_rtcp_incoming_report_block(janus_rtcp_context *ctx, janus_report_block *rb) {
+	double jitter = (double)ntohl(rb->jitter);
+	uint32_t fraction = ntohl(rb->flcnpl) >> 24;
+	int32_t total = ntohl(rb->flcnpl) & 0x00FFFFFF;
+	/* Sign extend from 24 to 32 bits */
+	total = (int32_t)(((uint32_t)total << 8)) >> 8;
+	JANUS_LOG(LOG_HUGE, "jitter=%f, fraction=%"SCNu32", loss=%d\n", jitter, fraction, total);
+	ctx->lost_remote = total;
+	ctx->jitter_remote = jitter;
+	janus_rtcp_rr_update_stats(ctx, *rb);
+	/* FIXME Compute round trip time */
+	uint32_t lsr = ntohl(rb->lsr);
+	uint32_t dlsr = ntohl(rb->delay);
+	if(lsr == 0)	/* Not enough info yet */
+		return;
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	uint32_t s = tv.tv_sec + 2208988800u;
+	uint32_t u = tv.tv_usec;
+	uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
+	uint32_t ntp_ts_msw = s;
+	uint32_t ntp_ts_lsw = f;
+	uint64_t temp = ((uint64_t)ntp_ts_msw << 32 ) | ntp_ts_lsw;
+	uint32_t a = (uint32_t)(temp >> 16);
+	uint32_t rtt = a - lsr - dlsr;
+	uint32_t rtt_msw = (rtt & 0xFFFF0000) >> 16;
+	uint32_t rtt_lsw = rtt & 0x0000FFFF;
+	tv.tv_sec = rtt_msw;
+	tv.tv_usec = (rtt_lsw * 15625) >> 10;
+	ctx->rtt = tv.tv_sec*1000 + tv.tv_usec/1000;	/* We need milliseconds */
+	ctx->rtt_ntp = a;
+	ctx->rtt_lsr = lsr;
+	ctx->rtt_dlsr = dlsr;
+	JANUS_LOG(LOG_HUGE, "rtt=%"SCNu32"\n", ctx->rtt);
+}
+
 /* Helper to handle an incoming RR: triggered by a call to janus_rtcp_fix_ssrc with fixssrc=0 */
 static void janus_rtcp_incoming_rr(janus_rtcp_context *ctx, janus_rtcp_rr *rr) {
 	if(ctx == NULL)
 		return;
+	JANUS_LOG(LOG_INFO, "[RTCP] RR: ssrc=%"SCNu32", rc=%d\n", ntohl(rr->ssrc), rr->header.rc);
+	int i;
+	for(i = 0; i < rr->header.rc; i++)
+		janus_rtcp_log_report_block("RR", i, &rr->rb[i]);
 	/* FIXME Check the Record Blocks */
-	if(rr->header.rc > 0) {
-		double jitter = (double)ntohl(rr->rb[0].jitter);
-		uint32_t fraction = ntohl(rr->rb[0].flcnpl) >> 24;
-		int32_t total = ntohl(rr->rb[0].flcnpl) & 0x00FFFFFF;
-		/* Sign extend from 24 to 32 bits */
-		total = (int32_t)(((uint32_t)total << 8)) >> 8;
-		JANUS_LOG(LOG_HUGE, "jitter=%f, fraction=%"SCNu32", loss=%d\n", jitter, fraction, total);
-		ctx->lost_remote = total;
-		ctx->jitter_remote = jitter;
-		janus_rtcp_rr_update_stats(ctx, rr->rb[0]);
-		/* FIXME Compute round trip time */
-		uint32_t lsr = ntohl(rr->rb[0].lsr);
-		uint32_t dlsr = ntohl(rr->rb[0].delay);
-		if(lsr == 0)	/* Not enough info yet */
-			return;
-		struct timeval tv;
-		gettimeofday(&tv, NULL);
-		uint32_t s = tv.tv_sec + 2208988800u;
-		uint32_t u = tv.tv_usec;
-		uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
-		uint32_t ntp_ts_msw = s;
-		uint32_t ntp_ts_lsw = f;
-		uint64_t temp = ((uint64_t)ntp_ts_msw << 32 ) | ntp_ts_lsw;
-		uint32_t a = (uint32_t)(temp >> 16);
-		uint32_t rtt = a - lsr - dlsr;
-		uint32_t rtt_msw = (rtt & 0xFFFF0000) >> 16;
-		uint32_t rtt_lsw = rtt & 0x0000FFFF;
-		tv.tv_sec = rtt_msw;
-		tv.tv_usec = (rtt_lsw * 15625) >> 10;
-		ctx->rtt = tv.tv_sec*1000 + tv.tv_usec/1000;	/* We need milliseconds */
-		ctx->rtt_ntp = a;
-		ctx->rtt_lsr = lsr;
-		ctx->rtt_dlsr = dlsr;
-		JANUS_LOG(LOG_HUGE, "rtt=%"SCNu32"\n", ctx->rtt);
-	}
+	if(rr->header.rc > 0)
+		janus_rtcp_incoming_report_block(ctx, &rr->rb[0]);
 }
 
 gboolean janus_rtcp_check_len(janus_rtcp_header *rtcp, int len) {
