@@ -1332,6 +1332,7 @@ json_t *janus_nosip_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "sdes-local", json_string(session->media.has_srtp_local ? "yes" : "no"));
 		json_object_set_new(info, "sdes-remote", json_string(session->media.has_srtp_remote ? "yes" : "no"));
 	}
+	janus_mutex_lock(&session->rec_mutex);
 	if(session->arc || session->vrc || session->arc_peer || session->vrc_peer) {
 		json_t *recording = json_object();
 		if(session->arc && session->arc->filename)
@@ -1344,6 +1345,7 @@ json_t *janus_nosip_query_session(janus_plugin_session *handle) {
 			json_object_set_new(recording, "video-peer", json_string(session->vrc_peer->filename));
 		json_object_set_new(info, "recording", recording);
 	}
+	janus_mutex_unlock(&session->rec_mutex);
 	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
 	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
 	janus_refcount_decrease(&session->ref);
@@ -1893,7 +1895,7 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pa
 			}
 			janus_mutex_unlock(&session->rtp_forwarders_mutex);
 			/* Save the frame if we're recording */
-			janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
+			janus_recorder_save_frame_locked(video ? &session->vrc : &session->arc, &session->rec_mutex, buf, len);
 			/* Is SRTP involved? */
 			if(session->media.has_srtp_local) {
 				char sbuf[2048];
@@ -3419,7 +3421,7 @@ static void *janus_nosip_relay_thread(void *data) {
 					janus_mutex_unlock(&session->rtp_forwarders_mutex);
 					/* Save the frame if we're recording */
 					header->ssrc = htonl(video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer);
-					janus_recorder_save_frame(video ? session->vrc_peer : session->arc_peer, buffer, bytes);
+					janus_recorder_save_frame_locked(video ? &session->vrc_peer : &session->arc_peer, &session->rec_mutex, buffer, bytes);
 					/* Relay to browser */
 					janus_plugin_rtp rtp = { .mindex = -1, .video = video, .buffer = buffer, .length = bytes };
 					/* Add audio-level extension, if present */

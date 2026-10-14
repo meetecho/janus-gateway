@@ -527,6 +527,7 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "temporal-layer", json_integer(session->svc_context.temporal));
 		json_object_set_new(info, "temporal-layer-target", json_integer(session->svc_context.temporal_target));
 	}
+	janus_mutex_lock(&session->rec_mutex);
 	if(session->arc || session->vrc || session->drc) {
 		json_t *recording = json_object();
 		if(session->arc && session->arc->filename)
@@ -537,6 +538,7 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 			json_object_set_new(recording, "data", json_string(session->drc->filename));
 		json_object_set_new(info, "recording", recording);
 	}
+	janus_mutex_unlock(&session->rec_mutex);
 	if(session->e2ee)
 		json_object_set_new(info, "e2ee", json_true());
 	json_object_set_new(info, "slowlink_count", json_integer(session->slowlink_count));
@@ -687,7 +689,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 			}
 			/* Save the frame if we're recording (and make sure the SSRC never changes even if the substream does) */
 			header->ssrc = htonl(1);
-			janus_recorder_save_frame(session->vrc, buf, len);
+			janus_recorder_save_frame_locked(&session->vrc, &session->rec_mutex, buf, len);
 			/* Send the frame back */
 			gateway->relay_rtp(handle, packet);
 			/* Restore header or core statistics will be messed up */
@@ -697,7 +699,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 		} else {
 			if((!video && session->audio_active) || (video && session->video_active)) {
 				/* Save the frame if we're recording */
-				janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
+				janus_recorder_save_frame_locked(video ? &session->vrc : &session->arc, &session->rec_mutex, buf, len);
 				/* Send the frame back */
 				gateway->relay_rtp(handle, packet);
 			}
@@ -751,7 +753,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 			JANUS_LOG(LOG_VERB, "Got a binary DataChannel message (label=%s, protocol=%s, %d bytes) to bounce back\n",
 				label, protocol, len);
 			/* Save the frame if we're recording */
-			janus_recorder_save_frame(session->drc, buf, len);
+			janus_recorder_save_frame_locked(&session->drc, &session->rec_mutex, buf, len);
 			/* Binary data, shoot back as it is */
 			gateway->relay_data(handle, packet);
 			return;
@@ -763,7 +765,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 		JANUS_LOG(LOG_VERB, "Got a DataChannel message (label=%s, protocol=%s, %zu bytes) to bounce back: %s\n",
 			label, protocol, strlen(text), text);
 		/* Save the frame if we're recording */
-		janus_recorder_save_frame(session->drc, text, strlen(text));
+		janus_recorder_save_frame_locked(&session->drc, &session->rec_mutex, text, strlen(text));
 		/* We send back the same text with a custom prefix */
 		const char *prefix = "Janus EchoTest here! You wrote: ";
 		char *reply = g_malloc(strlen(prefix)+len+1);
@@ -1428,6 +1430,7 @@ static void *janus_echotest_handler(void *data) {
 				json_object_set_new(simulcast, "temporal-layer", json_integer(session->sim_context.templayer));
 				json_object_set_new(info, "simulcast", simulcast);
 			}
+			janus_mutex_lock(&session->rec_mutex);
 			if(session->arc || session->vrc || session->drc) {
 				json_t *recording = json_object();
 				if(session->arc && session->arc->filename)
@@ -1438,6 +1441,7 @@ static void *janus_echotest_handler(void *data) {
 					json_object_set_new(recording, "data", json_string(session->drc->filename));
 				json_object_set_new(info, "recording", recording);
 			}
+			janus_mutex_unlock(&session->rec_mutex);
 			gateway->notify_event(&janus_echotest_plugin, session->handle, info);
 		}
 

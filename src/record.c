@@ -483,6 +483,17 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 	return 0;
 }
 
+int janus_recorder_save_frame_locked(janus_recorder **recorder, janus_mutex *mutex, char *buffer, uint length) {
+	if(!recorder || !mutex)
+		return -1;
+	/* The recorder is only closed and destroyed while holding the mutex, so
+	 * as long as we hold it too, it will stay valid until we're done */
+	janus_mutex_lock(mutex);
+	int res = janus_recorder_save_frame(*recorder, buffer, length);
+	janus_mutex_unlock(mutex);
+	return res;
+}
+
 int janus_recorder_close(janus_recorder *recorder) {
 	if(!recorder || !g_atomic_int_compare_and_exchange(&recorder->writable, 1, 0))
 		return -1;

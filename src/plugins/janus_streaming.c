@@ -10117,7 +10117,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					}
 					if(stream->rc) {
 						packet.data->ssrc = htonl((uint32_t)mountpoint->id);
-						janus_recorder_save_frame(stream->rc, buffer, bytes);
+						janus_recorder_save_frame_locked(&stream->rc, &source->rec_mutex, buffer, bytes);
 					}
 					if(mountpoint->enabled) {
 						packet.data->ssrc = htonl(ssrc);
@@ -10287,7 +10287,7 @@ static void *janus_streaming_relay_thread(void *data) {
 							sps_rtp->timestamp = rtp->timestamp;
 							/* Save the packet, if needed */
 							sps_rtp->ssrc = htonl((uint32_t)mountpoint->id);
-							janus_recorder_save_frame(stream->rc, stream->h264_spspps, stream->h264_spspps_len);
+							janus_recorder_save_frame_locked(&stream->rc, &source->rec_mutex, stream->h264_spspps, stream->h264_spspps_len);
 							sps_rtp->ssrc = rtp->ssrc;
 							/* Relay on all sessions */
 							janus_streaming_rtp_relay_packet spspkt = { 0 };
@@ -10314,7 +10314,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					}
 					if(index == 0 && stream->rc) {
 						packet.data->ssrc = htonl((uint32_t)mountpoint->id);
-						janus_recorder_save_frame(stream->rc, buffer, bytes);
+						janus_recorder_save_frame_locked(&stream->rc, &source->rec_mutex, buffer, bytes);
 					}
 					if(mountpoint->enabled) {
 						packet.data->ssrc = htonl(ssrc);
@@ -10363,7 +10363,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					packet.is_data = TRUE;
 					packet.textdata = stream->textdata;
 					/* Is there a recorder? */
-					janus_recorder_save_frame(stream->rc, data, bytes);
+					janus_recorder_save_frame_locked(&stream->rc, &source->rec_mutex, data, bytes);
 					if(mountpoint->enabled) {
 						/* Are we keeping track of the last message being relayed? */
 						if(stream->buffermsg) {
