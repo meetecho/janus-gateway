@@ -65,8 +65,19 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	janus_rtp_header_extension_parse_rid((char *)data, size, 1, sdes_item, sizeof(sdes_item));
 	janus_rtp_header_extension_parse_mid((char *)data, size, 1, sdes_item, sizeof(sdes_item));
 
-	/* Do same checks that libsrtp does */
-	if (srtp_validate_rtp_header((char *)data, size) < 0) return 0;
+	/* Do same checks that libsrtp does: plain RTP (e.g., relayed by
+	 * plugins) doesn't go through libsrtp, so the RTP helpers must
+	 * reject on their own the headers that libsrtp would reject */
+	if (srtp_validate_rtp_header((char *)data, size) < 0) {
+		char *copy = g_malloc(size);
+		memcpy(copy, data, size);
+		if (janus_rtp_payload(copy, size, NULL) != NULL)
+			abort();
+		if (janus_rtp_header_extension_replace_id(copy, size, 1, 2) == 0)
+			abort();
+		g_free(copy);
+		return 0;
+	}
 
 	/* RTP extensions parsers */
 	guint16 transport_seq_num;
