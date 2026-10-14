@@ -10546,7 +10546,8 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 						s->spatial_layer, s->target_spatial_layer);
 					/* We need to upscale: wait for a keyframe */
 					if(keyframe) {
-						int new_spatial_layer = s->target_spatial_layer;
+						/* The target may be higher than the layers we track */
+						int new_spatial_layer = s->target_spatial_layer > 2 ? 2 : s->target_spatial_layer;
 						while(new_spatial_layer > s->spatial_layer && new_spatial_layer > 0) {
 							if(now - s->last_spatial_layer[new_spatial_layer] >= 250000) {
 								/* We haven't received packets from this layer for a while, try a lower layer */
