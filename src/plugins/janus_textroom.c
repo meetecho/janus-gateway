@@ -1312,9 +1312,10 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 		/* These requests typically only belong to the datachannel
 		 * messaging, but for admin purposes we might use them on
 		 * the Janus API as well: add the properties the datachannel
-		 * processor would expect and handle everything there */
-		if(json_object_get(root, "textroom") == NULL)
-			json_object_set_new(root, "textroom", json_string(request_text));
+		 * processor would expect and handle everything there: the
+		 * datachannel processor looks at 'textroom', so we always
+		 * set it from 'request', to only allow the requests above */
+		json_object_set_new(root, "textroom", json_string(request_text));
 		json_object_set_new(root, "transaction", json_string(transaction));
 		janus_plugin_result *result = janus_textroom_handle_incoming_request(session->handle, NULL, root, FALSE);
 		if(result == NULL) {
@@ -1391,8 +1392,8 @@ json_t *janus_textroom_handle_admin_message(json_t *message) {
 			|| !strcasecmp(request_text, "allowed")
 			|| !strcasecmp(request_text, "kick")
 			|| !strcasecmp(request_text, "destroy")) {
-		if(json_object_get(message, "textroom") == NULL)
-			json_object_set_new(message, "textroom", json_string(request_text));
+		/* Always set 'textroom' from 'request', to only allow the requests above */
+		json_object_set_new(message, "textroom", json_string(request_text));
 		janus_plugin_result *result = janus_textroom_handle_incoming_request(NULL, NULL, message, FALSE);
 		if(result == NULL) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
