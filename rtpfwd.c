@@ -376,9 +376,13 @@ void janus_rtp_forwarder_send_rtp_full(janus_rtp_forwarder *rf, char *buffer, in
 			JANUS_LOG(LOG_HUGE, "Error forwarding RTP %s packet... %s (len=%d)...\n",
 				(rf->is_video ? "video" : "audio"), g_strerror(errno), len);
 		}
+	} else if(len > 1500) {
+		/* Too large to be encrypted in our SRTP buffer below */
+		JANUS_LOG(LOG_WARN, "Packet too large to be forwarded via SRTP (%d bytes)\n", len);
 	} else {
-		/* SRTP: encrypt the packet before sending it */
-		char sbuf[1500];
+		/* SRTP: encrypt the packet before sending it (srtp_protect
+		 * appends the authentication tag, so we need room for that) */
+		char sbuf[1500+SRTP_MAX_TAG_LEN];
 		memcpy(sbuf, buffer, len);
 		int protected = len;
 		int res = srtp_protect(rf->srtp_ctx, sbuf, &protected);
