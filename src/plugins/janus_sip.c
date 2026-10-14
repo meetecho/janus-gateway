@@ -4038,7 +4038,9 @@ static void *janus_sip_handler(void *data) {
 			char user_id[256];
 			/* Parse address */
 			username_text = json_string_value(username);
-			if(janus_sip_parse_uri(&username_uri, username_text) < 0) {
+			if(janus_sip_parse_uri(&username_uri, username_text) < 0 ||
+					username_uri.url->url_user == NULL || strlen(username_uri.url->url_user) == 0) {
+				/* We need a user part, e.g., sip:alice@example.com and not sip:example.com */
 				JANUS_LOG(LOG_ERR, "Invalid user address %s\n", username_text);
 				error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
 				g_snprintf(error_cause, 512, "Invalid user address %s\n", username_text);
