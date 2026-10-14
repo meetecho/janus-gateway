@@ -632,6 +632,9 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 #define AUDIO_PT		111
 #define VIDEO_PT		100
 
+/* Size of the buffer the playout thread reads frames in: frames that don't fit are skipped when indexing */
+#define JANUS_RECORDPLAY_FRAME_MAX	1500
+
 /* Helper method to check which codec was used in a specific recording (and if it's end-to-end encrypted) */
 static const char *janus_recordplay_parse_codec(const char *dir, const char *filename, char *fmtp, size_t fmtplen,
 		uint8_t *audiolevel_ext_id, uint8_t *videoorient_ext_id, int *opusred_pt, gboolean *e2ee) {
@@ -2714,6 +2717,13 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 			offset += len;
 			continue;
 		}
+		if((data && (len < sizeof(gint64) || len - sizeof(gint64) > JANUS_RECORDPLAY_FRAME_MAX)) ||
+				(!data && len > JANUS_RECORDPLAY_FRAME_MAX)) {
+			/* The playout thread wouldn't be able to read this frame */
+			JANUS_LOG(LOG_WARN, "Skipping frame with invalid length (%"SCNu16" bytes)\n", len);
+			offset += len;
+			continue;
+		}
 
 		if(data) {
 			/* Things are simpler for data, no reordering is needed: start by the data time */
@@ -2958,7 +2968,7 @@ static void *janus_recordplay_playout_thread(void *sessiondata) {
 	gettimeofday(&dbefore, NULL);
 
 	janus_recordplay_frame_packet *audio = session->aframes, *video = session->vframes, *data = session->dframes;
-	char *buffer = g_malloc0(1500);
+	char *buffer = g_malloc0(JANUS_RECORDPLAY_FRAME_MAX);
 	int bytes = 0;
 	int64_t ts_diff = 0, passed = 0;
 
