@@ -1312,9 +1312,10 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 		/* These requests typically only belong to the datachannel
 		 * messaging, but for admin purposes we might use them on
 		 * the Janus API as well: add the properties the datachannel
-		 * processor would expect and handle everything there */
-		if(json_object_get(root, "textroom") == NULL)
-			json_object_set_new(root, "textroom", json_string(request_text));
+		 * processor would expect and handle everything there: the
+		 * datachannel processor looks at 'textroom', so we always
+		 * set it from 'request', to only allow the requests above */
+		json_object_set_new(root, "textroom", json_string(request_text));
 		json_object_set_new(root, "transaction", json_string(transaction));
 		janus_plugin_result *result = janus_textroom_handle_incoming_request(session->handle, NULL, root, FALSE);
 		if(result == NULL) {
@@ -1391,8 +1392,8 @@ json_t *janus_textroom_handle_admin_message(json_t *message) {
 			|| !strcasecmp(request_text, "allowed")
 			|| !strcasecmp(request_text, "kick")
 			|| !strcasecmp(request_text, "destroy")) {
-		if(json_object_get(message, "textroom") == NULL)
-			json_object_set_new(message, "textroom", json_string(request_text));
+		/* Always set 'textroom' from 'request', to only allow the requests above */
+		json_object_set_new(message, "textroom", json_string(request_text));
 		janus_plugin_result *result = janus_textroom_handle_incoming_request(NULL, NULL, message, FALSE);
 		if(result == NULL) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
@@ -1747,9 +1748,10 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		janus_mutex_unlock(&textroom->mutex);
 		janus_refcount_decrease(&textroom->ref);
 		/* By default we send a confirmation back to the user that sent this message:
-		 * if the user passed an ack=false, though, we don't do that */
+		 * if the user passed an ack=false, though, we don't do that (but
+		 * only on data channels, as Janus API requests always get a response) */
 		json_t *ack = json_object_get(root, "ack");
-		if(!internal && (ack == NULL || json_is_true(ack))) {
+		if(!internal && (json != NULL || ack == NULL || json_is_true(ack))) {
 			/* Send response back */
 		} else {
 			internal = TRUE;
@@ -3083,7 +3085,9 @@ msg_response:
 					return janus_plugin_result_new(JANUS_PLUGIN_OK, NULL, reply);
 				}
 			}
-			if(root != NULL)
+			/* We only own the request if we parsed it ourselves: when it
+			 * was passed to us as an object, the caller releases it */
+			if(root != NULL && json == NULL)
 				json_decref(root);
 		}
 	return NULL;
