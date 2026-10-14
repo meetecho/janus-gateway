@@ -3838,6 +3838,15 @@ static void *janus_sip_handler(void *data) {
 					g_snprintf(error_cause, 512, "Session already a helper (%"SCNu32")", master_id);
 					goto error;
 				}
+				if(session->master_id != 0) {
+					/* This session registered as a master before, and is still
+					 * listed as one: it can't become a helper (of itself, too) */
+					janus_mutex_unlock(&sessions_mutex);
+					JANUS_LOG(LOG_ERR, "Session already a master (%"SCNu32")\n", session->master_id);
+					error_code = JANUS_SIP_ERROR_HELPER_ERROR;
+					g_snprintf(error_cause, 512, "Session already a master (%"SCNu32")", session->master_id);
+					goto error;
+				}
 				janus_sip_session *ms = g_hash_table_lookup(masters, GUINT_TO_POINTER(master_id));
 				if(ms == NULL) {
 					janus_mutex_unlock(&sessions_mutex);
