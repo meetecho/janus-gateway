@@ -3354,6 +3354,20 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				goto prepare_response;
 			}
 		}
+		uint32_t sampling_rate = sampling ? json_integer_value(sampling) : 16000;
+		switch(sampling_rate) {
+			case 8000:
+			case 12000:
+			case 16000:
+			case 24000:
+			case 48000:
+				break;
+			default:
+				JANUS_LOG(LOG_ERR, "Unsupported sampling rate %"SCNu32"...\n", sampling_rate);
+				error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Unsupported sampling rate %"SCNu32, sampling_rate);
+				goto prepare_response;
+		}
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
 		if(save && config == NULL) {
 			JANUS_LOG(LOG_ERR, "No configuration file, can't create permanent room\n");
@@ -3427,10 +3441,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			audiobridge->room_secret = g_strdup(json_string_value(secret));
 		if(pin)
 			audiobridge->room_pin = g_strdup(json_string_value(pin));
-		if(sampling)
-			audiobridge->sampling_rate = json_integer_value(sampling);
-		else
-			audiobridge->sampling_rate = 16000;
+		audiobridge->sampling_rate = sampling_rate;
+		JANUS_LOG(LOG_VERB, "Sampling rate for mixing: %"SCNu32"\n", audiobridge->sampling_rate);
 		audiobridge->spatial_audio = spatial ? json_is_true(spatial) : FALSE;
 		audiobridge->audiolevel_ext = audiolevel_ext ? json_is_true(audiolevel_ext) : TRUE;
 		audiobridge->audiolevel_event = audiolevel_event ? json_is_true(audiolevel_event) : FALSE;
@@ -3474,25 +3486,6 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			JANUS_LOG(LOG_WARN, "RNNoise unavailable, denoising not supported\n");
 		}
 #endif
-		switch(audiobridge->sampling_rate) {
-			case 8000:
-			case 12000:
-			case 16000:
-			case 24000:
-			case 48000:
-				JANUS_LOG(LOG_VERB, "Sampling rate for mixing: %"SCNu32"\n", audiobridge->sampling_rate);
-				break;
-			default:
-				if(room_id_allocated)
-					g_free(room_id_str);
-				janus_audiobridge_room_destroy(audiobridge);
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Unsupported sampling rate %"SCNu32"...\n", audiobridge->sampling_rate);
-				error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
-				g_snprintf(error_cause, 512, "Unsupported sampling rate %"SCNu32, audiobridge->sampling_rate);
-				janus_audiobridge_room_destroy(audiobridge);
-				goto prepare_response;
-		}
 		audiobridge->room_ssrc = janus_random_uint32();
 		g_atomic_int_set(&audiobridge->record, 0);
 		if(record && json_is_true(record))
