@@ -1040,11 +1040,17 @@ int main(int argc, char *argv[]) {
 			uint8_t padlen = (uint8_t)prebuffer2[0];
 			JANUS_LOG(LOG_VERB, "Padding at sequence number %hu: %d/%d\n",
 				ntohs(rtp->seq_number), padlen, p->len);
-			p->len -= padlen;
-			if((p->len - skip - 12) <= 0) {
-				/* Only padding, take note that we should drop the packet later */
+			if(bytes < 1 || padlen > p->len - skip - 12) {
+				/* More padding than payload, take note that we should drop the packet later */
 				p->drop = 1;
-				JANUS_LOG(LOG_VERB, "  -- All padding, marking packet as dropped\n");
+				JANUS_LOG(LOG_WARN, "  -- Invalid padding length (%d), marking packet as dropped\n", padlen);
+			} else {
+				p->len -= padlen;
+				if((p->len - skip - 12) <= 0) {
+					/* Only padding, take note that we should drop the packet later */
+					p->drop = 1;
+					JANUS_LOG(LOG_VERB, "  -- All padding, marking packet as dropped\n");
+				}
 			}
 		}
 		if(p->len <= 12) {

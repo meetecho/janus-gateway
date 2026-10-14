@@ -31,6 +31,9 @@ static AVCodecContext *vEncoder;
 #endif
 static int max_width = 0, max_height = 0, fps = 0;
 
+/* Start code we prefix NAL units with */
+static const uint8_t janus_pp_h264_start_code[3] = { 0x00, 0x00, 0x01 };
+
 /* Supported target formats */
 static const char *janus_pp_h264_formats[] = {
 	"mp4", "mkv", NULL
@@ -301,11 +304,13 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list, json_t *in
 			buffer++;
 			int tot = len-1;
 			uint16_t psize = 0;
-			while(tot > 0) {
+			while(tot > 2) {
 				memcpy(&psize, buffer, 2);
 				psize = ntohs(psize);
 				buffer += 2;
 				tot -= 2;
+				if(psize > tot)
+					break;
 				int nal = *buffer & 0x1F;
 				JANUS_LOG(LOG_HUGE, "  -- NALU of size %u: %d\n", psize, nal);
 				if(nal == 7) {
@@ -378,7 +383,7 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 
 	int bytes = 0, numBytes = max_width*max_height*3;	/* FIXME */
 	uint8_t *received_frame = g_malloc0(numBytes);
-	uint8_t *buffer = g_malloc0(numBytes), *start = buffer;
+	uint8_t *buffer = g_malloc0(1500), *start = buffer;
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
@@ -439,38 +444,27 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				}
 			}
 			/* Frame manipulation */
+			int res = 0;
 			if((fragment > 0) && (fragment < 24)) {	/* Add a start code */
-				uint8_t *temp = received_frame + frameLen;
-				memset(temp, 0x00, 1);
-				memset(temp + 1, 0x00, 1);
-				memset(temp + 2, 0x01, 1);
-				frameLen += 3;
+				res = janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h264_start_code, 3);
 			} else if(fragment == 24) {	/* STAP-A */
 				/* De-aggregate the NALs and write each of them separately */
 				buffer++;
 				int tot = len-1;
 				uint16_t psize = 0;
-				while(tot > 0) {
+				while(tot > 2) {
 					memcpy(&psize, buffer, 2);
 					psize = ntohs(psize);
-					if((frameLen + psize) >= numBytes) {
-						JANUS_LOG(LOG_ERR, "Invalid size %u + %"SCNu16" (exceeds buffer size)\n", frameLen, psize);
-						/* Done, we'll wait for the next video data to write the frame */
-						if(tmp->next == NULL || tmp->next->ts > tmp->ts)
-							break;
-						tmp = tmp->next;
-						continue;
-					}
 					buffer += 2;
 					tot -= 2;
+					if(psize > tot) {
+						JANUS_LOG(LOG_ERR, "Invalid size %"SCNu16" (exceeds STAP-A size %d)\n", psize, tot);
+						break;
+					}
 					/* Now we have a single NAL */
-					uint8_t *temp = received_frame + frameLen;
-					memset(temp, 0x00, 1);
-					memset(temp + 1, 0x00, 1);
-					memset(temp + 2, 0x01, 1);
-					frameLen += 3;
-					memcpy(received_frame + frameLen, buffer, psize);
-					frameLen += psize;
+					if(janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h264_start_code, 3) < 0 ||
+							janus_pp_frame_append(received_frame, numBytes, &frameLen, buffer, psize) < 0)
+						break;
 					/* Go on */
 					buffer += psize;
 					tot -= psize;
@@ -481,24 +475,27 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				tmp = tmp->next;
 				continue;
 			} else if((fragment == 28) || (fragment == 29)) {	/* FIXME true fr FU-A, not FU-B */
+				if(len < 2) {
+					JANUS_LOG(LOG_WARN, "Fragment too small...\n");
+					if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+						break;
+					tmp = tmp->next;
+					continue;
+				}
 				uint8_t indicator = *buffer;
 				uint8_t header = *(buffer+1);
 				jump = 2;
 				len -= 2;
 				if(header & 0x80) {
 					/* First part of fragmented packet (S bit set) */
-					uint8_t *temp = received_frame + frameLen;
-					memset(temp, 0x00, 1);
-					memset(temp + 1, 0x00, 1);
-					memset(temp + 2, 0x01, 1);
-					memset(temp + 3, (indicator & 0xE0) | (header & 0x1F), 1);
-					frameLen += 4;
+					uint8_t fu_start[4] = { 0x00, 0x00, 0x01, (indicator & 0xE0) | (header & 0x1F) };
+					res = janus_pp_frame_append(received_frame, numBytes, &frameLen, fu_start, 4);
 				} else if (header & 0x40) {
 					/* Last part of fragmented packet (E bit set) */
 				}
 			}
-			memcpy(received_frame + frameLen, buffer+jump, len);
-			frameLen += len;
+			if(res == 0)
+				janus_pp_frame_append(received_frame, numBytes, &frameLen, buffer+jump, len);
 			if(len == 0)
 				break;
 			/* Check if timestamp changes: marker bit is not mandatory, and may be lost as well */

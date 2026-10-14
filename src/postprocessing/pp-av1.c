@@ -271,6 +271,10 @@ int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list, json_t *inf
 				obusize = len;
 				JANUS_LOG(LOG_HUGE, "  -- OBU size: %d (last OBU)\n", len);
 			}
+			if(obusize > (uint32_t)len) {
+				JANUS_LOG(LOG_WARN, "  -- OBU size %"SCNu32" exceeds the payload (%d), something's broken\n", obusize, len);
+				break;
+			}
 			/* Then we have the OBU header */
 			uint8_t obuh = *payload;
 			uint8_t fbit = (obuh & 0x80) >> 7;
@@ -428,12 +432,19 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 				} else {
 					obusize = len;
 				}
+				if(obusize > (uint32_t)len) {
+					JANUS_LOG(LOG_WARN, "  -- OBU size %"SCNu32" exceeds the payload (%d), something's broken\n", obusize, len);
+					len = 0;
+					break;
+				}
 				/* Update the OBU header to set the S bit */
 				uint8_t obuh = *buffer;
 				obuh |= (1 << 1);
 				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU header: 1\n", tmp->ts);
-				memcpy(received_frame + frameLen, &obuh, sizeof(uint8_t));
-				frameLen++;
+				if(janus_pp_frame_append(received_frame, numBytes, &frameLen, &obuh, 1) < 0) {
+					len = 0;
+					break;
+				}
 				buffer++;
 				len--;
 				obusize--;
@@ -443,17 +454,20 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 					uint8_t leb[8];
 					janus_pp_av1_lev128_encode(obusize, leb, &written);
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU size (%"SCNu32"): %zu\n", tmp->ts, obusize, written);
-					memcpy(received_frame + frameLen, leb, written);
-					frameLen += written;
 					/* Copy the actual data */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU data: %"SCNu32"\n", tmp->ts, obusize);
-					memcpy(received_frame + frameLen, buffer, obusize);
-					frameLen += obusize;
+					if(janus_pp_frame_append(received_frame, numBytes, &frameLen, leb, written) < 0 ||
+							janus_pp_frame_append(received_frame, numBytes, &frameLen, buffer, obusize) < 0) {
+						len = 0;
+						break;
+					}
 				} else {
 					/* OBU will continue in another packet, buffer the data */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU data (part.): %d\n", tmp->ts, obusize);
-					memcpy(obu_data + dataLen, buffer, obusize);
-					dataLen += obusize;
+					if(janus_pp_frame_append(obu_data, numBytes, &dataLen, buffer, obusize) < 0) {
+						len = 0;
+						break;
+					}
 				}
 				/* Move to the next OBU, if any */
 				buffer += obusize;
@@ -462,8 +476,7 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 			/* Frame manipulation */
 			if(len > 0) {
 				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU data (cont.): %d\n", tmp->ts, len);
-				memcpy(obu_data + dataLen, buffer, len);
-				dataLen += len;
+				janus_pp_frame_append(obu_data, numBytes, &dataLen, buffer, len);
 			}
 			/* Check if timestamp changes: marker bit is not mandatory, and may be lost as well */
 			if(tmp->next == NULL || tmp->next->ts > tmp->ts)
@@ -476,12 +489,10 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 			uint8_t leb[8];
 			janus_pp_av1_lev128_encode(dataLen, leb, &written);
 			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU size (%d): %zu\n", tmp->ts, dataLen, written);
-			memcpy(received_frame + frameLen, leb, written);
-			frameLen += written;
 			/* Copy the actual data */
 			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU data: %"SCNu32"\n", tmp->ts, dataLen);
-			memcpy(received_frame + frameLen, obu_data, dataLen);
-			frameLen += dataLen;
+			if(janus_pp_frame_append(received_frame, numBytes, &frameLen, leb, written) == 0)
+				janus_pp_frame_append(received_frame, numBytes, &frameLen, obu_data, dataLen);
 		}
 		if(frameLen > 0) {
 			/* Save the frame */
