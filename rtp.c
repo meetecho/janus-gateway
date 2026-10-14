@@ -1266,29 +1266,23 @@ gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
 		(void)janus_bitstream_getbit(dd, offset++);
 		/* template_dependency_structure() */
 		if(tdeps) {
+			if(offset + 11 > blen)
+				return FALSE;
 			uint8_t tioff = janus_bitstream_getbits(dd, 6, &offset);
 			(void)janus_bitstream_getbits(dd, 5, &offset);
-			/* template_layers() */
+			/* template_layers(): there can be at most 64 templates, and
+			 * we only update the context if they all fit in the descriptor */
 			uint32_t nlidc = 0;
 			uint8_t tcnt = 0;
 			int spatial_layers = 0;
 			int temporal_layers = 0;
+			int tspatial[64], ttemporal[64];
 			do {
+				if(tcnt == 64 || offset + 2 > blen)
+					return FALSE;
 				nlidc = janus_bitstream_getbits(dd, 2, &offset);
-				if(context->templates == NULL)
-					context->templates = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_free);
-				janus_av1_svc_template *t = g_hash_table_lookup(context->templates,
-					GUINT_TO_POINTER(tcnt));
-				if(t == NULL) {
-					t = g_malloc0(sizeof(janus_av1_svc_template));
-					t->id = tcnt;
-					g_hash_table_insert(context->templates, GUINT_TO_POINTER(t->id), t);
-					context->updated = TRUE;
-				}
-				t->spatial = spatial_layers;
-				t->temporal = temporal_layers;
-				JANUS_LOG(LOG_WARN, "  -- -- -- [%u] spatial=%u, temporal=%u\n",
-					tcnt, t->spatial, t->temporal);
+				tspatial[tcnt] = spatial_layers;
+				ttemporal[tcnt] = temporal_layers;
 				if(nlidc == 1) {
 					temporal_layers++;
 				} else if(nlidc == 2) {
@@ -1297,6 +1291,23 @@ gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
 				}
 				tcnt++;
 			} while(nlidc != 3);
+			if(context->templates == NULL)
+				context->templates = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_free);
+			uint8_t i = 0;
+			for(i=0; i<tcnt; i++) {
+				janus_av1_svc_template *t = g_hash_table_lookup(context->templates,
+					GUINT_TO_POINTER(i));
+				if(t == NULL) {
+					t = g_malloc0(sizeof(janus_av1_svc_template));
+					t->id = i;
+					g_hash_table_insert(context->templates, GUINT_TO_POINTER(t->id), t);
+					context->updated = TRUE;
+				}
+				t->spatial = tspatial[i];
+				t->temporal = ttemporal[i];
+				JANUS_LOG(LOG_HUGE, "  -- -- -- [%u] spatial=%u, temporal=%u\n",
+					i, t->spatial, t->temporal);
+			}
 			/* Check if anything changed since the latest update */
 			if(context->tcnt != tcnt || context->tioff != tioff ||
 					context->spatial_layers != spatial_layers ||
