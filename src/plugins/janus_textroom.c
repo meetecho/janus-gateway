@@ -1747,9 +1747,10 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		janus_mutex_unlock(&textroom->mutex);
 		janus_refcount_decrease(&textroom->ref);
 		/* By default we send a confirmation back to the user that sent this message:
-		 * if the user passed an ack=false, though, we don't do that */
+		 * if the user passed an ack=false, though, we don't do that (but
+		 * only on data channels, as Janus API requests always get a response) */
 		json_t *ack = json_object_get(root, "ack");
-		if(!internal && (ack == NULL || json_is_true(ack))) {
+		if(!internal && (json != NULL || ack == NULL || json_is_true(ack))) {
 			/* Send response back */
 		} else {
 			internal = TRUE;
@@ -3083,7 +3084,9 @@ msg_response:
 					return janus_plugin_result_new(JANUS_PLUGIN_OK, NULL, reply);
 				}
 			}
-			if(root != NULL)
+			/* We only own the request if we parsed it ourselves: when it
+			 * was passed to us as an object, the caller releases it */
+			if(root != NULL && json == NULL)
 				json_decref(root);
 		}
 	return NULL;
