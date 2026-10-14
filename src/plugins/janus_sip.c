@@ -1260,6 +1260,7 @@ typedef struct janus_sip_transfer {
 	struct janus_sip_session *session;
 	char *referred_by;
 	char *custom_headers;
+	nua_t *nua;
 	nua_handle_t *nh_s;
 	nua_saved_event_t saved[1];
 } janus_sip_transfer;
@@ -1603,9 +1604,18 @@ static void janus_sip_transfer_destroy(janus_sip_transfer *t) {
 		return;
 	g_free(t->referred_by);
 	g_free(t->custom_headers);
+	if(t->nh_s != NULL)
+		nua_handle_unref(t->nh_s);
 	if(t->session != NULL)
 		janus_refcount_decrease(&t->session->ref);
 	g_free(t);
+}
+
+/* Transfers keep the NUA handle the REFER came on, which only lives as long
+ * as the NUA stack it belongs to: drop them before that stack goes away */
+static gboolean janus_sip_transfer_uses_nua(gpointer key, gpointer value, gpointer user_data) {
+	janus_sip_transfer *t = (janus_sip_transfer *)value;
+	return t != NULL && t->nua == (nua_t *)user_data;
 }
 
 /* SRTP stuff (in case we need SDES) */
@@ -4771,18 +4781,15 @@ send_invite:
 				JANUS_LOG(LOG_VERB, "Call is after a refer (%"SCNu32")\n", refer_id);
 				janus_mutex_lock(&sessions_mutex);
 				janus_sip_transfer *transfer = g_hash_table_lookup(transfers, GUINT_TO_POINTER(refer_id));
-				janus_mutex_unlock(&sessions_mutex);
 				if(transfer != NULL) {
-					if(session->refer_id > 0 && session->refer_id != refer_id) {
-						janus_mutex_lock(&sessions_mutex);
+					if(session->refer_id > 0 && session->refer_id != refer_id)
 						g_hash_table_remove(transfers, GUINT_TO_POINTER(session->refer_id));
-						janus_mutex_unlock(&sessions_mutex);
-					}
 					session->refer_id = refer_id;
 					referred_by = transfer->referred_by ? g_strdup(transfer->referred_by) : NULL;
 					/* Any custom headers we should include? (e.g., Replaces) */
 					janus_strlcat(custom_headers, transfer->custom_headers, sizeof(custom_headers));
 				}
+				janus_mutex_unlock(&sessions_mutex);
 			}
 			/* If the user negotiated simulcasting, just stick with the base substream */
 			json_t *msg_simulcast = (!session->media.late_offer && msg->jsep) ? json_object_get(msg->jsep, "simulcast") : NULL;
@@ -5317,7 +5324,6 @@ send_invite:
 			if(refer_id > 0) {
 				janus_mutex_lock(&sessions_mutex);
 				janus_sip_transfer *transfer = g_hash_table_lookup(transfers, GUINT_TO_POINTER(refer_id));
-				janus_mutex_unlock(&sessions_mutex);
 				if(transfer != NULL && transfer->nh_s != NULL) {
 					/* Send a NOTIFY with the error code */
 					int response_code = 603;
@@ -5336,6 +5342,8 @@ send_invite:
 						SIPTAG_PAYLOAD_STR(content),
 						NUTAG_WITH_SAVED(transfer->saved),
 						TAG_END());
+					g_hash_table_remove(transfers, GUINT_TO_POINTER(refer_id));
+					janus_mutex_unlock(&sessions_mutex);
 					/* Also notify event handlers */
 					if(notify_events && gateway->events_is_enabled()) {
 						json_t *info = json_object();
@@ -5349,12 +5357,8 @@ send_invite:
 					json_object_set_new(result, "event", json_string("declining"));
 					json_object_set_new(result, "refer_id", json_integer(refer_id));
 					json_object_set_new(result, "code", json_integer(response_code));
-					janus_mutex_lock(&sessions_mutex);
-					g_hash_table_remove(transfers, GUINT_TO_POINTER(refer_id));
-					janus_mutex_unlock(&sessions_mutex);
 					goto done;
 				} else {
-					janus_mutex_lock(&sessions_mutex);
 					g_hash_table_remove(transfers, GUINT_TO_POINTER(refer_id));
 					janus_mutex_unlock(&sessions_mutex);
 					JANUS_LOG(LOG_ERR, "Wrong state (no transfer?)\n");
@@ -6674,7 +6678,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				t->session = session;
 				t->referred_by = referred_by ? g_strdup(referred_by) : NULL;
 				t->custom_headers = custom_headers ? g_strdup(custom_headers) : NULL;
-				t->nh_s = nh;
+				t->nua = nua;
+				t->nh_s = nua_handle_ref(nh);
 				nua_save_event(nua, t->saved);
 				g_hash_table_insert(transfers, GUINT_TO_POINTER(refer_id), t);
 			}
@@ -7068,7 +7073,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(session->refer_id > 0) {
 				janus_mutex_lock(&sessions_mutex);
 				janus_sip_transfer *transfer = g_hash_table_lookup(transfers, GUINT_TO_POINTER(session->refer_id));
-				janus_mutex_unlock(&sessions_mutex);
 				if(transfer != NULL && transfer->nh_s != NULL) {
 					/* Send a NOTIFY */
 					char content[100];
@@ -7079,6 +7083,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 						SIPTAG_PAYLOAD_STR(content),
 						TAG_END());
 				}
+				janus_mutex_unlock(&sessions_mutex);
 			}
 
 			gboolean in_progress = FALSE;
@@ -8803,6 +8808,11 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	nua_t *s_nua = session->stack->s_nua;
 	session->stack->s_nua = NULL;
 	janus_mutex_unlock(&session->stack->smutex);
+	/* Get rid of the transfers that were REFERred to us via this stack */
+	janus_mutex_lock(&sessions_mutex);
+	if(transfers != NULL)
+		g_hash_table_foreach_remove(transfers, janus_sip_transfer_uses_nua, s_nua);
+	janus_mutex_unlock(&sessions_mutex);
 	if(session->stack->s_nh_r != NULL) {
 		nua_handle_destroy(session->stack->s_nh_r);
 		session->stack->s_nh_r = NULL;
