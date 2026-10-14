@@ -1494,7 +1494,8 @@ gboolean janus_rtp_svc_context_process_rtp(janus_rtp_svc_context *context,
 				context->spatial, context->spatial_target);
 			/* We need to upscale: wait for a keyframe */
 			if(keyframe) {
-				int new_spatial_layer = context->spatial_target;
+				/* The target may be higher than the layers we track */
+				int new_spatial_layer = context->spatial_target > 2 ? 2 : context->spatial_target;
 				while(new_spatial_layer > context->spatial && new_spatial_layer > 0) {
 					if(now - context->last_spatial_layer[new_spatial_layer] >= (context->drop_trigger ? context->drop_trigger : 250000)) {
 						/* We haven't received packets from this layer for a while, try a lower layer */
@@ -1594,7 +1595,8 @@ gboolean janus_rtp_svc_context_process_rtp(janus_rtp_svc_context *context,
 			context->spatial, context->spatial_target);
 		/* We need to upscale: wait for a keyframe */
 		if(keyframe) {
-			int new_spatial_layer = context->spatial_target;
+			/* The target may be higher than the layers we track */
+			int new_spatial_layer = context->spatial_target > 2 ? 2 : context->spatial_target;
 			while(new_spatial_layer > context->spatial && new_spatial_layer > 0) {
 				if(now - context->last_spatial_layer[new_spatial_layer] >= (context->drop_trigger ? context->drop_trigger : 250000)) {
 					/* We haven't received packets from this layer for a while, try a lower layer */

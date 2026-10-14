@@ -127,6 +127,19 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	janus_vp9_is_keyframe(payload, plen);
 	janus_vp9_parse_svc(payload, plen, &found, &info);
 
+	/* VP9 SVC context: plugins take the targets from the API, which only
+	 * checks they're not negative, so the spatial layer must stay in range */
+	janus_rtp_svc_context svc_context;
+	janus_rtp_svc_context_reset(&svc_context);
+	svc_context.spatial_target = 1000;
+	char copy_packet[size];
+	memcpy(copy_packet, data, size);
+	janus_rtp_svc_context_process_rtp(&svc_context, copy_packet, size, NULL, 0,
+		JANUS_VIDEOCODEC_VP9, NULL, NULL);
+	if(svc_context.spatial > 2)
+		abort();
+	janus_rtp_svc_context_reset(&svc_context);
+
 	/* Free resources */
 
 	return 0;
