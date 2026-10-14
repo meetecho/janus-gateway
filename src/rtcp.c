@@ -224,25 +224,10 @@ void janus_rtcp_swap_report_blocks(char *packet, int len, uint32_t rtx_ssrc) {
 
 static void janus_rtcp_incoming_report_block(janus_rtcp_context *ctx, janus_report_block *rb);
 
-/* Helper to log all the fields of an incoming report block */
-static void janus_rtcp_log_report_block(const char *type, int index, janus_report_block *rb) {
-	uint32_t flcnpl = ntohl(rb->flcnpl);
-	int32_t cumlost = (int32_t)((flcnpl & 0x00FFFFFF) << 8) >> 8;
-	JANUS_LOG(LOG_INFO, "[KE] [RTCP] %s RB#%d: ssrc=%"SCNu32", fraction_lost=%"SCNu32"/256, cumulative_lost=%d, ehsnr=%"SCNu32", jitter=%"SCNu32", lsr=%"SCNu32", dlsr=%"SCNu32"\n",
-		type, index, ntohl(rb->ssrc), flcnpl >> 24, cumlost, ntohl(rb->ehsnr),
-		ntohl(rb->jitter), ntohl(rb->lsr), ntohl(rb->delay));
-}
-
 /* Helper to handle an incoming SR: triggered by a call to janus_rtcp_fix_ssrc with a valid context pointer */
 static void janus_rtcp_incoming_sr(janus_rtcp_context *ctx, janus_rtcp_sr *sr) {
 	if(ctx == NULL)
 		return;
-	JANUS_LOG(LOG_INFO, "[RTCP] SR: ssrc=%"SCNu32", rc=%d, ntp=%"SCNu32".%"SCNu32", rtp_ts=%"SCNu32", packets=%"SCNu32", octets=%"SCNu32"\n",
-		ntohl(sr->ssrc), sr->header.rc, ntohl(sr->si.ntp_ts_msw), ntohl(sr->si.ntp_ts_lsw),
-		ntohl(sr->si.rtp_ts), ntohl(sr->si.s_packets), ntohl(sr->si.s_octets));
-	int i;
-	for(i = 0; i < sr->header.rc; i++)
-		janus_rtcp_log_report_block("SR", i, &sr->rb[i]);
 	/* Update the context with info on the monotonic time of last SR received */
 	ctx->lsr_ts = janus_get_monotonic_time();
 	/* Compute the last SR received as well */
@@ -459,10 +444,6 @@ static void janus_rtcp_incoming_report_block(janus_rtcp_context *ctx, janus_repo
 static void janus_rtcp_incoming_rr(janus_rtcp_context *ctx, janus_rtcp_rr *rr) {
 	if(ctx == NULL)
 		return;
-	JANUS_LOG(LOG_INFO, "[RTCP] RR: ssrc=%"SCNu32", rc=%d\n", ntohl(rr->ssrc), rr->header.rc);
-	int i;
-	for(i = 0; i < rr->header.rc; i++)
-		janus_rtcp_log_report_block("RR", i, &rr->rb[i]);
 	/* FIXME Check the Record Blocks */
 	if(rr->header.rc > 0)
 		janus_rtcp_incoming_report_block(ctx, &rr->rb[0]);
