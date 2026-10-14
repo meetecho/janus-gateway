@@ -82,6 +82,15 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	janus_rtp_header_extension_parse_dependency_desc((char *)data, size, 1, (uint8_t *)&dd, &sizedd);
 	janus_rtp_header_extension_parse_video_layers_allocation((char *)data, size, 1, NULL, NULL);
 
+	/* AV1 SVC targets */
+	if (sizedd > 0) {
+		uint8_t template = 0, ebit = 0;
+		janus_av1_svc_context av1_context;
+		memset(&av1_context, 0, sizeof(janus_av1_svc_context));
+		janus_av1_svc_context_process_dd(&av1_context, dd, sizedd, &template, &ebit);
+		janus_av1_svc_context_reset(&av1_context);
+	}
+
 	/* Extract codec payload */
 	int plen = 0;
 	char *payload = janus_rtp_payload((char *)data, size, &plen);
