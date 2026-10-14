@@ -2740,7 +2740,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			reply = json_object();
 			/* Notice that we reply differently if the request came via Janus API */
 			json_object_set_new(reply, "textroom", json_string(json == NULL ? "success" : "created"));
-			json_object_set_new(reply, "room", string_ids ? json_string(textroom->room_id_str) : json_integer(textroom->room_id));
+			json_object_set_new(reply, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 			json_object_set_new(reply, "permanent", save ? json_true() : json_false());
 		}
 		/* Also notify event handlers */
