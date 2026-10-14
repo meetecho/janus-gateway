@@ -8425,7 +8425,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 					subscriber->spatial_layer, subscriber->target_spatial_layer);
 				/* We need to upscale: wait for a keyframe */
 				if(keyframe) {
-					int new_spatial_layer = subscriber->target_spatial_layer;
+					/* The target may be higher than the layers we track */
+					int new_spatial_layer = subscriber->target_spatial_layer > 2 ? 2 : subscriber->target_spatial_layer;
 					while(new_spatial_layer > subscriber->spatial_layer && new_spatial_layer > 0) {
 						if(now - subscriber->last_spatial_layer[new_spatial_layer] >= 250000) {
 							/* We haven't received packets from this layer for a while, try a lower layer */
