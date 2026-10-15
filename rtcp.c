@@ -391,6 +391,7 @@ static void janus_rtcp_rr_update_stats(rtcp_context *ctx, janus_report_block rb)
 		ctx->out_media_link_quality = janus_rtcp_link_quality_filter(ctx->out_media_link_quality, media_link_q);
 		JANUS_LOG(LOG_HUGE, "Out link quality=%"SCNu32", media link quality=%"SCNu32"\n", janus_rtcp_context_get_out_link_quality(ctx), janus_rtcp_context_get_out_media_link_quality(ctx));
 	}
+	ctx->rr_last_ts = ts;
 	ctx->rr_last_ehsnr = ntohl(rb.ehsnr);
 	ctx->rr_last_lost = total_lost;
 	ctx->rr_last_nack_count = g_atomic_int_get(&ctx->nack_count);
@@ -1096,7 +1097,8 @@ int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t
 				uint32_t recv_ssrc = ntohl(sr->ssrc);
 				if (recv_ssrc != ssrc_expected) {
 					if(ssrc_expected != 0) {
-						JANUS_LOG(LOG_WARN,"Incoming RTCP SR SSRC (%"SCNu32") does not match the expected one (%"SCNu32") video=%d\n", recv_ssrc, ssrc_expected, video);
+						JANUS_LOG(LOG_WARN,"Incoming RTCP SR SSRC (%"SCNu32") does not match the expected one (%"SCNu32") video=%d\n",
+							recv_ssrc, ssrc_expected, video);
 					}
 					return -3;
 				}

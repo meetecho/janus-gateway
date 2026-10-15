@@ -270,7 +270,7 @@ typedef struct rtcp_context
 	/* Inbound RR process */
 	int64_t rr_last_ts;
 	uint32_t rr_last_ehsnr;
-	uint32_t rr_last_lost;
+	int32_t rr_last_lost;
 	uint32_t rr_last_nack_count;
 	gint sent_packets_since_last_rr;
 	gint nack_count;

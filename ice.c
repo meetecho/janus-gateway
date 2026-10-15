@@ -4566,7 +4566,8 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = rtcpbuf, .length = srlen+sdeslen };
 		janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
 		/* Check if we detected too many losses, and send a slowlink event in case */
-		guint lost = janus_rtcp_context_get_lost_all(rtcp_ctx, TRUE);
+		gint lost = janus_rtcp_context_get_lost_all(rtcp_ctx, TRUE);
+		lost = lost > 0 ? lost : 0;
 		janus_slow_link_update(stream->component, handle, TRUE, TRUE, lost);
 	}
 	if(stream && stream->video_recv) {
@@ -4592,7 +4593,8 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 			}
 		}
 		/* Check if we detected too many losses, and send a slowlink event in case */
-		guint lost = janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[0], FALSE);
+		gint lost = janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[vindex], FALSE);
+		lost = lost > 0 ? lost : 0;
 		janus_slow_link_update(stream->component, handle, TRUE, FALSE, lost);
 	}
 	if(twcc_period == 1000) {
