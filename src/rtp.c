@@ -35,6 +35,29 @@ gboolean janus_is_rtp(char *buf, guint len) {
 	return ((header->type < 64) || (header->type >= 96));
 }
 
+/* Static helper to validate the CSRC list and the header extension against
+ * the packet length: it returns the offset of the extension data (which is
+ * the payload offset, if there's no extension), with the extension header
+ * in ext and the length of the extension data in extlen, or -1 if the CSRC
+ * list or the header extension don't fit in the packet */
+static int janus_rtp_extension_offset(char *buf, int len,
+		janus_rtp_header_extension **ext, int *extlen) {
+	janus_rtp_header *rtp = (janus_rtp_header *)buf;
+	int hlen = 12 + rtp->csrccount*4;
+	*ext = NULL;
+	*extlen = 0;
+	if(rtp->extension) {
+		if(len < hlen + (int)sizeof(janus_rtp_header_extension))
+			return -1;
+		*ext = (janus_rtp_header_extension *)(buf+hlen);
+		*extlen = ntohs((*ext)->length)*4;
+		hlen += sizeof(janus_rtp_header_extension);
+	}
+	if(len < hlen + *extlen)
+		return -1;
+	return hlen;
+}
+
 char *janus_rtp_payload(char *buf, int len, int *plen) {
 	if(!buf || len < 12)
 		return NULL;
@@ -42,17 +65,12 @@ char *janus_rtp_payload(char *buf, int len, int *plen) {
 	if (rtp->version != 2) {
 		return NULL;
 	}
-	int hlen = 12;
-	if(rtp->csrccount)	/* Skip CSRC if needed */
-		hlen += rtp->csrccount*4;
-
-	if(rtp->extension) {
-		janus_rtp_header_extension *ext = (janus_rtp_header_extension *)(buf+hlen);
-		int extlen = ntohs(ext->length)*4;
-		hlen += 4;
-		if(len > (hlen + extlen))
-			hlen += extlen;
-	}
+	janus_rtp_header_extension *ext = NULL;
+	int extlen = 0;
+	int hlen = janus_rtp_extension_offset(buf, len, &ext, &extlen);
+	if(hlen < 0)
+		return NULL;
+	hlen += extlen;
 	if (len-hlen <= 0) {
 		return NULL;
 	}
@@ -153,75 +171,69 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 	if(rtp->version != 2) {
 		return -3;
 	}
-	int hlen = 12;
-	if(rtp->csrccount)	/* Skip CSRC if needed */
-		hlen += rtp->csrccount*4;
-	if(rtp->extension && (len > hlen + (int)sizeof(janus_rtp_header_extension))) {
-		janus_rtp_header_extension *ext = (janus_rtp_header_extension *)(buf+hlen);
-		int extlen = ntohs(ext->length)*4;
-		hlen += 4;
-		if(len > (hlen + extlen)) {
-			if(ntohs(ext->type) == 0xBEDE) {
-				/* 1-Byte extension */
-				const uint8_t padding = 0x00, reserved = 0xF;
-				uint8_t extid = 0;
-				int i = 0;
-				while(i < extlen) {
-					extid = (uint8_t)buf[hlen+i] >> 4;
-					if(extid == reserved) {
-						break;
-					} else if(extid == padding) {
-						i++;
-						continue;
-					}
-					*idlen = ((uint8_t)buf[hlen+i] & 0xF)+1;
+	janus_rtp_header_extension *ext = NULL;
+	int extlen = 0;
+	int hlen = janus_rtp_extension_offset(buf, len, &ext, &extlen);
+	if(hlen >= 0 && extlen > 0) {
+		if(ntohs(ext->type) == 0xBEDE) {
+			/* 1-Byte extension */
+			const uint8_t padding = 0x00, reserved = 0xF;
+			uint8_t extid = 0;
+			int i = 0;
+			while(i < extlen) {
+				extid = (uint8_t)buf[hlen+i] >> 4;
+				if(extid == reserved) {
+					break;
+				} else if(extid == padding) {
 					i++;
-					if(extid == id && ((i+*idlen) <= extlen)) {
-						/* Found! */
-						if(byte)
-							*byte = (uint8_t)buf[hlen+i];
-						if(word && *idlen >= 4 && (i+4) < extlen) {
-							memcpy(word, buf+hlen+i, sizeof(uint32_t));
-							*word = ntohl(*word);
-						}
-						if(ref)
-							*ref = &buf[hlen+i];
-						return 0;
-					}
-					i += *idlen;
+					continue;
 				}
-			} else if(ntohs(ext->type) == 0x1000) {
-				/* 2-Byte extension */
-				const uint8_t padding = 0x00;
-				uint8_t extid = 0;
-				int i = 0;
-				while(i < extlen) {
-					if((extlen-i) < 2)
-						break;
-					extid = buf[hlen+i];
-					if(extid == padding) {
-						i += 2;
-						continue;
+				*idlen = ((uint8_t)buf[hlen+i] & 0xF)+1;
+				i++;
+				if(extid == id && ((i+*idlen) <= extlen)) {
+					/* Found! */
+					if(byte)
+						*byte = (uint8_t)buf[hlen+i];
+					if(word && *idlen >= 4 && (i+4) < extlen) {
+						memcpy(word, buf+hlen+i, sizeof(uint32_t));
+						*word = ntohl(*word);
 					}
-					i++;
-					*idlen = buf[hlen+i];
-					i++;
-					if(extid == id && ((i+*idlen) <= extlen)) {
-						/* Found! */
-						if(byte)
-							*byte = (uint8_t)buf[hlen+i];
-						if(word && *idlen >= 4 && (i+4) < extlen) {
-							memcpy(word, buf+hlen+i, sizeof(uint32_t));
-							*word = ntohl(*word);
-						}
-						if(ref)
-							*ref = &buf[hlen+i];
-						return 0;
-					}
-					i += *idlen;
+					if(ref)
+						*ref = &buf[hlen+i];
+					return 0;
 				}
+				i += *idlen;
 			}
-			hlen += extlen;
+		} else if(ntohs(ext->type) == 0x1000) {
+			/* 2-Byte extension */
+			const uint8_t padding = 0x00;
+			uint8_t extid = 0;
+			int i = 0;
+			while(i < extlen) {
+				if((extlen-i) < 2)
+					break;
+				extid = buf[hlen+i];
+				if(extid == padding) {
+					i += 2;
+					continue;
+				}
+				i++;
+				*idlen = buf[hlen+i];
+				i++;
+				if(extid == id && ((i+*idlen) <= extlen)) {
+					/* Found! Two-byte elements can have no data */
+					if(byte && *idlen > 0)
+						*byte = (uint8_t)buf[hlen+i];
+					if(word && *idlen >= 4 && (i+4) < extlen) {
+						memcpy(word, buf+hlen+i, sizeof(uint32_t));
+						*word = ntohl(*word);
+					}
+					if(ref)
+						*ref = &buf[hlen+i];
+					return 0;
+				}
+				i += *idlen;
+			}
 		}
 	}
 	return -1;
@@ -231,6 +243,8 @@ int janus_rtp_header_extension_parse_audio_level(char *buf, int len, int id, gbo
 	uint8_t byte = 0, idlen = 0;
 	if(janus_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL, &idlen) < 0)
 		return -1;
+	if(idlen < 1)
+		return -2;
 	/* a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
 	gboolean v = (byte & 0x80) >> 7;
 	int value = byte & 0x7F;
@@ -247,6 +261,8 @@ int janus_rtp_header_extension_parse_video_orientation(char *buf, int len, int i
 	uint8_t byte = 0, idlen = 0;
 	if(janus_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL, &idlen) < 0)
 		return -1;
+	if(idlen < 1)
+		return -2;
 	/* a=extmap:4 urn:3gpp:video-orientation */
 	gboolean cbit = (byte & 0x08) >> 3;
 	gboolean fbit = (byte & 0x04) >> 2;
@@ -519,59 +535,53 @@ int janus_rtp_header_extension_replace_id(char *buf, int len, int id, int new_id
 	if (rtp->version != 2) {
 		return -2;
 	}
-	int hlen = 12;
-	if(rtp->csrccount)	/* Skip CSRC if needed */
-		hlen += rtp->csrccount*4;
-	if(rtp->extension) {
-		janus_rtp_header_extension *ext = (janus_rtp_header_extension *)(buf+hlen);
-		int extlen = ntohs(ext->length)*4;
-		hlen += 4;
-		if(len > (hlen + extlen)) {
-			if(ntohs(ext->type) == 0xBEDE) {
-				/* 1-Byte extension */
-				const uint8_t padding = 0x00, reserved = 0xF;
-				uint8_t extid = 0, idlen = 0;
-				int i = 0;
-				while(i < extlen) {
-					extid = buf[hlen+i] >> 4;
-					if(extid == reserved) {
-						break;
-					} else if(extid == padding) {
-						i++;
-						continue;
-					}
-					idlen = (buf[hlen+i] & 0xF)+1;
-					if(extid == id) {
-						/* Found! */
-						buf[hlen+i] = (new_id << 4) + (idlen - 1);
-						return 0;
-					}
-					i += 1 + idlen;
-				}
-			} if(ntohs(ext->type) == 0x1000) {
-				/* 2-Byte extension */
-				const uint8_t padding = 0x00;
-				uint8_t extid = 0, idlen = 0;
-				int i = 0;
-				while(i < extlen) {
-					if((extlen-i) < 2)
-						break;
-					extid = buf[hlen+i];
-					if(extid == padding) {
-						i += 2;
-						continue;
-					}
-					if(extid == id) {
-						/* Found! */
-						buf[hlen+i] = new_id;
-						return 0;
-					}
+	janus_rtp_header_extension *ext = NULL;
+	int extlen = 0;
+	int hlen = janus_rtp_extension_offset(buf, len, &ext, &extlen);
+	if(hlen >= 0 && extlen > 0) {
+		if(ntohs(ext->type) == 0xBEDE) {
+			/* 1-Byte extension */
+			const uint8_t padding = 0x00, reserved = 0xF;
+			uint8_t extid = 0, idlen = 0;
+			int i = 0;
+			while(i < extlen) {
+				extid = buf[hlen+i] >> 4;
+				if(extid == reserved) {
+					break;
+				} else if(extid == padding) {
 					i++;
-					idlen = buf[hlen+i];
-					i += 1 + idlen;
+					continue;
 				}
+				idlen = (buf[hlen+i] & 0xF)+1;
+				if(extid == id) {
+					/* Found! */
+					buf[hlen+i] = (new_id << 4) + (idlen - 1);
+					return 0;
+				}
+				i += 1 + idlen;
 			}
-			hlen += extlen;
+		} if(ntohs(ext->type) == 0x1000) {
+			/* 2-Byte extension */
+			const uint8_t padding = 0x00;
+			uint8_t extid = 0, idlen = 0;
+			int i = 0;
+			while(i < extlen) {
+				if((extlen-i) < 2)
+					break;
+				extid = buf[hlen+i];
+				if(extid == padding) {
+					i += 2;
+					continue;
+				}
+				if(extid == id) {
+					/* Found! */
+					buf[hlen+i] = new_id;
+					return 0;
+				}
+				i++;
+				idlen = buf[hlen+i];
+				i += 1 + idlen;
+			}
 		}
 	}
 	return -3;
@@ -1484,7 +1494,8 @@ gboolean janus_rtp_svc_context_process_rtp(janus_rtp_svc_context *context,
 				context->spatial, context->spatial_target);
 			/* We need to upscale: wait for a keyframe */
 			if(keyframe) {
-				int new_spatial_layer = context->spatial_target;
+				/* The target may be higher than the layers we track */
+				int new_spatial_layer = context->spatial_target > 2 ? 2 : context->spatial_target;
 				while(new_spatial_layer > context->spatial && new_spatial_layer > 0) {
 					if(now - context->last_spatial_layer[new_spatial_layer] >= (context->drop_trigger ? context->drop_trigger : 250000)) {
 						/* We haven't received packets from this layer for a while, try a lower layer */
@@ -1584,7 +1595,8 @@ gboolean janus_rtp_svc_context_process_rtp(janus_rtp_svc_context *context,
 			context->spatial, context->spatial_target);
 		/* We need to upscale: wait for a keyframe */
 		if(keyframe) {
-			int new_spatial_layer = context->spatial_target;
+			/* The target may be higher than the layers we track */
+			int new_spatial_layer = context->spatial_target > 2 ? 2 : context->spatial_target;
 			while(new_spatial_layer > context->spatial && new_spatial_layer > 0) {
 				if(now - context->last_spatial_layer[new_spatial_layer] >= (context->drop_trigger ? context->drop_trigger : 250000)) {
 					/* We haven't received packets from this layer for a while, try a lower layer */
@@ -1710,29 +1722,23 @@ gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
 		(void)janus_bitstream_getbit(dd, offset++);
 		/* template_dependency_structure() */
 		if(tdeps) {
+			if(offset + 11 > blen)
+				return FALSE;
 			uint8_t tioff = janus_bitstream_getbits(dd, 6, &offset);
 			(void)janus_bitstream_getbits(dd, 5, &offset);
-			/* template_layers() */
+			/* template_layers(): there can be at most 64 templates, and
+			 * we only update the context if they all fit in the descriptor */
 			uint32_t nlidc = 0;
 			uint8_t tcnt = 0;
 			int spatial_layers = 0;
 			int temporal_layers = 0;
+			int tspatial[64], ttemporal[64];
 			do {
+				if(tcnt == 64 || offset + 2 > blen)
+					return FALSE;
 				nlidc = janus_bitstream_getbits(dd, 2, &offset);
-				if(context->templates == NULL)
-					context->templates = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_free);
-				janus_av1_svc_template *t = g_hash_table_lookup(context->templates,
-					GUINT_TO_POINTER(tcnt));
-				if(t == NULL) {
-					t = g_malloc0(sizeof(janus_av1_svc_template));
-					t->id = tcnt;
-					g_hash_table_insert(context->templates, GUINT_TO_POINTER(t->id), t);
-					context->updated = TRUE;
-				}
-				t->spatial = spatial_layers;
-				t->temporal = temporal_layers;
-				JANUS_LOG(LOG_HUGE, "  -- -- -- [%u] spatial=%u, temporal=%u\n",
-					tcnt, t->spatial, t->temporal);
+				tspatial[tcnt] = spatial_layers;
+				ttemporal[tcnt] = temporal_layers;
 				if(nlidc == 1) {
 					temporal_layers++;
 				} else if(nlidc == 2) {
@@ -1741,6 +1747,23 @@ gboolean janus_av1_svc_context_process_dd(janus_av1_svc_context *context,
 				}
 				tcnt++;
 			} while(nlidc != 3);
+			if(context->templates == NULL)
+				context->templates = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_free);
+			uint8_t i = 0;
+			for(i=0; i<tcnt; i++) {
+				janus_av1_svc_template *t = g_hash_table_lookup(context->templates,
+					GUINT_TO_POINTER(i));
+				if(t == NULL) {
+					t = g_malloc0(sizeof(janus_av1_svc_template));
+					t->id = i;
+					g_hash_table_insert(context->templates, GUINT_TO_POINTER(t->id), t);
+					context->updated = TRUE;
+				}
+				t->spatial = tspatial[i];
+				t->temporal = ttemporal[i];
+				JANUS_LOG(LOG_HUGE, "  -- -- -- [%u] spatial=%u, temporal=%u\n",
+					i, t->spatial, t->temporal);
+			}
 			/* Check if anything changed since the latest update */
 			if(context->tcnt != tcnt || context->tioff != tioff ||
 					context->spatial_layers != spatial_layers ||
