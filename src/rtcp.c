@@ -234,7 +234,6 @@ static void janus_rtcp_incoming_sr(janus_rtcp_context *ctx, janus_rtcp_sr *sr) {
 	uint64_t ntp = ntohl(sr->si.ntp_ts_msw);
 	ntp = (ntp << 32) | ntohl(sr->si.ntp_ts_lsw);
 	ctx->lsr = (ntp >> 16);
-	/* A SR can carry report blocks too: some peers never send an RR */
 	if(sr->header.rc > 0)
 		janus_rtcp_incoming_report_block(ctx, &sr->rb[0]);
 }
