@@ -2734,15 +2734,15 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			janus_textroom_room *tr = value;
 			JANUS_LOG(LOG_VERB, "  ::: [%s][%s]\n", tr->room_id_str, tr->room_name);
 		}
-		janus_mutex_unlock(&rooms_mutex);
 		if(!internal) {
-			/* Send response back */
+			/* Send response back (the room may be destroyed as soon as we release rooms_mutex) */
 			reply = json_object();
 			/* Notice that we reply differently if the request came via Janus API */
 			json_object_set_new(reply, "textroom", json_string(json == NULL ? "success" : "created"));
 			json_object_set_new(reply, "room", string_ids ? json_string(textroom->room_id_str) : json_integer(textroom->room_id));
 			json_object_set_new(reply, "permanent", save ? json_true() : json_false());
 		}
+		janus_mutex_unlock(&rooms_mutex);
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();

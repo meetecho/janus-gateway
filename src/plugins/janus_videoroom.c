@@ -5347,8 +5347,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			JANUS_LOG(LOG_VERB, "  ::: [%s][%s] %"SCNu32", max %d publishers, FIR frequency of %d seconds\n",
 				vr->room_id_str, vr->room_name, vr->bitrate, vr->max_publishers, vr->fir_freq);
 		}
-		janus_mutex_unlock(&rooms_mutex);
-		/* Send info back */
+		/* Send info back (the room may be destroyed as soon as we release rooms_mutex) */
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("created"));
 		json_object_set_new(response, "room", string_ids ? json_string(videoroom->room_id_str) : json_integer(videoroom->room_id));
@@ -5360,6 +5359,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			json_object_set_new(info, "room", string_ids ? json_string(videoroom->room_id_str) : json_integer(videoroom->room_id));
 			gateway->notify_event(&janus_videoroom_plugin, session ? session->handle : NULL, info);
 		}
+		janus_mutex_unlock(&rooms_mutex);
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "edit")) {
 		/* Edit the properties for an existing VideoRoom */
