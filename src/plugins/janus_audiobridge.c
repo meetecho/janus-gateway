@@ -705,9 +705,15 @@ room-<unique room ID>: {
 {
 	"audiobridge" : "announcement-stopped",
 	"room" : <unique numeric ID, same as request>,
-	"file_id" : "<unique string ID of the announcement>"
+	"file_id" : "<unique string ID of the announcement>",
+	"error" : "<only present if the playback stopped because of an error reading or decoding the file>"
 }
 \endverbatim
+ *
+ * Notice that the mixer plays 20ms of audio at a time, so the Opus
+ * packets in the file must be 20ms long (the \c opusenc default): files
+ * with longer packets will stop with an error, and shorter packets are
+ * not supported either.
  *
  * You can check whether a specific playback is still going on in a room,
  * you can use the \c is_playing request, which has to be formatted as follows:
@@ -1608,7 +1614,8 @@ static gboolean janus_audiobridge_ogg_is_opus(ogg_page *page) {
 	ogg_stream_clear(&state);
 	return FALSE;
 }
-/* Helper method to traverse the Opus file until we get a packet we can send */
+/* Helper method to traverse the Opus file until we get a packet we can send:
+ * length is the number of samples per channel the buffer can hold */
 static int janus_audiobridge_file_read(janus_audiobridge_file *ctx, OpusDecoder *decoder, opus_int16 *buffer, int length) {
 	if(ctx == NULL || ctx->file == NULL || decoder == NULL || buffer == NULL)
 		return -1;
@@ -1696,6 +1703,11 @@ static int janus_audiobridge_file_read(janus_audiobridge_file *ctx, OpusDecoder 
 			/* Decode the audio */
 			length = opus_decode(decoder, ctx->pkt.packet, ctx->pkt.bytes,
 				(opus_int16 *)buffer, length, 0);
+			if(length < 0) {
+				/* Frames longer than the buffer (e.g., > 20ms in the mixer) end up here */
+				JANUS_LOG(LOG_ERR, "[%s] Error decoding Opus frame: %d (%s)\n",
+					ctx->id, length, opus_strerror(length));
+			}
 			return length;
 		}
 	}
@@ -8852,33 +8864,48 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					ps = ps->next;
 					continue;
 				}
-				int read = janus_audiobridge_file_read(p->annc, p->decoder, resampled, sizeof(resampled));
+				/* We only mix 20ms of audio per channel at the room sampling rate, so
+				 * that's all we let the decoder write: longer frames fail to decode */
+				int read = janus_audiobridge_file_read(p->annc, p->decoder, resampled, audiobridge->sampling_rate/50);
 				if(read <= 0) {
 					/* Playback over or broken */
-					if(p->annc->started) {
-						/* Send a notification that this announcement is over */
-						JANUS_LOG(LOG_INFO, "[%s] Announcement stopped (%s)\n", audiobridge->room_id_str, p->user_id_str);
-						janus_mutex_lock_nodebug(&audiobridge->mutex);
-						json_t *event = json_object();
-						json_object_set_new(event, "audiobridge", json_string("announcement-stopped"));
-						json_object_set_new(event, "room",
-							string_ids ? json_string(audiobridge->room_id_str) : json_integer(audiobridge->room_id));
-						json_object_set_new(event, "file_id", json_string(p->user_id_str));
-						janus_audiobridge_notify_participants(audiobridge, p, event, TRUE);
-						json_decref(event);
-						/* Also notify event handlers */
-						if(notify_events && gateway->events_is_enabled()) {
-							json_t *info = json_object();
-							json_object_set_new(info, "event", json_string("announcement-stopped"));
-							json_object_set_new(info, "room",
-								string_ids ? json_string(audiobridge->room_id_str) : json_integer(audiobridge->room_id));
-							json_object_set_new(info, "file_id", json_string(p->user_id_str));
-							gateway->notify_event(&janus_audiobridge_plugin, NULL, info);
-						}
-						/* Remove the announcement */
-						g_hash_table_remove(audiobridge->anncs, p->user_id_str);
+					janus_mutex_lock_nodebug(&audiobridge->mutex);
+					if(g_hash_table_lookup(audiobridge->anncs, p->user_id_str) != p) {
+						/* Already stopped (e.g., stop_file) */
 						janus_mutex_unlock_nodebug(&audiobridge->mutex);
+						ps = ps->next;
+						continue;
 					}
+					/* Send a notification that this announcement is over */
+					if(read < 0) {
+						JANUS_LOG(LOG_WARN, "[%s] Announcement stopped, error reading the file (%s)\n",
+							audiobridge->room_id_str, p->user_id_str);
+					} else {
+						JANUS_LOG(LOG_INFO, "[%s] Announcement stopped (%s)\n", audiobridge->room_id_str, p->user_id_str);
+					}
+					json_t *event = json_object();
+					json_object_set_new(event, "audiobridge", json_string("announcement-stopped"));
+					json_object_set_new(event, "room",
+						string_ids ? json_string(audiobridge->room_id_str) : json_integer(audiobridge->room_id));
+					json_object_set_new(event, "file_id", json_string(p->user_id_str));
+					if(read < 0)
+						json_object_set_new(event, "error", json_string("Error reading the file"));
+					janus_audiobridge_notify_participants(audiobridge, p, event, TRUE);
+					json_decref(event);
+					/* Also notify event handlers */
+					if(notify_events && gateway->events_is_enabled()) {
+						json_t *info = json_object();
+						json_object_set_new(info, "event", json_string("announcement-stopped"));
+						json_object_set_new(info, "room",
+							string_ids ? json_string(audiobridge->room_id_str) : json_integer(audiobridge->room_id));
+						json_object_set_new(info, "file_id", json_string(p->user_id_str));
+						if(read < 0)
+							json_object_set_new(info, "error", json_string("Error reading the file"));
+						gateway->notify_event(&janus_audiobridge_plugin, NULL, info);
+					}
+					/* Remove the announcement */
+					g_hash_table_remove(audiobridge->anncs, p->user_id_str);
+					janus_mutex_unlock_nodebug(&audiobridge->mutex);
 					ps = ps->next;
 					continue;
 				}
