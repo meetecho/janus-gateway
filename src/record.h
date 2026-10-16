@@ -145,6 +145,19 @@ int janus_recorder_encrypted(janus_recorder *recorder);
  * @param[in] length The frame data length
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint length);
+/*! \brief Save an RTP frame in a recorder that may be closed and destroyed by another thread
+ * @note Plugins keep their recorders in pointers that they change (e.g., to
+ * stop recording, close and destroy the recorder) while holding a mutex,
+ * while frames are saved from the media threads: this helper reads the
+ * pointer and saves the frame while holding that same mutex, so that the
+ * recorder can't be destroyed while the frame is being saved. Code
+ * changing the pointer must hold the mutex, and must not call this helper.
+ * @param[in] recorder Address of the pointer to the janus_recorder instance
+ * @param[in] mutex The mutex that protects the pointer
+ * @param[in] buffer The frame data to save
+ * @param[in] length The frame data length
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_recorder_save_frame_locked(janus_recorder **recorder, janus_mutex *mutex, char *buffer, uint length);
 /*! \brief Close the recorder
  * @param[in] recorder The janus_recorder instance to close
  * @returns 0 in case of success, a negative integer otherwise */

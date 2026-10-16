@@ -4634,6 +4634,8 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				if(participant->e2ee)
 					json_object_set_new(info, "e2ee", json_true());
 				json_t *media = json_array();
+				/* We lock the recorders too, as we'll check if streams are being recorded */
+				janus_mutex_lock(&participant->rec_mutex);
 				janus_mutex_lock(&participant->streams_mutex);
 				GList *temp = participant->streams;
 				while(temp) {
@@ -4678,6 +4680,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 					temp = temp->next;
 				}
 				janus_mutex_unlock(&participant->streams_mutex);
+				janus_mutex_unlock(&participant->rec_mutex);
 				json_object_set_new(info, "streams", media);
 			}
 			if(participant != NULL)
@@ -8893,7 +8896,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 		rtp->type = ps->pt;
 		/* Save the frame if we're recording */
 		if(!video || !ps->simulcast) {
-			janus_recorder_save_frame(ps->rc, buf, len);
+			janus_recorder_save_frame_locked(&ps->rc, &participant->rec_mutex, buf, len);
 		} else {
 			/* We're simulcasting, save the best video quality */
 			gboolean save = janus_rtp_simulcasting_context_process_rtp(&ps->rec_simctx,
@@ -8906,7 +8909,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 				janus_rtp_header_update(rtp, &ps->rec_ctx, TRUE, 0);
 				/* We use a fixed SSRC for the whole recording */
 				rtp->ssrc = ps->vssrc[0];
-				janus_recorder_save_frame(ps->rc, buf, len);
+				janus_recorder_save_frame_locked(&ps->rc, &participant->rec_mutex, buf, len);
 				/* Restore the header, as it will be needed by subscribers */
 				rtp->ssrc = htonl(ssrc);
 				rtp->timestamp = htonl(timestamp);
@@ -9178,7 +9181,7 @@ static void janus_videoroom_incoming_data_internal(janus_videoroom_session *sess
 	JANUS_LOG(LOG_VERB, "Got a %s DataChannel message (%d bytes) to forward\n",
 		packet->binary ? "binary" : "text", len);
 	/* Save the message if we're recording */
-	janus_recorder_save_frame(ps->rc, buf, len);
+	janus_recorder_save_frame_locked(&ps->rc, &participant->rec_mutex, buf, len);
 	/* Relay to all subscribers */
 	janus_videoroom_rtp_relay_packet pkt = { 0 };
 	pkt.source = ps;
