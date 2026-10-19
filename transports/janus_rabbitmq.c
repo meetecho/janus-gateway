@@ -122,7 +122,7 @@ static gboolean rmq_janus_api_enabled = FALSE;
 static gboolean rmq_admin_api_enabled = FALSE;
 static gboolean notify_events = TRUE;
 static guint rmq_reconnect_backoff_initial = 100000; /* 100ms */
-static guint rmq_reconnect_backoff_max = 5000000; /* 5s */
+static guint rmq_poll_backoff_max = 5000000; /* 5s */
 static gfloat rmq_reconnect_backoff_multiplier = 1.5;
 
 #define JANUS_RABBITMQ_EXCHANGE_TYPE "fanout"
@@ -190,6 +190,8 @@ static gboolean declare_outgoing_queue = FALSE, declare_outgoing_queue_admin = F
 amqp_boolean_t queue_durable = 0, queue_exclusive = 0, queue_autodelete = 0,
 	queue_durable_admin = 0, queue_exclusive_admin = 0, queue_autodelete_admin = 0;
 static uint16_t heartbeat = 0;
+static gboolean block_startup_until_connected = FALSE;
+static uint16_t retry_interval = 5;
 
 /* Transport implementation */
 int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_path) {
@@ -310,6 +312,17 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	if(item && item->value && janus_string_to_uint16(item->value, &heartbeat) < 0) {
 		JANUS_LOG(LOG_ERR, "Invalid heartbeat timeout (%s), falling back to default (0, disabling heartbeat)\n", item->value);
 		heartbeat = 0;
+	}
+
+	/* Check if we need to block startup until RabbitMQ is connected */
+	item = janus_config_get(config, config_general, janus_config_type_item, "block_startup_until_connected");
+	if(item && item->value && janus_is_true(item->value))
+		block_startup_until_connected = TRUE;
+	retry_interval = 5;
+	item = janus_config_get(config, config_general, janus_config_type_item, "retry_interval");
+	if(item && item->value && (janus_string_to_uint16(item->value, &retry_interval) < 0 || retry_interval == 0)) {
+		JANUS_LOG(LOG_WARN, "RabbitMQ: Invalid retry_interval (%s), using default (5 seconds)\n", item->value);
+		retry_interval = 5;
 	}
 
 	/* Now check if the Janus API must be supported */
@@ -455,7 +468,20 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		rmq_client = g_malloc0(sizeof(janus_rabbitmq_client));
 
 		/* Connect */
-		int result = janus_rabbitmq_connect();
+		int result = -1;
+		while(!rmq_client->destroy && !g_atomic_int_get(&stopping)) {
+			result = janus_rabbitmq_connect();
+			if(result == 0)
+				break;
+			if(rmq_client->rmq_conn) {
+				amqp_destroy_connection(rmq_client->rmq_conn);
+				rmq_client->rmq_conn = NULL;
+			}
+			if(!block_startup_until_connected)
+				break;
+			JANUS_LOG(LOG_WARN, "RabbitMQ: Connection failed, retrying in %u seconds\n", retry_interval);
+			g_usleep((gulong)retry_interval * 1000000);
+		}
 		if(result < 0) {
 			goto error;
 		}
@@ -509,6 +535,10 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 
 error:
 	/* If we got here, something went wrong */
+	if(rmq_client && rmq_client->rmq_conn) {
+		amqp_destroy_connection(rmq_client->rmq_conn);
+		rmq_client->rmq_conn = NULL;
+	}
 	g_free(rmq_client);
 	g_free(rmqhost);
 	g_free(vhost);
@@ -638,7 +668,7 @@ int janus_rabbitmq_connect(void) {
 			}
 		}
 
-		if (declare_outgoing_queue) {
+		if(declare_outgoing_queue) {
 			JANUS_LOG(LOG_VERB, "Declaring outgoing queue... (%s)\n", from_janus);
 			amqp_queue_declare(rmq_client->rmq_conn, rmq_client->rmq_channel, amqp_cstring_bytes(from_janus), 0, 0, 0, 0, amqp_empty_table);
 			result = amqp_get_rpc_reply(rmq_client->rmq_conn);
@@ -695,7 +725,7 @@ int janus_rabbitmq_connect(void) {
 			}
 		}
 
-		if (declare_outgoing_queue_admin){
+		if(declare_outgoing_queue_admin) {
 			JANUS_LOG(LOG_VERB, "Declaring outgoing queue... (%s)\n", from_janus_admin);
 			amqp_queue_declare(rmq_client->rmq_conn, rmq_client->rmq_channel, amqp_cstring_bytes(from_janus_admin), 0, 0, 0, 0, amqp_empty_table);
 			result = amqp_get_rpc_reply(rmq_client->rmq_conn);
@@ -925,7 +955,8 @@ void *janus_rmq_in_thread(void *data) {
 	timeout.tv_sec = 0;
 	timeout.tv_usec = 20000;
 	amqp_frame_t frame;
-	guint rmq_reconnect_backoff = rmq_reconnect_backoff_initial;
+	guint64 rmq_reconnect_backoff = rmq_reconnect_backoff_initial;
+	guint64 rmq_reconnect_backoff_max = (guint64)retry_interval * 1000000;
 
 	while(!rmq_client->destroy && !g_atomic_int_get(&stopping)) {
 		amqp_maybe_release_buffers(rmq_client->rmq_conn);
@@ -1038,8 +1069,8 @@ void *janus_rmq_out_thread(void *data) {
 		if(!rmq_client->connected) {
 			g_usleep(rmq_reconnect_backoff);
 			rmq_reconnect_backoff *= rmq_reconnect_backoff_multiplier;
-			if (rmq_reconnect_backoff >= rmq_reconnect_backoff_max)
-				rmq_reconnect_backoff = rmq_reconnect_backoff_max;
+			if (rmq_reconnect_backoff >= rmq_poll_backoff_max)
+				rmq_reconnect_backoff = rmq_poll_backoff_max;
 
 			continue;
 		}
