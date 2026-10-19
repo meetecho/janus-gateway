@@ -271,6 +271,11 @@ int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list, json_t *inf
 				obusize = len;
 				JANUS_LOG(LOG_HUGE, "  -- OBU size: %d (last OBU)\n", len);
 			}
+			/* Make sure the OBU (header and payload) fits in what's left of the packet */
+			if(obusize > (uint32_t)len) {
+				JANUS_LOG(LOG_WARN, "  -- Broken OBU, size %"SCNu32" exceeds the %d bytes left in the packet\n", obusize, len);
+				break;
+			}
 			/* Then we have the OBU header */
 			uint8_t obuh = *payload;
 			uint8_t fbit = (obuh & 0x80) >> 7;
@@ -427,6 +432,11 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 					len -= read;
 				} else {
 					obusize = len;
+				}
+				/* Make sure the OBU (header and payload) fits in what's left of the packet */
+				if(obusize > (uint32_t)len) {
+					JANUS_LOG(LOG_WARN, "  -- Broken OBU, size %"SCNu32" exceeds the %d bytes left in the packet\n", obusize, len);
+					break;
 				}
 				/* Update the OBU header to set the S bit */
 				uint8_t obuh = *buffer;
