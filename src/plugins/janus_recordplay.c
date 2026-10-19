@@ -2291,6 +2291,8 @@ playdone:
 					gateway->notify_event(&janus_recordplay_plugin, session->handle, info);
 				}
 				if (g_atomic_int_compare_and_exchange(&session->recording->paused, !pause, pause)) {
+					/* The recorders may be closed by hangup_media in the meanwhile */
+					janus_mutex_lock(&session->rec_mutex);
 					if(pause) {
 						janus_recorder_pause(session->arc);
 						janus_recorder_pause(session->vrc);
@@ -2299,8 +2301,10 @@ playdone:
 						janus_recorder_resume(session->arc);
 						janus_recorder_resume(session->vrc);
 						janus_recorder_resume(session->drc);
-						gateway->send_pli(session->handle);
 					}
+					janus_mutex_unlock(&session->rec_mutex);
+					if(!pause)
+						gateway->send_pli(session->handle);
 				}
 			} else {
 				JANUS_LOG(LOG_VERB, "Record&Play: Not recording, ignoring pause/resume request\n");

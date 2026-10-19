@@ -9245,6 +9245,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp_source->rtsp_conn_timeout = rtsp_conn_timeout;
 	live_rtsp_source->reconnect_timer = 0;
 	janus_mutex_init(&live_rtsp_source->rtsp_mutex);
+	janus_mutex_init(&live_rtsp_source->rec_mutex);
 	live_rtsp->source = live_rtsp_source;
 	live_rtsp->source_destroy = (GDestroyNotify)janus_streaming_rtp_source_free;
 	live_rtsp->viewers = NULL;
