@@ -166,9 +166,13 @@ $(document).ready(function() {
 										let error_msg =
 											(msg['error_space'] ? ('[' + msg['error_space'] + '] ') : '') +
 												'Error ' + msg['error_code'] + ' (' + msg['error'] + ')';
-										bootbox.alert(error_msg, function() {
-											window.location.reload();
-										});
+										if(msg['track'] === 'catalog' && !catalog) {
+											toastr.warning(error_msg, 'Catalog unavailable', {timeOut: 4000});
+										} else {
+											bootbox.alert(error_msg, function() {
+												window.location.reload();
+											});
+										}
 										return;
 									}
 									// Check if we got an SDP

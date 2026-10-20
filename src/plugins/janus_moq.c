@@ -208,6 +208,7 @@ static janus_moq_message exit_message;
 typedef struct janus_moq_moq_rtp {
 	imquic_moq_track *track;
 	char *track_name;
+	gboolean subscribed;
 	gboolean active;
 	gboolean got_first;
 	uint32_t ssrc;
@@ -2458,7 +2459,8 @@ static void janus_moq_moq_subscribe_accepted(imquic_connection *conn, uint64_t r
 	janus_mutex_unlock(&connections_mutex);
 	if(session->catalog_track.track && session->catalog_track.request_id == request_id) {
 		/* Catalog track */
-		JANUS_LOG(LOG_INFO, "[%s]   -- Catalog track will use track alias '%"SCNu64"\n",
+		session->catalog_track.subscribed = TRUE;
+		JANUS_LOG(LOG_INFO, "[%s]   -- Catalog track will use track alias '%"SCNu64"'\n",
 			imquic_get_connection_name(conn), track_alias);
 		session->catalog_track.track_alias = track_alias;
 		if(parameters && parameters->largest_object_set) {
@@ -2477,14 +2479,16 @@ static void janus_moq_moq_subscribe_accepted(imquic_connection *conn, uint64_t r
 		}
 	} else if(session->audio_track.track && session->audio_track.request_id == request_id) {
 		/* Audio track */
-		JANUS_LOG(LOG_INFO, "[%s]   -- Audio track will use track alias '%"SCNu64"\n",
+		session->audio_track.subscribed = TRUE;
+		JANUS_LOG(LOG_INFO, "[%s]   -- Audio track will use track alias '%"SCNu64"'\n",
 			imquic_get_connection_name(conn), track_alias);
 		session->audio_track.track_alias = track_alias;
 		if(session->audio_pt != -1)
 			g_hash_table_insert(session->ptypes, janus_uint64_dup(track_alias), GINT_TO_POINTER(session->audio_pt));
 	} else if(session->video_track.track && session->video_track.request_id == request_id) {
 		/* Video track */
-		JANUS_LOG(LOG_INFO, "[%s]   -- Video track will use track alias '%"SCNu64"\n",
+		session->video_track.subscribed = TRUE;
+		JANUS_LOG(LOG_INFO, "[%s]   -- Video track will use track alias '%"SCNu64"'\n",
 			imquic_get_connection_name(conn), track_alias);
 		session->video_track.track_alias = track_alias;
 		if(session->video_pt != -1)
@@ -2503,9 +2507,22 @@ static void janus_moq_moq_subscribe_error(imquic_connection *conn, uint64_t requ
 		return;
 	}
 	janus_mutex_unlock(&connections_mutex);
+	const char *media = NULL;
+	if(request_id == session->catalog_track.request_id)
+		media = "catalog";
+	else if(request_id == session->audio_track.request_id)
+		media = "audio";
+	else if(request_id == session->video_track.request_id)
+		media = "video";
+	if(media == NULL) {
+		JANUS_LOG(LOG_INFO, "[%s] Unknown request ID '%"SCNu64"'\n",
+			imquic_get_connection_name(conn), request_id);
+		return;
+	}
 	/* Notify the application */
 	json_t *event = json_object();
 	json_object_set_new(event, "moq", json_string("event"));
+	json_object_set_new(event, "track", json_string(media));
 	json_object_set_new(event, "error_space", json_string("subscribe"));
 	json_object_set_new(event, "error_code", json_integer(error_code));
 	if(reason)
@@ -2567,7 +2584,8 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 	}
 	janus_mutex_unlock(&connections_mutex);
 	imquic_moq_version moq_version = imquic_moq_get_version(conn);
-	if(object->track_alias == session->catalog_track.track_alias || object->delivery == IMQUIC_MOQ_USE_FETCH) {
+	if(session->catalog_track.subscribed &&
+			(object->track_alias == session->catalog_track.track_alias || object->delivery == IMQUIC_MOQ_USE_FETCH)) {
 		/* This is from the catalog track */
 		JANUS_LOG(LOG_INFO, "[%s] Catalog: %.*s\n",
 			imquic_get_connection_name(conn), (int)object->payload_len, (char *)object->payload);
@@ -2714,6 +2732,13 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 					imquic_moq_property_type_str(moq_version, prop->id), timestamp);
 				break;
 			}
+			case IMQUIC_MOQ_LOC_AUDIO_CONFIG: {
+				/* FIXME Currently unused */
+				JANUS_LOG(LOG_HUGE, "  -- -- %s: %zu bytes\n",
+					imquic_moq_property_type_str(moq_version, prop->id),
+					prop->value.data.length);
+				break;
+			}
 			case IMQUIC_MOQ_LOC_VIDEO_CONFIG: {
 				loc_extradata = &prop->value.data;
 				JANUS_LOG(LOG_HUGE, "  -- -- %s: %zu bytes\n",
@@ -2722,6 +2747,26 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 				for(size_t i=0; i<loc_extradata->length; ++i)
 					JANUS_LOG(LOG_HUGE, "%02x", loc_extradata->buffer[i]);
 				JANUS_LOG(LOG_HUGE, "\n");
+				break;
+			}
+			case IMQUIC_MOQ_LOC_AUDIO_LEVEL: {
+				/* FIXME Currently unused */
+				JANUS_LOG(LOG_HUGE, "  -- -- %s: %"SCNu64"\n",
+					imquic_moq_property_type_str(moq_version, prop->id), prop->value.number);
+				break;
+			}
+			case IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING: {
+				/* FIXME Currently unused */
+				JANUS_LOG(LOG_HUGE, "  -- -- %s: %zu bytes\n",
+					imquic_moq_property_type_str(moq_version, prop->id),
+					prop->value.data.length);
+				break;
+			}
+			case IMQUIC_MOQ_LOC_CODEC_STRING: {
+				/* FIXME Currently unused */
+				JANUS_LOG(LOG_HUGE, "  -- -- %s: %.*s\n",
+					imquic_moq_property_type_str(moq_version, prop->id),
+					(int)prop->value.data.length, (char *)prop->value.data.buffer);
 				break;
 			}
 			default: {
@@ -2818,7 +2863,9 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 		/* Create all the RTP packets we need */
 		uint8_t *payload = object->payload + skip;
 		size_t payload_len = object->payload_len - skip;
-		uint8_t *data = payload + skip, *start = data, *end = payload + payload_len, *tmp = start;
+		uint8_t *data = payload, *start = data, *end = payload + payload_len, *tmp = start;
+		JANUS_LOG(LOG_HUGE, "[%s] Video frame payload is %zu bytes\n",
+			imquic_get_connection_name(conn), payload_len);
 		/* Packetization depends on the codec */
 		if(session->vcodec == JANUS_VIDEOCODEC_VP8) {
 			/* We're using VP8 */
@@ -3096,10 +3143,14 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 			}
 			/* Check if we need to switch from AVCC to Annex-B */
 			if(!session->annexb) {
+				JANUS_LOG(LOG_HUGE, "[%s] Converting AVCC to Annex-B\n",
+					imquic_get_connection_name(conn));
 				size_t avcc_offset = 0, nal_size = 0;
 				while(payload_len >= avcc_offset + 4) {
 					memcpy(&nal_size, payload + avcc_offset, 4);
 					nal_size = ntohl(nal_size);
+					JANUS_LOG(LOG_HUGE, "[%s]   -- NAL size %zu\n",
+						imquic_get_connection_name(conn), nal_size);
 					if(nal_size > 0) {
 						*(payload + avcc_offset) = 0x00;
 						*(payload + avcc_offset + 1) = 0x00;
@@ -3116,7 +3167,7 @@ static void janus_moq_moq_incoming_object(imquic_connection *conn, imquic_moq_ob
 				if(tmp[0] == 0 && tmp[1] == 0 && tmp[2] == 1) {
 					/* Found a start code (00 00 01) */
 					JANUS_LOG(LOG_HUGE, "[%s]   -- Found start code (offset %ld, size %ld)\n",
-						imquic_get_connection_name(conn), tmp-data, tmp-start);
+						imquic_get_connection_name(conn), start-data, tmp-start);
 					if(tmp-start > 1) {
 						if((size_t)(tmp-start) > mtu)
 							break;
