@@ -838,8 +838,10 @@ void janus_websockets_destroy(void) {
 	janus_mutex_unlock(&writable_mutex);
 #endif
 
+	janus_mutex_lock(&access_list_mutex);
 	g_list_free_full(janus_websockets_access_list, (GDestroyNotify)g_free);
 	g_list_free_full(janus_websockets_admin_access_list, (GDestroyNotify)g_free);
+	janus_mutex_unlock(&access_list_mutex);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);

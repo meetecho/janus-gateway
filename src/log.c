@@ -148,8 +148,10 @@ void janus_vprintf(const char *format, ...) {
 	char *str = NULL;
 	int len = g_vasprintf(&str, format, ap);
 	va_end(ap);
-	if(len < 0 || str == NULL)
+	if(len < 0 || str == NULL) {
+		g_free(str);
 		return;
+	}
 	/* Queue the new log buffer */
 	janus_log_buffer *b = g_malloc(sizeof(janus_log_buffer));
 	b->timestamp = janus_get_real_time();

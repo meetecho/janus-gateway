@@ -2105,7 +2105,7 @@ static void janus_sip_sofia_logger_parse_fromto(char *buffer, const char *what, 
 				end = strchr(start, '\n');
 			if(end) {
 				size_t count = end - start;
-				count = count >= idlen ? idlen - 1 : count;
+				count = count >= taglen ? taglen - 1 : count;
 				memcpy(tag, start, count);
 				tag[count] = '\0';
 			}
@@ -3015,7 +3015,7 @@ static json_t *janus_sip_process_synchronous_request(janus_sip_session *session,
 			memset(&hints, 0, sizeof(hints));
 			if(s_family != 0)
 				hints.ai_family = s_family;
-			if(getaddrinfo(s_host, NULL, s_family != 0 ? &hints : NULL, &res) == 0) {
+			if(getaddrinfo(s_host, NULL, &hints, &res) == 0) {
 				start = res;
 				while(res != NULL) {
 					if(janus_network_address_from_sockaddr(res->ai_addr, &addr) == 0 &&

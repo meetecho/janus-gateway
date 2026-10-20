@@ -1476,7 +1476,7 @@ static json_t *janus_nosip_process_synchronous_request(janus_nosip_session *sess
 			memset(&hints, 0, sizeof(hints));
 			if(s_family != 0)
 				hints.ai_family = s_family;
-			if(getaddrinfo(s_host, NULL, s_family != 0 ? &hints : NULL, &res) == 0) {
+			if(getaddrinfo(s_host, NULL, &hints, &res) == 0) {
 				start = res;
 				while(res != NULL) {
 					if(janus_network_address_from_sockaddr(res->ai_addr, &addr) == 0 &&

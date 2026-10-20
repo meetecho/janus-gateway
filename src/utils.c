@@ -1461,13 +1461,9 @@ size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compr
 	}
 	/* Deflate the string */
 	res = deflate(&zs, Z_FINISH);
+	(void)deflateEnd(&zs);
 	if(res != Z_STREAM_END) {
 		JANUS_LOG(LOG_ERR, "deflate error: %d\n", res);
-		return 0;
-	}
-	res = deflateEnd(&zs);
-	if(res != Z_OK) {
-		JANUS_LOG(LOG_ERR, "deflateEnd error: %d\n", res);
 		return 0;
 	}
 

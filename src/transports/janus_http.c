@@ -1007,8 +1007,10 @@ void janus_http_destroy(void) {
 	sessions = NULL;
 	janus_mutex_unlock(&sessions_mutex);
 
+	janus_mutex_lock(&access_list_mutex);
 	g_list_free_full(janus_http_access_list, (GDestroyNotify)g_free);
 	g_list_free_full(janus_http_admin_access_list, (GDestroyNotify)g_free);
+	janus_mutex_unlock(&access_list_mutex);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
