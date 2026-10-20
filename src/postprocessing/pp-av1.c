@@ -476,6 +476,7 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 			/* Frame manipulation */
 			if(len > 0) {
 				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU data (cont.): %d\n", tmp->ts, len);
+				/* If it doesn't fit the data is skipped: nothing else follows in this packet */
 				janus_pp_frame_append(obu_data, numBytes, &dataLen, buffer, len);
 			}
 			/* Check if timestamp changes: marker bit is not mandatory, and may be lost as well */
@@ -491,6 +492,7 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU size (%d): %zu\n", tmp->ts, dataLen, written);
 			/* Copy the actual data */
 			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU data: %"SCNu32"\n", tmp->ts, dataLen);
+			/* If it doesn't fit the data is skipped: this is the last write for this frame */
 			if(janus_pp_frame_append(received_frame, numBytes, &frameLen, leb, written) == 0)
 				janus_pp_frame_append(received_frame, numBytes, &frameLen, obu_data, dataLen);
 		}

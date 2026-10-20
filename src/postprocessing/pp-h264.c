@@ -32,7 +32,8 @@ static AVCodecContext *vEncoder;
 static int max_width = 0, max_height = 0, fps = 0;
 
 /* Start code we prefix NAL units with */
-static const uint8_t janus_pp_h264_start_code[3] = { 0x00, 0x00, 0x01 };
+static const uint8_t janus_pp_h264_start_code[] = { 0x00, 0x00, 0x01 };
+static const int janus_pp_h264_start_code_len = sizeof(janus_pp_h264_start_code);
 
 /* Supported target formats */
 static const char *janus_pp_h264_formats[] = {
@@ -446,7 +447,7 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			/* Frame manipulation */
 			int res = 0;
 			if((fragment > 0) && (fragment < 24)) {	/* Add a start code */
-				res = janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h264_start_code, 3);
+				res = janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h264_start_code, janus_pp_h264_start_code_len);
 			} else if(fragment == 24) {	/* STAP-A */
 				/* De-aggregate the NALs and write each of them separately */
 				buffer++;
@@ -462,7 +463,7 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 						break;
 					}
 					/* Now we have a single NAL */
-					if(janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h264_start_code, 3) < 0 ||
+					if(janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h264_start_code, janus_pp_h264_start_code_len) < 0 ||
 							janus_pp_frame_append(received_frame, numBytes, &frameLen, buffer, psize) < 0)
 						break;
 					/* Go on */
@@ -488,8 +489,10 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				len -= 2;
 				if(header & 0x80) {
 					/* First part of fragmented packet (S bit set) */
-					uint8_t fu_start[4] = { 0x00, 0x00, 0x01, (indicator & 0xE0) | (header & 0x1F) };
-					res = janus_pp_frame_append(received_frame, numBytes, &frameLen, fu_start, 4);
+					uint8_t nalh = (indicator & 0xE0) | (header & 0x1F);
+					if(janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h264_start_code, janus_pp_h264_start_code_len) < 0 ||
+							janus_pp_frame_append(received_frame, numBytes, &frameLen, &nalh, 1) < 0)
+						res = -1;
 				} else if (header & 0x40) {
 					/* Last part of fragmented packet (E bit set) */
 				}

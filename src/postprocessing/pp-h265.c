@@ -32,7 +32,8 @@ static AVCodecContext *vEncoder;
 static int max_width = 0, max_height = 0, fps = 0;
 
 /* Start code we prefix NAL units with */
-static const uint8_t janus_pp_h265_start_code[3] = { 0x00, 0x00, 0x01 };
+static const uint8_t janus_pp_h265_start_code[] = { 0x00, 0x00, 0x01 };
+static const int janus_pp_h265_start_code_len = sizeof(janus_pp_h265_start_code);
 
 /* Supported target formats */
 static const char *janus_pp_h265_formats[] = {
@@ -530,7 +531,7 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					}
 				}
 				/* Add the NAL delimiter */
-				res = janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h265_start_code, 3);
+				res = janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h265_start_code, janus_pp_h265_start_code_len);
 			} else if(type == 48) {
 				/* AP */
 				uint8_t *end = buffer + len, *p = NULL;
@@ -542,7 +543,7 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 						JANUS_LOG(LOG_ERR, "Invalid size %"SCNu16" (exceeds AP size %d)\n", payload_len, (int)(end - p));
 						break;
 					}
-					if(janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h265_start_code, 3) < 0 ||
+					if(janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h265_start_code, janus_pp_h265_start_code_len) < 0 ||
 							janus_pp_frame_append(received_frame, numBytes, &frameLen, p, payload_len) < 0)
 						break;
 					switch(p[0] >> 1) {
@@ -583,9 +584,9 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					unit = fbit + (nut << 9) + lid + tid;
 					unit = htons(unit);
 					/* Add the NAL delimiter and the NAL unit header */
-					uint8_t fu_start[5] = { 0x00, 0x00, 0x01, 0x00, 0x00 };
-					memcpy(fu_start + 3, &unit, sizeof(uint16_t));
-					res = janus_pp_frame_append(received_frame, numBytes, &frameLen, fu_start, 5);
+					if(janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h265_start_code, janus_pp_h265_start_code_len) < 0 ||
+							janus_pp_frame_append(received_frame, numBytes, &frameLen, (uint8_t *)&unit, sizeof(uint16_t)) < 0)
+						res = -1;
 				}
 				/* Skip the FU header */
 				buffer += 3;
