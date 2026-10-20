@@ -1895,7 +1895,7 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pa
 			}
 			janus_mutex_unlock(&session->rtp_forwarders_mutex);
 			/* Save the frame if we're recording */
-			janus_recorder_save_frame_locked(video ? &session->vrc : &session->arc, &session->rec_mutex, buf, len);
+			janus_recorder_save_frame_ref(video ? &session->vrc : &session->arc, &session->rec_mutex, buf, len);
 			/* Is SRTP involved? */
 			if(session->media.has_srtp_local) {
 				char sbuf[2048];
@@ -3421,7 +3421,7 @@ static void *janus_nosip_relay_thread(void *data) {
 					janus_mutex_unlock(&session->rtp_forwarders_mutex);
 					/* Save the frame if we're recording */
 					header->ssrc = htonl(video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer);
-					janus_recorder_save_frame_locked(video ? &session->vrc_peer : &session->arc_peer, &session->rec_mutex, buffer, bytes);
+					janus_recorder_save_frame_ref(video ? &session->vrc_peer : &session->arc_peer, &session->rec_mutex, buffer, bytes);
 					/* Relay to browser */
 					janus_plugin_rtp rtp = { .mindex = -1, .video = video, .buffer = buffer, .length = bytes };
 					/* Add audio-level extension, if present */

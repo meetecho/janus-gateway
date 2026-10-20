@@ -2124,7 +2124,7 @@ void janus_lua_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *rtp_
 	}
 	/* Are we recording? */
 	if(!video || (session->ssrc[0] == 0 && session->rid[0] == NULL)) {
-		janus_recorder_save_frame_locked(video ? &session->vrc : &session->arc, &session->rec_mutex, buf, len);
+		janus_recorder_save_frame_ref(video ? &session->vrc : &session->arc, &session->rec_mutex, buf, len);
 	} else {
 		/* We're simulcasting, save the best video quality */
 		gboolean save = janus_rtp_simulcasting_context_process_rtp(&session->rec_simctx,
@@ -2136,7 +2136,7 @@ void janus_lua_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *rtp_
 			janus_rtp_header_update(rtp, &session->rec_ctx, TRUE, 0);
 			/* We use a fixed SSRC for the whole recording */
 			rtp->ssrc = session->ssrc[0];
-			janus_recorder_save_frame_locked(&session->vrc, &session->rec_mutex, buf, len);
+			janus_recorder_save_frame_ref(&session->vrc, &session->rec_mutex, buf, len);
 			/* Restore the header, as it will be needed by recipients of this packet */
 			rtp->ssrc = htonl(ssrc);
 			rtp->timestamp = htonl(timestamp);
@@ -2235,7 +2235,7 @@ void janus_lua_incoming_data(janus_plugin_session *handle, janus_plugin_data *pa
 	char *label = packet->label;
 	char *protocol = packet->protocol;
 	/* Are we recording? */
-	janus_recorder_save_frame_locked(&session->drc, &session->rec_mutex, buf, len);
+	janus_recorder_save_frame_ref(&session->drc, &session->rec_mutex, buf, len);
 	/* Check if the Lua script wants to handle/manipulate data channel packets itself */
 	if((!packet->binary && (has_incoming_data_legacy || has_incoming_text_data)) || (packet->binary && has_incoming_binary_data)) {
 		/* Yep, pass the data to the Lua script and return */

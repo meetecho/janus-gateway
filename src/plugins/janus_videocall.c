@@ -826,7 +826,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 			}
 			/* Save the frame if we're recording (and make sure the SSRC never changes even if the substream does) */
 			header->ssrc = htonl(1);
-			janus_recorder_save_frame_locked(&session->vrc, &session->rec_mutex, buf, len);
+			janus_recorder_save_frame_ref(&session->vrc, &session->rec_mutex, buf, len);
 			/* Send the frame back */
 			gateway->relay_rtp(peer->handle, packet);
 			/* Restore header or core statistics will be messed up */
@@ -836,7 +836,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 		} else {
 			if((!video && session->audio_active) || (video && session->video_active)) {
 				/* Save the frame if we're recording */
-				janus_recorder_save_frame_locked(video ? &session->vrc : &session->arc, &session->rec_mutex, buf, len);
+				janus_recorder_save_frame_ref(video ? &session->vrc : &session->arc, &session->rec_mutex, buf, len);
 				/* Forward the packet to the peer */
 				gateway->relay_rtp(peer->handle, packet);
 			}
@@ -897,7 +897,7 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, janus_plugin_da
 		JANUS_LOG(LOG_VERB, "Got a %s DataChannel message (%d bytes) to forward\n",
 			!packet->binary ? "text" : "binary", len);
 		/* Save the frame if we're recording */
-		janus_recorder_save_frame_locked(&session->drc, &session->rec_mutex, buf, len);
+		janus_recorder_save_frame_ref(&session->drc, &session->rec_mutex, buf, len);
 		/* Forward the packet to the peer */
 		janus_plugin_data r = {
 			.label = label,

@@ -6366,7 +6366,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 	char *buf = packet->buffer;
 	uint16_t len = packet->length;
 	/* Save the frame if we're recording this leg */
-	janus_recorder_save_frame_locked(&participant->arc, &participant->rec_mutex, buf, len);
+	janus_recorder_save_frame_ref(&participant->arc, &participant->rec_mutex, buf, len);
 	if(g_atomic_int_get(&participant->active)) {
 		/* First of all, check if a reset on the decoder is due */
 		if(g_atomic_int_get(&participant->reset) && participant->codec == JANUS_AUDIOCODEC_OPUS) {

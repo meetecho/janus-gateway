@@ -8899,7 +8899,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 		rtp->type = ps->pt;
 		/* Save the frame if we're recording */
 		if(!video || !ps->simulcast) {
-			janus_recorder_save_frame_locked(&ps->rc, &participant->rec_mutex, buf, len);
+			janus_recorder_save_frame_ref(&ps->rc, &participant->rec_mutex, buf, len);
 		} else {
 			/* We're simulcasting, save the best video quality */
 			gboolean save = janus_rtp_simulcasting_context_process_rtp(&ps->rec_simctx,
@@ -8912,7 +8912,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 				janus_rtp_header_update(rtp, &ps->rec_ctx, TRUE, 0);
 				/* We use a fixed SSRC for the whole recording */
 				rtp->ssrc = ps->vssrc[0];
-				janus_recorder_save_frame_locked(&ps->rc, &participant->rec_mutex, buf, len);
+				janus_recorder_save_frame_ref(&ps->rc, &participant->rec_mutex, buf, len);
 				/* Restore the header, as it will be needed by subscribers */
 				rtp->ssrc = htonl(ssrc);
 				rtp->timestamp = htonl(timestamp);
@@ -9184,7 +9184,7 @@ static void janus_videoroom_incoming_data_internal(janus_videoroom_session *sess
 	JANUS_LOG(LOG_VERB, "Got a %s DataChannel message (%d bytes) to forward\n",
 		packet->binary ? "binary" : "text", len);
 	/* Save the message if we're recording */
-	janus_recorder_save_frame_locked(&ps->rc, &participant->rec_mutex, buf, len);
+	janus_recorder_save_frame_ref(&ps->rc, &participant->rec_mutex, buf, len);
 	/* Relay to all subscribers */
 	janus_videoroom_rtp_relay_packet pkt = { 0 };
 	pkt.source = ps;

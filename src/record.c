@@ -483,14 +483,20 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 	return 0;
 }
 
-int janus_recorder_save_frame_locked(janus_recorder **recorder, janus_mutex *mutex, char *buffer, uint length) {
+int janus_recorder_save_frame_ref(janus_recorder **recorder, janus_mutex *mutex, char *buffer, uint length) {
 	if(!recorder || !mutex)
 		return -1;
-	/* The recorder is only closed and destroyed while holding the mutex, so
-	 * as long as we hold it too, it will stay valid until we're done */
+	/* The recorder is only closed and destroyed while holding the mutex, so we
+	 * hold it just to get a reference: we then save the frame without it */
 	janus_mutex_lock(mutex);
-	int res = janus_recorder_save_frame(*recorder, buffer, length);
+	janus_recorder *rc = *recorder;
+	if(rc)
+		janus_refcount_increase_nodebug(&rc->ref);
 	janus_mutex_unlock(mutex);
+	if(!rc)
+		return -1;
+	int res = janus_recorder_save_frame(rc, buffer, length);
+	janus_refcount_decrease_nodebug(&rc->ref);
 	return res;
 }
 

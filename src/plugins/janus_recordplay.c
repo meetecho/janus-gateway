@@ -1518,14 +1518,14 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, janus_plugin_rt
 		if(session->rec_vssrc == 0)
 			session->rec_vssrc = g_random_int();
 		header->ssrc = htonl(session->rec_vssrc);
-		janus_recorder_save_frame_locked(&session->vrc, &session->rec_mutex, buf, len);
+		janus_recorder_save_frame_ref(&session->vrc, &session->rec_mutex, buf, len);
 		/* Restore header or core statistics will be messed up */
 		header->ssrc = htonl(ssrc);
 		header->timestamp = htonl(timestamp);
 		header->seq_number = htons(seq_number);
 	} else {
 		/* Save the frame if we're recording */
-		janus_recorder_save_frame_locked(video ? &session->vrc : &session->arc, &session->rec_mutex, buf, len);
+		janus_recorder_save_frame_ref(video ? &session->vrc : &session->arc, &session->rec_mutex, buf, len);
 	}
 
 	janus_recordplay_send_rtcp_feedback(handle, video, buf, len);
@@ -1551,7 +1551,7 @@ void janus_recordplay_incoming_data(janus_plugin_session *handle, janus_plugin_d
 	char *buf = packet->buffer;
 	uint16_t len = packet->length;
 	/* Save the frame if we're recording */
-	janus_recorder_save_frame_locked(&session->drc, &session->rec_mutex, buf, len);
+	janus_recorder_save_frame_ref(&session->drc, &session->rec_mutex, buf, len);
 }
 
 void janus_recordplay_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink) {

@@ -689,7 +689,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 			}
 			/* Save the frame if we're recording (and make sure the SSRC never changes even if the substream does) */
 			header->ssrc = htonl(1);
-			janus_recorder_save_frame_locked(&session->vrc, &session->rec_mutex, buf, len);
+			janus_recorder_save_frame_ref(&session->vrc, &session->rec_mutex, buf, len);
 			/* Send the frame back */
 			gateway->relay_rtp(handle, packet);
 			/* Restore header or core statistics will be messed up */
@@ -699,7 +699,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 		} else {
 			if((!video && session->audio_active) || (video && session->video_active)) {
 				/* Save the frame if we're recording */
-				janus_recorder_save_frame_locked(video ? &session->vrc : &session->arc, &session->rec_mutex, buf, len);
+				janus_recorder_save_frame_ref(video ? &session->vrc : &session->arc, &session->rec_mutex, buf, len);
 				/* Send the frame back */
 				gateway->relay_rtp(handle, packet);
 			}
@@ -753,7 +753,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 			JANUS_LOG(LOG_VERB, "Got a binary DataChannel message (label=%s, protocol=%s, %d bytes) to bounce back\n",
 				label, protocol, len);
 			/* Save the frame if we're recording */
-			janus_recorder_save_frame_locked(&session->drc, &session->rec_mutex, buf, len);
+			janus_recorder_save_frame_ref(&session->drc, &session->rec_mutex, buf, len);
 			/* Binary data, shoot back as it is */
 			gateway->relay_data(handle, packet);
 			return;
@@ -765,7 +765,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 		JANUS_LOG(LOG_VERB, "Got a DataChannel message (label=%s, protocol=%s, %zu bytes) to bounce back: %s\n",
 			label, protocol, strlen(text), text);
 		/* Save the frame if we're recording */
-		janus_recorder_save_frame_locked(&session->drc, &session->rec_mutex, text, strlen(text));
+		janus_recorder_save_frame_ref(&session->drc, &session->rec_mutex, text, strlen(text));
 		/* We send back the same text with a custom prefix */
 		const char *prefix = "Janus EchoTest here! You wrote: ";
 		char *reply = g_malloc(strlen(prefix)+len+1);
