@@ -3123,8 +3123,10 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 #ifdef HAVE_RNNOISE
 		json_object_set_new(info, "denoise",  participant->denoise ? json_true() : json_false());
 #endif
+		janus_mutex_lock(&participant->rec_mutex);
 		if(participant->arc && participant->arc->filename)
 			json_object_set_new(info, "audio-recording", json_string(participant->arc->filename));
+		janus_mutex_unlock(&participant->rec_mutex);
 		if(participant->extmap_id > 0) {
 			json_object_set_new(info, "audio-level-dBov", json_integer(participant->dBov_level));
 			json_object_set_new(info, "talking", participant->talking ? json_true() : json_false());
@@ -6364,7 +6366,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 	char *buf = packet->buffer;
 	uint16_t len = packet->length;
 	/* Save the frame if we're recording this leg */
-	janus_recorder_save_frame(participant->arc, buf, len);
+	janus_recorder_save_frame_ref(&participant->arc, &participant->rec_mutex, buf, len);
 	if(g_atomic_int_get(&participant->active)) {
 		/* First of all, check if a reset on the decoder is due */
 		if(g_atomic_int_get(&participant->reset) && participant->codec == JANUS_AUDIOCODEC_OPUS) {
