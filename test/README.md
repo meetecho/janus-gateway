@@ -50,3 +50,21 @@ The scripts must be invoked like this:
 It will start a Janus instance in the background taking the binary files from the Janus sources directory.
 Then it will wait for some seconds before invoking the Python script specified in the first parameter.
 Finally it will check the exit status of the Python script and kill the Janus instance.
+
+## ws-audio-test (AudioBridge plain RTP / RTP-over-WebSocket)
+
+Go CLI for validating AudioBridge **plain RTP** and core **RTP-over-WebSocket** (`rtpws` in `janus.jcfg`). See [ws-audio-test/README.md](ws-audio-test/README.md).
+
+Janus must have `rtpws::enable_rtp_ws = true` in `janus.jcfg` and be built with `--enable-websockets`.
+
+```bash
+# Against a running Janus instance
+export JANUS_HTTP=http://127.0.0.1:8088/janus
+export TOKEN=your-token   # if token auth is enabled
+./test_ws_audio.sh ws-e2e
+
+# Or manually
+cd test/ws-audio-test
+go build -o bin/ws-audio-test .
+./bin/ws-audio-test ws-e2e --janus-http "$JANUS_HTTP" --token "$TOKEN" --room demo --local-ip 127.0.0.1
+```

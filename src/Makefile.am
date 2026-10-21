@@ -99,6 +99,8 @@ janus_SOURCES = \
 	rtp.h \
 	rtpfwd.c \
 	rtpfwd.h \
+	rtpws.c \
+	rtpws.h \
 	rtpsrtp.h \
 	sctp.c \
 	sctp.h \
@@ -144,6 +146,10 @@ janus_LDADD = \
 	$(LIBSRTP_LDFLAGS) $(LIBSRTP_LIBS) \
 	$(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) \
 	$(NULL)
+
+if ENABLE_WEBSOCKETS
+janus_LDADD += $(WS_MANUAL_LIBS)
+endif
 
 dist_man1_MANS = janus.1
 
