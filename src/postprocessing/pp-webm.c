@@ -329,7 +329,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 
 	int bytes = 0, numBytes = max_width*max_height*3;	/* FIXME */
 	uint8_t *received_frame = g_malloc0(numBytes);
-	uint8_t *buffer = g_malloc0(numBytes), *start = buffer;
+	uint8_t *buffer = g_malloc0(1500), *start = buffer;
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
@@ -547,14 +547,8 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 				}
 			}
 			/* Frame manipulation */
-			if(len > 0) {
-				if(frameLen + len + AV_INPUT_BUFFER_PADDING_SIZE > numBytes) {
-					JANUS_LOG(LOG_WARN, "Frame exceeds buffer size...\n");
-				} else {
-					memcpy(received_frame + frameLen, buffer, len);
-					frameLen += len;
-				}
-			}
+			if(len > 0)
+				janus_pp_frame_append(received_frame, numBytes, &frameLen, buffer, len);
 			if(len == 0)
 				break;
 			/* Check if timestamp changes: marker bit is not mandatory, and may be lost as well */

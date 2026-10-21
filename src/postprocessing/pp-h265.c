@@ -31,6 +31,10 @@ static AVCodecContext *vEncoder;
 #endif
 static int max_width = 0, max_height = 0, fps = 0;
 
+/* Start code we prefix NAL units with */
+static const uint8_t janus_pp_h265_start_code[] = { 0x00, 0x00, 0x01 };
+static const int janus_pp_h265_start_code_len = sizeof(janus_pp_h265_start_code);
+
 /* Supported target formats */
 static const char *janus_pp_h265_formats[] = {
 	"mp4", "mkv", NULL
@@ -344,9 +348,11 @@ int janus_pp_h265_preprocess(FILE *file, janus_pp_frame_packet *list, json_t *in
 			JANUS_LOG(LOG_HUGE, "[AP] %u/%u/%u/%u\n", fbit, type, lid, tid);
 			uint8_t *end = (uint8_t*)prebuffer + len, *p = NULL;
 			uint16_t payload_len;
-			for(p = (uint8_t*)prebuffer + 2; p < end - 2; p += payload_len) {
+			for(p = (uint8_t*)prebuffer + 2; end - p > 2; p += payload_len) {
 				payload_len = (p[0] << 8 | p[1]);
 				p += 2;
+				if(payload_len < 2 || payload_len > end - p)
+					break;
 
 				uint16_t unit = 0;
 				memcpy(&unit, p, sizeof(uint16_t));
@@ -461,7 +467,7 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 
 	int bytes = 0, numBytes = max_width*max_height*3;	/* FIXME */
 	uint8_t *received_frame = g_malloc0(numBytes);
-	uint8_t *buffer = g_malloc0(numBytes), *start = buffer;
+	uint8_t *buffer = g_malloc0(1500), *start = buffer;
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
@@ -515,6 +521,7 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			memcpy(&unit, buffer, sizeof(uint16_t));
 			unit = ntohs(unit);
 			uint8_t type = (unit & 0x7E00) >> 9;
+			int res = 0;
 			if(type == 32 || type == 33 || type == 34 || type == 1) {
 				if(type == 32 || type == 33) {
 					keyFrame = 1;
@@ -524,23 +531,21 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					}
 				}
 				/* Add the NAL delimiter */
-				uint8_t *temp = received_frame + frameLen;
-				memset(temp, 0x00, 1);
-				memset(temp + 1, 0x00, 1);
-				memset(temp + 2, 0x01, 1);
-				frameLen += 3;
+				res = janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h265_start_code, janus_pp_h265_start_code_len);
 			} else if(type == 48) {
 				/* AP */
 				uint8_t *end = buffer + len, *p = NULL;
 				uint16_t payload_len;
-				for(p = buffer + 2; p < end - 2; p += payload_len) {
+				for(p = buffer + 2; end - p > 2; p += payload_len) {
 					payload_len = (p[0] << 8 | p[1]);
 					p += 2;
-					uint8_t *temp = received_frame + frameLen;
-					temp[0] = 0;
-					temp[1] = 0;
-					temp[2] = 1;
-					memcpy(temp + 3, p, payload_len);
+					if(payload_len > end - p) {
+						JANUS_LOG(LOG_ERR, "Invalid size %"SCNu16" (exceeds AP size %d)\n", payload_len, (int)(end - p));
+						break;
+					}
+					if(janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h265_start_code, janus_pp_h265_start_code_len) < 0 ||
+							janus_pp_frame_append(received_frame, numBytes, &frameLen, p, payload_len) < 0)
+						break;
 					switch(p[0] >> 1) {
 						case 32:
 						case 33:
@@ -554,23 +559,23 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 						default:
 							break;
 					}
-					frameLen += 3 + payload_len;
 				}
 				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
 					break;
 				tmp = tmp->next;
 				continue;
 			} else if(type == 49) {
+				if(len < 3) {
+					JANUS_LOG(LOG_WARN, "Fragment too small...\n");
+					if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+						break;
+					tmp = tmp->next;
+					continue;
+				}
 				/* Check if this is the beginning of the FU */
 				uint8_t fuh = *(buffer+2);
 				uint8_t startbit = (fuh & 0x80) >> 7;
 				if(startbit) {
-					/* Add the NAL delimiter */
-					uint8_t *temp = received_frame + frameLen;
-					memset(temp, 0x00, 1);
-					memset(temp + 1, 0x00, 1);
-					memset(temp + 2, 0x01, 1);
-					frameLen += 3;
 					/* Update the NAL unit */
 					uint16_t fbit = (unit & 0x8000);
 					uint16_t nut = (fuh & 0x1F);
@@ -578,16 +583,18 @@ int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					uint16_t tid = (unit & 0x0007);
 					unit = fbit + (nut << 9) + lid + tid;
 					unit = htons(unit);
-					memcpy(received_frame + frameLen, &unit, sizeof(uint16_t));
-					frameLen += 2;
+					/* Add the NAL delimiter and the NAL unit header */
+					if(janus_pp_frame_append(received_frame, numBytes, &frameLen, janus_pp_h265_start_code, janus_pp_h265_start_code_len) < 0 ||
+							janus_pp_frame_append(received_frame, numBytes, &frameLen, (uint8_t *)&unit, sizeof(uint16_t)) < 0)
+						res = -1;
 				}
 				/* Skip the FU header */
 				buffer += 3;
 				len -= 3;
 			}
 			/* Frame manipulation */
-			memcpy(received_frame + frameLen, buffer, len);
-			frameLen += len;
+			if(res == 0)
+				janus_pp_frame_append(received_frame, numBytes, &frameLen, buffer, len);
 			if(len == 0)
 				break;
 			/* Check if timestamp changes: marker bit is not mandatory, and may be lost as well */
