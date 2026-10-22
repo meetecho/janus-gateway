@@ -6210,12 +6210,34 @@ error:
 /* nua creates a fresh handle for every out-of-dialog request and leaves the
  * unbound ones to us to destroy (see the nua_i_options docs). The adopted
  * incoming-call handle is unbound as well, so spare that one. */
-static void janus_sip_destroy_unbound_handle(janus_sip_session *session, nua_handle_t *nh, nua_hmagic_t *hmagic) {
+static gboolean janus_sip_destroy_unbound_handle(janus_sip_session *session, nua_handle_t *nh, nua_hmagic_t *hmagic) {
 	if(nh == NULL || hmagic != NULL)
-		return;
+		return FALSE;
 	if(session->stack != NULL && nh == session->stack->s_nh_i)
-		return;
+		return FALSE;
 	nua_handle_destroy(nh);
+	return TRUE;
+}
+
+/* When an incoming INVITE is rejected after the session was already marked
+ * invited (the 488 media checks), destroying the handle means the queued
+ * nua_i_state(terminated) never arrives, and that was what reset the session to
+ * idle. Do that cleanup here instead. */
+static void janus_sip_drop_rejected_invite(janus_sip_session *session) {
+	janus_sip_call_update_status(session, janus_sip_call_status_idle);
+	janus_mutex_lock(&sessions_mutex);
+	if(session->callid) {
+		janus_sip_call *call = g_hash_table_lookup(callids, session->callid);
+		if(call) {
+			if(call->callee == session)
+				call->callee = NULL;
+			if(call->caller == NULL && call->callee == NULL)
+				g_hash_table_remove(callids, session->callid);
+		}
+		g_free(session->callid);
+		session->callid = NULL;
+	}
+	janus_mutex_unlock(&sessions_mutex);
 }
 
 void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase, nua_t *nua, nua_magic_t *magic, nua_handle_t *nh, nua_hmagic_t *hmagic, sip_t const *sip, tagi_t tags[])
@@ -6596,7 +6618,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(!session->media.has_audio && !session->media.has_video) {
 					g_atomic_int_set(&session->establishing, 0);
 					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
-					janus_sip_destroy_unbound_handle(session, nh, hmagic);
+					if(janus_sip_destroy_unbound_handle(session, nh, hmagic) && !reinvite)
+						janus_sip_drop_rejected_invite(session);
 					if(!reinvite)
 						janus_sip_unref_active_call(session);
 					janus_sdp_destroy(sdp);
@@ -6606,7 +6629,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(!session->media.remote_audio_ip && !session->media.remote_video_ip) {
 					g_atomic_int_set(&session->establishing, 0);
 					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
-					janus_sip_destroy_unbound_handle(session, nh, hmagic);
+					if(janus_sip_destroy_unbound_handle(session, nh, hmagic) && !reinvite)
+						janus_sip_drop_rejected_invite(session);
 					if(!reinvite)
 						janus_sip_unref_active_call(session);
 					janus_sdp_destroy(sdp);
