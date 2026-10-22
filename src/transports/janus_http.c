@@ -359,6 +359,26 @@ static gboolean janus_http_is_allowed(const char *ip, gboolean admin) {
 	return FALSE;
 }
 
+/* Helper method to check an X-Forwarded-For value against the ACL: the header
+ * is a comma separated list, and the client can put any address at the start
+ * of it, so we only accept it if all the addresses in the list are allowed */
+static gboolean janus_http_is_xff_allowed(const char *xff, gboolean admin) {
+	if(xff == NULL)
+		return FALSE;
+	gboolean allowed = TRUE, found = FALSE;
+	gchar **list = g_strsplit(xff, ",", -1);
+	int i = 0;
+	for(i=0; allowed && list[i] != NULL; i++) {
+		char *ip = g_strstrip(list[i]);
+		if(*ip == '\0')
+			continue;
+		found = TRUE;
+		allowed = janus_http_is_allowed(ip, admin);
+	}
+	g_strfreev(list);
+	return found ? allowed : janus_http_is_allowed(xff, admin);
+}
+
 /* Helper method to get the port from a struct sockaddr */
 static uint16_t janus_http_sockaddr_to_port(struct sockaddr *address) {
 	if(address == NULL)
@@ -1413,7 +1433,7 @@ static janus_MHD_Result janus_http_handler(void *cls, struct MHD_Connection *con
 		MHD_get_connection_values(connection, MHD_HEADER_KIND, &janus_http_headers, msg);
 		if(janus_http_check_xff && msg->xff) {
 			/* Any access limitation based on this IP address? */
-			if(!janus_http_is_allowed(msg->xff, FALSE)) {
+			if(!janus_http_is_xff_allowed(msg->xff, FALSE)) {
 				JANUS_LOG(LOG_ERR, "IP %s is unauthorized to connect to the Janus API interface\n", msg->xff);
 				return MHD_NO;
 			}
@@ -1837,7 +1857,7 @@ static janus_MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connectio
 		MHD_get_connection_values(connection, MHD_HEADER_KIND, &janus_http_headers, msg);
 		if(janus_http_admin_check_xff && msg->xff) {
 			/* Any access limitation based on this IP address? */
-			if(!janus_http_is_allowed(msg->xff, TRUE)) {
+			if(!janus_http_is_xff_allowed(msg->xff, TRUE)) {
 				JANUS_LOG(LOG_ERR, "IP %s is unauthorized to connect to the Janus API interface\n", msg->xff);
 				return MHD_NO;
 			}

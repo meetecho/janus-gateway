@@ -385,6 +385,26 @@ static gboolean janus_websockets_is_allowed(const char *ip, gboolean admin) {
 	return FALSE;
 }
 
+/* Helper method to check an X-Forwarded-For value against the ACL: the header
+ * is a comma separated list, and the client can put any address at the start
+ * of it, so we only accept it if all the addresses in the list are allowed */
+static gboolean janus_websockets_is_xff_allowed(const char *xff, gboolean admin) {
+	if(xff == NULL)
+		return FALSE;
+	gboolean allowed = TRUE, found = FALSE;
+	gchar **list = g_strsplit(xff, ",", -1);
+	int i = 0;
+	for(i=0; allowed && list[i] != NULL; i++) {
+		char *ip = g_strstrip(list[i]);
+		if(*ip == '\0')
+			continue;
+		found = TRUE;
+		allowed = janus_websockets_is_allowed(ip, admin);
+	}
+	g_strfreev(list);
+	return found ? allowed : janus_websockets_is_allowed(xff, admin);
+}
+
 static struct lws_vhost* janus_websockets_create_ws_server(
 		janus_config *config,
 		janus_config_container *config_container,
@@ -1215,7 +1235,7 @@ static int janus_websockets_common_callback(
 			char xff[1024] = {0};
 			if(lws_hdr_copy(wsi, xff, 1023, WSI_TOKEN_X_FORWARDED_FOR) > 0) {
 				/* If the ACL is enabled, are we supposed to use this header too for checks? */
-				if(((!admin && janus_websockets_check_xff) || (admin && janus_websockets_admin_check_xff)) && !janus_websockets_is_allowed(xff, admin)) {
+				if(((!admin && janus_websockets_check_xff) || (admin && janus_websockets_admin_check_xff)) && !janus_websockets_is_xff_allowed(xff, admin)) {
 					JANUS_LOG(LOG_ERR, "[%s-%p] IP %s is unauthorized to connect to the WebSockets %s API interface\n",
 						log_prefix, wsi, xff, admin ? "Admin" : "Janus");
 					/* Close the connection */
