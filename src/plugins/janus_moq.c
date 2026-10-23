@@ -372,6 +372,13 @@ static void janus_moq_av1_parse_sh(char *buffer, uint16_t *width, uint16_t *heig
 /* Audio/video processing thread, for MoQ publishers */
 static void *janus_moq_processing_thread(void *data);
 
+/* FIXME Audio config info sent by moq-encoder-player with every object */
+static uint8_t opus_config[] = {
+	0x4f, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64,
+	0x01, 0x01, 0x78, 0x00, 0x80, 0xbb, 0x00, 0x00,
+	0x00, 0x00, 0x00
+};
+
 /* Error codes */
 #define JANUS_MOQ_ERROR_NO_MESSAGE		410
 #define JANUS_MOQ_ERROR_INVALID_JSON	412
@@ -900,6 +907,18 @@ static void *janus_moq_processing_thread(void *data) {
 			timestamp.value.number = session->audio_track.timestamp;
 			props = g_list_append(props, &timestamp);
 			session->audio_track.timestamp += 20000;
+			/* moq-encoder-player expects an audio config */
+			imquic_moq_property audio_config = { 0 };
+			audio_config.id = IMQUIC_MOQ_LOC_AUDIO_CONFIG;
+			audio_config.value.data.buffer = opus_config;
+			audio_config.value.data.length = sizeof(opus_config);
+			props = g_list_append(props, &audio_config);
+			/* moq-encoder-player expects a codec string too */
+			imquic_moq_property codec_string = { 0 };
+			codec_string.id = IMQUIC_MOQ_LOC_CODEC_STRING;
+			codec_string.value.data.buffer = (uint8_t *)"opus";
+			codec_string.value.data.length = strlen("opus");
+			props = g_list_append(props, &codec_string);
 			/* FIXME We currently don't support LOC private properties, so
 			 * we always add an empty list to signal it's empty */
 			uint8_t loc_pvt_props[] = { IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST, 0x00 };
@@ -1061,6 +1080,15 @@ static void *janus_moq_processing_thread(void *data) {
 						props = g_list_append(props, &loc_extradata);
 						extradata_len = 0;
 					}
+					/* FIXME moq-encoder-player expects a codec string too */
+					imquic_moq_property codec_string = { 0 };
+					const char *codec_name = janus_videocodec_name(session->vcodec);
+					if(session->vcodec == JANUS_VIDEOCODEC_H264)
+						codec_name = (session->annexb ? "annexb.42001F" : "avc1.42001F");
+					codec_string.id = IMQUIC_MOQ_LOC_CODEC_STRING;
+					codec_string.value.data.buffer = (uint8_t *)codec_name;
+					codec_string.value.data.length = strlen(codec_name);
+					props = g_list_append(props, &codec_string);
 					/* FIXME We currently don't support LOC private properties, so
 					 * we always add an empty list to signal it's empty */
 					uint8_t loc_pvt_props[] = { IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST, 0x00 };
