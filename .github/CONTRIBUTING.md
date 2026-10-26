@@ -21,10 +21,13 @@ from AddressSanitizer or Valgrind (more details available
 If you want to contribute to the project by providing fixes, enhancements,
 new features or other materials, then just clone the repo, make your changes, push to
 your fork (good commit messages that explain what changed are welcome!)
-and submit a pull request. Please make sure that, especially if you're
-modifying the C code, you follow the same coding style we're using and
-that you properly comment the code as we usually do ourselves.
+and submit a pull request, following the template we provide. Please make
+sure that, especially if you're modifying the C code, you follow the same
+coding style we're using and that you properly comment the code as we
+usually do ourselves. If your pull request involves a potential security
+vulnerability, please report it via a
+[security advisory](https://github.com/meetecho/janus-gateway/security/advisories)
+instead, so that we can fix that before it impacts existing deployments.
 
 That said, please beware that we do require all contributors to
-<a href="https://cla.conf.meetecho.com/janus">sign the Contributor License Agreement</a>
-before we can accept any code.
+[sign the Contributor License Agreement](https://cla.conf.meetecho.com/janus).
