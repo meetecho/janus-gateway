@@ -8229,8 +8229,10 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		packet.ptype = packet.data->type;
 		packet.timestamp = ntohl(packet.data->timestamp);
 		packet.seq_number = ntohs(packet.data->seq_number);
-		/* Go! */
+		/* Go! Hold the mountpoint mutex, since hangup_media frees the session streams while holding it */
+		janus_mutex_lock_nodebug(&mountpoint->mutex);
 		janus_streaming_relay_rtp_packet(session, &packet);
+		janus_mutex_unlock_nodebug(&mountpoint->mutex);
 		/* Update header */
 		seq++;
 		header->seq_number = htons(seq);
