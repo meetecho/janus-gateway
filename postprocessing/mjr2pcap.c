@@ -232,6 +232,11 @@ int main(int argc, char *argv[]) {
 			offset += 2;
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
+				if(len >= sizeof(prebuffer)) {
+					fclose(file);
+					JANUS_LOG(LOG_ERR, "Info header too big (%"SCNu16" bytes), invalid recording\n", len);
+					exit(1);
+				}
 				bytes = fread(prebuffer, sizeof(char), len, file);
 				prebuffer[len] = '\0';
 				json_error_t error;

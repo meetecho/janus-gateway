@@ -95,3 +95,19 @@ AVStream *janus_pp_new_video_avstream(AVFormatContext *fctx, int codec_id, int w
 	return st;
 }
 
+int janus_pp_frame_append(uint8_t *frame, int size, int *frame_len, const uint8_t *data, int len) {
+	if(frame == NULL || frame_len == NULL || *frame_len < 0 || len < 0 || (len > 0 && data == NULL))
+		return -1;
+	/* Leave room for the padding FFmpeg needs at the end of the frame */
+	if(size < FF_INPUT_BUFFER_PADDING_SIZE || *frame_len > size - FF_INPUT_BUFFER_PADDING_SIZE ||
+			len > size - FF_INPUT_BUFFER_PADDING_SIZE - *frame_len) {
+		JANUS_LOG(LOG_WARN, "Frame too large (%d + %d bytes, buffer is %d), skipping data\n",
+			*frame_len, len, size);
+		return -1;
+	}
+	if(len > 0)
+		memcpy(frame + *frame_len, data, len);
+	*frame_len += len;
+	return 0;
+}
+
