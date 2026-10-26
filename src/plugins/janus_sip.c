@@ -1625,20 +1625,23 @@ static gboolean janus_sip_transfer_owned_by_session(gpointer key, gpointer value
 static void janus_sip_transfer_destroy(janus_sip_transfer *t) {
 	if(t == NULL)
 		return;
-	/* The saved event holds a reference to the REFER message, and an
-	 * out-of-dialog REFER leaves us a fresh unbound handle to destroy */
+	/* The saved event holds a reference to the REFER message */
 	nua_destroy_event(t->saved);
-	gboolean adopted_call_handle = t->session != NULL && t->session->stack != NULL &&
-		t->nh_s == t->session->stack->s_nh_i;
-	if(t->nh_s != NULL && nua_handle_magic(t->nh_s) == NULL && !adopted_call_handle)
-		nua_handle_destroy(t->nh_s);
 	g_free(t->referred_by);
 	g_free(t->custom_headers);
 	if(t->nh_s != NULL && t->owner != NULL && t->owner->stack != NULL) {
-		/* Once the stack is going away nua_destroy() takes care of the handle */
+		/* An out-of-dialog REFER leaves us a fresh unbound handle to destroy,
+		 * and we hold a reference to the handle in any case: it belongs to the
+		 * stack the REFER came on, so only touch it while that stack is there
+		 * (depending on the Sofia version, nua_destroy() may free it) */
 		janus_mutex_lock(&t->owner->stack->smutex);
-		if(t->owner->stack->s_nua != NULL)
+		if(t->owner->stack->s_nua != NULL) {
+			gboolean adopted_call_handle = t->session != NULL && t->session->stack != NULL &&
+				t->nh_s == t->session->stack->s_nh_i;
+			if(nua_handle_magic(t->nh_s) == NULL && !adopted_call_handle)
+				nua_handle_destroy(t->nh_s);
 			nua_handle_unref(t->nh_s);
+		}
 		janus_mutex_unlock(&t->owner->stack->smutex);
 	}
 	if(t->owner != NULL)
@@ -6442,7 +6445,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					nh != session->stack->s_nh_r && nh != session->stack->s_nh_m) {
 				/* An in-dialog REFER stored this same handle in the transfers
 				 * table; clear those pointers or the sweep at session close
-				 * would destroy it a second time */
+				 * would destroy it a second time, and drop the reference each
+				 * of them holds (we're on the stack the handle belongs to) */
 				janus_mutex_lock(&sessions_mutex);
 				if(transfers != NULL) {
 					GHashTableIter titer;
@@ -6450,8 +6454,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					g_hash_table_iter_init(&titer, transfers);
 					while(g_hash_table_iter_next(&titer, NULL, &tvalue)) {
 						janus_sip_transfer *t = (janus_sip_transfer *)tvalue;
-						if(t != NULL && t->nh_s == nh)
+						if(t != NULL && t->nh_s == nh) {
 							t->nh_s = NULL;
+							nua_handle_unref(nh);
+						}
 					}
 				}
 				janus_mutex_unlock(&sessions_mutex);
