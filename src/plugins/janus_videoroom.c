@@ -13797,7 +13797,8 @@ static int janus_videoroom_create_fd(int port, in_addr_t mcast, const janus_netw
 				} else if(iface->family == AF_INET6) {
 					if(ipv6_disabled) {
 						JANUS_LOG(LOG_ERR, "Can't bind remote publisher to IPv6 address, IPv6 is disabled\n");
-						close(fd);
+						if(fd != -1)
+							close(fd);
 						janus_mutex_unlock(&fd_mutex);
 						return -1;
 					}

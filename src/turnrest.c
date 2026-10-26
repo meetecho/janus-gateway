@@ -165,10 +165,12 @@ janus_turnrest_response *janus_turnrest_request(const char *user) {
 	g_snprintf(request_uri, 1024, "%s?%s", api_server, query_string);
 	JANUS_LOG(LOG_VERB, "Sending request: %s\n", request_uri);
 	curl_easy_setopt(curl, CURLOPT_URL, request_uri);
-	curl_easy_setopt(curl, (api_http_get ? CURLOPT_HTTPGET : CURLOPT_POST), 1);
 	if(!api_http_get) {
+		curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
 		/* FIXME Some servers don't like a POST with no data */
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query_string);
+	} else {
+		curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	}
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, api_timeout);
 	janus_mutex_unlock(&api_mutex);

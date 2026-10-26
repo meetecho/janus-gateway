@@ -9375,6 +9375,8 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							janus_mutex_unlock(&participant->decoding_mutex);
 							janus_audiobridge_buffer_packet_destroy(bpkt);
 							bpkt = NULL;
+							g_free(pkt->data);
+							g_free(pkt);
 							break;
 						}
 						pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)pkt->data, BUFFER_SAMPLES, 0);
