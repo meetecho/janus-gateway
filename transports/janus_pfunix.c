@@ -596,7 +596,7 @@ void *janus_pfunix_thread(void *data) {
 	memset(&msg, 0, sizeof(msg));
 	memset(iov, 0, sizeof(iov));
 	iov[0].iov_base = buffer;
-	iov[0].iov_len = sizeof(buffer);
+	iov[0].iov_len = sizeof(buffer)-1;
 	msg.msg_iov = iov;
 	msg.msg_iovlen = 1;
 
@@ -785,7 +785,7 @@ void *janus_pfunix_thread(void *data) {
 					} else {
 						/* SOCK_DGRAM */
 						struct sockaddr_storage address;
-						res = recvfrom(poll_fds[i].fd, buffer, sizeof(buffer), 0, (struct sockaddr *)&address, &addrlen);
+						res = recvfrom(poll_fds[i].fd, buffer, sizeof(buffer)-1, 0, (struct sockaddr *)&address, &addrlen);
 						if(res < 0) {
 							if(errno != EAGAIN && errno != EWOULDBLOCK) {
 								JANUS_LOG(LOG_ERR, "Error reading from client (%s API)...\n",
@@ -839,7 +839,7 @@ void *janus_pfunix_thread(void *data) {
 					}
 				} else {
 					/* Client data: receive message */
-					iov[0].iov_len = sizeof(buffer);
+					iov[0].iov_len = sizeof(buffer)-1;
 					res = recvmsg(poll_fds[i].fd, &msg, MSG_WAITALL);
 					if(res < 0) {
 						if(errno != EAGAIN && errno != EWOULDBLOCK) {
