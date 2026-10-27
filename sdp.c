@@ -799,6 +799,7 @@ static void janus_sdp_mdns_resolved(GObject *source_object, GAsyncResult *res, g
 	GError *error = NULL;
 	GList *list = g_resolver_lookup_by_name_finish(resolver, res, &error);
 	if(mc == NULL) {
+		g_clear_error(&error);
 		g_resolver_free_addresses(list);
 		g_object_unref(resolver);
 		return;
@@ -812,6 +813,7 @@ static void janus_sdp_mdns_resolved(GObject *source_object, GAsyncResult *res, g
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] mDNS address (%s) resolved: %s\n",
 			mc->handle->handle_id, mc->local, resolved);
 	}
+	g_clear_error(&error);
 	g_resolver_free_addresses(list);
 	g_object_unref(resolver);
 	if(resolved != NULL && mc->handle->stream && mc->handle->app_handle &&
