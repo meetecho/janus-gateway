@@ -208,6 +208,7 @@ static janus_plugin janus_echotest_plugin =
 		.incoming_data = NULL,			\
 		.data_ready = NULL,				\
 		.slow_link = NULL,				\
+		.estimated_bandwidth = NULL,	\
 		.hangup_media = NULL,			\
 		.destroy_session = NULL,		\
 		.query_session = NULL, 			\
@@ -339,6 +340,11 @@ struct janus_plugin {
 	 * @param[in] uplink Whether this is related to the uplink (Janus to peer)
 	 * or downlink (peer to Janus) */
 	void (* const slow_link)(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
+	/*! \brief Callback to be notified about the estimated outgoing bandwidth
+	 * on this PeerConnection, e.g., for simulcast/SVC automated switches
+	 * @param[in] handle The plugin/gateway session used for this peer
+	 * @param[in] estimate The estimated bandwidth in bps */
+	void (* const estimated_bandwidth)(janus_plugin_session *handle, uint32_t estimate);
 	/*! \brief Callback to be notified about DTLS alerts from a peer (i.e., the PeerConnection is not valid any more)
 	 * @param[in] handle The plugin/gateway session used for this peer */
 	void (* const hangup_media)(janus_plugin_session *handle);
@@ -402,6 +408,23 @@ struct janus_callbacks {
 	 * @param[in] handle The plugin/gateway session that will be used for this peer
 	 * @param[in] bitrate The bitrate value to send in the REMB message */
 	void (* const send_remb)(janus_plugin_session *handle, guint32 bitrate);
+
+	/*! \brief Create a new bandwidth estimation context for this session
+	 * \note A call to this method will result in the core invoking the
+	 * estimated_bandwidth callback on a regular basis for this session
+	 * @param[in] handle The plugin/gateway session to enable BWE for */
+	void (* const enable_bwe)(janus_plugin_session *handle);
+	/*! \brief Configure the target bitrate in this session, to generate
+	 * probing for bandwidth estimation purposes (0 disables probing)
+	 * \note The request will be ignored if no BWE context is enabled for this session.
+	 * Also notice that probing may be paused at any time by the core, whether it
+	 * was enabled or not, e.g., in case congestion or losses are detected
+	 * @param[in] handle The plugin/gateway session to enable BWE probing for
+	 * @param[in] target The bitrate to target (e.g., next simulcast layer) */
+	void (* const set_bwe_target)(janus_plugin_session *handle, uint32_t bitrate);
+	/*! \brief Get rid of the bandwidth estimation context for this session
+	 * @param[in] handle The plugin/gateway session to disnable BWE for */
+	void (* const disable_bwe)(janus_plugin_session *handle);
 
 	/*! \brief Callback to ask the core to close a WebRTC PeerConnection
 	 * \note A call to this method will result in the core invoking the hangup_media
