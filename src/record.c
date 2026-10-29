@@ -487,6 +487,23 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 	return 0;
 }
 
+int janus_recorder_save_frame_ref(janus_recorder **recorder, janus_mutex *mutex, char *buffer, uint length) {
+	if(!recorder || !mutex)
+		return -1;
+	/* The recorder is only closed and destroyed while holding the mutex, so we
+	 * hold it just to get a reference: we then save the frame without it */
+	janus_mutex_lock(mutex);
+	janus_recorder *rc = *recorder;
+	if(rc)
+		janus_refcount_increase_nodebug(&rc->ref);
+	janus_mutex_unlock(mutex);
+	if(!rc)
+		return -1;
+	int res = janus_recorder_save_frame(rc, buffer, length);
+	janus_refcount_decrease_nodebug(&rc->ref);
+	return res;
+}
+
 int janus_recorder_close(janus_recorder *recorder) {
 	if(!recorder || !g_atomic_int_compare_and_exchange(&recorder->writable, 1, 0))
 		return -1;
