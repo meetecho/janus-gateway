@@ -203,6 +203,8 @@ janus_sdp_mtype janus_sdp_parse_mtype(const char *type) {
 		return JANUS_SDP_VIDEO;
 	if(!strcasecmp(type, "application"))
 		return JANUS_SDP_APPLICATION;
+	if(!strcasecmp(type, "text"))
+		return JANUS_SDP_TEXT;
 	return JANUS_SDP_OTHER;
 }
 
@@ -214,6 +216,8 @@ const char *janus_sdp_mtype_str(janus_sdp_mtype type) {
 			return "video";
 		case JANUS_SDP_APPLICATION:
 			return "application";
+		case JANUS_SDP_TEXT:
+			return "text";
 		case JANUS_SDP_OTHER:
 		default:
 			break;
