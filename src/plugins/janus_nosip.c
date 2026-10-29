@@ -529,7 +529,9 @@ typedef struct janus_nosip_media {
 	char *remote_audio_ip;
 	char *remote_video_ip;
 	gboolean ready;
-	gboolean require_srtp, has_srtp_local, has_srtp_remote;
+	gboolean require_srtp,
+		has_srtp_local_audio, has_srtp_local_video,
+		has_srtp_remote_audio, has_srtp_remote_video;
 	janus_srtp_profile srtp_profile;
 	gboolean has_audio;
 	int audio_rtp_fd, audio_rtcp_fd;
@@ -690,8 +692,8 @@ static int janus_nosip_srtp_set_local(janus_nosip_session *session, gboolean vid
 		JANUS_LOG(LOG_ERR, "[NoSIP-%p] Unsupported SRTP profile\n", session);
 		return -2;
 	}
-	JANUS_LOG(LOG_WARN, "[NoSIP-%p] %s\n", session, *profile);
-	JANUS_LOG(LOG_WARN, "[NoSIP-%p] Key/Salt/Master: %d/%d/%d\n",
+	JANUS_LOG(LOG_VERB, "[NoSIP-%p] %s\n", session, *profile);
+	JANUS_LOG(LOG_VERB, "[NoSIP-%p] Key/Salt/Master: %d/%d/%d\n",
 		session, master_length, key_length, salt_length);
 	/* Generate key/salt */
 	uint8_t *key = g_malloc0(master_length);
@@ -747,7 +749,7 @@ static int janus_nosip_srtp_set_remote(janus_nosip_session *session, gboolean vi
 	if(session == NULL || profile == NULL || crypto == NULL)
 		return -1;
 	/* Which SRTP profile is being negotiated? */
-	JANUS_LOG(LOG_WARN, "[NoSIP-%p] %s\n", session, profile);
+	JANUS_LOG(LOG_VERB, "[NoSIP-%p] %s\n", session, profile);
 	gsize key_length = 0, salt_length = 0, master_length = 0;
 	if(!strcasecmp(profile, "AES_CM_128_HMAC_SHA1_32")) {
 		session->media.srtp_profile = JANUS_SRTP_AES128_CM_SHA1_32;
@@ -832,8 +834,10 @@ static void janus_nosip_srtp_cleanup(janus_nosip_session *session) {
 	if(session == NULL)
 		return;
 	session->media.require_srtp = FALSE;
-	session->media.has_srtp_local = FALSE;
-	session->media.has_srtp_remote = FALSE;
+	session->media.has_srtp_local_audio = FALSE;
+	session->media.has_srtp_local_video = FALSE;
+	session->media.has_srtp_remote_audio = FALSE;
+	session->media.has_srtp_remote_video = FALSE;
 	session->media.srtp_profile = 0;
 	/* Audio */
 	session->media.audio_srtp_tag = 0;
@@ -1210,8 +1214,10 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.remote_video_ip = NULL;
 	session->media.ready = FALSE;
 	session->media.require_srtp = FALSE;
-	session->media.has_srtp_local = FALSE;
-	session->media.has_srtp_remote = FALSE;
+	session->media.has_srtp_local_audio = FALSE;
+	session->media.has_srtp_local_video = FALSE;
+	session->media.has_srtp_remote_audio = FALSE;
+	session->media.has_srtp_remote_video = FALSE;
 	session->media.srtp_profile = 0;
 	session->media.audio_srtp_local_profile = NULL;
 	session->media.audio_srtp_local_crypto = NULL;
@@ -1329,8 +1335,10 @@ json_t *janus_nosip_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "unique_id", json_string(session->unique_id));
 	if(session->sdp) {
 		json_object_set_new(info, "srtp-required", json_string(session->media.require_srtp ? "yes" : "no"));
-		json_object_set_new(info, "sdes-local", json_string(session->media.has_srtp_local ? "yes" : "no"));
-		json_object_set_new(info, "sdes-remote", json_string(session->media.has_srtp_remote ? "yes" : "no"));
+		json_object_set_new(info, "sdes-local-audio", json_string(session->media.has_srtp_local_audio ? "yes" : "no"));
+		json_object_set_new(info, "sdes-local-video", json_string(session->media.has_srtp_local_video ? "yes" : "no"));
+		json_object_set_new(info, "sdes-remote-audio", json_string(session->media.has_srtp_remote_audio ? "yes" : "no"));
+		json_object_set_new(info, "sdes-remote-video", json_string(session->media.has_srtp_remote_video ? "yes" : "no"));
 	}
 	if(session->arc || session->vrc || session->arc_peer || session->vrc_peer) {
 		json_t *recording = json_object();
@@ -1895,7 +1903,7 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pa
 			/* Save the frame if we're recording */
 			janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
 			/* Is SRTP involved? */
-			if(session->media.has_srtp_local) {
+			if((!video && session->media.has_srtp_local_audio) || (video && session->media.has_srtp_local_video)) {
 				char sbuf[2048];
 				memcpy(&sbuf, buf, len);
 				int protected = len;
@@ -1956,7 +1964,7 @@ void janus_nosip_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *
 				(video ? session->media.video_ssrc : session->media.audio_ssrc),
 				(video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer));
 			/* Is SRTP involved? */
-			if(session->media.has_srtp_local) {
+			if((!video && session->media.has_srtp_local_audio) || (video && session->media.has_srtp_local_video)) {
 				char sbuf[2048];
 				memcpy(&sbuf, buf, len);
 				int protected = len;
@@ -2199,16 +2207,20 @@ static void *janus_nosip_handler(void *data) {
 			session->media.require_srtp = require_srtp;
 			if(generate) {
 				if(!offer) {
-					do_srtp = do_srtp || session->media.has_srtp_remote;
+					do_srtp = do_srtp || session->media.has_srtp_remote_audio || session->media.has_srtp_remote_video;
 					/* Make sure the request is consistent with the state (original offer) */
-					if(session->media.require_srtp && !session->media.has_srtp_remote) {
+					if(session->media.require_srtp && (!session->media.has_srtp_remote_audio || !session->media.has_srtp_remote_video)) {
 						JANUS_LOG(LOG_ERR, "Can't generate answer: SDES-SRTP required, but caller didn't offer it\n");
 						error_code = JANUS_NOSIP_ERROR_TOO_STRICT;
 						g_snprintf(error_cause, 512, "Can't generate answer: SDES-SRTP required, but caller didn't offer it");
 						goto error;
 					}
+					session->media.has_srtp_local_audio = do_srtp && session->media.has_srtp_remote_audio;
+					session->media.has_srtp_local_video = do_srtp && session->media.has_srtp_remote_video;
+				} else {
+					session->media.has_srtp_local_audio = do_srtp;
+					session->media.has_srtp_local_video = do_srtp;
 				}
-				session->media.has_srtp_local = do_srtp;
 				if(do_srtp) {
 					/* Any SRTP profile different from the default? */
 					janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
@@ -2334,7 +2346,7 @@ static void *janus_nosip_handler(void *data) {
 					g_snprintf(error_cause, 512, "No remote IP addresses");
 					goto error;
 				}
-				if(session->media.require_srtp && !session->media.has_srtp_remote) {
+				if(session->media.require_srtp && (!session->media.has_srtp_remote_audio || !session->media.has_srtp_remote_video)) {
 					JANUS_LOG(LOG_ERR, "Can't process request: SDES-SRTP required, but caller didn't offer it\n");
 					error_code = JANUS_NOSIP_ERROR_TOO_STRICT;
 					g_snprintf(error_cause, 512, "Can't process request: SDES-SRTP required, but caller didn't offer it");
@@ -2355,7 +2367,7 @@ static void *janus_nosip_handler(void *data) {
 				/* Send SDP to the browser */
 				result = json_object();
 				json_object_set_new(result, "event", json_string("processed"));
-				if(session->media.has_srtp_remote) {
+				if(session->media.has_srtp_remote_audio || session->media.has_srtp_remote_video) {
 					json_object_set_new(result, "srtp",
 						json_string(session->media.require_srtp ? "sdes_mandatory" : "sdes_optional"));
 				}
@@ -2717,10 +2729,11 @@ void janus_nosip_sdp_process(janus_nosip_session *session, janus_sdp *sdp, gbool
 							}
 							if(!video) {
 								session->media.audio_srtp_tag = tag;
+								session->media.has_srtp_remote_audio = TRUE;
 							} else {
 								session->media.video_srtp_tag = tag;
+								session->media.has_srtp_remote_video = TRUE;
 							}
-							session->media.has_srtp_remote = TRUE;
 						}
 					}
 				} else if(m->type == JANUS_SDP_VIDEO && !strcasecmp(a->name, "rtcp-fb") && a->value) {
@@ -2782,7 +2795,7 @@ char *janus_nosip_sdp_manipulate(janus_nosip_session *session, janus_sdp *sdp, g
 		m->proto = g_strdup(session->media.require_srtp ? "RTP/SAVP" : "RTP/AVP");
 		if(m->type == JANUS_SDP_AUDIO) {
 			m->port = session->media.local_audio_rtp_port;
-			if(session->media.has_srtp_local) {
+			if(session->media.has_srtp_local_audio) {
 				if(!session->media.audio_srtp_local_profile || !session->media.audio_srtp_local_crypto) {
 					janus_nosip_srtp_set_local(session, FALSE, &session->media.audio_srtp_local_profile, &session->media.audio_srtp_local_crypto);
 				}
@@ -2794,7 +2807,7 @@ char *janus_nosip_sdp_manipulate(janus_nosip_session *session, janus_sdp *sdp, g
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			m->port = session->media.local_video_rtp_port;
-			if(session->media.has_srtp_local) {
+			if(session->media.has_srtp_local_video) {
 				if(!session->media.video_srtp_local_profile || !session->media.video_srtp_local_crypto) {
 					janus_nosip_srtp_set_local(session, TRUE, &session->media.video_srtp_local_profile, &session->media.video_srtp_local_crypto);
 				}
@@ -3389,7 +3402,7 @@ static void *janus_nosip_relay_thread(void *data) {
 							video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer);
 					}
 					/* Is this SRTP? */
-					if(session->media.has_srtp_remote) {
+					if((!video && session->media.has_srtp_remote_audio) || (video && session->media.has_srtp_remote_video)) {
 						int buflen = bytes;
 						srtp_err_status_t res = srtp_unprotect(
 							(video ? session->media.video_srtp_in : session->media.audio_srtp_in),
@@ -3455,7 +3468,7 @@ static void *janus_nosip_relay_thread(void *data) {
 						/* Not an RTCP packet? */
 						continue;
 					}
-					if(session->media.has_srtp_remote) {
+					if((!video && session->media.has_srtp_remote_audio) || (video && session->media.has_srtp_remote_video)) {
 						int buflen = bytes;
 						srtp_err_status_t res = srtp_unprotect_rtcp(
 							(video ? session->media.video_srtp_in : session->media.audio_srtp_in),
@@ -3504,7 +3517,7 @@ static void janus_nosip_rtcp_pli_send(janus_nosip_session *session) {
 		session, session->media.video_ssrc, session->media.video_ssrc_peer);
 	janus_rtcp_fix_ssrc(NULL, (char *)rtcp_buf, rtcp_len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
 	/* Is SRTP involved? */
-	if(session->media.has_srtp_local) {
+	if(session->media.has_srtp_local_video) {
 		char sbuf[50];
 		memcpy(&sbuf, rtcp_buf, rtcp_len);
 		int protected = rtcp_len;
