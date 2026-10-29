@@ -87,6 +87,10 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	return janus_recorder_create_full(dir, codec, NULL, filename);
 }
 janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, const char *fmtp, const char *filename) {
+	if(filename != NULL && strstr(filename, "../") != NULL) {
+		JANUS_LOG(LOG_ERR, "Can't use relative paths in recording filenames\n");
+		return NULL;
+	}
 	janus_recorder_medium type = JANUS_RECORDER_AUDIO;
 	if(codec == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing codec information\n");

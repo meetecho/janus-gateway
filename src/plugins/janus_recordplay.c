@@ -1971,6 +1971,16 @@ static void *janus_recordplay_handler(void *data) {
 				}
 				rec->arc_file = g_strdup(filename);
 				janus_recorder *rc = janus_recorder_create(recordings_path, janus_audiocodec_name(rec->acodec), rec->arc_file);
+				if(rc == NULL) {
+					janus_sdp_destroy(offer);
+					janus_refcount_decrease(&rec->ref);
+					janus_recordplay_recording_destroy(rec);
+					janus_mutex_unlock(&recordings_mutex);
+					JANUS_LOG(LOG_ERR, "Could not create recorder\n");
+					error_code = JANUS_RECORDPLAY_ERROR_INVALID_RECORDING;
+					g_snprintf(error_cause, 512, "Could not create recorder");
+					goto error;
+				}
 				/* If the audio-level extension has been negotiated, mark it in the recording */
 				if(rec->audiolevel_ext_id > 0)
 					janus_recorder_add_extmap(rc, rec->audiolevel_ext_id, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
@@ -1992,6 +2002,16 @@ static void *janus_recordplay_handler(void *data) {
 				rec->vrc_file = g_strdup(filename);
 				janus_recorder *rc = janus_recorder_create_full(recordings_path,
 					janus_videocodec_name(rec->vcodec), rec->vfmtp, rec->vrc_file);
+				if(rc == NULL) {
+					janus_sdp_destroy(offer);
+					janus_refcount_decrease(&rec->ref);
+					janus_recordplay_recording_destroy(rec);
+					janus_mutex_unlock(&recordings_mutex);
+					JANUS_LOG(LOG_ERR, "Could not create recorder\n");
+					error_code = JANUS_RECORDPLAY_ERROR_INVALID_RECORDING;
+					g_snprintf(error_cause, 512, "Could not create recorder");
+					goto error;
+				}
 				/* If the video-orientation extension has been negotiated, mark it in the recording */
 				if(rec->videoorient_ext_id > 0)
 					janus_recorder_add_extmap(rc, rec->videoorient_ext_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
