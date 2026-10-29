@@ -1821,6 +1821,9 @@ typedef struct janus_audiobridge_participant {
 	int expected_loss;			/* Percentage of expected loss, to configure libopus outgoing FEC behaviour (default=0, no FEC even if negotiated) */
 	uint32_t last_timestamp;	/* Last in seq timestamp */
 	uint16_t last_seq; 		/* Last sequence number */
+	gboolean jb_seq_init;		/* Whether jb_last_seq/jb_ext_seq have been initialized */
+	uint16_t jb_last_seq;		/* Highest RTP sequence number queued in the jitter buffer */
+	uint32_t jb_ext_seq;		/* Extended (unwrapped) version of jb_last_seq, used for jitter buffer timestamps */
 	gboolean reset;				/* Whether or not the Opus context must be reset, without re-joining the room */
 	GThread *thread;			/* Encoding thread for this participant */
 	gboolean mjr_active;		/* Whether this participant has to be recorded to an mjr file or not */
@@ -1877,6 +1880,8 @@ static void janus_audiobridge_participant_clear_jitter_buffer(janus_audiobridge_
 	if(participant->jitter) {
 		jitter_buffer_reset(participant->jitter);
 	}
+	/* The jitter buffer starts over, so restart the sequence number unwrapping too */
+	participant->jb_seq_init = FALSE;
 }
 
 static void janus_audiobridge_participant_clear_inbuf(janus_audiobridge_participant *participant) {
@@ -6431,7 +6436,24 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 			jbp.data = (char *)pkt;
 			jbp.len = 0;
 			jbp.span = (participant->codec == JANUS_AUDIOCODEC_OPUS ? 960 : 160);
-			jbp.timestamp = (uint32_t)ntohs(rtp->seq_number) * jbp.span;
+			/* Unwrap the 16-bit sequence number, or when it wraps (~22 minutes at 20ms)
+			 * the timestamp would jump backwards and the jitter buffer would drop packets */
+			uint16_t seq = ntohs(rtp->seq_number);
+			uint32_t ext_seq;
+			if(!participant->jb_seq_init) {
+				participant->jb_seq_init = TRUE;
+				participant->jb_last_seq = seq;
+				participant->jb_ext_seq = seq;
+				ext_seq = seq;
+			} else {
+				int16_t delta = (int16_t)(seq - participant->jb_last_seq);
+				ext_seq = participant->jb_ext_seq + (int32_t)delta;
+				if(delta > 0) {
+					participant->jb_last_seq = seq;
+					participant->jb_ext_seq = ext_seq;
+				}
+			}
+			jbp.timestamp = ext_seq * jbp.span;
 			jitter_buffer_put(participant->jitter, &jbp);
 			janus_mutex_unlock(&participant->qmutex);
 		}
@@ -9349,6 +9371,10 @@ static void *janus_audiobridge_participant_thread(void *data) {
 						}
 						int32_t output_samples = 0;
 						opus_decoder_ctl(participant->decoder, OPUS_GET_LAST_PACKET_DURATION(&output_samples));
+						/* A freshly created decoder (e.g., after a "resetdecoder" request) has
+						 * no last packet duration yet: opus_decode() would fail with OPUS_BAD_ARG */
+						if(output_samples <= 0)
+							output_samples = participant->sampling_rate ? (int32_t)participant->sampling_rate/50 : OPUS_SAMPLES;
 						/* Allocate a fake packet we can queue */
 						pkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
 						pkt->data = g_malloc0(BUFFER_SAMPLES * sizeof(opus_int16));
@@ -9372,7 +9398,9 @@ static void *janus_audiobridge_participant_thread(void *data) {
 							JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", pkt->length, opus_strerror(pkt->length));
 							g_free(pkt->data);
 							g_free(pkt);
-							break;
+							/* Don't break here, or we'd kill the participant thread (and so both
+							 * decoding and encoding for this participant): just skip the frame */
+							continue;
 						} else if(pkt->length == 0) {
 							/* Empty packet => buffer is all zeroes (g_malloc0) => it's silence */
 							pkt->silence = TRUE;
