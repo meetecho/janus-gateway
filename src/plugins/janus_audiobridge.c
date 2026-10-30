@@ -8326,7 +8326,9 @@ static void *janus_audiobridge_handler(void *data) {
 			janus_mutex_unlock(&sessions_mutex);
 			/* Get rid of an ongoing session. ws-media has no PeerConnection, so
 			 * close_pc would leave the HTTP signaling session until timeout. */
-			if(session->participant && session->participant->wsmedia)
+			janus_audiobridge_participant *hangup_participant =
+				(janus_audiobridge_participant *)session->participant;
+			if(hangup_participant && hangup_participant->wsmedia)
 				gateway->abandon_session(session->handle);
 			else
 				gateway->close_pc(session->handle);
