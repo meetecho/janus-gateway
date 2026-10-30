@@ -567,10 +567,16 @@ void *janus_nanomsg_thread(void *data) {
 					(void)nn_recv(poll_nfds[i].fd, buffer, BUFFER_SIZE, 0);
 				} else if(poll_nfds[i].fd == nfd || poll_nfds[i].fd == admin_nfd) {
 					/* Janus/Admin API: get the message from the client */
-					int res = nn_recv(poll_nfds[i].fd, buffer, BUFFER_SIZE, 0);
+					int res = nn_recv(poll_nfds[i].fd, buffer, BUFFER_SIZE-1, 0);
 					if(res < 0) {
 						JANUS_LOG(LOG_WARN, "Error receiving %s API message... %d (%s)\n",
 							poll_nfds[i].fd == nfd ? "Janus" : "Admin", errno, nn_strerror(errno));
+						continue;
+					}
+					if(res > BUFFER_SIZE-1) {
+						/* nn_recv returns the size of the whole message, even when truncated */
+						JANUS_LOG(LOG_WARN, "%s API message too large (%d bytes), dropping it...\n",
+							poll_nfds[i].fd == nfd ? "Janus" : "Admin", res);
 						continue;
 					}
 					/* If we got here, there's data to handle */

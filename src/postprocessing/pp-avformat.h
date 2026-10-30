@@ -52,5 +52,16 @@ AVFormatContext *janus_pp_create_avformatcontext(const char *format, const char 
 AVStream *janus_pp_new_video_avstream(AVFormatContext *fctx, int codec_id, int width, int height);
 AVStream *janus_pp_new_audio_avstream(AVFormatContext *fctx, int codec_id, int samplerate, int channels, const uint8_t *extradata, int size);
 
+/*! \brief Helper to append data to a video frame we're assembling for FFmpeg
+ * @note The data is only appended if it fits in the frame buffer, leaving
+ * room for the FFmpeg input padding: if it doesn't, nothing is written
+ * @param[in] frame The frame buffer
+ * @param[in] size The size of the frame buffer
+ * @param[in,out] frame_len The current length of the frame, updated on success
+ * @param[in] data The data to append
+ * @param[in] len The length of the data to append
+ * @returns 0 if the data was appended, -1 otherwise */
+int janus_pp_frame_append(uint8_t *frame, int size, int *frame_len, const uint8_t *data, int len);
+
 
 #endif

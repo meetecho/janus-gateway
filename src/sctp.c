@@ -537,13 +537,13 @@ uint16_t janus_sctp_find_free_stream(janus_sctp_association *sctp) {
 	} else {
 		limit = NUMBER_OF_STREAMS;
 	}
-	/* stream id 0 is reserved */
-	for(i = 1; i < limit; i++) {
+	/* Keep stream zero reserved and respect DTLS role parity. */
+	for(i = (sctp->dtls->dtls_role == JANUS_DTLS_ROLE_CLIENT ? 2 : 1); i < limit; i += 2) {
 		if(sctp->stream_channel[i] == NULL) {
 			break;
 		}
 	}
-	if(i == limit) {
+	if(i >= limit) {
 		return 0;
 	} else {
 		return ((uint16_t)i);
@@ -924,7 +924,7 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 
 	if((channel = janus_sctp_find_channel_by_stream(sctp, stream))) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] channel %d is in state %d instead of CLOSED.\n", sctp->handle_id, channel->id, channel->state);
-		JANUS_LOG(LOG_ERR, "%.*s\n", ntohs(req->label_length), req->label);
+		JANUS_LOG(LOG_ERR, "%.*s\n", (int)MIN(ntohs(req->label_length), length - sizeof(janus_datachannel_open_request)), req->label);
 		/* XXX: some error handling */
 		return;
 	}
