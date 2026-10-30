@@ -88,11 +88,24 @@ static int compression = 6;		/* Z_DEFAULT_COMPRESSION */
 /* Queue of events to handle */
 static GAsyncQueue *events = NULL;
 static gboolean group_events = TRUE;
+static volatile gint events_max_queue = 0;
+/* Protected by the queue lock; GAsyncQueue's length subtracts waiting consumers. */
+static guint queue_pending = 0;
+static guint64 queue_dropped = 0;
 static json_t exit_event;
 static void janus_sampleevh_event_free(json_t *event) {
 	if(!event || event == &exit_event)
 		return;
 	json_decref(event);
+}
+
+static json_t *janus_sampleevh_pop_event(gboolean wait) {
+	g_async_queue_lock(events);
+	json_t *event = wait ? g_async_queue_pop_unlocked(events) : g_async_queue_try_pop_unlocked(events);
+	if(event && event != &exit_event)
+		queue_pending--;
+	g_async_queue_unlock(events);
+	return event;
 }
 
 /* Retransmission management */
@@ -114,6 +127,7 @@ static struct janus_json_parameter request_parameters[] = {
 static struct janus_json_parameter tweak_parameters[] = {
 	{"events", JSON_STRING, 0},
 	{"grouping", JANUS_JSON_BOOL, 0},
+	{"events_max_queue", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"backend", JSON_STRING, 0},
 	{"backend_user", JSON_STRING, 0},
 	{"backend_pwd", JSON_STRING, 0},
@@ -197,6 +211,18 @@ int janus_sampleevh_init(const char *config_path) {
 				item = janus_config_get(config, config_general, janus_config_type_item, "events");
 				if(item && item->value)
 					janus_events_edit_events_mask(item->value, &janus_sampleevh.events_mask);
+				/* Absolute queue cap */
+				item = janus_config_get(config, config_general, janus_config_type_item, "events_max_queue");
+				g_atomic_int_set(&events_max_queue, 0);
+				if(item && item->value) {
+					char *end = NULL;
+					gint64 limit = g_ascii_strtoll(item->value, &end, 10);
+					if(end == item->value || *end || limit < 0 || limit > G_MAXINT) {
+						JANUS_LOG(LOG_WARN, "Invalid events_max_queue, using default (unbounded)\n");
+					} else {
+						g_atomic_int_set(&events_max_queue, (gint)limit);
+					}
+				}
 				/* Is grouping of events ok? */
 				item = janus_config_get(config, config_general, janus_config_type_item, "grouping");
 				if(item && item->value)
@@ -252,6 +278,8 @@ int janus_sampleevh_init(const char *config_path) {
 
 	/* Initialize the events queue */
 	events = g_async_queue_new_full((GDestroyNotify) janus_sampleevh_event_free);
+	queue_pending = 0;
+	queue_dropped = 0;
 
 	g_atomic_int_set(&initialized, 1);
 
@@ -333,7 +361,24 @@ void janus_sampleevh_incoming_event(json_t *event) {
 	 * when the event actually happened on this machine, so that, if relevant, we can compute
 	 * any delay in the actual event processing ourselves. */
 	json_incref(event);
-	g_async_queue_push(events, event);
+	g_async_queue_lock(events);
+	/* The shutdown wakeup must never be evicted as an ordinary event. */
+	if(g_atomic_int_get(&stopping)) {
+		g_async_queue_unlock(events);
+		json_decref(event);
+		return;
+	}
+	g_async_queue_push_unlocked(events, event);
+	queue_pending++;
+	guint cap = g_atomic_int_get(&events_max_queue);
+	/* Queue admission only: keep the newest events, as in the WebSocket handler. */
+	while(cap > 0 && queue_pending > cap) {
+		json_t *drop = g_async_queue_try_pop_unlocked(events);
+		json_decref(drop);
+		queue_pending--;
+		queue_dropped++;
+	}
+	g_async_queue_unlock(events);
 
 }
 
@@ -351,7 +396,14 @@ json_t *janus_sampleevh_handle_request(json_t *request) {
 		goto plugin_response;
 	/* Get the request */
 	const char *request_text = json_string_value(json_object_get(request, "request"));
-	if(!strcasecmp(request_text, "tweak")) {
+	if(!strcasecmp(request_text, "info")) {
+		g_async_queue_lock(events);
+		json_t *info = json_pack("{sIsIsi}",
+			"queued", (json_int_t)queue_pending, "dropped", (json_int_t)queue_dropped,
+			"events_max_queue", g_atomic_int_get(&events_max_queue));
+		g_async_queue_unlock(events);
+		return json_pack("{siso}", "result", 200, "info", info);
+	} else if(!strcasecmp(request_text, "tweak")) {
 		/* We only support a request to tweak the current settings */
 		JANUS_VALIDATE_JSON_OBJECT(request, tweak_parameters,
 			error_code, error_cause, TRUE,
@@ -361,7 +413,7 @@ json_t *janus_sampleevh_handle_request(json_t *request) {
 		/* Parameters we can change */
 		const char *req_events = NULL, *req_backend = NULL,
 			*req_backend_user = NULL, *req_backend_pwd = NULL;
-		int req_grouping = -1, req_maxretr = -1, req_backoff = -1,
+		int req_grouping = -1, req_max_queue = -1, req_maxretr = -1, req_backoff = -1,
 			req_compress = -1, req_compression = -1;
 		/* Events */
 		if(json_object_get(request, "events"))
@@ -369,6 +421,16 @@ json_t *janus_sampleevh_handle_request(json_t *request) {
 		/* Grouping */
 		if(json_object_get(request, "grouping"))
 			req_grouping = json_is_true(json_object_get(request, "grouping"));
+		/* Absolute queue cap: zero disables it, as in the WebSocket handler. */
+		if(json_object_get(request, "events_max_queue")) {
+			json_int_t cap = json_integer_value(json_object_get(request, "events_max_queue"));
+			if(cap > G_MAXINT) {
+				error_code = JANUS_SAMPLEEVH_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, sizeof(error_cause), "Invalid events_max_queue (maximum %d)", G_MAXINT);
+				goto plugin_response;
+			}
+			req_max_queue = (gint)cap;
+		}
 		/* Compression */
 		if(json_object_get(request, "compress"))
 			req_compress = json_is_true(json_object_get(request, "compress"));
@@ -398,6 +460,8 @@ json_t *janus_sampleevh_handle_request(json_t *request) {
 			janus_events_edit_events_mask(req_events, &janus_sampleevh.events_mask);
 		if(req_grouping > -1)
 			group_events = req_grouping ? TRUE : FALSE;
+		if(req_max_queue > -1)
+			g_atomic_int_set(&events_max_queue, req_max_queue);
 		if(req_compress > -1)
 			compress = req_compress ? TRUE : FALSE;
 		if(req_compression > -1 && req_compression < 10)
@@ -453,7 +517,7 @@ static void *janus_sampleevh_handler(void *data) {
 	int retransmit = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		if(!retransmit) {
-			event = g_async_queue_pop(events);
+			event = janus_sampleevh_pop_event(TRUE);
 			if(event == &exit_event)
 				break;
 			count = 0;
@@ -701,7 +765,7 @@ static void *janus_sampleevh_handler(void *data) {
 				count++;
 				if(count == max)
 					break;
-				event = g_async_queue_try_pop(events);
+				event = janus_sampleevh_pop_event(FALSE);
 				if(event == NULL || event == &exit_event)
 					break;
 			}

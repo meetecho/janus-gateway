@@ -16,6 +16,12 @@ general: {
 	json = "compact"	# Whether the JSON messages should be indented (pretty),
 						# plain (no indentation) or compact (no indentation and no spaces)
 
+						# Absolute cap on pending events. Keep newest events by discarding oldest ones.
+						# 0 disables the cap (default).
+						# 'info' reports queued/dropped; 'tweak' changes the cap,
+						# which takes effect on the next enqueue.
+	#events_max_queue = 10000
+
 	#compress = true	# Optionally, the JSON messages can be compressed using zlib
 	#compression = 9	# In case, you can specify the compression factor, where 1 is
 						# the fastest (low compression), and 9 gives the best compression
