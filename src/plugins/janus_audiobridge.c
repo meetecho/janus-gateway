@@ -8324,8 +8324,12 @@ static void *janus_audiobridge_handler(void *data) {
 			janus_mutex_unlock(&rooms_mutex);
 		} else if(!strcasecmp(request_text, "hangup")) {
 			janus_mutex_unlock(&sessions_mutex);
-			/* Get rid of an ongoing session */
-			gateway->close_pc(session->handle);
+			/* Get rid of an ongoing session. ws-media has no PeerConnection, so
+			 * close_pc would leave the HTTP signaling session until timeout. */
+			if(session->participant && session->participant->wsmedia)
+				gateway->abandon_session(session->handle);
+			else
+				gateway->close_pc(session->handle);
 			event = json_object();
 			json_object_set_new(event, "audiobridge", json_string("hangingup"));
 		} else if(!strcasecmp(request_text, "leave")) {
@@ -8408,6 +8412,10 @@ static void *janus_audiobridge_handler(void *data) {
 				/* Only decrease the counter if we were still there */
 				janus_refcount_decrease(&audiobridge->ref);
 			}
+			/* leave does not tear down the PeerConnection; for ws-media there is
+			 * none, so drop the HTTP signaling session or it sits until timeout. */
+			if(participant->wsmedia)
+				gateway->abandon_session(session->handle);
 		} else {
 			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
