@@ -160,6 +160,13 @@ janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, i
 
 	if(truncate < 0)
 		return NULL;
+	/* Reject relative paths in the directory or filename: the folder and filename
+	 * come straight from the Admin API, so apply the same guard src/record.c uses
+	 * for .mjr recording paths */
+	if((dir != NULL && strstr(dir, "../") != NULL) || (filename != NULL && strstr(filename, "../") != NULL)) {
+		JANUS_LOG(LOG_ERR, "Can't use relative paths in capture filenames\n");
+		return NULL;
+	}
 
 	/* Copy given filename or generate a random one */
 	if(filename == NULL) {
