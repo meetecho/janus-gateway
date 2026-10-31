@@ -8449,6 +8449,17 @@ static void janus_audiobridge_rec_add_wav_header(janus_audiobridge_room *audiobr
 	char filename[255];
 	gint64 now = janus_get_real_time();
 	audiobridge->rec_start_time = now;
+	/* Reject relative paths in the directory or filename, the same guard
+	 * src/record.c applies to .mjr recordings: both come from the plugin API */
+	if((audiobridge->record_dir != NULL && strstr(audiobridge->record_dir, "../") != NULL) ||
+			(audiobridge->record_file != NULL && strstr(audiobridge->record_file, "../") != NULL)) {
+		JANUS_LOG(LOG_ERR, "Can't use relative paths in recording filenames\n");
+		g_atomic_int_set(&audiobridge->record, 0);
+		g_atomic_int_set(&audiobridge->wav_header_added, 0);
+		g_free(audiobridge->record_file);
+		audiobridge->record_file = NULL;
+		return;
+	}
 	if(audiobridge->record_file) {
 		g_snprintf(filename, 255, "%s%s%s%s%s",
 			audiobridge->record_dir ? audiobridge->record_dir : "",
