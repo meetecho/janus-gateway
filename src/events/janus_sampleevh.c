@@ -399,7 +399,8 @@ json_t *janus_sampleevh_handle_request(json_t *request) {
 	if(!strcasecmp(request_text, "info")) {
 		g_async_queue_lock(events);
 		json_t *info = json_pack("{sIsIsi}",
-			"queued", (json_int_t)queue_pending, "dropped", (json_int_t)queue_dropped,
+			"queued", (json_int_t)queue_pending,
+			"dropped", (json_int_t)queue_dropped,
 			"events_max_queue", g_atomic_int_get(&events_max_queue));
 		g_async_queue_unlock(events);
 		return json_pack("{siso}", "result", 200, "info", info);
