@@ -86,25 +86,25 @@ static gboolean compress = FALSE;
 static int compression = 6;		/* Z_DEFAULT_COMPRESSION */
 
 /* Queue of events to handle */
-static GAsyncQueue *events = NULL;
+static GQueue *events = NULL;
+static janus_mutex events_mutex = JANUS_MUTEX_INITIALIZER;
+static janus_condition events_cond;
 static gboolean group_events = TRUE;
 static volatile gint events_max_queue = 0;
-/* Protected by the queue lock; GAsyncQueue's length subtracts waiting consumers. */
-static guint queue_pending = 0;
+/* Protected by events_mutex. */
 static guint64 queue_dropped = 0;
-static json_t exit_event;
 static void janus_sampleevh_event_free(json_t *event) {
-	if(!event || event == &exit_event)
-		return;
 	json_decref(event);
 }
 
 static json_t *janus_sampleevh_pop_event(gboolean wait) {
-	g_async_queue_lock(events);
-	json_t *event = wait ? g_async_queue_pop_unlocked(events) : g_async_queue_try_pop_unlocked(events);
-	if(event && event != &exit_event)
-		queue_pending--;
-	g_async_queue_unlock(events);
+	janus_mutex_lock(&events_mutex);
+	/* Waiting releases events_mutex; the loop rechecks the queue and shutdown flag on wakeup. */
+	while(wait && !g_atomic_int_get(&stopping) && g_queue_is_empty(events)) {
+		janus_condition_wait(&events_cond, &events_mutex);
+	}
+	json_t *event = g_atomic_int_get(&stopping) ? NULL : g_queue_pop_head(events);
+	janus_mutex_unlock(&events_mutex);
 	return event;
 }
 
@@ -277,8 +277,8 @@ int janus_sampleevh_init(const char *config_path) {
 	curl_global_init(CURL_GLOBAL_ALL);
 
 	/* Initialize the events queue */
-	events = g_async_queue_new_full((GDestroyNotify) janus_sampleevh_event_free);
-	queue_pending = 0;
+	events = g_queue_new();
+	janus_condition_init(&events_cond);
 	queue_dropped = 0;
 
 	g_atomic_int_set(&initialized, 1);
@@ -287,10 +287,10 @@ int janus_sampleevh_init(const char *config_path) {
 	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus sampleevh handler", janus_sampleevh_handler, NULL, &error);
 	if(error != NULL) {
-		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SampleEventHandler handler thread...\n",
 			error->code, error->message ? error->message : "??");
 		g_error_free(error);
+		janus_sampleevh_destroy();
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_SAMPLEEVH_NAME);
@@ -300,16 +300,22 @@ int janus_sampleevh_init(const char *config_path) {
 void janus_sampleevh_destroy(void) {
 	if(!g_atomic_int_get(&initialized))
 		return;
+	janus_mutex_lock(&events_mutex);
 	g_atomic_int_set(&stopping, 1);
+	/* Wake the sender even when there are no queued events. */
+	janus_condition_signal(&events_cond);
+	janus_mutex_unlock(&events_mutex);
 
-	g_async_queue_push(events, &exit_event);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
 	}
 
-	g_async_queue_unref(events);
+	janus_mutex_lock(&events_mutex);
+	g_queue_free_full(events, (GDestroyNotify)janus_sampleevh_event_free);
 	events = NULL;
+	janus_condition_destroy(&events_cond);
+	janus_mutex_unlock(&events_mutex);
 
 	g_free(backend);
 
@@ -361,25 +367,23 @@ void janus_sampleevh_incoming_event(json_t *event) {
 	 * when the event actually happened on this machine, so that, if relevant, we can compute
 	 * any delay in the actual event processing ourselves. */
 	json_incref(event);
-	g_async_queue_lock(events);
-	/* The shutdown wakeup must never be evicted as an ordinary event. */
-	if(g_atomic_int_get(&stopping)) {
-		g_async_queue_unlock(events);
+	janus_mutex_lock(&events_mutex);
+	/* Shutdown may have started while we were waiting for the mutex. */
+	if(g_atomic_int_get(&stopping) || events == NULL) {
+		janus_mutex_unlock(&events_mutex);
 		json_decref(event);
 		return;
 	}
-	g_async_queue_push_unlocked(events, event);
-	queue_pending++;
+	g_queue_push_tail(events, event);
 	guint cap = g_atomic_int_get(&events_max_queue);
-	/* Queue admission only: keep the newest events, as in the WebSocket handler. */
-	while(cap > 0 && queue_pending > cap) {
-		json_t *drop = g_async_queue_try_pop_unlocked(events);
+	/* Keeps the newest events, as in the WebSocket handler. */
+	while(cap > 0 && g_queue_get_length(events) > cap) {
+		json_t *drop = g_queue_pop_head(events);
 		json_decref(drop);
-		queue_pending--;
 		queue_dropped++;
 	}
-	g_async_queue_unlock(events);
-
+	janus_condition_signal(&events_cond);
+	janus_mutex_unlock(&events_mutex);
 }
 
 json_t *janus_sampleevh_handle_request(json_t *request) {
@@ -397,12 +401,12 @@ json_t *janus_sampleevh_handle_request(json_t *request) {
 	/* Get the request */
 	const char *request_text = json_string_value(json_object_get(request, "request"));
 	if(!strcasecmp(request_text, "info")) {
-		g_async_queue_lock(events);
+		janus_mutex_lock(&events_mutex);
 		json_t *info = json_pack("{sIsIsi}",
-			"queued", (json_int_t)queue_pending,
+			"queued", (json_int_t)(events ? g_queue_get_length(events) : 0),
 			"dropped", (json_int_t)queue_dropped,
 			"events_max_queue", g_atomic_int_get(&events_max_queue));
-		g_async_queue_unlock(events);
+		janus_mutex_unlock(&events_mutex);
 		return json_pack("{siso}", "result", 200, "info", info);
 	} else if(!strcasecmp(request_text, "tweak")) {
 		/* We only support a request to tweak the current settings */
@@ -519,7 +523,7 @@ static void *janus_sampleevh_handler(void *data) {
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		if(!retransmit) {
 			event = janus_sampleevh_pop_event(TRUE);
-			if(event == &exit_event)
+			if(event == NULL)
 				break;
 			count = 0;
 			output = NULL;
@@ -767,7 +771,7 @@ static void *janus_sampleevh_handler(void *data) {
 				if(count == max)
 					break;
 				event = janus_sampleevh_pop_event(FALSE);
-				if(event == NULL || event == &exit_event)
+				if(event == NULL)
 					break;
 			}
 
