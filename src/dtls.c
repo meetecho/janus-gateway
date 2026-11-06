@@ -616,7 +616,16 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_pc, janus_dtls_role role) {
 	 * negotiated when acting as the server. Use NIST's P-256 which is
 	 * commonly supported.
 	 */
-#ifndef OPENSSL_VERSION_MAJOR
+#if defined(HAVE_BORINGSSL) && defined(SSL_GROUP_X25519_MLKEM768)
+	const uint16_t grp_list[] = { SSL_GROUP_X25519_MLKEM768, SSL_GROUP_X25519,
+		SSL_GROUP_SECP256R1, SSL_GROUP_SECP384R1 };
+	if(!SSL_set1_group_ids(dtls->ssl, grp_list, sizeof(grp_list)/sizeof(grp_list[0]))) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error setting DTLS groups! (%s)\n",
+			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
+		janus_refcount_decrease(&dtls->ref);
+		return NULL;
+	}
+#elif !defined(OPENSSL_VERSION_MAJOR)
 	EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
 	if(ecdh == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating ECDH group! (%s)\n",
@@ -761,7 +770,15 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 		}
 #endif
 	} else {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS established, yay!\n", handle->handle_id);
+#if defined(HAVE_BORINGSSL)
+		const char *group = SSL_get_group_name(SSL_get_group_id(dtls->ssl));
+#elif defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
+		const char *group = SSL_group_to_name(dtls->ssl, SSL_get_negotiated_group(dtls->ssl));
+#else
+		const char *group = NULL;
+#endif
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS established (%s, %s)\n", handle->handle_id,
+			SSL_get_version(dtls->ssl), group ? group : "unknown group");
 		/* Check the remote fingerprint */
 		X509 *rcert = SSL_get_peer_certificate(dtls->ssl);
 		if(!rcert) {
