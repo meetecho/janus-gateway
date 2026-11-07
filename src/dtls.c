@@ -108,6 +108,8 @@ static const char *dtls_ciphers = DTLS_DEFAULT_CIPHERS;
 #define DTLS_AUTOCERT_DURATION	60*60*24*365
 /* NIST P-256 elliptic curve used for private key generation */
 #define DTLS_ELLIPTIC_CURVE NID_X9_62_prime256v1
+/* Max ClientHello datagrams to keep if received before the handshake starts */
+#define DTLS_MAX_EARLY_CLIENTHELLOS	2
 
 /* By default we always accept self-signed certificates (that's what almost
  * all of the existing WebRTC implementations do today), but if told so we
@@ -524,6 +526,10 @@ static void janus_dtls_srtp_free(const janus_refcount *dtls_ref) {
 	janus_dtls_srtp *dtls = janus_refcount_containerof(dtls_ref, janus_dtls_srtp, ref);
 	/* This stack can be destroyed, free all the resources */
 	dtls->pc = NULL;
+	if(dtls->early_msgs != NULL) {
+		g_queue_free_full(dtls->early_msgs, (GDestroyNotify)g_bytes_unref);
+		dtls->early_msgs = NULL;
+	}
 	if(dtls->ssl != NULL) {
 		SSL_free(dtls->ssl);
 		dtls->ssl = NULL;
@@ -664,6 +670,21 @@ void janus_dtls_srtp_handshake(janus_dtls_srtp *dtls) {
 
 	/* Notify event handlers */
 	janus_dtls_notify_state_change(dtls);
+
+	if(dtls->early_msgs != NULL) {
+		GQueue *early_msgs = dtls->early_msgs;
+		dtls->early_msgs = NULL;
+		GBytes *msg;
+		while((msg = g_queue_pop_head(early_msgs)) != NULL) {
+			if(dtls->dtls_role == JANUS_DTLS_ROLE_SERVER) {
+				gsize len = 0;
+				const char *buf = g_bytes_get_data(msg, &len);
+				janus_dtls_srtp_incoming_msg(dtls, (char *)buf, len);
+			}
+			g_bytes_unref(msg);
+		}
+		g_queue_free(early_msgs);
+	}
 }
 
 int janus_dtls_srtp_create_sctp(janus_dtls_srtp *dtls) {
@@ -714,7 +735,19 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 		return;
 	}
 	if(dtls->dtls_started == 0) {
-		/* Handshake not started yet: maybe we're still waiting for the answer and the DTLS role? */
+		/* Keep an early ClientHello for when the handshake starts, instead of waiting for a retransmission */
+		if(len > 17 && buf[0] == 22 && buf[13] == 1) {
+			if(dtls->early_msgs == NULL)
+				dtls->early_msgs = g_queue_new();
+			GBytes *msg = g_bytes_new(buf, len);
+			if(g_queue_find_custom(dtls->early_msgs, msg, (GCompareFunc)g_bytes_compare) != NULL) {
+				g_bytes_unref(msg);
+				return;
+			}
+			g_queue_push_tail(dtls->early_msgs, msg);
+			if(g_queue_get_length(dtls->early_msgs) > DTLS_MAX_EARLY_CLIENTHELLOS)
+				g_bytes_unref(g_queue_pop_head(dtls->early_msgs));
+		}
 		return;
 	}
 	int written = BIO_write(dtls->read_bio, buf, len);
