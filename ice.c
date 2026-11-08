@@ -4590,13 +4590,13 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 				/* Enqueue it, we'll send it later */
 				janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = rtcpbuf, .length = 32 };
 				janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
+				if(vindex == 0) {
+					/* Check if we detected too many losses, and send a slowlink event in case */
+					gint lost = janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[vindex], FALSE);
+					lost = lost > 0 ? lost : 0;
+					janus_slow_link_update(stream->component, handle, TRUE, FALSE, lost);
+				}
 			}
-		}
-		if(vindex == 0) {
-			/* Check if we detected too many losses, and send a slowlink event in case */
-			gint lost = janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[vindex], FALSE);
-			lost = lost > 0 ? lost : 0;
-			janus_slow_link_update(stream->component, handle, TRUE, FALSE, lost);
 		}
 	}
 	if(twcc_period == 1000) {
