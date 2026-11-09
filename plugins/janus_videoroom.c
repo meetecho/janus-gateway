@@ -7334,7 +7334,8 @@ static void *janus_videoroom_handler(void *data) {
 				}
 			} else if(!strcasecmp(request_text, "unpublish")) {
 				/* This participant wants to unpublish */
-				if(!participant->sdp) {
+				if(!g_atomic_int_get(&participant->session->starting) &&
+						!g_atomic_int_get(&participant->session->started)) {
 					janus_refcount_decrease(&participant->ref);
 					JANUS_LOG(LOG_ERR, "Can't unpublish, not published\n");
 					error_code = JANUS_VIDEOROOM_ERROR_NOT_PUBLISHED;
@@ -7993,6 +7994,9 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 				if(videoroom->require_e2ee && !e2ee && !participant->e2ee) {
+					/* We won't publish after all: don't hold a publisher slot */
+					if(!sdp_update)
+						g_atomic_int_set(&participant->session->starting, 0);
 					janus_mutex_unlock(&videoroom->mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					participant->audio_active = FALSE;
@@ -8013,6 +8017,9 @@ static void *janus_videoroom_handler(void *data) {
 				char error_str[512];
 				janus_sdp *offer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
 				if(offer == NULL) {
+					/* We won't publish after all: don't hold a publisher slot */
+					if(!sdp_update)
+						g_atomic_int_set(&participant->session->starting, 0);
 					g_atomic_int_set(&participant->session->starting, 0);
 					janus_refcount_decrease(&videoroom->ref);
 					json_decref(event);
