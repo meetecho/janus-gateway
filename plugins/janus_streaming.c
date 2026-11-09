@@ -8020,12 +8020,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		janus_refcount_decrease(&live_rtsp->ref);
 		return NULL;
 	}
-	janus_mutex_lock(&mountpoints_mutex);
-	g_hash_table_insert(mountpoints,
-		string_ids ? (gpointer)g_strdup(live_rtsp->id_str) : (gpointer)janus_uint64_dup(live_rtsp->id),
-		live_rtsp);
-	g_hash_table_remove(mountpoints_temp, string_ids ? (gpointer)live_rtsp->id_str : (gpointer)&live_rtsp->id);
-	janus_mutex_unlock(&mountpoints_mutex);
 	return live_rtsp;
 }
 #else
