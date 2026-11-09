@@ -11213,8 +11213,12 @@ static void *janus_videoroom_handler(void *data) {
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 				}
 			} else if(!strcasecmp(request_text, "unpublish")) {
-				/* This participant wants to unpublish */
-				if(!g_atomic_int_get(&participant->session->started)) {
+				/* This participant wants to unpublish: since a publisher counts as
+				 * such as soon as we answered (starting), and not only once the
+				 * PeerConnection is up (started), accept unpublish in both cases,
+				 * or a negotiation in progress would hold a publisher slot */
+				if(!g_atomic_int_get(&participant->session->starting) &&
+						!g_atomic_int_get(&participant->session->started)) {
 					janus_refcount_decrease(&participant->ref);
 					JANUS_LOG(LOG_ERR, "Can't unpublish, not published\n");
 					error_code = JANUS_VIDEOROOM_ERROR_NOT_PUBLISHED;
@@ -12825,6 +12829,9 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_unlock(&videoroom->mutex);
 				}
 				if(videoroom->require_e2ee && !e2ee && !participant->e2ee) {
+					/* We won't publish after all: don't hold a publisher slot */
+					if(!sdp_update)
+						g_atomic_int_set(&participant->session->starting, 0);
 					janus_refcount_decrease(&videoroom->ref);
 					janus_refcount_decrease(&participant->ref);
 					JANUS_LOG(LOG_ERR, "Room requires end-to-end encrypted media\n");
@@ -12841,6 +12848,9 @@ static void *janus_videoroom_handler(void *data) {
 				char error_str[512];
 				janus_sdp *offer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
 				if(offer == NULL) {
+					/* We won't publish after all: don't hold a publisher slot */
+					if(!sdp_update)
+						g_atomic_int_set(&participant->session->starting, 0);
 					janus_refcount_decrease(&videoroom->ref);
 					janus_refcount_decrease(&participant->ref);
 					json_decref(event);
