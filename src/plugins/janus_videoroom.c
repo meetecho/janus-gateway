@@ -4096,9 +4096,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 							videoroom->threads = g_list_append(videoroom->threads, helper);
 						}
 						if(error != NULL) {
-							/* Something went wrong, return an error */
+							/* Something went wrong, skip this room */
+							g_error_free(error);
 							janus_videoroom_room_destroy(videoroom);
-							janus_mutex_unlock(&rooms_mutex);
 							cl = cl->next;
 							continue;
 						}
