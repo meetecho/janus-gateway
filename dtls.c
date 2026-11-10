@@ -122,6 +122,9 @@ gboolean janus_dtls_are_selfsigned_certs_ok(void) {
 	return dtls_selfsigned_certs_ok;
 }
 
+/* Whether to offer post-quantum key exchange (X25519MLKEM768, BoringSSL only) */
+static gboolean dtls_pqc_enabled = FALSE;
+
 /* DTLS timeout base to enforce: notice that this can currently only be
  * modified if you're using BoringSSL, as OpenSSL uses 1s (1000ms) and
  * that value cannot be modified (it will in OpenSSL v1.1.1) */
@@ -401,7 +404,7 @@ const char *janus_get_ssl_version(void) {
 
 /* DTLS-SRTP initialization */
 gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password,
-		const char *ciphers, guint16 timeout, gboolean rsa_private_key, gboolean accept_selfsigned) {
+		const char *ciphers, guint16 timeout, gboolean rsa_private_key, gboolean accept_selfsigned, gboolean pqc) {
 	const char *crypto_lib = NULL;
 #if JANUS_USE_OPENSSL_PRE_1_1_API && !defined(HAVE_BORINGSSL)
 #if defined(LIBRESSL_VERSION_NUMBER)
@@ -507,6 +510,13 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 #ifndef HAVE_BORINGSSL
 	if(dtls_timeout_base != 1000) {
 		JANUS_LOG(LOG_WARN, "DTLS timeout set to %u ms, but not using BoringSSL: ignoring\n", timeout);
+	}
+#endif
+	dtls_pqc_enabled = pqc;
+#if !defined(HAVE_BORINGSSL) || !defined(SSL_GROUP_X25519_MLKEM768)
+	if(dtls_pqc_enabled) {
+		JANUS_LOG(LOG_WARN, "Post-quantum DTLS key exchange enabled, but not using BoringSSL: ignoring\n");
+		dtls_pqc_enabled = FALSE;
 	}
 #endif
 
@@ -640,6 +650,18 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 #else
 	int grp_list[1] = { NID_X9_62_prime256v1 };
 	SSL_set1_groups(dtls->ssl, grp_list, 1);
+#endif
+#if defined(HAVE_BORINGSSL) && defined(SSL_GROUP_X25519_MLKEM768)
+	if(dtls_pqc_enabled) {
+		const uint16_t pqc_grp_list[] = { SSL_GROUP_X25519_MLKEM768, SSL_GROUP_X25519,
+			SSL_GROUP_SECP256R1, SSL_GROUP_SECP384R1 };
+		if(!SSL_set1_group_ids(dtls->ssl, pqc_grp_list, sizeof(pqc_grp_list)/sizeof(pqc_grp_list[0]))) {
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error setting DTLS groups! (%s)\n",
+				handle->handle_id, ERR_reason_error_string(ERR_get_error()));
+			janus_refcount_decrease(&dtls->ref);
+			return NULL;
+		}
+	}
 #endif
 	const long flags = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_SINGLE_ECDH_USE;
 	SSL_set_options(dtls->ssl, flags);
@@ -808,7 +830,15 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 		}
 #endif
 	} else {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS established, yay!\n", handle->handle_id);
+#if defined(HAVE_BORINGSSL)
+		const char *group = SSL_get_group_name(SSL_get_group_id(dtls->ssl));
+#elif defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
+		const char *group = SSL_group_to_name(dtls->ssl, SSL_get_negotiated_group(dtls->ssl));
+#else
+		const char *group = NULL;
+#endif
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS established (%s, %s)\n", handle->handle_id,
+			SSL_get_version(dtls->ssl), group ? group : "unknown group");
 		/* Check the remote fingerprint */
 		X509 *rcert = SSL_get_peer_certificate(dtls->ssl);
 		if(!rcert) {
