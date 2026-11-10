@@ -21,6 +21,7 @@ anything.
    - Issues: the matching template in `.github/ISSUE_TEMPLATE/`
    (`config.yml` there is not a template)
    - Pull requests: `.github/pull_request_template.md`
+
    Fill in every section with real information. Never leave placeholders,
    never delete sections (only the introductory instructions at the top of
    the PR template may be removed), never invent details (versions, logs,
