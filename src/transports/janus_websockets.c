@@ -891,10 +891,12 @@ static void janus_websockets_destroy_client(
 	ws_client->buflen = 0;
 	ws_client->bufpending = 0;
 	ws_client->bufoffset = 0;
-	janus_mutex_unlock(&ws_client->ts->mutex);
+	janus_transport_session* ts = ws_client->ts;
+	ws_client->ts = NULL;
+	janus_mutex_unlock(&ts->mutex);
 	/* Notify core */
-	gateway->transport_gone(&janus_websockets_transport, ws_client->ts);
-	janus_transport_session_destroy(ws_client->ts);
+	gateway->transport_gone(&janus_websockets_transport, ts);
+	janus_transport_session_destroy(ts);
 }
 
 int janus_websockets_get_api_compatibility(void) {
