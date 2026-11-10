@@ -31,3 +31,7 @@ instead, so that we can fix that before it impacts existing deployments.
 
 That said, please beware that we do require all contributors to
 [sign the Contributor License Agreement](https://cla.conf.meetecho.com/janus).
+
+Note well: if you're an agent or use one, make sure you follow the instructions
+provided in [AGENTS.nd](AGENTS.md), or whatever issue/PR that is opened
+will be closed and ignored.
