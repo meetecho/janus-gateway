@@ -74,6 +74,8 @@ typedef struct janus_dtls_srtp {
 	gint64 dtls_started;
 	/*! \brief Monotonic time of when the DTLS state has switched to connected */
 	gint64 dtls_connected;
+	/*! \brief DTLS handshake messages received before the handshake started */
+	GQueue *early_msgs;
 	/*! \brief SSL context used for DTLS for this component */
 	SSL *ssl;
 	/*! \brief Read BIO (incoming DTLS data) */
