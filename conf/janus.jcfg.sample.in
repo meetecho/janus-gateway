@@ -229,6 +229,9 @@ general: {
 # set is "DEFAULT:!NULL:!aNULL:!SHA256:!SHA384:!aECDH:!AESGCM+AES256:!aPSK"
 # Finally, by default NIST P-256 certificates are generated (see #1997),
 # but RSA generation is still supported if you set 'rsa_private_key' to 'true'.
+# If Janus is built with BoringSSL, you can set 'dtls_pqc' to 'true' to offer
+# the post-quantum hybrid X25519MLKEM768 key exchange with DTLS 1.3, instead
+# of only NIST P-256 (the default): this is ignored when using OpenSSL.
 certificates: {
 	#cert_pem = "/path/to/certificate.pem"
 	#cert_key = "/path/to/key.pem"
@@ -236,6 +239,7 @@ certificates: {
 	#dtls_accept_selfsigned = false
 	#dtls_ciphers = "your-desired-openssl-ciphers"
 	#rsa_private_key = false
+	#dtls_pqc = true
 }
 
 # Media-related stuff: you can configure whether if you want to enable IPv6

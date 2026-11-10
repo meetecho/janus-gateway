@@ -5543,7 +5543,11 @@ gint main(int argc, char *argv[]) {
 	item = janus_config_get(config, config_certs, janus_config_type_item, "dtls_accept_selfsigned");
 	if(item && item->value)
 		dtls_accept_selfsigned = janus_is_true(item->value);
-	if(janus_dtls_srtp_init(server_pem, server_key, password, dtls_ciphers, dtls_timeout, rsa_private_key, dtls_accept_selfsigned) < 0) {
+	gboolean dtls_pqc = FALSE;
+	item = janus_config_get(config, config_certs, janus_config_type_item, "dtls_pqc");
+	if(item && item->value)
+		dtls_pqc = janus_is_true(item->value);
+	if(janus_dtls_srtp_init(server_pem, server_key, password, dtls_ciphers, dtls_timeout, rsa_private_key, dtls_accept_selfsigned, dtls_pqc) < 0) {
 		janus_options_destroy();
 		exit(1);
 	}
