@@ -2963,6 +2963,10 @@ WantedBy=multi-user.target
  *
  * \note Remember to adjust the path in ExecStart to match the Janus binary path.
  *
+ * \note On some distributions (e.g., on Rocky Linux 9, as reported in
+ * <a href="https://github.com/meetecho/janus-gateway/issues/3458">this issue</a>)
+ * you may have to always have a <code>PIDFile=</code> directive too.
+ *
  * \warning Please beware that, per the default \c RateLimitInterval and
  * and \c RateLimitBurst values in the default systemd configuration, logger
  * messages are dropped if they arrive faster than ~33 per second. You
