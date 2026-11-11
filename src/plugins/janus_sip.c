@@ -6990,17 +6990,26 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(status >= 200 && ssip != NULL) {
 				/* Check if this session (and/or its helpers) had dangling
 				 * references for ongoing calls: we won't receive other events
-				 * after this, so it's up to us to clean up after ourselves */
+				 * after this, so it's up to us to clean up after ourselves.
+				 * A helper's call handle lives on this stack too, and the helper
+				 * got no event for the call the shutdown just ended: make it
+				 * forget that handle, which is freed together with the stack.
+				 * A PeerConnection hangup uses the handle while holding
+				 * sessions_mutex, hence the lock */
+				janus_mutex_lock(&sessions_mutex);
 				janus_mutex_lock(&session->mutex);
 				while(session->active_calls) {
 					janus_sip_session *s = (janus_sip_session *)session->active_calls->data;
 					if(s != NULL) {
+						if(s != session && s->stack != NULL && (s->master == NULL || s->master == session))
+							s->stack->s_nh_i = NULL;
 						JANUS_LOG(LOG_VERB, "[%p] Removing reference\n", s);
 						janus_refcount_decrease(&s->ref);
 					}
 					session->active_calls = g_list_remove(session->active_calls, s);
 				}
 				janus_mutex_unlock(&session->mutex);
+				janus_mutex_unlock(&sessions_mutex);
 				/* End the event loop: su_root_run() will return */
 				su_root_break(ssip->s_root);
 			}
