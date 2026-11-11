@@ -700,7 +700,10 @@
  * decides to follow up on the transfer request, and they're already in
  * a call (e.g., with the transferor), then they must use a different
  * handle for the purpose, e.g., via a helper as described in the
- * \ref sipmc section.
+ * \ref sipmc section. Notice that a REFER for a call on a \c helper is
+ * received on the SIP stack of its \c master : if the \c master goes away,
+ * any such transfer that wasn't followed up on yet is dropped as well, and
+ * a \c decline with its \c refer_id will return an error.
  *
  * The transfer target will receive the call exactly as previously discussed,
  * with the difference that it may or may not include a \c referred_by
@@ -1260,7 +1263,7 @@ typedef struct janus_sip_transfer {
 	struct janus_sip_session *session;
 	char *referred_by;
 	char *custom_headers;
-	struct janus_sip_session *owner;	/* Session whose stack nh_s belongs to */
+	struct janus_sip_session *owner;	/* Session whose stack nh_s belongs to (referenced, so its stack is never NULL) */
 	nua_handle_t *nh_s;
 	nua_saved_event_t saved[1];
 } janus_sip_transfer;
@@ -1629,11 +1632,15 @@ static void janus_sip_transfer_destroy(janus_sip_transfer *t) {
 	nua_destroy_event(t->saved);
 	g_free(t->referred_by);
 	g_free(t->custom_headers);
-	if(t->nh_s != NULL && t->owner != NULL && t->owner->stack != NULL) {
+	if(t->nh_s != NULL && t->owner != NULL) {
 		/* An out-of-dialog REFER leaves us a fresh unbound handle to destroy,
 		 * and we hold a reference to the handle in any case: it belongs to the
 		 * stack the REFER came on, so only touch it while that stack is there
-		 * (depending on the Sofia version, nua_destroy() may free it) */
+		 * (depending on the Sofia version, nua_destroy() may free it). If
+		 * that stack was torn down while the transfer was being used, we
+		 * can't tell whether the handle is still there, so our reference is
+		 * left alone: with Sofia versions where nua_destroy() doesn't free a
+		 * handle that was already destroyed, that one handle then leaks */
 		janus_mutex_lock(&t->owner->stack->smutex);
 		if(t->owner->stack->s_nua != NULL) {
 			gboolean adopted_call_handle = t->session != NULL && t->session->stack != NULL &&
@@ -5390,6 +5397,7 @@ send_invite:
 					char content[100];
 					g_snprintf(content, sizeof(content), "SIP/2.0 %d %s", response_code, sip_status_phrase(response_code));
 					/* The handle can only be used as long as the stack it belongs to is there */
+					gboolean notified = FALSE;
 					janus_mutex_lock(&transfer->owner->stack->smutex);
 					if(transfer->owner->stack->s_nua != NULL) {
 						nua_notify(transfer->nh_s,
@@ -5398,9 +5406,17 @@ send_invite:
 							SIPTAG_PAYLOAD_STR(content),
 							NUTAG_WITH_SAVED(transfer->saved),
 							TAG_END());
+						notified = TRUE;
 					}
 					janus_mutex_unlock(&transfer->owner->stack->smutex);
 					janus_sip_transfer_destroy(transfer);
+					if(!notified) {
+						/* The stack the REFER came on went away in the meantime */
+						JANUS_LOG(LOG_ERR, "Wrong state (no transfer?)\n");
+						error_code = JANUS_SIP_ERROR_WRONG_STATE;
+						g_snprintf(error_cause, 512, "Wrong state (no transfer?)");
+						goto error;
+					}
 					/* Also notify event handlers */
 					if(notify_events && gateway->events_is_enabled()) {
 						json_t *info = json_object();
@@ -7254,7 +7270,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				}
 				janus_mutex_unlock(&sessions_mutex);
 				if(nh_s != NULL) {
-					/* Send a NOTIFY, as long as the stack the handle belongs to is there */
+					/* Send a NOTIFY, as long as the stack the handle belongs to is there
+					 * (if it's gone, our reference is left alone, as in janus_sip_transfer_destroy) */
 					char content[100];
 					g_snprintf(content, sizeof(content), "SIP/2.0 %d %s", status, phrase);
 					janus_mutex_lock(&owner->stack->smutex);
