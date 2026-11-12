@@ -854,7 +854,7 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 			JANUS_SDP_OA_FMTP, rec->vfmtp,
 			JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
 			JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_MID, mid_ext_id,
-			JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_AUDIO_LEVEL, rec->videoorient_ext_id,
+			JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION, rec->videoorient_ext_id,
 		JANUS_SDP_OA_MLINE, JANUS_SDP_APPLICATION,
 			JANUS_SDP_OA_ENABLED, offer_data,
 		JANUS_SDP_OA_DONE);
