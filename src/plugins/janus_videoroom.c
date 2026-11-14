@@ -3539,6 +3539,23 @@ static void janus_videoroom_subscriber_stream_remove(janus_videoroom_subscriber_
 	}
 }
 
+/* Unlink all streams of a subscriber from the publishers they're attached to,
+ * and get rid of them (same cleanup as in janus_videoroom_hangup_media_internal) */
+static void janus_videoroom_subscriber_unlink_streams(janus_videoroom_subscriber *subscriber) {
+	janus_mutex_lock(&subscriber->streams_mutex);
+	GList *temp = subscriber->streams;
+	while(temp) {
+		janus_videoroom_subscriber_stream *s = (janus_videoroom_subscriber_stream *)temp->data;
+		temp = temp->next;
+		janus_videoroom_subscriber_stream_remove(s, NULL, TRUE);
+	}
+	g_list_free(subscriber->streams);
+	subscriber->streams = NULL;
+	g_hash_table_remove_all(subscriber->streams_byid);
+	g_hash_table_remove_all(subscriber->streams_bymid);
+	janus_mutex_unlock(&subscriber->streams_mutex);
+}
+
 static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscriber *subscriber, gboolean legacy, json_t *event) {
 	json_t *media = json_array();
 	GList *temp = subscriber->streams;
@@ -4574,6 +4591,14 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			janus_refcount_increase(&s->ref);
 		session->participant = NULL;
 		janus_mutex_unlock(&session->mutex);
+		/* The hangup above is skipped if one was already in progress: that one
+		 * may not find the subscriber anymore (we just cleared it), or may have
+		 * cleaned up before a concurrent subscribe/update/switch linked new
+		 * streams. Now that the session is marked as destroyed those requests
+		 * won't link anything anymore, so unlink whatever may be left (this
+		 * must happen before we release the reference to the room) */
+		if(s)
+			janus_videoroom_subscriber_unlink_streams(s);
 		if(s && s->room) {
 			if(s->pvt_id > 0) {
 				janus_mutex_lock(&s->room->mutex);
@@ -11512,6 +11537,26 @@ static void *janus_videoroom_handler(void *data) {
 				size_t i = 0;
 				janus_mutex_lock(&subscriber->room->mutex);
 				janus_mutex_lock(&subscriber->streams_mutex);
+				/* The handle may have been detached (or the session may have timed
+				 * out) since we checked at the beginning: if so, its streams have
+				 * been cleaned up already, and we must not link new ones, or they'd
+				 * be left in publishers with a dangling subscriber when it's freed */
+				if(g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&subscriber->destroyed)) {
+					janus_mutex_unlock(&subscriber->streams_mutex);
+					janus_mutex_unlock(&subscriber->room->mutex);
+					JANUS_LOG(LOG_WARN, "Subscriber destroyed while handling the request, ignoring it\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Invalid subscriber instance");
+					/* Unref publishers we took note of */
+					while(publishers) {
+						janus_videoroom_publisher *p = (janus_videoroom_publisher *)publishers->data;
+						janus_refcount_decrease(&p->session->ref);
+						janus_refcount_decrease(&p->ref);
+						publishers = g_list_remove(publishers, p);
+					}
+					janus_refcount_decrease(&subscriber->ref);
+					goto error;
+				}
 				if(unsubscribe) {
 					/* Remove the specified subscriptions */
 					for(i=0; i<json_array_size(unsub_feeds); i++) {
@@ -12398,6 +12443,25 @@ static void *janus_videoroom_handler(void *data) {
 				gboolean update = FALSE;
 				janus_mutex_lock(&subscriber->room->mutex);
 				janus_mutex_lock(&subscriber->streams_mutex);
+				/* Don't link any stream if the handle was detached (or the session
+				 * timed out) in the meanwhile, see the same check in subscribe/update
+				 * (we leave subscriber->paused set, as the subscriber is going away) */
+				if(g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&subscriber->destroyed)) {
+					janus_mutex_unlock(&subscriber->streams_mutex);
+					janus_mutex_unlock(&subscriber->room->mutex);
+					JANUS_LOG(LOG_WARN, "Subscriber destroyed while handling the request, ignoring it\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Invalid subscriber instance");
+					/* Unref publishers we took note of */
+					while(publishers) {
+						janus_videoroom_publisher *p = (janus_videoroom_publisher *)publishers->data;
+						janus_refcount_decrease(&p->session->ref);
+						janus_refcount_decrease(&p->ref);
+						publishers = g_list_remove(publishers, p);
+					}
+					janus_refcount_decrease(&subscriber->ref);
+					goto error;
+				}
 				for(i=0; i<json_array_size(feeds); i++) {
 					json_t *s = json_array_get(feeds, i);
 					/* Look for the specific subscription mid to update */
