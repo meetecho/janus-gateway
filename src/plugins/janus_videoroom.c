@@ -2849,6 +2849,7 @@ static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 	janus_mutex_destroy(&p->streams_mutex);
 	janus_mutex_destroy(&p->rtp_forwarders_mutex);
 	janus_mutex_destroy(&p->mutex);
+	janus_mutex_destroy(&p->rec_mutex);
 
 	/* If this is a dummy publisher, get rid of the session too */
 	if(p->dummy && p->session)
@@ -3170,6 +3171,7 @@ static void janus_videoroom_create_dummy_publisher(janus_videoroom *room, gboole
 	publisher->udp_sock = -1;
 	g_atomic_int_set(&publisher->destroyed, 0);
 	janus_mutex_init(&publisher->mutex);
+	janus_mutex_init(&publisher->rec_mutex);
 	janus_refcount_init(&publisher->ref, janus_videoroom_publisher_free);
 	/* Now we create a separate publisher stream for each supported codec in the room */
 	janus_videoroom_publisher_stream *ps = NULL;
@@ -4634,6 +4636,8 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				if(participant->e2ee)
 					json_object_set_new(info, "e2ee", json_true());
 				json_t *media = json_array();
+				/* We lock the recorders too, as we'll check if streams are being recorded */
+				janus_mutex_lock(&participant->rec_mutex);
 				janus_mutex_lock(&participant->streams_mutex);
 				GList *temp = participant->streams;
 				while(temp) {
@@ -4678,6 +4682,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 					temp = temp->next;
 				}
 				janus_mutex_unlock(&participant->streams_mutex);
+				janus_mutex_unlock(&participant->rec_mutex);
 				json_object_set_new(info, "streams", media);
 			}
 			if(participant != NULL)
@@ -7887,6 +7892,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		publisher->udp_sock = -1;
 		g_atomic_int_set(&publisher->destroyed, 0);
 		janus_mutex_init(&publisher->mutex);
+		janus_mutex_init(&publisher->rec_mutex);
 		janus_refcount_init(&publisher->ref, janus_videoroom_publisher_free);
 		/* Create publisher streams for all the things that the remote publisher is sending */
 		janus_videoroom_publisher_stream *ps = NULL;
@@ -8895,7 +8901,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 		rtp->type = ps->pt;
 		/* Save the frame if we're recording */
 		if(!video || !ps->simulcast) {
-			janus_recorder_save_frame(ps->rc, buf, len);
+			janus_recorder_save_frame_ref(&ps->rc, &participant->rec_mutex, buf, len);
 		} else {
 			/* We're simulcasting, save the best video quality */
 			gboolean save = janus_rtp_simulcasting_context_process_rtp(&ps->rec_simctx,
@@ -8908,7 +8914,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 				janus_rtp_header_update(rtp, &ps->rec_ctx, TRUE, 0);
 				/* We use a fixed SSRC for the whole recording */
 				rtp->ssrc = ps->vssrc[0];
-				janus_recorder_save_frame(ps->rc, buf, len);
+				janus_recorder_save_frame_ref(&ps->rc, &participant->rec_mutex, buf, len);
 				/* Restore the header, as it will be needed by subscribers */
 				rtp->ssrc = htonl(ssrc);
 				rtp->timestamp = htonl(timestamp);
@@ -9180,7 +9186,7 @@ static void janus_videoroom_incoming_data_internal(janus_videoroom_session *sess
 	JANUS_LOG(LOG_VERB, "Got a %s DataChannel message (%d bytes) to forward\n",
 		packet->binary ? "binary" : "text", len);
 	/* Save the message if we're recording */
-	janus_recorder_save_frame(ps->rc, buf, len);
+	janus_recorder_save_frame_ref(&ps->rc, &participant->rec_mutex, buf, len);
 	/* Relay to all subscribers */
 	janus_videoroom_rtp_relay_packet pkt = { 0 };
 	pkt.source = ps;
@@ -9870,6 +9876,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				g_atomic_int_set(&publisher->destroyed, 0);
 				janus_mutex_init(&publisher->mutex);
+				janus_mutex_init(&publisher->rec_mutex);
 				janus_refcount_init(&publisher->ref, janus_videoroom_publisher_free);
 				/* In case we also wanted to configure */
 				if(audiocodec && json_string_value(json_object_get(msg->jsep, "sdp")) != NULL) {
