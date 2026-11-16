@@ -4884,6 +4884,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				json_object_set_new(pl, "spatial_position", json_integer(p->spatial_position));
 			if(g_atomic_int_get(&p->suspended))
 				json_object_set_new(pl, "suspended", json_true());
+			json_object_set_new(pl, "volume", json_integer(p->volume_gain));
 			json_array_append_new(list, pl);
 		}
 		janus_refcount_decrease(&audiobridge->ref);
