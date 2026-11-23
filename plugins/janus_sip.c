@@ -4695,7 +4695,7 @@ static void *janus_sip_handler(void *data) {
 			session->sdp = parsed_sdp;
 			JANUS_LOG(LOG_VERB, "Prepared SDP for INVITE:\n%s", sdp);
 
-send_invite:
+send_invite:;
 			/* Prepare the From header */
 			char from_hdr[1024];
 			char *local_tag = g_malloc0(7);
