@@ -921,17 +921,31 @@ gboolean janus_av1_is_keyframe(const char *buffer, int len) {
 }
 
 gboolean janus_h265_is_keyframe(const char *buffer, int len) {
-	if(!buffer || len < 2)
+	if(!buffer || len < 3)
 		return FALSE;
-	/* Parse the NAL unit */
 	uint16_t unit = 0;
 	memcpy(&unit, buffer, sizeof(uint16_t));
 	unit = ntohs(unit);
 	uint8_t type = (unit & 0x7E00) >> 9;
-	if(type == 32 || type == 33 || type == 34 || type == 16 || type == 17 || type == 18 || type == 19 || type == 20 || type == 21) {
-		/* FIXME We return TRUE for more than just VPS and SPS, as
-		 * suggested in https://github.com/meetecho/janus-gateway/issues/2323 */
+	if((type >= 16 && type <= 21) || (type >= 32 && type <= 34))
 		return TRUE;
+
+	/* Aggregation Packet (Safari) */
+	if(type == 48 && len >= 6) {
+		uint16_t inner_unit = 0;
+		memcpy(&inner_unit, buffer + 4, sizeof(uint16_t));
+		inner_unit = ntohs(inner_unit);
+		uint8_t inner_type = (inner_unit & 0x7E00) >> 9;
+		if((inner_type >= 16 && inner_type <= 21) || (inner_type >= 32 && inner_type <= 34))
+			return TRUE;
+	}
+	/* Fragmentation Unit (Chrome/Firefox) */
+	if(type == 49 && len >= 3) {
+		uint8_t fu_header = (uint8_t)buffer[2];
+		gboolean start_bit = (fu_header & 0x80);
+		uint8_t real_type = (fu_header & 0x1F);
+		if(start_bit && ((real_type >= 16 && real_type <= 21) || (real_type >= 32 && real_type <= 34)))
+			return TRUE;
 	}
 	return FALSE;
 }
