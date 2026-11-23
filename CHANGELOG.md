@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.16.4] - 2026-11-23
+
+- Added new instructions for AI contributions
+- [**SEC**] Validate the RTP header length in one place (reported by @TristanSec, thanks @alepacheco for the fix!) [[PR-3690](https://github.com/meetecho/janus-gateway/pull/3690)]
+- [**SEC**] Check the AV1 Dependency Descriptor length while parsing templates (reported by @TristanSec, thanks @alepacheco for the fix!) [[PR-3691](https://github.com/meetecho/janus-gateway/pull/3691)]
+- Process report blocks for RTCP Sender Reports, when available (thanks @kenangenjac!) [[PR-3702](https://github.com/meetecho/janus-gateway/pull/3702)]
+- Leave enough room for SRTP when needed for RTP forwarders (thanks @alepacheco!) [[PR-3694](https://github.com/meetecho/janus-gateway/pull/3694)]
+- Keep the SVC spatial layer target within the tracked layers (thanks @alepacheco!) [[PR-3692](https://github.com/meetecho/janus-gateway/pull/3692)]
+- Fix SCTP stream ID parity for locally opened data channels (thanks @joelis57!) [[PR-3708](https://github.com/meetecho/janus-gateway/pull/3708)]
+- Add configurable support for DTLS 1.3 post-quantum hybrid X25519MLKEM768 key exchange (thanks @fippo!) [[PR-3722](https://github.com/meetecho/janus-gateway/pull/3722)]
+- Buffer initial DTLS handshake packets (thanks @fippo!) [[PR-3724](https://github.com/meetecho/janus-gateway/pull/3724)]
+- Prevent relative paths in Record&Play (and recorder)
+- Fix rare crash in WebSockets transport (thanks @fabienseznecapizee!) [[Issue-3632](https://github.com/meetecho/janus-gateway/issues/3632)]
+- Fixed rare crash in Streaming plugin when using on-demand mountpoints (thanks @shalseth!) [[PR-3711](https://github.com/meetecho/janus-gateway/pull/3710)]
+- Don't expose new mountpoints and rooms before they're ready (thanks @alepacheco!) [[PR-3697](https://github.com/meetecho/janus-gateway/pull/3697)]
+- Check the AudioBridge sampling rate before creating the room (thanks @alepacheco!) [[PR-3696](https://github.com/meetecho/janus-gateway/pull/3696)]
+- Limit AudioBridge announcement decoding to 20ms per mixer iteration (thanks @alepacheco!) [[PR-3700](https://github.com/meetecho/janus-gateway/pull/3700)]
+- Fix jitter buffer wrapping in AudioBridge (thanks @radojko!) [[PR-3706](https://github.com/meetecho/janus-gateway/pull/3706)]
+- Better cleanup of NUA handles and references in the SIP plugin (thanks @alvm!) [[PR-3669](https://github.com/meetecho/janus-gateway/pull/3669)]
+- Require a user part in the username when registering in the SIP plugin (thanks @alepacheco!) [[PR-3698](https://github.com/meetecho/janus-gateway/pull/3698)]
+- Additional fixes to re-registrations in the SIP plugin (thanks @alepacheco!) [[PR-3699](https://github.com/meetecho/janus-gateway/pull/3699)]
+- Allow separate audio/video negotiation of SRTP in NoSIP plugin [[PR-3718](https://github.com/meetecho/janus-gateway/pull/3718)]
+- Fix TextRoom allowing Janus API usage when it shouldn't (thanks @alepacheco!) [[PR-3695](https://github.com/meetecho/janus-gateway/pull/3695)]
+- Skip Record&Play frames that don't fit the playout buffer (thanks @alepacheco!) [[PR-3693](https://github.com/meetecho/janus-gateway/pull/3693)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.16.3] - 2026-10-12
 
 - [**SEC**] Fix potential buffer overflow in Record&Play plugin (reported by AdamKorcz) [[PR-3688](https://github.com/meetecho/janus-gateway/pull/3688)]
