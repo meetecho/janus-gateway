@@ -15,7 +15,7 @@ var localTracks = {}, localVideos = 0,
 	remoteTracks = {}, remoteVideos = 0;
 
 var callstarted = false, videoenabled = true;
-var srtp = undefined ; // use "sdes_mandatory" to test SRTP-SDES
+var srtp = undefined ; // use "sdes_optional" or "sdes_mandatory" to test SRTP-SDES
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
