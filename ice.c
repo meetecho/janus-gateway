@@ -1643,6 +1643,15 @@ static void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_E2EE);
+		if(handle->pending_trickles) {
+			while(handle->pending_trickles) {
+				GList *temp = g_list_first(handle->pending_trickles);
+				handle->pending_trickles = g_list_remove_link(handle->pending_trickles, temp);
+				janus_ice_trickle *trickle = (janus_ice_trickle *)temp->data;
+				g_list_free(temp);
+				janus_ice_trickle_destroy(trickle);
+			}
+		}
 		janus_mutex_unlock(&handle->mutex);
 		return;
 	}
