@@ -8698,7 +8698,7 @@ static void *janus_sip_relay_thread(void *data) {
 						continue;
 					}
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
-					janus_sip_check_rfc2833(session, buffer, bytes);
+					gboolean decrypted = TRUE;
 					if(session->media.audio_ssrc_peer == 0) {
 						session->media.audio_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
@@ -8715,7 +8715,11 @@ static void *janus_sip_relay_thread(void *data) {
 							continue;
 						}
 						bytes = buflen;
+						decrypted = (res == srtp_err_status_ok);
 					}
+					/* Only look for DTMF in packets we authenticated and decrypted */
+					if(decrypted)
+						janus_sip_check_rfc2833(session, buffer, bytes);
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					janus_rtp_header_update(header, &session->media.acontext, FALSE, 0);
 					/* Check if there are forwarders interested in this traffic */
