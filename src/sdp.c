@@ -575,6 +575,9 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean r
 					if(a->value && strstr(a->value, "nack") && medium) {
 						/* Enable NACKs */
 						medium->do_nacks = TRUE;
+					} else if(a->value && strstr(a->value, "transport-cc") && medium) {
+						/* Enable TWCC */
+						medium->do_twcc = TRUE;
 					}
 				} else if(!strcasecmp(a->name, "fmtp")) {
 					if(a->value && strstr(a->value, "apt=")) {
